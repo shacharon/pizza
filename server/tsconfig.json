@@ -1,8 +1,17 @@
 {
+  "extends": "../tsconfig.base.json",
   // Visit https://aka.ms/tsconfig to read more about this file
   "compilerOptions": {
+    "baseUrl": "..",
+    "paths": {
+      "@api": ["shared/api/index.ts"],
+      "@api/*": ["shared/api/*"]
+    },
+
+    "moduleResolution": "nodenext",
+
     // File Layout
-    "rootDir": "./src",
+    "rootDir": "..",
     "outDir": "./dist",
 
     // Environment Settings
@@ -46,6 +55,6 @@
     "moduleDetection": "force",
     "skipLibCheck": true
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "../shared/api/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }
