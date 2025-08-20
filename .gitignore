@@ -1,0 +1,46 @@
+# Node / package managers
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build outputs
+dist/
+build/
+out/
+tmp/
+temp/
+*.tsbuildinfo
+
+# Angular / Nx / Turbo
+.angular/
+.nx/
+.turbo/
+.cache/
+
+# Coverage / tests
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+cypress/screenshots/
+cypress/videos/
+
+# Env / local
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+lerna-debug.log*
