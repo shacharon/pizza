@@ -55,23 +55,22 @@
                         <tr>
                             <th>Name</th>
                             <th>Address</th>
-                            <th>Price (min)</th>
+                            <th>Price</th>
+                            <th>Item</th>
                             <th>Rating</th>
                             <th>ETA (min)</th>
-                            <th>Max items</th>
+
                         </tr>
                     </thead>
                     <tbody>
                         <tr *ngFor="let v of r.vendors | slice:0:10">
-                            <td>{{ v.name }}</td>
+                            <td [title]="v.description || ''">{{ v.name }}</td>
                             <td>{{ v.address || '—' }}</td>
-                            <td>
-                                <ng-container *ngIf="minPriceForVendor(v.id) as mp; else dash">₪{{ mp }}</ng-container>
-                                <ng-template #dash>—</ng-template>
-                            </td>
+                            <td>{{ v.price !== undefined ? ('₪' + v.price) : '—' }}</td>
+                            <td>{{ v.itemName || '—' }}</td>
                             <td>{{ v.rating ?? '—' }}</td>
                             <td>{{ v.distanceMinutes }}</td>
-                            <td>{{ countItemsForVendor(v.id) }}</td>
+
                         </tr>
                     </tbody>
                 </table>

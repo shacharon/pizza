@@ -40,9 +40,9 @@ function extractJsonLoose(text: string): any | null {
     return null;
 }
 
-type LlmRestaurant = { name: string; price: number } | { name: string; items: { name: string; price: number }[] };
-async function llmRestaurants(dto: any): Promise<LlmRestaurant[]> {
-    const sys = `You return ONLY JSON. Shape: {"restaurants":[{"name":string,"price"?:number,"items"?:[{"name":string,"price":number}]}]}. \n- price numbers are in ILS, no currency sign. \n- Up to 10 restaurants. If multiple menu items are relevant, include them in items[].`;
+type LlmRestaurant = { name: string; price?: number; address?: string; description?: string } | { name: string; address?: string; description?: string; items: { name: string; price: number }[] };
+async function llmRestaurants(dto: any): Promise<{ restaurants: LlmRestaurant[]; raw: string }> {
+    const sys = `You return ONLY JSON. Shape: {"restaurants":[{"name":string,"address"?:string,"price"?:number,"description"?:string,"items"?:[{"name":string,"price":number}]}]}. \n- price numbers are in ILS (number only, no currency sign). \n- Include 1-2 sentence description of the place in the user's language under "description". \n- Up to 20 restaurants. If the restaurant has multiple relevant items/prices, include them under items[]. Always include address when known.`;
     const parts: string[] = [];
     if (dto?.type) parts.push(`type: ${dto.type}`);
     if (dto?.city) parts.push(`city: ${dto.city}`);
@@ -52,9 +52,10 @@ async function llmRestaurants(dto: any): Promise<LlmRestaurant[]> {
         model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
         input: [{ role: 'system', content: sys }, { role: 'user', content: user }]
     });
-    const parsed = extractJsonLoose(resp.output_text || '') || {};
+    const raw = resp.output_text || '';
+    const parsed = extractJsonLoose(raw) || {};
     const list: any[] = Array.isArray(parsed?.restaurants) ? parsed.restaurants : [];
-    return list.slice(0, 10).filter(r => r && typeof r.name === 'string');
+    return { restaurants: list.slice(0, 20).filter(r => r && typeof r.name === 'string'), raw };
 }
 
 
@@ -141,26 +142,24 @@ export async function postChat(req: Request, res: Response) {
         }
         // For find flow → call LLM to get restaurants list (name + price), then adapt to stubbed shape
         if (result.intent === 'find_food') {
-            const restaurants = await llmRestaurants(result.dto);
+            const { restaurants, raw } = await llmRestaurants(result.dto);
             // Adapt to stub SearchResultDTO shape
-            const vendors = restaurants.map((r: any, idx: number) => ({ id: `v_${slugify(r.name)}_${idx}`, name: r.name, distanceMinutes: 0, rating: undefined }));
-            // Build items: for restaurants with items[], map each; else use single item with price if present.
-            const items: any[] = [];
+            // Build vendors as rows; duplicate rows for same restaurant if multiple items (each with its own price)
+            const vendors: any[] = [];
             restaurants.forEach((r: any, idx: number) => {
-                const vendorId = vendors[idx]?.id ?? `v_${slugify(r.name)}_${idx}`;
                 if (Array.isArray(r.items) && r.items.length) {
                     r.items.forEach((it: any, j: number) => {
-                        if (typeof it?.name === 'string' && typeof it?.price === 'number') {
-                            items.push({ itemId: `i_${slugify(r.name)}_${j}`, vendorId, name: it.name, price: it.price, tags: [] });
+                        if (typeof it?.price === 'number') {
+                            vendors.push({ id: `v_${slugify(r.name)}_${idx}_${j}`, name: r.name, address: r.address ?? undefined, price: it.price, itemName: it.name, description: r.description, distanceMinutes: 0, rating: undefined });
                         }
                     });
-                } else if (typeof r.price === 'number') {
-                    items.push({ itemId: `i_${slugify(r.name)}_0`, vendorId, name: r.name, price: r.price, tags: [] });
+                } else {
+                    vendors.push({ id: `v_${slugify(r.name)}_${idx}`, name: r.name, address: r.address ?? undefined, price: typeof r.price === 'number' ? r.price : undefined, itemName: undefined, description: r.description, distanceMinutes: 0, rating: undefined });
                 }
             });
-            const action: ChatAction = { action: 'results', data: { vendors, items, query: result.dto } } as any;
+            const action: ChatAction = { action: 'results', data: { vendors, items: [], query: result.dto, rawLlm: raw } } as any;
             if (hasCity) {
-                node = reduce(node, { type: 'SEARCH_OK', results: { vendors, items, query: result.dto } as any });
+                node = reduce(node, { type: 'SEARCH_OK', results: { vendors, items: [], query: result.dto } as any });
             }
             const reply = node.reply || `Found ${vendors.length} options.`;
             { const payload: ChatReply = { reply, action, uiHints: node.uiHints, state: node.state }; ResSchema.parse(payload); setSession(sessionId, { dto: result.dto }); res.setHeader('x-session-id', sessionId); return json(res, payload); }

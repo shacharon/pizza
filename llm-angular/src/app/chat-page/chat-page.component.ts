@@ -15,7 +15,7 @@ export class ChatPageComponent {
     log = signal<{ role: 'user' | 'assistant'; text: string }[]>([]);
     pending = signal(false);
     error = signal<string | null>(null);
-    results = signal<{ vendors: any[]; items: any[] } | null>(null);
+    results = signal<{ vendors: any[]; items: any[]; rawLlm?: string } | null>(null);
     hints = signal<{ label: string; patch: Record<string, unknown> }[] | null>(null);
     cards = signal<{ title: string; subtitle?: string; url: string; source?: string; imageUrl?: string }[] | null>(null);
     query = signal<any | null>(null);
@@ -38,7 +38,7 @@ export class ChatPageComponent {
             this.log.update((l) => [...l, { role: 'assistant', text: reply }]);
             this.debugResponse(action);
             if (action?.action === 'results') {
-                this.results.set({ vendors: action.data.vendors || [], items: action.data.items || [] });
+                this.results.set({ vendors: action.data.vendors || [], items: action.data.items || [], rawLlm: (action.data as any).rawLlm });
                 this.query.set(action.data.query || null);
                 this.cards.set(null);
             }
@@ -68,7 +68,7 @@ export class ChatPageComponent {
             this.log.update((l) => [...l, { role: 'assistant', text: reply }]);
             this.debugResponse(action);
             if (action?.action === 'results') {
-                this.results.set({ vendors: action.data.vendors || [], items: action.data.items || [] });
+                this.results.set({ vendors: action.data.vendors || [], items: action.data.items || [], rawLlm: (action.data as any).rawLlm });
                 this.query.set(action.data.query || null);
                 this.cards.set(null);
             }
