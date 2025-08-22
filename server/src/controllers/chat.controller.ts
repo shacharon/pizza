@@ -23,9 +23,29 @@ const ResSchema = z.object({
         z.object({ action: z.literal('clarify'), data: z.object({ question: z.string(), missing: z.array(z.string()).optional() }) }),
         z.object({ action: z.literal('results'), data: z.object({ vendors: z.array(z.any()), items: z.array(z.any()), query: z.any() }) }),
         z.object({ action: z.literal('confirm'), data: z.object({ quoteId: z.string(), total: z.number(), etaMinutes: z.number() }) }),
-        z.object({ action: z.literal('refuse'), data: z.object({ message: z.string() }) })
+        z.object({ action: z.literal('refuse'), data: z.object({ message: z.string() }) }),
+        z.object({
+            action: z.literal('card'), data: z.object({
+                cards: z.array(z.object({
+                    title: z.string(), subtitle: z.string().optional(), url: z.string().url(), source: z.string().optional(), imageUrl: z.string().url().optional()
+                }))
+            })
+        })
     ]).optional()
 });
+
+const ALLOWED_HOSTS = [
+    'google.com', 'www.google.com',
+    'wolt.com', 'www.wolt.com'
+];
+function isAllowedUrl(url: string): boolean {
+    try {
+        const u = new URL(url);
+        return ALLOWED_HOSTS.some(h => u.hostname === h || u.hostname.endsWith(`.${h}`));
+    } catch {
+        return false;
+    }
+}
 
 const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const INTENT_CONFIDENCE_MIN = 0.6; // minimum confidence to proceed to LLM
@@ -109,7 +129,7 @@ export async function postChat(req: Request, res: Response) {
             const reply = node.reply || MESSAGES.clarify;
             { const payload: ChatReply = { reply, uiHints: node.uiHints, state: node.state }; ResSchema.parse(payload); return json(res, payload); }
         }
-        // ok → dispatch to strategy handler (find/order)
+        // ok → before search, propose external cards and gate results until user approves
         const handler = pickHandler(
             result.intent,
             [
@@ -129,8 +149,26 @@ export async function postChat(req: Request, res: Response) {
             node = reduce(node, { type: 'SEARCH_START' });
         }
 
-        const action: ChatAction = await handler.handle(result.dto);
+        // Build suggestion cards and "Show results" chip; do not fetch vendors yet
+        const city = result.dto.city || '';
+        const type = (result.dto as any).type || 'pizza';
+        const q = encodeURIComponent(`${type} ${city}`.trim());
+        const candidateCards = [
+            { title: `Open ${type} on Google Maps${city ? ` — ${city}` : ''}`, url: `https://www.google.com/maps/search/${q}`, source: 'Google Maps' },
+            { title: `Browse ${type} on Wolt${city ? ` — ${city}` : ''}`, url: `https://wolt.com/en/search?q=${q}`, source: 'Wolt' }
+        ];
+        const cards = candidateCards.filter(c => isAllowedUrl(c.url));
+        const uiHints = [
+            ...(node.uiHints || []),
+            { label: 'Show results', patch: { showResults: true } as any }
+        ];
+        const payloadCard: ChatReply = { reply: node.reply || 'Here are some helpful links.', action: { action: 'card', data: { cards } }, uiHints, state: node.state } as any;
+        ResSchema.parse(payloadCard);
+        res.setHeader('x-session-id', sessionId);
+        return json(res, payloadCard);
 
+        /* If we wanted to fetch immediately (disabled by gating):
+        const action: ChatAction = await handler.handle(result.dto);
         if (action.action === 'results') {
             // If city is known, advance reducer with results; otherwise keep the polite city question
             if (hasCity) {
@@ -140,22 +178,24 @@ export async function postChat(req: Request, res: Response) {
             { const payload: ChatReply = { reply, action, uiHints: node.uiHints, state: node.state }; ResSchema.parse(payload); setSession(sessionId, { dto: result.dto }); res.setHeader('x-session-id', sessionId); return json(res, payload); }
         }
 
-        if (action.action === 'refuse') {
+        if (false && action.action === 'refuse') {
             // Map to refusal
             node = reduce(node, { type: 'INTENT_OTHER' });
             const reply = node.reply || action.data.message;
             { const payload: ChatReply = { reply, action, uiHints: node.uiHints, state: node.state }; ResSchema.parse(payload); setSession(sessionId, { dto: result.dto }); res.setHeader('x-session-id', sessionId); return json(res, payload); }
         }
-        if (action.action === 'clarify') {
+        if (false && action.action === 'clarify') {
             // Use model's question, but keep any partial-results state
             const reply = node.reply || action.data.question;
             { const payload: ChatReply = { reply, action, uiHints: node.uiHints, state: node.state }; ResSchema.parse(payload); setSession(sessionId, { dto: result.dto }); res.setHeader('x-session-id', sessionId); return json(res, payload); }
         }
-        if (action.action === 'confirm') {
+        if (false && action.action === 'confirm') {
             const reply = `Order total ₪${action.data.total}, ETA ${action.data.etaMinutes}m. Confirm?`;
             { const payload: ChatReply = { reply, action, uiHints: node.uiHints, state: node.state }; ResSchema.parse(payload); setSession(sessionId, { dto: result.dto }); res.setHeader('x-session-id', sessionId); return json(res, payload); }
         }
-        // Fallback
+        */
+
+        // Unreachable; card already returned
         { const payload: ChatReply = { reply: MESSAGES.clarify, uiHints: node.uiHints, state: node.state }; ResSchema.parse(payload); return json(res, payload); }
     } catch (e: any) {
         // Avoid leaking sensitive info

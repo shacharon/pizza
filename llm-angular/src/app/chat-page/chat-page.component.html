@@ -15,6 +15,15 @@
         <button type="button" *ngFor="let h of hs" (click)="pick(h)">{{ h.label }}</button>
     </div>
 
+    <div *ngIf="cards() as cs" class="cards">
+        <h3>Recommended</h3>
+        <div class="card" *ngFor="let c of cs">
+            <div class="title">{{ c.title }}</div>
+            <div class="subtitle" *ngIf="c.subtitle">{{ c.subtitle }}</div>
+            <a [href]="c.url" target="_blank" rel="noopener noreferrer">Open link</a>
+        </div>
+    </div>
+
     <div *ngIf="results() as r" class="results">
         <h2>Results</h2>
         <div class="tables">
@@ -24,15 +33,24 @@
                     <thead>
                         <tr>
                             <th>Name</th>
-                            <th>ETA (min)</th>
+                            <th>Address</th>
+                            <th>Price (min)</th>
                             <th>Rating</th>
+                            <th>ETA (min)</th>
+                            <th>Length (items)</th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr *ngFor="let v of r.vendors">
                             <td>{{ v.name }}</td>
-                            <td>{{ v.distanceMinutes }}</td>
+                            <td>{{ v.address || '—' }}</td>
+                            <td>
+                                <ng-container *ngIf="minPriceForVendor(v.id) as mp; else dash">₪{{ mp }}</ng-container>
+                                <ng-template #dash>—</ng-template>
+                            </td>
                             <td>{{ v.rating ?? '—' }}</td>
+                            <td>{{ v.distanceMinutes }}</td>
+                            <td>{{ countItemsForVendor(v.id) }}</td>
                         </tr>
                     </tbody>
                 </table>

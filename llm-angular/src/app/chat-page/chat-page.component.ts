@@ -17,6 +17,7 @@ export class ChatPageComponent {
     error = signal<string | null>(null);
     results = signal<{ vendors: any[]; items: any[] } | null>(null);
     hints = signal<{ label: string; patch: Record<string, unknown> }[] | null>(null);
+    cards = signal<{ title: string; subtitle?: string; url: string; source?: string; imageUrl?: string }[] | null>(null);
     private controller: AbortController | null = null;
     constructor(private chat: ChatService) { }
 
@@ -34,6 +35,11 @@ export class ChatPageComponent {
             this.log.update((l) => [...l, { role: 'assistant', text: reply }]);
             if (action?.action === 'results') {
                 this.results.set({ vendors: action.data.vendors || [], items: action.data.items || [] });
+                this.cards.set(null);
+            }
+            if ((action as any)?.action === 'card') {
+                const cards = (action as any).data?.cards || [];
+                this.cards.set(cards);
             }
             this.hints.set(uiHints && uiHints.length ? uiHints : null);
         } catch (e: any) {
@@ -55,6 +61,11 @@ export class ChatPageComponent {
             this.log.update((l) => [...l, { role: 'assistant', text: reply }]);
             if (action?.action === 'results') {
                 this.results.set({ vendors: action.data.vendors || [], items: action.data.items || [] });
+                this.cards.set(null);
+            }
+            if ((action as any)?.action === 'card') {
+                const cards = (action as any).data?.cards || [];
+                this.cards.set(cards);
             }
             this.hints.set(uiHints && uiHints.length ? uiHints : null);
         } catch (e: any) {
@@ -63,6 +74,21 @@ export class ChatPageComponent {
             this.pending.set(false);
             this.controller = null;
         }
+    }
+
+    itemsForVendor(vendorId: string) {
+        const r = this.results();
+        return (r?.items || []).filter(i => i.vendorId === vendorId);
+    }
+
+    minPriceForVendor(vendorId: string): number | null {
+        const items = this.itemsForVendor(vendorId);
+        if (!items.length) return null;
+        return items.reduce((min, i) => Math.min(min, Number(i.price) || Infinity), Infinity);
+    }
+
+    countItemsForVendor(vendorId: string): number {
+        return this.itemsForVendor(vendorId).length;
     }
 }
 
