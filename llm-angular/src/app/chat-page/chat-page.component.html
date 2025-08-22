@@ -8,6 +8,15 @@
     <div class="row">
         <input [(ngModel)]="input" placeholder="שאל משהו…" [disabled]="pending()" (keyup.enter)="send()" />
         <button (click)="send()" [disabled]="pending()">{{ pending() ? 'Sending…' : 'Send' }}</button>
+        <div class="settings">
+            <label>Language:
+                <select [(ngModel)]="language" [disabled]="pending()">
+                    <option value="mirror">Mirror</option>
+                    <option value="he">Hebrew</option>
+                    <option value="en">English</option>
+                </select>
+            </label>
+        </div>
     </div>
     <div *ngIf="error()" class="err">{{ error() }}</div>
 

@@ -13,6 +13,7 @@ import { InMemoryVendorSearch } from '../services/adapters/vendorSearch.inmemory
 import { InMemoryQuoteService } from '../services/adapters/quoteService.inmemory.js';
 import { createInitialNode, reduce } from '../agent/reducer.js';
 import { enrichCards } from '../services/og.js';
+import { getRestaurants } from '../services/llm/restaurant.service.js';
 
 // Schemas and reply type
 import { ChatReply, ReqSchema, ResSchema } from './schemas.js';
@@ -70,11 +71,12 @@ export async function postChat(req: Request, res: Response) {
     if (!parsedBody.success) {
         return res.status(400).json({ error: MESSAGES.missingMessage });
     }
-    const { message, patch } = parsedBody.data as { message?: string; patch?: Record<string, unknown> };
+    const { message, patch, language, page, limit } = parsedBody.data as { message?: string; patch?: Record<string, unknown>; language?: 'mirror' | 'he' | 'en'; page?: number; limit?: number };
     const sessionId = (req.headers['x-session-id'] as string) || randomUUID();
+    const requestId = randomUUID();
 
     try {
-        // If patch is provided, merge into session DTO and run stubbed vendor search (in-memory)
+        // If patch is provided, merge into session DTO and use LLM service for refined results
         if (patch) {
             let node = createInitialNode(message || '');
             node = reduce(node, { type: 'USER_MESSAGE', text: message || '' });
@@ -84,31 +86,39 @@ export async function postChat(req: Request, res: Response) {
             const stored = getSession(sessionId);
             const baseDto = (stored?.dto || { raw: message || '' }) as any;
             const mergedDto = { ...baseDto, ...patch } as any;
-
-            const handler = pickHandler('find_food', [new FindFoodHandler(new InMemoryVendorSearch())]);
-            if (!handler) {
-                const payload: ChatReply = { reply: MESSAGES.clarify, state: node.state, uiHints: node.uiHints };
-                ResSchema.parse(payload);
-                res.setHeader('x-session-id', sessionId);
-                return json(res, payload);
-            }
-            const action: ChatAction = await handler.handle(mergedDto);
-            if (action.action === 'results') {
-                if (mergedDto.city?.trim()) {
-                    node = reduce(node, { type: 'SEARCH_START' });
-                    node = reduce(node, { type: 'SEARCH_OK', results: { vendors: action.data.vendors, items: action.data.items, query: action.data.query } as any });
+            const t0 = Date.now();
+            const args1 = {
+                type: mergedDto.type,
+                city: mergedDto.city,
+                maxPrice: mergedDto.maxPrice,
+                language: language || mergedDto.language || 'mirror',
+                ...(typeof page === 'number' ? { page } : {}),
+                ...(typeof limit === 'number' ? { limit } : {})
+            } as const;
+            const { restaurants, raw } = await getRestaurants(args1 as any);
+            const vendors: any[] = [];
+            restaurants.forEach((r: any, idx: number) => {
+                if (Array.isArray(r.items) && r.items.length) {
+                    r.items.forEach((it: any, j: number) => {
+                        if (typeof it?.price === 'number') {
+                            vendors.push({ id: `v_${slugify(r.name)}_${idx}_${j}`, name: r.name, address: r.address ?? undefined, price: it.price, itemName: it.name, description: r.description, distanceMinutes: 0, rating: undefined });
+                        }
+                    });
+                } else {
+                    vendors.push({ id: `v_${slugify(r.name)}_${idx}`, name: r.name, address: r.address ?? undefined, price: typeof r.price === 'number' ? r.price : undefined, itemName: undefined, description: r.description, distanceMinutes: 0, rating: undefined });
                 }
-                const reply = node.reply || `Found ${action.data.vendors.length} vendors and ${action.data.items.length} items.`;
-                const payload: ChatReply = { reply, action, uiHints: node.uiHints, state: node.state };
-                ResSchema.parse(payload);
-                setSession(sessionId, { dto: mergedDto });
-                res.setHeader('x-session-id', sessionId);
-                return json(res, payload);
+            });
+            const action: ChatAction = { action: 'results', data: { vendors, items: [], query: mergedDto, rawLlm: raw } } as any;
+            if (mergedDto.city?.trim()) {
+                node = reduce(node, { type: 'SEARCH_START' });
+                node = reduce(node, { type: 'SEARCH_OK', results: { vendors, items: [], query: mergedDto } as any });
             }
-            const reply = node.reply || MESSAGES.clarify;
+            const reply = node.reply || `Found ${vendors.length} options.`;
             const payload: ChatReply = { reply, action, uiHints: node.uiHints, state: node.state };
             ResSchema.parse(payload);
+            setSession(sessionId, { dto: mergedDto });
             res.setHeader('x-session-id', sessionId);
+            console.log(`[reqId=${requestId}] LLM refine done in ${Date.now() - t0}ms, vendors=${vendors.length}`);
             return json(res, payload);
         }
 
@@ -140,9 +150,18 @@ export async function postChat(req: Request, res: Response) {
         if (hasCity) {
             node = reduce(node, { type: 'SEARCH_START' });
         }
-        // For find flow → call LLM to get restaurants list (name + price), then adapt to stubbed shape
+        // For find flow → call LLM service to get restaurants and adapt to results
         if (result.intent === 'find_food') {
-            const { restaurants, raw } = await llmRestaurants(result.dto);
+            const t0 = Date.now();
+            const args2 = {
+                type: (result.dto as any).type,
+                city: (result.dto as any).city,
+                maxPrice: (result.dto as any).maxPrice,
+                language: language || (result.dto as any).language || 'mirror',
+                ...(typeof page === 'number' ? { page } : {}),
+                ...(typeof limit === 'number' ? { limit } : {})
+            } as const;
+            const { restaurants, raw } = await getRestaurants(args2 as any);
             // Adapt to stub SearchResultDTO shape
             // Build vendors as rows; duplicate rows for same restaurant if multiple items (each with its own price)
             const vendors: any[] = [];
@@ -162,7 +181,7 @@ export async function postChat(req: Request, res: Response) {
                 node = reduce(node, { type: 'SEARCH_OK', results: { vendors, items: [], query: result.dto } as any });
             }
             const reply = node.reply || `Found ${vendors.length} options.`;
-            { const payload: ChatReply = { reply, action, uiHints: node.uiHints, state: node.state }; ResSchema.parse(payload); setSession(sessionId, { dto: result.dto }); res.setHeader('x-session-id', sessionId); return json(res, payload); }
+            { const payload: ChatReply = { reply, action, uiHints: node.uiHints, state: node.state }; ResSchema.parse(payload); setSession(sessionId, { dto: result.dto }); res.setHeader('x-session-id', sessionId); console.log(`[reqId=${requestId}] LLM initial done in ${Date.now() - t0}ms, vendors=${vendors.length}`); return json(res, payload); }
         }
 
         // ok → dispatch to strategy handler (order only)

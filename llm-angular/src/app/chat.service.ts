@@ -9,13 +9,13 @@ export class ChatService {
     private http = inject(HttpClient);
     private sessionId: string | null = null;
 
-    async ask(message: string, signal?: AbortSignal): Promise<{ reply: string; action?: ChatAction; uiHints?: { label: string; patch: Record<string, unknown> }[]; state?: string }> {
+    async ask(message: string, language: 'mirror' | 'he' | 'en', signal?: AbortSignal): Promise<{ reply: string; action?: ChatAction; uiHints?: { label: string; patch: Record<string, unknown> }[]; state?: string }> {
         const input = message.trim();
         if (!input) throw new Error('Please enter a message.');
         if (input.length > 4000) throw new Error('Message is too long.');
         const req$ = this.http.post<{ reply: string; action?: ChatAction; uiHints?: { label: string; patch: Record<string, unknown> }[]; state?: string }>(
             '/api/chat',
-            { message: input },
+            { message: input, language },
             { observe: 'response' as const }
         );
         const res = await firstValueFrom(
@@ -26,10 +26,10 @@ export class ChatService {
         return res.body as any;
     }
 
-    async clarify(patch: Record<string, unknown>, signal?: AbortSignal): Promise<{ reply: string; action?: ChatAction; uiHints?: { label: string; patch: Record<string, unknown> }[]; state?: string }> {
+    async clarify(patch: Record<string, unknown>, language: 'mirror' | 'he' | 'en', signal?: AbortSignal): Promise<{ reply: string; action?: ChatAction; uiHints?: { label: string; patch: Record<string, unknown> }[]; state?: string }> {
         const req$ = this.http.post<{ reply: string; action?: ChatAction; uiHints?: { label: string; patch: Record<string, unknown> }[]; state?: string }>(
             '/api/chat',
-            { patch },
+            { patch, language },
             { observe: 'response' as const, headers: this.sessionId ? { 'x-session-id': this.sessionId } : undefined }
         );
         const res = await firstValueFrom(

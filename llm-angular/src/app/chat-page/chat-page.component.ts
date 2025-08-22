@@ -12,10 +12,13 @@ import { ChatService } from '../chat.service';
 })
 export class ChatPageComponent {
     input = '';
+    language: 'mirror' | 'he' | 'en' = 'mirror';
     log = signal<{ role: 'user' | 'assistant'; text: string }[]>([]);
     pending = signal(false);
     error = signal<string | null>(null);
     results = signal<{ vendors: any[]; items: any[]; rawLlm?: string } | null>(null);
+    page = 0;
+    limit = 20;
     hints = signal<{ label: string; patch: Record<string, unknown> }[] | null>(null);
     cards = signal<{ title: string; subtitle?: string; url: string; source?: string; imageUrl?: string }[] | null>(null);
     query = signal<any | null>(null);
@@ -34,7 +37,8 @@ export class ChatPageComponent {
         this.controller?.abort();
         this.controller = new AbortController();
         try {
-            const { reply, action, uiHints } = await this.chat.ask(msg, this.controller.signal);
+            this.page = 0;
+            const { reply, action, uiHints } = await this.chat.ask(msg, this.language, this.controller.signal);
             this.log.update((l) => [...l, { role: 'assistant', text: reply }]);
             this.debugResponse(action);
             if (action?.action === 'results') {
@@ -64,7 +68,7 @@ export class ChatPageComponent {
         this.controller?.abort();
         this.controller = new AbortController();
         try {
-            const { reply, action, uiHints } = await this.chat.clarify(h.patch, this.controller.signal);
+            const { reply, action, uiHints } = await this.chat.clarify(h.patch, this.language, this.controller.signal);
             this.log.update((l) => [...l, { role: 'assistant', text: reply }]);
             this.debugResponse(action);
             if (action?.action === 'results') {
@@ -81,6 +85,37 @@ export class ChatPageComponent {
         } catch (e: any) {
             this.error.set(e?.message || 'Request failed');
         } finally {
+            this.pending.set(false);
+            this.controller = null;
+        }
+    }
+
+    async loadMore() {
+        if (this.pending()) return;
+        this.pending.set(true);
+        this.controller?.abort();
+        this.controller = new AbortController();
+        try {
+            this.page += 1;
+            const userLog = this.log();
+            let lastUserText = '';
+            for (let i = userLog.length - 1; i >= 0; i--) {
+                if (userLog[i].role === 'user') { lastUserText = userLog[i].text; break; }
+            }
+            const req$ = this.chat['http'].post<any>('/api/chat', {
+                message: lastUserText,
+                language: this.language,
+                page: this.page,
+                limit: this.limit
+            });
+            const res = await Promise.resolve(req$).then(obs => obs.toPromise?.() || null);
+            if (res && res['action']?.action === 'results') {
+                const prev = this.results();
+                const nextV = [...(prev?.vendors || []), ...(res.action.data.vendors || [])];
+                this.results.set({ vendors: nextV, items: prev?.items || [], rawLlm: res.action.data.rawLlm || prev?.rawLlm });
+            }
+        } catch { }
+        finally {
             this.pending.set(false);
             this.controller = null;
         }

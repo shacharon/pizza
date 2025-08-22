@@ -5,7 +5,13 @@ import type { AgentState } from '../agent/states.js';
 
 export type ChatReply = { reply: string; action?: ChatAction | undefined; uiHints?: UiHint[] | undefined; state?: AgentState };
 
-export const ReqSchema = z.object({ message: z.string().min(1).optional(), patch: z.record(z.string(), z.any()).optional() })
+export const ReqSchema = z.object({
+    message: z.string().min(1).optional(),
+    patch: z.record(z.string(), z.any()).optional(),
+    language: z.enum(['mirror', 'he', 'en']).optional(),
+    page: z.number().int().min(0).optional(),
+    limit: z.number().int().min(1).max(50).optional()
+})
     .refine(v => !!(v.message || v.patch), { message: 'message or patch required' });
 
 export const ResSchema = z.object({

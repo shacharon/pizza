@@ -1,5 +1,7 @@
 export const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 export const INTENT_CONFIDENCE_MIN = 0.6;
+export const OPENAI_TIMEOUT_MS = Number(process.env.OPENAI_TIMEOUT_MS || 30000);
+export const RESTAURANT_CACHE_TTL_MS = Number(process.env.RESTAURANT_CACHE_TTL_MS || 600000);
 
 export const MESSAGES = {
     missingMessage: 'message is required',
