@@ -4,6 +4,7 @@ import type { UiHint } from '../agent/reducer.js';
 import { randomUUID } from 'node:crypto';
 import { getSession, setSession } from '../agent/session.js';
 import { openai } from '../services/openai.client.js';
+import { DEFAULT_MODEL, INTENT_CONFIDENCE_MIN, MESSAGES } from './constants.js';
 import { runChatPipeline } from '../services/pipeline/chatPipeline.js';
 import { FindFoodHandler, OrderFoodHandler, pickHandler } from '../services/handlers/intentHandlers.js';
 import type { ChatAction } from '@api';
@@ -13,28 +14,10 @@ import { InMemoryQuoteService } from '../services/adapters/quoteService.inmemory
 import { createInitialNode, reduce } from '../agent/reducer.js';
 import { enrichCards } from '../services/og.js';
 
-// Constants and helpers (no magic numbers/strings)
-type ChatReply = { reply: string; action?: ChatAction | undefined; uiHints?: UiHint[] | undefined; state?: AgentState };
-const ReqSchema = z.object({ message: z.string().min(1).optional(), patch: z.record(z.string(), z.any()).optional() })
-    .refine(v => !!(v.message || v.patch), { message: 'message or patch required' });
-const ResSchema = z.object({
-    reply: z.string(),
-    state: z.any().optional(),
-    uiHints: z.array(z.object({ label: z.string(), patch: z.record(z.string(), z.any()) })).optional(),
-    action: z.union([
-        z.object({ action: z.literal('clarify'), data: z.object({ question: z.string(), missing: z.array(z.string()).optional() }) }),
-        z.object({ action: z.literal('results'), data: z.object({ vendors: z.array(z.any()), items: z.array(z.any()), query: z.any() }) }),
-        z.object({ action: z.literal('confirm'), data: z.object({ quoteId: z.string(), total: z.number(), etaMinutes: z.number() }) }),
-        z.object({ action: z.literal('refuse'), data: z.object({ message: z.string() }) }),
-        z.object({
-            action: z.literal('card'), data: z.object({
-                cards: z.array(z.object({
-                    title: z.string(), subtitle: z.string().optional(), url: z.string().url(), source: z.string().optional(), imageUrl: z.string().url().optional()
-                }))
-            })
-        })
-    ]).optional()
-});
+// Schemas and reply type
+import { ChatReply, ReqSchema, ResSchema } from './schemas.js';
+
+
 function slugify(input: string): string {
     return input.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40);
 }
@@ -57,8 +40,9 @@ function extractJsonLoose(text: string): any | null {
     return null;
 }
 
-async function llmRestaurants(dto: any): Promise<{ name: string; price: number }[]> {
-    const sys = `You return ONLY JSON. Shape: {"restaurants":[{"name":string,"price":number}]}. \n- price is a number in ILS, no currency sign. \n- Max 7 items. \n- Use city and cuisine/type if provided.`;
+type LlmRestaurant = { name: string; price: number } | { name: string; items: { name: string; price: number }[] };
+async function llmRestaurants(dto: any): Promise<LlmRestaurant[]> {
+    const sys = `You return ONLY JSON. Shape: {"restaurants":[{"name":string,"price"?:number,"items"?:[{"name":string,"price":number}]}]}. \n- price numbers are in ILS, no currency sign. \n- Up to 10 restaurants. If multiple menu items are relevant, include them in items[].`;
     const parts: string[] = [];
     if (dto?.type) parts.push(`type: ${dto.type}`);
     if (dto?.city) parts.push(`city: ${dto.city}`);
@@ -70,23 +54,11 @@ async function llmRestaurants(dto: any): Promise<{ name: string; price: number }
     });
     const parsed = extractJsonLoose(resp.output_text || '') || {};
     const list: any[] = Array.isArray(parsed?.restaurants) ? parsed.restaurants : [];
-    return list
-        .filter(r => r && typeof r.name === 'string' && typeof r.price === 'number')
-        .slice(0, 7)
-        .map(r => ({ name: r.name, price: r.price }));
+    return list.slice(0, 10).filter(r => r && typeof r.name === 'string');
 }
 
 
-const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
-const INTENT_CONFIDENCE_MIN = 0.6; // minimum confidence to proceed to LLM
-
-export const MESSAGES = {
-    missingMessage: 'message is required',
-    refuse: 'I can only help with ordering food. Want me to find pizza, sushi, or burgers near you?',
-    greeting: 'Hi! I can help order food. Which city and cuisine are you interested in?',
-    clarify: 'Just to confirm—are you looking to order food? What city and budget should I use?',
-    serverErrorFallback: 'Server error'
-} as const;
+// constants moved to ./constants
 
 function json(res: Response, payload: ChatReply, status: number = 200) {
     return res.status(status).json(payload);
@@ -171,8 +143,21 @@ export async function postChat(req: Request, res: Response) {
         if (result.intent === 'find_food') {
             const restaurants = await llmRestaurants(result.dto);
             // Adapt to stub SearchResultDTO shape
-            const vendors = restaurants.map((r, idx) => ({ id: `v_${slugify(r.name)}_${idx}`, name: r.name, distanceMinutes: 0, rating: undefined }));
-            const items = restaurants.map((r, idx) => ({ itemId: `i_${slugify(r.name)}_${idx}`, vendorId: vendors[idx].id, name: r.name, price: r.price, tags: [] }));
+            const vendors = restaurants.map((r: any, idx: number) => ({ id: `v_${slugify(r.name)}_${idx}`, name: r.name, distanceMinutes: 0, rating: undefined }));
+            // Build items: for restaurants with items[], map each; else use single item with price if present.
+            const items: any[] = [];
+            restaurants.forEach((r: any, idx: number) => {
+                const vendorId = vendors[idx]?.id ?? `v_${slugify(r.name)}_${idx}`;
+                if (Array.isArray(r.items) && r.items.length) {
+                    r.items.forEach((it: any, j: number) => {
+                        if (typeof it?.name === 'string' && typeof it?.price === 'number') {
+                            items.push({ itemId: `i_${slugify(r.name)}_${j}`, vendorId, name: it.name, price: it.price, tags: [] });
+                        }
+                    });
+                } else if (typeof r.price === 'number') {
+                    items.push({ itemId: `i_${slugify(r.name)}_0`, vendorId, name: r.name, price: r.price, tags: [] });
+                }
+            });
             const action: ChatAction = { action: 'results', data: { vendors, items, query: result.dto } } as any;
             if (hasCity) {
                 node = reduce(node, { type: 'SEARCH_OK', results: { vendors, items, query: result.dto } as any });

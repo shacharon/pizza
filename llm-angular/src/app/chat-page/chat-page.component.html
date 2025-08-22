@@ -58,11 +58,11 @@
                             <th>Price (min)</th>
                             <th>Rating</th>
                             <th>ETA (min)</th>
-                            <th>Length (items)</th>
+                            <th>Max items</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr *ngFor="let v of r.vendors | slice:0:7">
+                        <tr *ngFor="let v of r.vendors | slice:0:10">
                             <td>{{ v.name }}</td>
                             <td>{{ v.address || '—' }}</td>
                             <td>
@@ -77,7 +77,7 @@
                 </table>
             </div>
 
-            <div class="items" *ngIf="r.items?.length">
+            <div class="items" *ngIf="false">
                 <h3>Items</h3>
                 <table>
                     <thead>
@@ -89,7 +89,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <tr *ngFor="let i of r.items">
+                        <tr *ngFor="let i of []">
                             <td>{{ i.name }}</td>
                             <td>{{ i.vendorId }}</td>
                             <td>₪{{ i.price }}</td>

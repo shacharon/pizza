@@ -122,7 +122,7 @@ export class ChatPageComponent {
                     ? { cards: action.data?.cards?.length ?? 0 }
                     : {};
             // Simple alert for quick debugging as requested
-            alert(`action=${kind} ${JSON.stringify(meta)}`);
+            // alert(`action=${kind} ${JSON.stringify(meta)}`);
             // Also log full action to console
             // eslint-disable-next-line no-console
             console.log('API action', action);
