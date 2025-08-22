@@ -53,7 +53,7 @@
     // Recommended Options
     "strict": true,
     // Server project does not use JSX
-    "verbatimModuleSyntax": true,
+    "verbatimModuleSyntax": false,
     "isolatedModules": true,
     "noUncheckedSideEffectImports": true,
     "moduleDetection": "force",

@@ -4,3 +4,4 @@ export * from "./search-result.dto.js";
 export * from "./order-request.dto.js";
 export * from "./order-response.dto.js";
 export * from "./chat-message.dto.js";
+export * from "./chat-action.dto.js";

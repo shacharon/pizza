@@ -1,5 +1,12 @@
+import 'dotenv/config';
 import OpenAI from "openai";
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+let openai: OpenAI | null = null;
+{
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (apiKey) {
+        openai = new OpenAI({ apiKey });
+    }
+}
 
 export type Intent = "find_food" | "order_food" | "greeting" | "not_food";
 
@@ -43,6 +50,13 @@ export async function detectIntent(message: string, signal?: AbortSignal): Promi
     }
 
     // 2) LLM fallback (compact, cheap)
+    if (!openai) {
+        const smellsLikeFoodEarly = hasAny(m, HUNGER_SYNS) || hasAny(m, FOOD_CONTEXT_SYNS);
+        if (smellsLikeFoodEarly) {
+            return { intent: "find_food", confidence: 0.66, source: "fallback", rationale: "llm disabled; hunger/context detected" };
+        }
+        return { intent: "not_food", confidence: 0.5, source: "fallback", rationale: "llm disabled" };
+    }
     const sys = `
 You classify user messages for a BUY-FOOD assistant.
 Return JSON only: {"intent":"find_food|order_food|greeting|not_food","confidence":0..1,"why":"..."}.
