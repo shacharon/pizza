@@ -1,11 +1,13 @@
+const { port, openaiApiKey } = getConfig();
 import { createApp } from './app.js';
 import { getConfig } from './config/env.js';
 
-const { port, openaiApiKey } = getConfig();
+
 
 if (!openaiApiKey) {
     console.warn('Warning: OPENAI_API_KEY is not set. /api/chat will fail until it is provided.');
 }
+
 
 const app = createApp();
 const server = app.listen(port, () => {

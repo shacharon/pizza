@@ -1,20 +1,15 @@
-import type { ChatMessageDTO, FoodQueryDTO, OrderRequestDTO, OrderResponseDTO, SearchResultDTO } from "@api";
-
-const _smoke: FoodQueryDTO = { city: "אשקלון", maxPrice: 60, dietary: ["gluten_free"] };
-const q: FoodQueryDTO = { city: "אשקלון", maxPrice: 60 };
-const r: SearchResultDTO = { vendors: [], items: [] };
-const o: OrderRequestDTO = { vendorId: "1", items: [{ itemId: "42", qty: 2 }] };
+import { FoodQueryDTOZ, type FoodQueryDTO } from "@api";
 
 
-const orr: OrderResponseDTO = {
-    orderId: "abc123",
-    status: "created",
-    vendorId: "1",
-    lines: [{ itemId: "42", qty: 2, price: 29.9, name: "Margarita" }],
-    totalPrice: 59.8,
-    etaMinutes: 35
-};
-const m: ChatMessageDTO = { role: "user", content: "שלום", timestamp: new Date().toISOString() };
+// דוגמה: ולידציה של קלט משתמש/LLM/HTTP
+const maybeQuery = { city: "אשקלון", maxPrice: 60 }; // הגיע מבחוץ
+const result = FoodQueryDTOZ.safeParse(maybeQuery);
 
-void [q, r, o, orr, m];
-void _smoke;
+if (!result.success) {
+  // נכשלה ולידציה – תחזיר 400 / תציג שגיאה / לוג וכו'
+  console.error(result.error.flatten());
+} else {
+  // כאן יש אובייקט "נקי" ובטוח עם טיפוסים וה־defaults של Zod הוחלו
+  const query: FoodQueryDTO = result.data;
+  // query.type יהיה "pizza" אם השדה לא הגיע (בגלל default)
+}
