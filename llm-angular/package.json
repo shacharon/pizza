@@ -10,6 +10,7 @@
     "test:preview": "jest --ci && npx jest-preview",
     "prev-secondery": "jest --ci && npx --yes serve reports -l 5520",
     "report-coverage": "jest --ci --coverage",
+    "serve:report": "http-server ./reports/jest -p 5173 -c-1",
     "serve-coverage": "npm run report-coverage && npx --yes serve coverage/lcov-report -l 5530",
     "start": "ng serve --proxy-config proxy.conf.json"
   },
