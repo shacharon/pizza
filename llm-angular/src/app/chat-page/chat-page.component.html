@@ -17,10 +17,31 @@
 
     <div *ngIf="cards() as cs" class="cards">
         <h3>Recommended</h3>
-        <div class="card" *ngFor="let c of cs">
-            <div class="title">{{ c.title }}</div>
-            <div class="subtitle" *ngIf="c.subtitle">{{ c.subtitle }}</div>
-            <a [href]="c.url" target="_blank" rel="noopener noreferrer">Open link</a>
+        <div class="card-list">
+            <div class="card" *ngFor="let c of cs | slice:0:7">
+                <a [href]="c.url" target="_blank" rel="noopener noreferrer">{{ c.title }}</a>
+                <div class="subtitle" *ngIf="c.subtitle">{{ c.subtitle }}</div>
+                <img *ngIf="c.imageUrl" [src]="c.imageUrl" alt="preview"
+                    style="max-width: 200px; display:block; margin-top:6px;" />
+            </div>
+        </div>
+    </div>
+
+    <div *ngIf="query() as q" class="cards">
+        <h3>Query Details</h3>
+        <div class="card-list">
+            <div class="card">
+                <div><b>City:</b> <span [style.color]="isMissing(q.city) ? 'red' : 'inherit'">{{ display(q.city)
+                        }}</span></div>
+                <div><b>Type:</b> <span [style.color]="isMissing(q.type) ? 'red' : 'inherit'">{{ display(q.type)
+                        }}</span></div>
+                <div><b>Max Price:</b> <span [style.color]="isMissing(q.maxPrice) ? 'red' : 'inherit'">{{
+                        display(q.maxPrice) }}</span></div>
+                <div><b>Dietary:</b> <span [style.color]="isMissing(q.dietary) ? 'red' : 'inherit'">{{
+                        display(q.dietary) }}</span></div>
+                <div><b>ETA (min):</b> <span [style.color]="isMissing(q.deliveryEtaMinutes) ? 'red' : 'inherit'">{{
+                        display(q.deliveryEtaMinutes) }}</span></div>
+            </div>
         </div>
     </div>
 
@@ -41,7 +62,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <tr *ngFor="let v of r.vendors">
+                        <tr *ngFor="let v of r.vendors | slice:0:7">
                             <td>{{ v.name }}</td>
                             <td>{{ v.address || '—' }}</td>
                             <td>

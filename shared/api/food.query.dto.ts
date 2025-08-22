@@ -1,5 +1,6 @@
 // shared/api/food.query.dto.ts
 import { z } from "zod";
+import { CardDTOZ } from "./card.dto.js";
 
 export const DietaryZ = z.enum(["gluten_free", "vegan", "vegetarian", "kosher", "halal", "none"]);
 export type Dietary = z.infer<typeof DietaryZ>;
@@ -28,6 +29,8 @@ export const FoodQueryDTOZ = z.object({
     currency: z.string().length(3).default("ILS").optional(),
     // scalable filters
     constraints: FoodConstraintsZ.default({}).optional(),
+    // optional LLM-suggested cards (UI can render without vendor API)
+    cards: z.array(CardDTOZ).optional(),
 });
 export type FoodQueryDTO = z.infer<typeof FoodQueryDTOZ>;
 

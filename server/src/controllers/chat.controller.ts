@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { UiHint } from '../agent/reducer.js';
 import { randomUUID } from 'node:crypto';
 import { getSession, setSession } from '../agent/session.js';
+import { openai } from '../services/openai.client.js';
 import { runChatPipeline } from '../services/pipeline/chatPipeline.js';
 import { FindFoodHandler, OrderFoodHandler, pickHandler } from '../services/handlers/intentHandlers.js';
 import type { ChatAction } from '@api';
@@ -10,6 +11,7 @@ import { AgentState } from '../agent/states.js';
 import { InMemoryVendorSearch } from '../services/adapters/vendorSearch.inmemory.js';
 import { InMemoryQuoteService } from '../services/adapters/quoteService.inmemory.js';
 import { createInitialNode, reduce } from '../agent/reducer.js';
+import { enrichCards } from '../services/og.js';
 
 // Constants and helpers (no magic numbers/strings)
 type ChatReply = { reply: string; action?: ChatAction | undefined; uiHints?: UiHint[] | undefined; state?: AgentState };
@@ -33,19 +35,47 @@ const ResSchema = z.object({
         })
     ]).optional()
 });
-
-const ALLOWED_HOSTS = [
-    'google.com', 'www.google.com',
-    'wolt.com', 'www.wolt.com'
-];
-function isAllowedUrl(url: string): boolean {
-    try {
-        const u = new URL(url);
-        return ALLOWED_HOSTS.some(h => u.hostname === h || u.hostname.endsWith(`.${h}`));
-    } catch {
-        return false;
-    }
+function slugify(input: string): string {
+    return input.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40);
 }
+
+function extractJsonLoose(text: string): any | null {
+    if (!text) return null;
+    const raw = text.trim();
+    const fence = raw.match(/```(?:json)?\n([\s\S]*?)```/i);
+    const candidate = fence?.[1]?.trim() ?? raw;
+    try { return JSON.parse(candidate); } catch { }
+    // Balanced object scan
+    const s = candidate; let depth = 0; let start = -1; let inStr = false; let esc = false;
+    for (let i = 0; i < s.length; i++) {
+        const ch = s[i];
+        if (inStr) { if (esc) { esc = false; } else if (ch === '\\') { esc = true; } else if (ch === '"') { inStr = false; } continue; }
+        if (ch === '"') { inStr = true; continue; }
+        if (ch === '{') { if (depth === 0) start = i; depth++; }
+        else if (ch === '}') { if (depth > 0) depth--; if (depth === 0 && start !== -1) { const slice = s.slice(start, i + 1); try { return JSON.parse(slice); } catch { } start = -1; } }
+    }
+    return null;
+}
+
+async function llmRestaurants(dto: any): Promise<{ name: string; price: number }[]> {
+    const sys = `You return ONLY JSON. Shape: {"restaurants":[{"name":string,"price":number}]}. \n- price is a number in ILS, no currency sign. \n- Max 7 items. \n- Use city and cuisine/type if provided.`;
+    const parts: string[] = [];
+    if (dto?.type) parts.push(`type: ${dto.type}`);
+    if (dto?.city) parts.push(`city: ${dto.city}`);
+    if (dto?.maxPrice) parts.push(`maxPrice: ${dto.maxPrice}`);
+    const user = `Find restaurants ${parts.join(', ')}.`;
+    const resp = await openai.responses.create({
+        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+        input: [{ role: 'system', content: sys }, { role: 'user', content: user }]
+    });
+    const parsed = extractJsonLoose(resp.output_text || '') || {};
+    const list: any[] = Array.isArray(parsed?.restaurants) ? parsed.restaurants : [];
+    return list
+        .filter(r => r && typeof r.name === 'string' && typeof r.price === 'number')
+        .slice(0, 7)
+        .map(r => ({ name: r.name, price: r.price }));
+}
+
 
 const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const INTENT_CONFIDENCE_MIN = 0.6; // minimum confidence to proceed to LLM
@@ -71,7 +101,7 @@ export async function postChat(req: Request, res: Response) {
     const sessionId = (req.headers['x-session-id'] as string) || randomUUID();
 
     try {
-        // If patch is provided, merge into session DTO and bypass LLM to refine results
+        // If patch is provided, merge into session DTO and run stubbed vendor search (in-memory)
         if (patch) {
             let node = createInitialNode(message || '');
             node = reduce(node, { type: 'USER_MESSAGE', text: message || '' });
@@ -129,17 +159,6 @@ export async function postChat(req: Request, res: Response) {
             const reply = node.reply || MESSAGES.clarify;
             { const payload: ChatReply = { reply, uiHints: node.uiHints, state: node.state }; ResSchema.parse(payload); return json(res, payload); }
         }
-        // ok → before search, propose external cards and gate results until user approves
-        const handler = pickHandler(
-            result.intent,
-            [
-                new FindFoodHandler(new InMemoryVendorSearch()),
-                new OrderFoodHandler(new InMemoryQuoteService())
-            ]
-        );
-        if (!handler) {
-            return json(res, { reply: MESSAGES.clarify });
-        }
         // Feed INTENT_OK and known fields into reducer
         node = reduce(node, { type: 'INTENT_OK' });
         node = reduce(node, { type: 'CLARIFIED', patch: result.dto });
@@ -148,54 +167,52 @@ export async function postChat(req: Request, res: Response) {
         if (hasCity) {
             node = reduce(node, { type: 'SEARCH_START' });
         }
+        // For find flow → call LLM to get restaurants list (name + price), then adapt to stubbed shape
+        if (result.intent === 'find_food') {
+            const restaurants = await llmRestaurants(result.dto);
+            // Adapt to stub SearchResultDTO shape
+            const vendors = restaurants.map((r, idx) => ({ id: `v_${slugify(r.name)}_${idx}`, name: r.name, distanceMinutes: 0, rating: undefined }));
+            const items = restaurants.map((r, idx) => ({ itemId: `i_${slugify(r.name)}_${idx}`, vendorId: vendors[idx].id, name: r.name, price: r.price, tags: [] }));
+            const action: ChatAction = { action: 'results', data: { vendors, items, query: result.dto } } as any;
+            if (hasCity) {
+                node = reduce(node, { type: 'SEARCH_OK', results: { vendors, items, query: result.dto } as any });
+            }
+            const reply = node.reply || `Found ${vendors.length} options.`;
+            { const payload: ChatReply = { reply, action, uiHints: node.uiHints, state: node.state }; ResSchema.parse(payload); setSession(sessionId, { dto: result.dto }); res.setHeader('x-session-id', sessionId); return json(res, payload); }
+        }
 
-        // Build suggestion cards and "Show results" chip; do not fetch vendors yet
-        const city = result.dto.city || '';
-        const type = (result.dto as any).type || 'pizza';
-        const q = encodeURIComponent(`${type} ${city}`.trim());
-        const candidateCards = [
-            { title: `Open ${type} on Google Maps${city ? ` — ${city}` : ''}`, url: `https://www.google.com/maps/search/${q}`, source: 'Google Maps' },
-            { title: `Browse ${type} on Wolt${city ? ` — ${city}` : ''}`, url: `https://wolt.com/en/search?q=${q}`, source: 'Wolt' }
-        ];
-        const cards = candidateCards.filter(c => isAllowedUrl(c.url));
-        const uiHints = [
-            ...(node.uiHints || []),
-            { label: 'Show results', patch: { showResults: true } as any }
-        ];
-        const payloadCard: ChatReply = { reply: node.reply || 'Here are some helpful links.', action: { action: 'card', data: { cards } }, uiHints, state: node.state } as any;
-        ResSchema.parse(payloadCard);
-        res.setHeader('x-session-id', sessionId);
-        return json(res, payloadCard);
+        // ok → dispatch to strategy handler (order only)
+        const handler = pickHandler(
+            result.intent,
+            [
+                new OrderFoodHandler(new InMemoryQuoteService())
+            ]
+        );
+        if (!handler) {
+            return json(res, { reply: MESSAGES.clarify });
+        }
 
-        /* If we wanted to fetch immediately (disabled by gating):
         const action: ChatAction = await handler.handle(result.dto);
         if (action.action === 'results') {
-            // If city is known, advance reducer with results; otherwise keep the polite city question
             if (hasCity) {
                 node = reduce(node, { type: 'SEARCH_OK', results: { vendors: action.data.vendors, items: action.data.items, query: action.data.query } as any });
             }
             const reply = node.reply || `Found ${action.data.vendors.length} vendors and ${action.data.items.length} items.`;
             { const payload: ChatReply = { reply, action, uiHints: node.uiHints, state: node.state }; ResSchema.parse(payload); setSession(sessionId, { dto: result.dto }); res.setHeader('x-session-id', sessionId); return json(res, payload); }
         }
-
-        if (false && action.action === 'refuse') {
-            // Map to refusal
+        if (action.action === 'refuse') {
             node = reduce(node, { type: 'INTENT_OTHER' });
             const reply = node.reply || action.data.message;
             { const payload: ChatReply = { reply, action, uiHints: node.uiHints, state: node.state }; ResSchema.parse(payload); setSession(sessionId, { dto: result.dto }); res.setHeader('x-session-id', sessionId); return json(res, payload); }
         }
-        if (false && action.action === 'clarify') {
-            // Use model's question, but keep any partial-results state
+        if (action.action === 'clarify') {
             const reply = node.reply || action.data.question;
             { const payload: ChatReply = { reply, action, uiHints: node.uiHints, state: node.state }; ResSchema.parse(payload); setSession(sessionId, { dto: result.dto }); res.setHeader('x-session-id', sessionId); return json(res, payload); }
         }
-        if (false && action.action === 'confirm') {
+        if (action.action === 'confirm') {
             const reply = `Order total ₪${action.data.total}, ETA ${action.data.etaMinutes}m. Confirm?`;
             { const payload: ChatReply = { reply, action, uiHints: node.uiHints, state: node.state }; ResSchema.parse(payload); setSession(sessionId, { dto: result.dto }); res.setHeader('x-session-id', sessionId); return json(res, payload); }
         }
-        */
-
-        // Unreachable; card already returned
         { const payload: ChatReply = { reply: MESSAGES.clarify, uiHints: node.uiHints, state: node.state }; ResSchema.parse(payload); return json(res, payload); }
     } catch (e: any) {
         // Avoid leaking sensitive info

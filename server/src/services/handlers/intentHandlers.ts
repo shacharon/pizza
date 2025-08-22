@@ -15,7 +15,8 @@ export class FindFoodHandler implements IntentHandler {
     canHandle(intent: Intent): boolean { return intent === "find_food"; }
     async handle(dto: FoodQueryDTO): Promise<ChatAction> {
         const res = await this.search.search(dto);
-        return { action: "results", data: { ...res, query: dto } };
+        const cards = (dto as any).cards;
+        return { action: "results", data: { ...res, query: dto, ...(Array.isArray(cards) && cards.length ? { cards } : {}) } };
     }
 }
 

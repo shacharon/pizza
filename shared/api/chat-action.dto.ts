@@ -5,7 +5,7 @@ import type { CardDTO } from "./card.dto.js";
 
 export type ChatAction =
     | { action: "clarify"; data: { question: string; missing?: string[] } }
-    | { action: "results"; data: { vendors: VendorDTO[]; items: ItemDTO[]; query: FoodQueryDTO } }
+    | { action: "results"; data: { vendors: VendorDTO[]; items: ItemDTO[]; query: FoodQueryDTO; cards?: CardDTO[] } }
     | { action: "confirm"; data: { quoteId: string; total: number; etaMinutes: number } }
     | { action: "refuse"; data: { message: string } }
     | { action: "card"; data: { cards: CardDTO[] } };

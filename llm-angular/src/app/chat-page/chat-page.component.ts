@@ -18,6 +18,7 @@ export class ChatPageComponent {
     results = signal<{ vendors: any[]; items: any[] } | null>(null);
     hints = signal<{ label: string; patch: Record<string, unknown> }[] | null>(null);
     cards = signal<{ title: string; subtitle?: string; url: string; source?: string; imageUrl?: string }[] | null>(null);
+    query = signal<any | null>(null);
     private controller: AbortController | null = null;
     constructor(private chat: ChatService) { }
 
@@ -28,17 +29,22 @@ export class ChatPageComponent {
         this.input = '';
         this.pending.set(true);
         this.error.set(null);
+        // prevent stale results while awaiting new response
+        this.results.set(null);
         this.controller?.abort();
         this.controller = new AbortController();
         try {
             const { reply, action, uiHints } = await this.chat.ask(msg, this.controller.signal);
             this.log.update((l) => [...l, { role: 'assistant', text: reply }]);
+            this.debugResponse(action);
             if (action?.action === 'results') {
                 this.results.set({ vendors: action.data.vendors || [], items: action.data.items || [] });
+                this.query.set(action.data.query || null);
                 this.cards.set(null);
             }
             if ((action as any)?.action === 'card') {
                 const cards = (action as any).data?.cards || [];
+                this.results.set(null); // clear any prior stub results
                 this.cards.set(cards);
             }
             this.hints.set(uiHints && uiHints.length ? uiHints : null);
@@ -54,17 +60,21 @@ export class ChatPageComponent {
         if (this.pending()) return;
         this.pending.set(true);
         this.error.set(null);
+        this.results.set(null);
         this.controller?.abort();
         this.controller = new AbortController();
         try {
             const { reply, action, uiHints } = await this.chat.clarify(h.patch, this.controller.signal);
             this.log.update((l) => [...l, { role: 'assistant', text: reply }]);
+            this.debugResponse(action);
             if (action?.action === 'results') {
                 this.results.set({ vendors: action.data.vendors || [], items: action.data.items || [] });
+                this.query.set(action.data.query || null);
                 this.cards.set(null);
             }
             if ((action as any)?.action === 'card') {
                 const cards = (action as any).data?.cards || [];
+                this.results.set(null); // clear any prior stub results
                 this.cards.set(cards);
             }
             this.hints.set(uiHints && uiHints.length ? uiHints : null);
@@ -89,6 +99,34 @@ export class ChatPageComponent {
 
     countItemsForVendor(vendorId: string): number {
         return this.itemsForVendor(vendorId).length;
+    }
+
+    isMissing(v: any): boolean {
+        if (Array.isArray(v)) return v.length === 0;
+        return v === undefined || v === null || (typeof v === 'string' && v.trim() === '');
+    }
+
+    display(v: any): string {
+        if (this.isMissing(v)) return '-';
+        if (Array.isArray(v)) return v.join(', ');
+        return String(v);
+    }
+
+    private debugResponse(action: any) {
+        try {
+            if (!action) return;
+            const kind = action.action;
+            const meta = kind === 'results'
+                ? { vendors: action.data?.vendors?.length ?? 0, items: action.data?.items?.length ?? 0 }
+                : kind === 'card'
+                    ? { cards: action.data?.cards?.length ?? 0 }
+                    : {};
+            // Simple alert for quick debugging as requested
+            alert(`action=${kind} ${JSON.stringify(meta)}`);
+            // Also log full action to console
+            // eslint-disable-next-line no-console
+            console.log('API action', action);
+        } catch { }
     }
 }
 

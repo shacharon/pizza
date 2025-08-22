@@ -109,7 +109,8 @@ Shape (omit unknown fields):
   "type"?: "pizza"|"sushi"|"burger"|"other",
   "maxPrice"?: number,
   "dietary"?: ("gluten_free"|"vegan"|"vegetarian"|"kosher"|"halal"|"none")[],
-  "deliveryEtaMinutes"?: number
+  "deliveryEtaMinutes"?: number,
+  "cards"?: { title: string, subtitle?: string, url: string }[]
 }` as const;
 
 async function callLlmForQuery(message: string): Promise<unknown> {
