@@ -1,14 +1,22 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, fromEvent } from 'rxjs';
+import { takeUntil } from 'rxjs/operators';
 
 @Injectable({ providedIn: 'root' })
 export class ChatService {
     private http = inject(HttpClient);
 
-    async ask(message: string): Promise<string> {
+    async ask(message: string, signal?: AbortSignal): Promise<string> {
+        const input = message.trim();
+        if (!input) throw new Error('Please enter a message.');
+        if (input.length > 4000) throw new Error('Message is too long.');
+        const req$ = this.http.post<{ reply: string }>(
+            '/api/chat',
+            { message: input }
+        );
         const res = await firstValueFrom(
-            this.http.post<{ reply: string }>('/api/chat', { message })
+            signal ? req$.pipe(takeUntil(fromEvent(signal, 'abort'))) : req$
         );
         return res.reply;
     }

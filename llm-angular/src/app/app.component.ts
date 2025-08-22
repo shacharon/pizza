@@ -17,9 +17,10 @@ import { ChatService } from './chat.service';
 </div>
 </div>
 <div class="row">
-<input [(ngModel)]="input" placeholder="שאל משהו…" />
-<button (click)="send()">Send</button>
+<input [(ngModel)]="input" placeholder="שאל משהו…" [disabled]="pending()" />
+<button (click)="send()" [disabled]="pending()">{{ pending() ? 'Sending…' : 'Send' }}</button>
 </div>
+<div *ngIf="error()" style="color:#b00; margin-top:8px;">{{ error() }}</div>
 </div>
 `,
   styles: [`
@@ -32,15 +33,29 @@ input { flex: 1; padding: 8px; }
 export class AppComponent {
   input = '';
   log = signal<{ role: 'user' | 'assistant'; text: string }[]>([]);
+  pending = signal(false);
+  error = signal<string | null>(null);
+  private controller: AbortController | null = null;
   constructor(private chat: ChatService) { }
 
 
   async send() {
     const msg = this.input.trim();
-    if (!msg) return;
+    if (!msg || this.pending()) return;
     this.log.update((l) => [...l, { role: 'user', text: msg }]);
     this.input = '';
-    const reply = await this.chat.ask(msg);
-    this.log.update((l) => [...l, { role: 'assistant', text: reply }]);
+    this.pending.set(true);
+    this.error.set(null);
+    this.controller?.abort();
+    this.controller = new AbortController();
+    try {
+      const reply = await this.chat.ask(msg, this.controller.signal);
+      this.log.update((l) => [...l, { role: 'assistant', text: reply }]);
+    } catch (e: any) {
+      this.error.set(e?.message || 'Request failed');
+    } finally {
+      this.pending.set(false);
+      this.controller = null;
+    }
   }
 }
