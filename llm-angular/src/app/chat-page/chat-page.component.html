@@ -10,4 +10,51 @@
         <button (click)="send()" [disabled]="pending()">{{ pending() ? 'Sending…' : 'Send' }}</button>
     </div>
     <div *ngIf="error()" class="err">{{ error() }}</div>
+
+    <div *ngIf="results() as r" class="results">
+        <h2>Results</h2>
+        <div class="tables">
+            <div class="vendors">
+                <h3>Vendors</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>ETA (min)</th>
+                            <th>Rating</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr *ngFor="let v of r.vendors">
+                            <td>{{ v.name }}</td>
+                            <td>{{ v.distanceMinutes }}</td>
+                            <td>{{ v.rating ?? '—' }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="items" *ngIf="r.items?.length">
+                <h3>Items</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Vendor</th>
+                            <th>Price</th>
+                            <th>Tags</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr *ngFor="let i of r.items">
+                            <td>{{ i.name }}</td>
+                            <td>{{ i.vendorId }}</td>
+                            <td>₪{{ i.price }}</td>
+                            <td>{{ (i.tags || []).join(', ') }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 </div>

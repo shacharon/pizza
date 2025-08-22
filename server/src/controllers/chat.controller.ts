@@ -6,7 +6,7 @@ import { InMemoryVendorSearch } from '../services/adapters/vendorSearch.inmemory
 import { InMemoryQuoteService } from '../services/adapters/quoteService.inmemory.js';
 
 // Constants and helpers (no magic numbers/strings)
-type ChatReply = { reply: string };
+type ChatReply = { reply: string; action?: ChatAction };
 
 const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const INTENT_CONFIDENCE_MIN = 0.6; // minimum confidence to proceed to LLM
@@ -52,12 +52,20 @@ export async function postChat(req: Request, res: Response) {
             return json(res, { reply: MESSAGES.clarify });
         }
         const action: ChatAction = await handler.handle(result.dto);
-        // Map actions to simple reply for now; UI can consume structured actions later
-        if (action.action === 'refuse') return json(res, { reply: action.data.message });
-        if (action.action === 'clarify') return json(res, { reply: action.data.question });
-        if (action.action === 'confirm') return json(res, { reply: `Order total ₪${action.data.total}, ETA ${action.data.etaMinutes}m. Confirm?` });
+        // Include structured action alongside a simple reply for the chat log
+        if (action.action === 'refuse') return json(res, { reply: action.data.message, action });
+        if (action.action === 'clarify') return json(res, { reply: action.data.question, action });
+        if (action.action === 'confirm') {
+            return json(res, {
+                reply: `Order total ₪${action.data.total}, ETA ${action.data.etaMinutes}m. Confirm?`,
+                action
+            });
+        }
         // results
-        return json(res, { reply: `Found ${action.data.vendors.length} vendors and ${action.data.items.length} items.` });
+        return json(res, {
+            reply: `Found ${action.data.vendors.length} vendors and ${action.data.items.length} items.`,
+            action
+        });
     } catch (e: any) {
         // Avoid leaking sensitive info
         const msg: string = e?.message || MESSAGES.serverErrorFallback;
