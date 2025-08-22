@@ -1,0 +1,13 @@
+<div class="wrap">
+    <h1>Chat</h1>
+    <div class="box">
+        <div *ngFor="let m of log()">
+            <b>{{ m.role === 'user' ? 'You' : 'AI' }}:</b> {{ m.text }}
+        </div>
+    </div>
+    <div class="row">
+        <input [(ngModel)]="input" placeholder="שאל משהו…" [disabled]="pending()" (keyup.enter)="send()" />
+        <button (click)="send()" [disabled]="pending()">{{ pending() ? 'Sending…' : 'Send' }}</button>
+    </div>
+    <div *ngIf="error()" class="err">{{ error() }}</div>
+</div>

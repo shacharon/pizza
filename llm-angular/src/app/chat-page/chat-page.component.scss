@@ -1,0 +1,28 @@
+.wrap {
+    max-width: 700px;
+    margin: 40px auto;
+    font-family: system-ui, sans-serif;
+}
+
+.box {
+    border: 1px solid #ddd;
+    padding: 16px;
+    border-radius: 8px;
+    min-height: 220px;
+}
+
+.row {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+input {
+    flex: 1;
+    padding: 8px;
+}
+
+.err {
+    color: #b00;
+    margin-top: 8px;
+}

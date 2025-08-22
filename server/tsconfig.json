@@ -29,6 +29,10 @@
     "sourceMap": false,
     "declaration": false,
     "declarationMap": false,
+    // shachharon hack - this was the default - not to see js and map files
+    //   "sourceMap": true,
+    ////  "declaration": true,
+    // "declarationMap": true,
 
     // Stricter Typechecking Options
     "noUncheckedIndexedAccess": true,
