@@ -8,11 +8,11 @@ import type { ChatAction } from '@api';
 export class ChatService {
     private http = inject(HttpClient);
 
-    async ask(message: string, signal?: AbortSignal): Promise<{ reply: string; action?: ChatAction }> {
+    async ask(message: string, signal?: AbortSignal): Promise<{ reply: string; action?: ChatAction; uiHints?: string[] }> {
         const input = message.trim();
         if (!input) throw new Error('Please enter a message.');
         if (input.length > 4000) throw new Error('Message is too long.');
-        const req$ = this.http.post<{ reply: string; action?: ChatAction }>(
+        const req$ = this.http.post<{ reply: string; action?: ChatAction; uiHints?: string[] }>(
             '/api/chat',
             { message: input }
         );

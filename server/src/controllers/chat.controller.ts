@@ -4,9 +4,10 @@ import { FindFoodHandler, OrderFoodHandler, pickHandler } from '../services/hand
 import type { ChatAction } from '@api';
 import { InMemoryVendorSearch } from '../services/adapters/vendorSearch.inmemory.js';
 import { InMemoryQuoteService } from '../services/adapters/quoteService.inmemory.js';
+import { createInitialNode, reduce } from '../agent/reducer.js';
 
 // Constants and helpers (no magic numbers/strings)
-type ChatReply = { reply: string; action?: ChatAction };
+type ChatReply = { reply: string; action?: ChatAction | undefined; uiHints?: string[] | undefined };
 
 const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const INTENT_CONFIDENCE_MIN = 0.6; // minimum confidence to proceed to LLM
@@ -31,14 +32,24 @@ export async function postChat(req: Request, res: Response) {
 
     try {
         const result = await runChatPipeline(message);
+
+        // Initialize agent node and feed basic intent events
+        let node = createInitialNode(message);
+        node = reduce(node, { type: 'USER_MESSAGE', text: message });
+
         if (result.kind === 'refuse') {
-            return json(res, { reply: MESSAGES.refuse });
+            node = reduce(node, { type: 'INTENT_OTHER' });
+            const reply = node.reply || MESSAGES.refuse;
+            return json(res, { reply, uiHints: node.uiHints });
         }
         if (result.kind === 'greeting') {
+            // State machine has no greeting branch; use static greeting
             return json(res, { reply: MESSAGES.greeting });
         }
         if (result.kind === 'clarify') {
-            return json(res, { reply: MESSAGES.clarify });
+            // Low confidence; keep generic clarify
+            const reply = node.reply || MESSAGES.clarify;
+            return json(res, { reply, uiHints: node.uiHints });
         }
         // ok → dispatch to strategy handler (find/order)
         const handler = pickHandler(
@@ -51,21 +62,43 @@ export async function postChat(req: Request, res: Response) {
         if (!handler) {
             return json(res, { reply: MESSAGES.clarify });
         }
-        const action: ChatAction = await handler.handle(result.dto);
-        // Include structured action alongside a simple reply for the chat log
-        if (action.action === 'refuse') return json(res, { reply: action.data.message, action });
-        if (action.action === 'clarify') return json(res, { reply: action.data.question, action });
-        if (action.action === 'confirm') {
-            return json(res, {
-                reply: `Order total ₪${action.data.total}, ETA ${action.data.etaMinutes}m. Confirm?`,
-                action
-            });
+        // Feed INTENT_OK and known fields into reducer
+        node = reduce(node, { type: 'INTENT_OK' });
+        node = reduce(node, { type: 'CLARIFIED', patch: result.dto });
+
+        const hasCity = !!result.dto.city?.trim();
+        if (hasCity) {
+            node = reduce(node, { type: 'SEARCH_START' });
         }
-        // results
-        return json(res, {
-            reply: `Found ${action.data.vendors.length} vendors and ${action.data.items.length} items.`,
-            action
-        });
+
+        const action: ChatAction = await handler.handle(result.dto);
+
+        if (action.action === 'results') {
+            // If city is known, advance reducer with results; otherwise keep the polite city question
+            if (hasCity) {
+                node = reduce(node, { type: 'SEARCH_OK', results: { vendors: action.data.vendors, items: action.data.items, query: action.data.query } as any });
+            }
+            const reply = node.reply || `Found ${action.data.vendors.length} vendors and ${action.data.items.length} items.`;
+            return json(res, { reply, action, uiHints: node.uiHints });
+        }
+
+        if (action.action === 'refuse') {
+            // Map to refusal
+            node = reduce(node, { type: 'INTENT_OTHER' });
+            const reply = node.reply || action.data.message;
+            return json(res, { reply, action, uiHints: node.uiHints });
+        }
+        if (action.action === 'clarify') {
+            // Use model's question, but keep any partial-results state
+            const reply = node.reply || action.data.question;
+            return json(res, { reply, action, uiHints: node.uiHints });
+        }
+        if (action.action === 'confirm') {
+            const reply = `Order total ₪${action.data.total}, ETA ${action.data.etaMinutes}m. Confirm?`;
+            return json(res, { reply, action, uiHints: node.uiHints });
+        }
+        // Fallback
+        return json(res, { reply: MESSAGES.clarify, uiHints: node.uiHints });
     } catch (e: any) {
         // Avoid leaking sensitive info
         const msg: string = e?.message || MESSAGES.serverErrorFallback;

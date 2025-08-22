@@ -76,9 +76,17 @@ export async function runChatPipeline(message: string): Promise<PipelineResult> 
     if (intent === "greeting") return { kind: "greeting" };
     if (confidence < INTENT_CONFIDENCE_MIN) return { kind: "clarify" };
 
+    // Short-circuit order intents to avoid over-clarifying
+    if (intent === "order_food" && confidence >= INTENT_CONFIDENCE_MIN) {
+        return { kind: "ok", intent, dto: { raw: message } as any };
+    }
+
     // 2) LLM → JSON
     const json = await callLlmForQuery(message);
-    if (!json) return { kind: "clarify" };
+    if (!json) {
+        if (intent === "order_food") return { kind: "ok", intent, dto: { raw: message } as any };
+        return { kind: "clarify" };
+    }
 
     // 3) Zod validate
     const parsed = FoodQueryDTOZ.safeParse(json);

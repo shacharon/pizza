@@ -11,6 +11,10 @@
     </div>
     <div *ngIf="error()" class="err">{{ error() }}</div>
 
+    <div *ngIf="hints() as hs" class="hints">
+        <button type="button" *ngFor="let h of hs" (click)="pick(h)">{{ h }}</button>
+    </div>
+
     <div *ngIf="results() as r" class="results">
         <h2>Results</h2>
         <div class="tables">

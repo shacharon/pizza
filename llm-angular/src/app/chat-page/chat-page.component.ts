@@ -16,6 +16,7 @@ export class ChatPageComponent {
     pending = signal(false);
     error = signal<string | null>(null);
     results = signal<{ vendors: any[]; items: any[] } | null>(null);
+    hints = signal<string[] | null>(null);
     private controller: AbortController | null = null;
     constructor(private chat: ChatService) { }
 
@@ -29,17 +30,24 @@ export class ChatPageComponent {
         this.controller?.abort();
         this.controller = new AbortController();
         try {
-            const { reply, action } = await this.chat.ask(msg, this.controller.signal);
+            const { reply, action, uiHints } = await this.chat.ask(msg, this.controller.signal);
             this.log.update((l) => [...l, { role: 'assistant', text: reply }]);
             if (action?.action === 'results') {
                 this.results.set({ vendors: action.data.vendors || [], items: action.data.items || [] });
             }
+            this.hints.set(uiHints && uiHints.length ? uiHints : null);
         } catch (e: any) {
             this.error.set(e?.message || 'Request failed');
         } finally {
             this.pending.set(false);
             this.controller = null;
         }
+    }
+
+    pick(h: string) {
+        if (this.pending()) return;
+        this.input = h;
+        this.send();
     }
 }
 
