@@ -1,13 +1,31 @@
 import type { Request, Response } from 'express';
+import { z } from 'zod';
+import type { UiHint } from '../agent/reducer.js';
+import { randomUUID } from 'node:crypto';
+import { getSession, setSession } from '../agent/session.js';
 import { runChatPipeline } from '../services/pipeline/chatPipeline.js';
 import { FindFoodHandler, OrderFoodHandler, pickHandler } from '../services/handlers/intentHandlers.js';
 import type { ChatAction } from '@api';
+import { AgentState } from '../agent/states.js';
 import { InMemoryVendorSearch } from '../services/adapters/vendorSearch.inmemory.js';
 import { InMemoryQuoteService } from '../services/adapters/quoteService.inmemory.js';
 import { createInitialNode, reduce } from '../agent/reducer.js';
 
 // Constants and helpers (no magic numbers/strings)
-type ChatReply = { reply: string; action?: ChatAction | undefined; uiHints?: string[] | undefined };
+type ChatReply = { reply: string; action?: ChatAction | undefined; uiHints?: UiHint[] | undefined; state?: AgentState };
+const ReqSchema = z.object({ message: z.string().min(1).optional(), patch: z.record(z.string(), z.any()).optional() })
+    .refine(v => !!(v.message || v.patch), { message: 'message or patch required' });
+const ResSchema = z.object({
+    reply: z.string(),
+    state: z.any().optional(),
+    uiHints: z.array(z.object({ label: z.string(), patch: z.record(z.string(), z.any()) })).optional(),
+    action: z.union([
+        z.object({ action: z.literal('clarify'), data: z.object({ question: z.string(), missing: z.array(z.string()).optional() }) }),
+        z.object({ action: z.literal('results'), data: z.object({ vendors: z.array(z.any()), items: z.array(z.any()), query: z.any() }) }),
+        z.object({ action: z.literal('confirm'), data: z.object({ quoteId: z.string(), total: z.number(), etaMinutes: z.number() }) }),
+        z.object({ action: z.literal('refuse'), data: z.object({ message: z.string() }) })
+    ]).optional()
+});
 
 const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const INTENT_CONFIDENCE_MIN = 0.6; // minimum confidence to proceed to LLM
@@ -25,31 +43,71 @@ function json(res: Response, payload: ChatReply, status: number = 200) {
 }
 
 export async function postChat(req: Request, res: Response) {
-    const { message } = req.body as { message?: string };
-    if (!message || !message.trim()) {
+    const parsedBody = ReqSchema.safeParse(req.body);
+    if (!parsedBody.success) {
         return res.status(400).json({ error: MESSAGES.missingMessage });
     }
+    const { message, patch } = parsedBody.data as { message?: string; patch?: Record<string, unknown> };
+    const sessionId = (req.headers['x-session-id'] as string) || randomUUID();
 
     try {
-        const result = await runChatPipeline(message);
+        // If patch is provided, merge into session DTO and bypass LLM to refine results
+        if (patch) {
+            let node = createInitialNode(message || '');
+            node = reduce(node, { type: 'USER_MESSAGE', text: message || '' });
+            node = reduce(node, { type: 'INTENT_OK' });
+            node = reduce(node, { type: 'CLARIFIED', patch: patch as any });
+
+            const stored = getSession(sessionId);
+            const baseDto = (stored?.dto || { raw: message || '' }) as any;
+            const mergedDto = { ...baseDto, ...patch } as any;
+
+            const handler = pickHandler('find_food', [new FindFoodHandler(new InMemoryVendorSearch())]);
+            if (!handler) {
+                const payload: ChatReply = { reply: MESSAGES.clarify, state: node.state, uiHints: node.uiHints };
+                ResSchema.parse(payload);
+                res.setHeader('x-session-id', sessionId);
+                return json(res, payload);
+            }
+            const action: ChatAction = await handler.handle(mergedDto);
+            if (action.action === 'results') {
+                if (mergedDto.city?.trim()) {
+                    node = reduce(node, { type: 'SEARCH_START' });
+                    node = reduce(node, { type: 'SEARCH_OK', results: { vendors: action.data.vendors, items: action.data.items, query: action.data.query } as any });
+                }
+                const reply = node.reply || `Found ${action.data.vendors.length} vendors and ${action.data.items.length} items.`;
+                const payload: ChatReply = { reply, action, uiHints: node.uiHints, state: node.state };
+                ResSchema.parse(payload);
+                setSession(sessionId, { dto: mergedDto });
+                res.setHeader('x-session-id', sessionId);
+                return json(res, payload);
+            }
+            const reply = node.reply || MESSAGES.clarify;
+            const payload: ChatReply = { reply, action, uiHints: node.uiHints, state: node.state };
+            ResSchema.parse(payload);
+            res.setHeader('x-session-id', sessionId);
+            return json(res, payload);
+        }
+
+        const result = await runChatPipeline(message || '');
 
         // Initialize agent node and feed basic intent events
-        let node = createInitialNode(message);
-        node = reduce(node, { type: 'USER_MESSAGE', text: message });
+        let node = createInitialNode(message || '');
+        node = reduce(node, { type: 'USER_MESSAGE', text: message || '' });
 
         if (result.kind === 'refuse') {
             node = reduce(node, { type: 'INTENT_OTHER' });
             const reply = node.reply || MESSAGES.refuse;
-            return json(res, { reply, uiHints: node.uiHints });
+            { const payload: ChatReply = { reply, uiHints: node.uiHints, state: AgentState.REFUSAL }; ResSchema.parse(payload); return json(res, payload); }
         }
         if (result.kind === 'greeting') {
             // State machine has no greeting branch; use static greeting
-            return json(res, { reply: MESSAGES.greeting });
+            { const payload: ChatReply = { reply: MESSAGES.greeting, state: AgentState.COLLECTING }; ResSchema.parse(payload); return json(res, payload); }
         }
         if (result.kind === 'clarify') {
             // Low confidence; keep generic clarify
             const reply = node.reply || MESSAGES.clarify;
-            return json(res, { reply, uiHints: node.uiHints });
+            { const payload: ChatReply = { reply, uiHints: node.uiHints, state: node.state }; ResSchema.parse(payload); return json(res, payload); }
         }
         // ok → dispatch to strategy handler (find/order)
         const handler = pickHandler(
@@ -79,26 +137,26 @@ export async function postChat(req: Request, res: Response) {
                 node = reduce(node, { type: 'SEARCH_OK', results: { vendors: action.data.vendors, items: action.data.items, query: action.data.query } as any });
             }
             const reply = node.reply || `Found ${action.data.vendors.length} vendors and ${action.data.items.length} items.`;
-            return json(res, { reply, action, uiHints: node.uiHints });
+            { const payload: ChatReply = { reply, action, uiHints: node.uiHints, state: node.state }; ResSchema.parse(payload); setSession(sessionId, { dto: result.dto }); res.setHeader('x-session-id', sessionId); return json(res, payload); }
         }
 
         if (action.action === 'refuse') {
             // Map to refusal
             node = reduce(node, { type: 'INTENT_OTHER' });
             const reply = node.reply || action.data.message;
-            return json(res, { reply, action, uiHints: node.uiHints });
+            { const payload: ChatReply = { reply, action, uiHints: node.uiHints, state: node.state }; ResSchema.parse(payload); setSession(sessionId, { dto: result.dto }); res.setHeader('x-session-id', sessionId); return json(res, payload); }
         }
         if (action.action === 'clarify') {
             // Use model's question, but keep any partial-results state
             const reply = node.reply || action.data.question;
-            return json(res, { reply, action, uiHints: node.uiHints });
+            { const payload: ChatReply = { reply, action, uiHints: node.uiHints, state: node.state }; ResSchema.parse(payload); setSession(sessionId, { dto: result.dto }); res.setHeader('x-session-id', sessionId); return json(res, payload); }
         }
         if (action.action === 'confirm') {
             const reply = `Order total ₪${action.data.total}, ETA ${action.data.etaMinutes}m. Confirm?`;
-            return json(res, { reply, action, uiHints: node.uiHints });
+            { const payload: ChatReply = { reply, action, uiHints: node.uiHints, state: node.state }; ResSchema.parse(payload); setSession(sessionId, { dto: result.dto }); res.setHeader('x-session-id', sessionId); return json(res, payload); }
         }
         // Fallback
-        return json(res, { reply: MESSAGES.clarify, uiHints: node.uiHints });
+        { const payload: ChatReply = { reply: MESSAGES.clarify, uiHints: node.uiHints, state: node.state }; ResSchema.parse(payload); return json(res, payload); }
     } catch (e: any) {
         // Avoid leaking sensitive info
         const msg: string = e?.message || MESSAGES.serverErrorFallback;

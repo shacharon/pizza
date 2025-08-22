@@ -18,7 +18,7 @@ export type AgentEvent =
     | { type: "USER_MESSAGE"; text: string }
     | { type: "INTENT_OK" }
     | { type: "INTENT_OTHER" }
-    | { type: "CLARIFIED"; patch: Partial<Context["query"]> }
+    | { type: "CLARIFIED"; patch: Record<string, unknown> }
     | { type: "SEARCH_START" }
     | { type: "SEARCH_OK"; results: SearchResultDTO }
     | { type: "SEARCH_EMPTY" }

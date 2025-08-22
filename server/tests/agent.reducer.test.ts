@@ -55,3 +55,29 @@ describe('agent reducer', () => {
 });
 
 
+// Add chain test for RESULTS -> QUOTING -> CONFIRM -> ORDERING -> DONE
+import { describe as describe2, it as it2 } from 'node:test';
+
+describe2('agent reducer ordering flow', () => {
+    it2('RESULTS + SELECT_VENDOR -> QUOTING -> CONFIRM -> ORDERING -> DONE', () => {
+        let node = createInitialNode('pizza tel aviv');
+        node = reduce(node, { type: 'CLARIFIED', patch: { city: 'tel aviv', type: 'pizza' } as any });
+        node = reduce(node, { type: 'SEARCH_START' });
+        node = reduce(node, { type: 'SEARCH_OK', results: { vendors: [{ id: 'v1', name: 'p1', distanceMinutes: 10 } as any], items: [], query: { raw: 'x' } as any } });
+        assert.equal(node.state, AgentState.RESULTS);
+
+        node = reduce(node, { type: 'SELECT_VENDOR', vendorId: 'v1' });
+        assert.equal(node.state, AgentState.QUOTING);
+
+        node = reduce(node, { type: 'QUOTE_READY' });
+        assert.equal(node.state, AgentState.CONFIRM);
+
+        node = reduce(node, { type: 'CONFIRM' });
+        assert.equal(node.state, AgentState.ORDERING);
+
+        node = reduce(node, { type: 'ORDER_OK' });
+        assert.equal(node.state, AgentState.DONE);
+    });
+});
+
+

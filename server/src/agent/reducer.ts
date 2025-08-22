@@ -2,11 +2,13 @@ import { AgentState, type AgentEvent } from "./states.js";
 import { coreKnown, hasCity, missingAnyOf, type Context } from "./context.js";
 import type { SearchResultDTO } from "@api";
 
+export interface UiHint { label: string; patch: Partial<Context["query"]>; }
+
 export interface Node {
     state: AgentState;
     ctx: Context;
     reply?: string;
-    uiHints?: string[];
+    uiHints?: UiHint[];
 }
 
 export function reduce(node: Node, event: AgentEvent): Node {
@@ -23,7 +25,11 @@ export function reduce(node: Node, event: AgentEvent): Node {
                     state: AgentState.REFUSAL,
                     ctx,
                     reply: "אני עוזר רק בהזמנת אוכל. רוצה שאחפש פיצה, סושי או המבורגר?",
-                    uiHints: ["פיצה בת״א עד ₪60", "סושי כשר בר״ג", "המבורגר עד 30 דק’"]
+                    uiHints: [
+                        { label: "פיצה בת״א עד ₪60", patch: { city: "tel aviv", type: "pizza", maxPrice: 60 } as any },
+                        { label: "סושי כשר בר״ג", patch: { city: "ramat gan", type: "sushi", dietary: ["kosher"] as any } },
+                        { label: "המבורגר עד 30 דק’", patch: { type: "burger", deliveryEtaMinutes: 30 } as any }
+                    ]
                 };
             }
             if (event.type === "INTENT_OK" || event.type === "CLARIFIED") {
@@ -33,7 +39,11 @@ export function reduce(node: Node, event: AgentEvent): Node {
                         state: AgentState.COLLECTING,
                         ctx: { ...ctx, query: q },
                         reply: "באיזו עיר/אזור להזמין?",
-                        uiHints: ["תל אביב", "אשקלון", "רמת גן"]
+                        uiHints: [
+                            { label: "תל אביב", patch: { city: "tel aviv" } as any },
+                            { label: "אשקלון", patch: { city: "ashkelon" } as any },
+                            { label: "רמת גן", patch: { city: "ramat gan" } as any }
+                        ]
                     };
                 }
                 const missingMinor = missingAnyOf(q, ["maxPrice", "deliveryEtaMinutes", "dietary"] as any);
@@ -44,7 +54,12 @@ export function reduce(node: Node, event: AgentEvent): Node {
                         reply:
                             "מצאתי כמה אפשרויות כלליות באזור שלך (עדיין בלי סינון לפי מחיר/זמן). " +
                             "רוצה לסנן לפי תקציב מקסימלי או זמן משלוח?",
-                        uiHints: ["עד ₪50", "עד ₪60", "משלוח עד 30 דק’", "ללא גלוטן"]
+                        uiHints: [
+                            { label: "עד ₪50", patch: { maxPrice: 50 } as any },
+                            { label: "עד ₪60", patch: { maxPrice: 60 } as any },
+                            { label: "משלוח עד 30 דק’", patch: { deliveryEtaMinutes: 30 } as any },
+                            { label: "ללא גלוטן", patch: { dietary: ["gluten_free"] as any } }
+                        ]
                     };
                 }
                 return {

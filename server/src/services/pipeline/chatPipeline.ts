@@ -9,6 +9,61 @@ export type PipelineGreeting = { kind: "greeting" };
 export type PipelineResult = PipelineOk | PipelineClarify | PipelineRefuse | PipelineGreeting;
 
 const INTENT_CONFIDENCE_MIN = 0.65;
+const CITY_SYNONYMS: Record<string, string> = {
+    "ta": "tel aviv",
+    "tlv": "tel aviv",
+    "ת\u200eא": "תל אביב", // normalize edge
+};
+
+function normalizeCity(raw?: string): string | undefined {
+    if (!raw) return undefined;
+    const t = raw.trim().toLowerCase();
+    return CITY_SYNONYMS[t] || t;
+}
+
+function deriveCityFromText(text: string): string | undefined {
+    const t = text.toLowerCase();
+    if (/tel\s*aviv|tlv|תל\s*אביב/.test(t)) return "tel aviv";
+    return undefined;
+}
+
+function coerceNumber(n: unknown): number | undefined {
+    if (typeof n === 'number') return Number.isFinite(n) ? n : undefined;
+    if (typeof n === 'string') {
+        const v = Number(n.replace(/[^0-9.]/g, ''));
+        return Number.isFinite(v) ? v : undefined;
+    }
+    return undefined;
+}
+
+function mapTypeSynonym(t?: unknown): FoodQueryDTO["type"] | undefined {
+    if (typeof t !== 'string') return undefined;
+    const s = t.toLowerCase().trim();
+    if (/(pizza|piza|pitza|pitsa|פיצה)/.test(s)) return "pizza";
+    if (/(sushi|סושי)/.test(s)) return "sushi";
+    if (/(burger|המבורגר)/.test(s)) return "burger";
+    return "other";
+}
+
+function localRepair(rawJson: unknown, message: string): unknown {
+    if (!rawJson || typeof rawJson !== 'object') {
+        return { raw: message };
+    }
+    const src = rawJson as Record<string, unknown>;
+    const out: any = { raw: typeof src.raw === 'string' && src.raw.trim() ? src.raw.trim() : message };
+    if (typeof src.city === 'string') out.city = normalizeCity(src.city);
+    out.city ||= deriveCityFromText(message);
+    const mappedType = mapTypeSynonym(src.type);
+    if (mappedType) out.type = mappedType;
+    const maxPrice = coerceNumber(src.maxPrice);
+    if (maxPrice !== undefined) out.maxPrice = maxPrice;
+    const eta = coerceNumber(src.deliveryEtaMinutes);
+    if (eta !== undefined) out.deliveryEtaMinutes = eta;
+    if (Array.isArray(src.dietary)) {
+        out.dietary = src.dietary.filter((x) => typeof x === 'string');
+    }
+    return out;
+}
 
 function extractJson(text: string): unknown | null {
     if (!text) return null;
@@ -88,9 +143,13 @@ export async function runChatPipeline(message: string): Promise<PipelineResult> 
         return { kind: "clarify" };
     }
 
-    // 3) Zod validate
-    const parsed = FoodQueryDTOZ.safeParse(json);
-    if (!parsed.success) return { kind: "clarify" };
+    // 3) Zod validate with local repair
+    let parsed = FoodQueryDTOZ.safeParse(json);
+    if (!parsed.success) {
+        const repaired = localRepair(json, message);
+        parsed = FoodQueryDTOZ.safeParse(repaired);
+        if (!parsed.success) return { kind: "clarify" };
+    }
 
     return { kind: "ok", intent, dto: parsed.data };
 }
