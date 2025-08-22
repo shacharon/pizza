@@ -1,12 +1,14 @@
-export interface OrderItemDTO {
-    itemId: string;
-    qty: number;
-    notes?: string;
-}
+import { z } from "zod";
 
-export interface OrderRequestDTO {
-    vendorId: string;
-    items: OrderItemDTO[];
-    address?: string;
-    paymentMethod?: "cash" | "card";
-}
+export const OrderLineDTOZ = z.object({
+    itemId: z.string(),
+    qty: z.number().int().min(1),
+});
+export type OrderLineDTO = z.infer<typeof OrderLineDTOZ>;
+
+export const OrderRequestDTOZ = z.object({
+    vendorId: z.string(),
+    items: z.array(OrderLineDTOZ).min(1),
+    notes: z.string().optional(),
+});
+export type OrderRequestDTO = z.infer<typeof OrderRequestDTOZ>;

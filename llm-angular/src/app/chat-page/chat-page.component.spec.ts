@@ -40,7 +40,9 @@ describe('ChatPageComponent', () => {
         comp.input = 'Hi';
         await comp.send();
         const log = comp.log();
-        expect(ask).toHaveBeenCalledWith('Hi', expect.any(Object));
+        const [msg, signal] = ask.mock.calls[0];
+        expect(msg).toBe('Hi');
+        expect(signal).toBeDefined();
         expect(log.length).toBe(2);
         expect(log[0]).toEqual({ role: 'user', text: 'Hi' });
         expect(log[1]).toEqual({ role: 'assistant', text: 'Hello!' });

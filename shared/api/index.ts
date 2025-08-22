@@ -1,5 +1,6 @@
-export * from "./food.query.dto";
-export * from "./search-result.dto";
-export * from "./order-request.dto";
-export * from "./order-response.dto";
-export * from "./chat-message.dto";
+// ESM + NodeNext with verbatimModuleSyntax: include .js in re-exports
+export * from "./food.query.dto.js";
+export * from "./search-result.dto.js";
+export * from "./order-request.dto.js";
+export * from "./order-response.dto.js";
+export * from "./chat-message.dto.js";
