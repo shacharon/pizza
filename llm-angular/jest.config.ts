@@ -30,6 +30,16 @@ const config: Config = {
         '^(\\.{1,2}/.*)\\.mjs$': '$1',
         '\\.(css|scss|sass|less)$': '<rootDir>/__mocks__/styleMock.js',
     },
+
+    reporters: [
+        'default',
+        ['jest-html-reporters', {
+            publicPath: './reports',
+            filename: 'index.html',
+            expand: true,
+            pageTitle: 'Angular Unit Tests'
+        }]
+    ]
 };
 
 export default config;
