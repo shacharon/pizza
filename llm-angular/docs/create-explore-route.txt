@@ -1,0 +1,20 @@
+This is a great new direction for the `/explore` route. It's a much more visual and interactive way to browse the data. I've analyzed the image and our current codebase, and here is my proposed plan to implement this, following our "baby steps" approach.
+
+### Thinking & High-Level Plan
+
+The image shows a two-column layout: **Filters & Chat** on the left, and **Map & Results** on the right. We can build this incrementally.
+
+1.  **Phase 1: Structure & Card Layout.** First, I'll create the two-column structure on the `/explore` page. I'll also create a new, reusable `VendorCardComponent` and use it to display the results in the right-hand column, replacing the current `ResultsTableComponent`.
+2.  **Phase 2: Interactive Filters.** Next, I'll add filter controls (like the toggles and chips from the image) to the left-hand column. When a user changes a filter, it will update the URL and re-fetch the data, refreshing the vendor cards.
+3.  **Phase 3: Map Integration.** Finally, I'll add the map to the top of the right-hand column. This will display pins for each of the visible vendors.
+
+This approach ensures we have a working, visible feature at the end of each phase.
+
+### Questions Before We Start Phase 1
+
+To do this right, I have a few questions for you:
+
+1.  **Map Library:** For the map feature in Phase 3, I plan to use **Leaflet**, a popular open-source mapping library. It's lightweight and has no API key requirements. Is this okay with you?
+2.  **Map Data (Important):** To place vendors on a map, the backend will need to provide latitude and longitude coordinates for each vendor. The current API doesn't do this. For now, should I proceed by using **placeholder coordinates** just to build the UI? We can assume the real data will be added to the API later.
+3.  **Filter Interaction:** My plan for the filters is that changing any filter will update the page's URL (e.g., `/explore?maxPrice=60`). This makes the view linkable and shareable, and it will trigger a new data fetch from the backend. Does this sound like the correct approach?
+4.  **Starting Point:** My very first step will be to implement the two-column layout on the explore page and create the scaffolding for the new `VendorCardComponent`. Is this the right place to start?

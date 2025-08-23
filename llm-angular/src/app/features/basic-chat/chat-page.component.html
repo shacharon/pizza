@@ -14,7 +14,7 @@
         (languageChange)="facade.language.set($event)"></app-chat-composer>
     <app-guard-note
         [message]="facade.guard() ? (facade.guard()==='off_domain' ? 'Food-only: please specify city, cuisine, and budget.' : 'Policy active: focused on food ordering.') : null"></app-guard-note>
-    <app-summary-card [top]="top3" [pending]="facade.pending()"></app-summary-card>
+    <app-summary-card [top]="top3()" [pending]="facade.pending()"></app-summary-card>
     <app-refine-chips [chips]="facade.chips()" [disabled]="facade.pending()" (toggle)="toggleChip($event)"
         (clearAll)="clearAllChips()"></app-refine-chips>
     <div *ngIf="facade.error()" class="err">{{ facade.error() }}</div>

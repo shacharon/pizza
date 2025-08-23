@@ -5,7 +5,7 @@ export interface Vendor {
     price?: number;
     itemName?: string;
     rating?: number;
-    distanceMinutes?: number;
+    deliveryEtaMinutes?: number;
     description?: string;
 }
 

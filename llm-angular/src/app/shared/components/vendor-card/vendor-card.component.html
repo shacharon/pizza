@@ -1,0 +1,20 @@
+<div class="card-layout">
+    <div class="marker" *ngIf="marker">{{ marker }}</div>
+    <div class="details">
+        <div class="line-1">
+            <h3 class="name">{{ vendor.name }}</h3>
+            <div class="rating-price">
+                <span class="rating">★ {{ vendor.rating }}</span>
+                <span class="price">~₪{{ vendor.price }}</span>
+            </div>
+        </div>
+        <div class="line-2">
+            <div class="address">{{ vendor.address }}</div>
+            <div class="distance" *ngIf="vendor.deliveryEtaMinutes">~{{ vendor.deliveryEtaMinutes }}m ETA</div>
+        </div>
+    </div>
+    <div class="actions">
+        <button class="btn btn-outline">Call</button>
+        <button class="btn btn-primary">Order</button>
+    </div>
+</div>

@@ -25,7 +25,7 @@
                 <td class="num">{{ v.price | currencyIls }}</td>
                 <td>{{ v.itemName || '—' }}</td>
                 <td>{{ v.rating ?? '—' }}</td>
-                <td class="num">{{ v.distanceMinutes }}</td>
+                <td class="num">{{ v.deliveryEtaMinutes }}</td>
             </tr>
             <tr *ngIf="pending">
                 <td colspan="6">Loading more…</td>
