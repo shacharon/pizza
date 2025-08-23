@@ -1,6 +1,7 @@
-import { openai } from '../openai.client.js';
 import { OPENAI_TIMEOUT_MS, RESTAURANT_CACHE_TTL_MS } from '../../controllers/constants.js';
 import { InMemoryCacheAgent } from '../../store/inMemoryCacheAgent.js';
+import { OpenAiProvider } from '../../llm/openai.provider.js';
+import { z } from 'zod';
 
 export type MenuItem = { name: string; price: number };
 export type RestaurantResult = {
@@ -36,6 +37,7 @@ function languageInstruction(pref?: 'mirror' | 'he' | 'en', sample?: string): st
 
 // In-memory cache instance (can be swapped for Redis adapter later)
 const cache = new InMemoryCacheAgent();
+const llm = new OpenAiProvider();
 
 function buildPrompt(q: RestaurantQuery): { system: string; user: string } {
     const sys = `You return ONLY JSON. Shape: {"restaurants":[{"name":string,"address"?:string,"price"?:number,"description"?:string,"items"?:[{"name":string,"price":number}]}]}.\n- price numbers are in ILS (number only, no currency sign).\n- Include 1-2 sentence description in the requested language.\n- Up to 20 restaurants. If multiple items are relevant include them under items[].`;
@@ -60,17 +62,22 @@ export async function getRestaurants(q: RestaurantQuery): Promise<{ restaurants:
     if (hit) return hit;
 
     const { system, user } = buildPrompt(q);
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
     try {
-        const resp = await openai.responses.create({
-            model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-            input: [{ role: 'system', content: system }, { role: 'user', content: user }],
-            temperature: 0
-        }, { signal: controller.signal });
-        const raw = resp.output_text || '';
-        let parsed: any = extractJsonLoose(raw) || {};
-        const list: any[] = Array.isArray(parsed?.restaurants) ? parsed.restaurants : [];
+        const schema = z.object({
+            restaurants: z.array(z.object({
+                name: z.string(),
+                address: z.string().optional(),
+                description: z.string().optional(),
+                price: z.number().optional(),
+                items: z.array(z.object({ name: z.string(), price: z.number() })).optional()
+            }))
+        });
+        const result = await llm.completeJSON([
+            { role: 'system', content: system },
+            { role: 'user', content: user }
+        ], schema, { temperature: 0, timeout: OPENAI_TIMEOUT_MS });
+        const raw = JSON.stringify(result);
+        const list: any[] = Array.isArray((result as any)?.restaurants) ? (result as any).restaurants : [];
         // Map + filter by maxPrice deterministically
         const maxPrice = typeof q.maxPrice === 'number' ? q.maxPrice : undefined;
         const filtered: RestaurantResult[] = [];
@@ -87,7 +94,6 @@ export async function getRestaurants(q: RestaurantQuery): Promise<{ restaurants:
             } else if (typeof r.price === 'number') {
                 if (maxPrice === undefined || r.price <= maxPrice) filtered.push({ name, address, description, items: [{ name, price: r.price }] });
             } else {
-                // keep pure restaurant without price only if no price filter
                 if (maxPrice === undefined) filtered.push({ name, address, description });
             }
         }
@@ -112,7 +118,7 @@ export async function getRestaurants(q: RestaurantQuery): Promise<{ restaurants:
         await cache.set(key, value, RESTAURANT_CACHE_TTL_MS / 1000);
         return value;
     } finally {
-        clearTimeout(timeout);
+        // nothing
     }
 }
 export function isValidRestaurantsOutput(raw: string, q: RestaurantQuery, restaurants: RestaurantResult[]): boolean {

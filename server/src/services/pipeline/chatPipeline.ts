@@ -1,7 +1,8 @@
 import { FoodQueryDTOZ, type FoodQueryDTO as TFoodQueryDTO } from "@api";
 import { detectIntent, type Intent } from "../intent.js";
-import { openai } from "../openai.client.js";
 import { foodOnlyPolicy, promptGuardPreFilter } from "./promptGuard.js";
+import { OpenAiProvider } from "../../llm/openai.provider.js";
+import { z } from "zod";
 
 export type FoodQueryDTO = TFoodQueryDTO;
 export type PipelineOk = { kind: "ok"; intent: Intent; dto: FoodQueryDTO };
@@ -14,7 +15,7 @@ const INTENT_CONFIDENCE_MIN = 0.55;
 const CITY_SYNONYMS: Record<string, string> = {
     "ta": "tel aviv",
     "tlv": "tel aviv",
-    "ת\u200eא": "תל אביב", // normalize edge
+    "ת‎א": "תל אביב", // normalize edge
 };
 
 function normalizeCity(raw?: string): string | undefined {
@@ -76,42 +77,6 @@ function localRepair(rawJson: unknown, message: string): unknown {
     return out;
 }
 
-function extractJson(text: string): unknown | null {
-    if (!text) return null;
-    const raw = text.trim();
-    // 1) Prefer fenced block content if present
-    const fenceMatch = raw.match(/```(?:json)?\n([\s\S]*?)```/i);
-    const candidateText = fenceMatch?.[1]?.trim() ?? raw;
-    // 2) Try balanced-brace extraction of first JSON object
-    const s = candidateText;
-    let inString = false;
-    let escape = false;
-    let depth = 0;
-    let start = -1;
-    for (let i = 0; i < s.length; i++) {
-        const ch = s[i];
-        if (inString) {
-            if (escape) { escape = false; continue; }
-            if (ch === '\\') { escape = true; continue; }
-            if (ch === '"') { inString = false; }
-            continue;
-        }
-        if (ch === '"') { inString = true; continue; }
-        if (ch === '{') { if (depth === 0) start = i; depth++; continue; }
-        if (ch === '}') {
-            if (depth > 0) depth--;
-            if (depth === 0 && start !== -1) {
-                const slice = s.slice(start, i + 1);
-                try { return JSON.parse(slice); } catch { /* continue scan */ }
-                // keep scanning in case later object parses
-                start = -1;
-            }
-        }
-    }
-    // 3) Last resort: parse full string (likely fails if prose)
-    try { return JSON.parse(candidateText); } catch { return null; }
-}
-
 const FOOD_QUERY_SYS = `You extract a structured food-ordering query. Return a JSON OBJECT ONLY (no prose/markdown).
 Shape (omit unknown fields):
 {
@@ -124,17 +89,15 @@ Shape (omit unknown fields):
   "cards"?: { title: string, subtitle?: string, url: string }[]
 }` as const;
 
+const llm = new OpenAiProvider();
 async function callLlmForQuery(message: string): Promise<unknown> {
-    const resp = await openai.responses.create({
-        model: process.env.OPENAI_MODEL || "gpt-4o-mini",
-        input: [
-            { role: "system", content: foodOnlyPolicy('mirror') },
-            { role: "system", content: FOOD_QUERY_SYS },
-            { role: "user", content: message }
-        ]
-    });
-    const text = resp.output_text ?? "";
-    return extractJson(text);
+    const schema = z.any(); // pipeline will repair+validate after
+    const result = await llm.completeJSON([
+        { role: "system", content: foodOnlyPolicy('mirror') },
+        { role: "system", content: FOOD_QUERY_SYS },
+        { role: "user", content: message }
+    ], schema, { temperature: 0, timeout: 30_000 });
+    return result;
 }
 
 export async function runChatPipeline(message: string): Promise<PipelineResult> {

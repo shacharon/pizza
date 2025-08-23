@@ -1,0 +1,83 @@
+import { z } from "zod";
+import type { LLMProvider, Message } from "./types.js";
+import { openai } from "../services/openai.client.js";
+
+function sleep(ms: number) { return new Promise(res => setTimeout(res, ms)); }
+
+function toInput(messages: Message[]) {
+    return messages.map(m => ({ role: m.role, content: m.content }));
+}
+
+function extractJsonLoose(text: string): unknown | null {
+    if (!text) return null;
+    const raw = text.trim();
+    const fence = raw.match(/```(?:json)?\n([\s\S]*?)```/i);
+    const candidate = fence?.[1]?.trim() ?? raw;
+    try { return JSON.parse(candidate); } catch { }
+    const s = candidate; let depth = 0; let start = -1; let inStr = false; let esc = false;
+    for (let i = 0; i < s.length; i++) {
+        const ch = s[i];
+        if (inStr) { if (esc) { esc = false; } else if (ch === '\\') { esc = true; } else if (ch === '"') { inStr = false; } continue; }
+        if (ch === '"') { inStr = true; continue; }
+        if (ch === '{') { if (depth === 0) start = i; depth++; }
+        else if (ch === '}') { if (depth > 0) depth--; if (depth === 0 && start !== -1) { const slice = s.slice(start, i + 1); try { return JSON.parse(slice); } catch { } start = -1; } }
+    }
+    return null;
+}
+
+export class OpenAiProvider implements LLMProvider {
+    async completeJSON<T extends z.ZodTypeAny>(
+        messages: Message[],
+        schema: T,
+        opts?: { temperature?: number; timeout?: number }
+    ): Promise<z.infer<T>> {
+        const temperature = opts?.temperature ?? 0;
+        const timeoutMs = opts?.timeout ?? 30_000;
+        const maxAttempts = 3; // 1 try + 2 retries
+        const backoffs = [0, 250, 750];
+        const tStart = Date.now();
+        let lastErr: any;
+
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            if (backoffs[attempt] > 0) await sleep(backoffs[attempt]);
+            const controller = new AbortController();
+            const t = setTimeout(() => controller.abort(), timeoutMs);
+            try {
+                const resp = await openai.responses.create({
+                    model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+                    input: toInput(messages),
+                    temperature
+                }, { signal: controller.signal });
+                clearTimeout(t);
+                const raw = resp.output_text || '';
+                // Strict parse first via Zod
+                try {
+                    const parsed1 = JSON.parse(raw);
+                    const validated = schema.parse(parsed1);
+                    // eslint-disable-next-line no-console
+                    console.log(`[llm] ok attempts=${attempt + 1} durMs=${Date.now() - tStart}`);
+                    return validated;
+                } catch {
+                    const loose = extractJsonLoose(raw);
+                    const validated = schema.parse(loose);
+                    // eslint-disable-next-line no-console
+                    console.log(`[llm] ok(loose) attempts=${attempt + 1} durMs=${Date.now() - tStart}`);
+                    return validated as any;
+                }
+            } catch (e: any) {
+                clearTimeout(t);
+                lastErr = e;
+                const status = e?.status ?? e?.code ?? e?.name;
+                const retriable = status === 429 || (typeof status === 'number' && status >= 500) || e?.name === 'AbortError';
+                // eslint-disable-next-line no-console
+                console.warn(`[llm] attempt ${attempt + 1} failed: ${status}`);
+                if (!retriable || attempt === maxAttempts - 1) {
+                    // eslint-disable-next-line no-console
+                    console.error(`[llm] failed attempts=${attempt + 1} durMs=${Date.now() - tStart}`);
+                    throw e;
+                }
+            }
+        }
+        throw lastErr ?? new Error('LLM failed');
+    }
+}
