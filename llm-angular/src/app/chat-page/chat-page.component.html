@@ -28,6 +28,8 @@
         </div>
         <span class="dot" *ngIf="pending()" title="Streaming…">•</span>
     </div>
+    <div class="guard-note" *ngIf="guard() as g">{{ g === 'off_domain' ? 'Food-only: please specify city, cuisine, and
+        budget.' : 'Policy active: focused on food ordering.' }}</div>
     <div class="summary card" *ngIf="top3().length || pending()">
         <h3>Top picks</h3>
         <div class="chips">
@@ -38,8 +40,8 @@
             <li *ngFor="let v of top3(); trackBy: trackByVendor">
                 <span class="name" [title]="v.description || ''">{{ v.name }}</span>
                 <span class="price">{{ v.price !== undefined ? ('₪' + v.price) : '—' }}</span>
-                <span class="rating" *ngIf="v.rating">★ {{ v.rating }}</span>
-                <span class="eta">{{ v.distanceMinutes || 0 }} min</span>
+                <span class="rating" *ngIf="v.rating"><span class="icon-star">★</span> {{ v.rating }}</span>
+                <span class="eta"><span class="icon-clock">⏱</span> {{ v.distanceMinutes || 0 }} min</span>
                 <span class="ctas">
                     <a class="btn btn-xs outline" [href]="'tel:'" target="_self">Call</a>
                     <a class="btn btn-xs outline" [href]="vendorUrl(v)" target="_blank" rel="noopener">Website</a>

@@ -1,6 +1,7 @@
 import { FoodQueryDTOZ, type FoodQueryDTO } from "@api";
 import { detectIntent, type Intent } from "../intent.js";
 import { openai } from "../openai.client.js";
+import { foodOnlyPolicy, promptGuardPreFilter } from "./promptGuard.js";
 
 export type PipelineOk = { kind: "ok"; intent: Intent; dto: FoodQueryDTO };
 export type PipelineClarify = { kind: "clarify" };
@@ -117,6 +118,7 @@ async function callLlmForQuery(message: string): Promise<unknown> {
     const resp = await openai.responses.create({
         model: process.env.OPENAI_MODEL || "gpt-4o-mini",
         input: [
+            { role: "system", content: foodOnlyPolicy('mirror') },
             { role: "system", content: FOOD_QUERY_SYS },
             { role: "user", content: message }
         ]
@@ -126,6 +128,11 @@ async function callLlmForQuery(message: string): Promise<unknown> {
 }
 
 export async function runChatPipeline(message: string): Promise<PipelineResult> {
+    // 0) PromptGuard pre-filter
+    const pre = promptGuardPreFilter(message, 'mirror');
+    if (!pre.allow) {
+        return { kind: "clarify" };
+    }
     // 1) Intent gate
     const { intent, confidence } = await detectIntent(message);
     if (intent === "not_food") return { kind: "refuse" };
@@ -141,6 +148,12 @@ export async function runChatPipeline(message: string): Promise<PipelineResult> 
     const json = await callLlmForQuery(message);
     if (!json) {
         if (intent === "order_food") return { kind: "ok", intent, dto: { raw: message } as any };
+        // Heuristic fallback: build DTO from message without LLM JSON
+        const repaired = localRepair({}, message);
+        const probe = FoodQueryDTOZ.safeParse(repaired);
+        if (probe.success) {
+            return { kind: "ok", intent, dto: probe.data };
+        }
         return { kind: "clarify" };
     }
 

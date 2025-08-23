@@ -9,7 +9,7 @@ export class ChatService {
     private http = inject(HttpClient);
     private sessionId: string | null = null;
 
-    async ask(message: string, language: 'mirror' | 'he' | 'en', signal?: AbortSignal): Promise<{ reply: string; action?: ChatAction; uiHints?: { label: string; patch: Record<string, unknown> }[]; state?: string }> {
+    async ask(message: string, language: 'mirror' | 'he' | 'en', signal?: AbortSignal): Promise<{ reply: string; action?: ChatAction; uiHints?: { label: string; patch: Record<string, unknown> }[]; state?: string; guard?: string | null }> {
         const input = message.trim();
         if (!input) throw new Error('Please enter a message.');
         if (input.length > 4000) throw new Error('Message is too long.');
@@ -23,10 +23,11 @@ export class ChatService {
         );
         const sid = res.headers.get('x-session-id');
         if (sid) this.sessionId = sid;
-        return res.body as any;
+        const guard = res.headers.get('x-guard');
+        return { ...(res.body as any), guard };
     }
 
-    async clarify(patch: Record<string, unknown>, language: 'mirror' | 'he' | 'en', signal?: AbortSignal): Promise<{ reply: string; action?: ChatAction; uiHints?: { label: string; patch: Record<string, unknown> }[]; state?: string }> {
+    async clarify(patch: Record<string, unknown>, language: 'mirror' | 'he' | 'en', signal?: AbortSignal): Promise<{ reply: string; action?: ChatAction; uiHints?: { label: string; patch: Record<string, unknown> }[]; state?: string; guard?: string | null }> {
         const req$ = this.http.post<{ reply: string; action?: ChatAction; uiHints?: { label: string; patch: Record<string, unknown> }[]; state?: string }>(
             '/api/chat',
             { patch, language },
@@ -37,6 +38,7 @@ export class ChatService {
         );
         const sid = res.headers.get('x-session-id');
         if (sid) this.sessionId = sid;
-        return res.body as any;
+        const guard = res.headers.get('x-guard');
+        return { ...(res.body as any), guard };
     }
 }

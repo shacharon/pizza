@@ -14,14 +14,23 @@ export interface RestaurantQuery {
     city?: string;
     maxPrice?: number;
     language?: 'mirror' | 'he' | 'en';
+    userText?: string;
     page?: number;
     limit?: number;
 }
 
-function languageInstruction(pref?: 'mirror' | 'he' | 'en'): string {
+function detectLangFromText(sample?: string): 'he' | 'en' {
+    if (!sample) return 'en';
+    // Basic detection: Hebrew Unicode range wins
+    if (/[\u0590-\u05FF]/.test(sample)) return 'he';
+    return 'en';
+}
+
+function languageInstruction(pref?: 'mirror' | 'he' | 'en', sample?: string): string {
     if (pref === 'he') return 'Answer in Hebrew.';
     if (pref === 'en') return 'Answer in English.';
-    return 'Mirror the user language.';
+    const lang = detectLangFromText(sample);
+    return lang === 'he' ? 'Answer in Hebrew.' : 'Answer in English.';
 }
 
 function buildPrompt(q: RestaurantQuery): { system: string; user: string } {
@@ -30,7 +39,7 @@ function buildPrompt(q: RestaurantQuery): { system: string; user: string } {
     if (q.type) details.push(`type: ${q.type}`);
     if (q.city) details.push(`city: ${q.city}`);
     if (typeof q.maxPrice === 'number') details.push(`maxPrice: ${q.maxPrice}`);
-    const user = `${languageInstruction(q.language)}\nFind restaurants ${details.join(', ')}.`;
+    const user = `${languageInstruction(q.language, q.userText)}\nFind restaurants ${details.join(', ')}.`;
     return { system: sys, user };
 }
 
@@ -102,6 +111,17 @@ export async function getRestaurants(q: RestaurantQuery): Promise<{ restaurants:
     } finally {
         clearTimeout(timeout);
     }
+}
+export function isValidRestaurantsOutput(raw: string, q: RestaurantQuery, restaurants: RestaurantResult[]): boolean {
+    // Reject if LLM returned code blocks or markdown instead of JSON
+    if (/```[\s\S]*?```/.test(raw)) return false;
+    // Bound sizes
+    if (restaurants.length > 100) return false;
+    for (const r of restaurants) {
+        if (!r || typeof r.name !== 'string' || r.name.trim().length === 0) return false;
+        if (typeof r.description === 'string' && /```|<script|<code>/i.test(r.description)) return false;
+    }
+    return true;
 }
 
 // local cache store

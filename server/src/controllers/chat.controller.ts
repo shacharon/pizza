@@ -13,7 +13,8 @@ import { InMemoryVendorSearch } from '../services/adapters/vendorSearch.inmemory
 import { InMemoryQuoteService } from '../services/adapters/quoteService.inmemory.js';
 import { createInitialNode, reduce } from '../agent/reducer.js';
 import { enrichCards } from '../services/og.js';
-import { getRestaurants } from '../services/llm/restaurant.service.js';
+import { getRestaurants, isValidRestaurantsOutput } from '../services/llm/restaurant.service.js';
+import { promptGuardPreFilter } from '../services/pipeline/promptGuard.js';
 
 // Schemas and reply type
 import { ChatReply, ReqSchema, ResSchema } from './schemas.js';
@@ -76,6 +77,21 @@ export async function postChat(req: Request, res: Response) {
     const requestId = randomUUID();
 
     try {
+        // PromptGuard prefilter at controller-level (signals to client via header)
+        const pre = promptGuardPreFilter(message || '', language || 'mirror');
+        if (!pre.allow) {
+            res.setHeader('x-guard', pre.reason);
+            const stored = getSession(sessionId);
+            const now = Date.now();
+            const within5 = stored?.guard?.lastOffDomainAt && (now - stored.guard.lastOffDomainAt < 5 * 60_000);
+            const count = within5 ? (stored?.guard?.offDomainCount || 0) + 1 : 1;
+            const hardRefuse = count >= 2; // first time soft nudge, then firmer refusal
+            const reply = hardRefuse ? MESSAGES.refuse : pre.reply;
+            setSession(sessionId, { dto: (stored?.dto || { raw: message || '' }) as any, guard: { lastOffDomainAt: now, offDomainCount: count } });
+            const payload: ChatReply = { reply, uiHints: hardRefuse ? undefined : ([{ label: 'Pizza', patch: { type: 'pizza' } }, { label: '≤ ₪60', patch: { maxPrice: 60 } }] as any), state: AgentState.COLLECTING };
+            ResSchema.parse(payload);
+            return json(res, payload);
+        }
         // If patch is provided, merge into session DTO and use LLM service for refined results
         if (patch) {
             let node = createInitialNode(message || '');
@@ -92,10 +108,17 @@ export async function postChat(req: Request, res: Response) {
                 city: mergedDto.city,
                 maxPrice: mergedDto.maxPrice,
                 language: language || mergedDto.language || 'mirror',
+                userText: message || mergedDto.raw,
                 ...(typeof page === 'number' ? { page } : {}),
                 ...(typeof limit === 'number' ? { limit } : {})
             } as const;
             const { restaurants, raw } = await getRestaurants(args1 as any);
+            if (!isValidRestaurantsOutput(raw, args1 as any, restaurants)) {
+                const reply = MESSAGES.clarify;
+                const payload: ChatReply = { reply, uiHints: node.uiHints, state: node.state };
+                ResSchema.parse(payload);
+                return json(res, payload);
+            }
             const vendors: any[] = [];
             restaurants.forEach((r: any, idx: number) => {
                 if (Array.isArray(r.items) && r.items.length) {
@@ -158,10 +181,17 @@ export async function postChat(req: Request, res: Response) {
                 city: (result.dto as any).city,
                 maxPrice: (result.dto as any).maxPrice,
                 language: language || (result.dto as any).language || 'mirror',
+                userText: message || (result.dto as any).raw,
                 ...(typeof page === 'number' ? { page } : {}),
                 ...(typeof limit === 'number' ? { limit } : {})
             } as const;
             const { restaurants, raw } = await getRestaurants(args2 as any);
+            if (!isValidRestaurantsOutput(raw, args2 as any, restaurants)) {
+                const reply = MESSAGES.clarify;
+                const payload: ChatReply = { reply, uiHints: node.uiHints, state: node.state };
+                ResSchema.parse(payload);
+                return json(res, payload);
+            }
             // Adapt to stub SearchResultDTO shape
             // Build vendors as rows; duplicate rows for same restaurant if multiple items (each with its own price)
             const vendors: any[] = [];

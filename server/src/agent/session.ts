@@ -2,6 +2,7 @@ import type { FoodQueryDTO } from "@api";
 
 export interface SessionData {
     dto: FoodQueryDTO;
+    guard?: { lastOffDomainAt?: number; offDomainCount?: number };
 }
 
 const store = new Map<string, SessionData>();

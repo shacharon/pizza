@@ -17,6 +17,7 @@ export class ChatPageComponent {
     log = signal<{ role: 'user' | 'assistant'; text: string }[]>([]);
     pending = signal(false);
     error = signal<string | null>(null);
+    guard = signal<string | null>(null);
     results = signal<{ vendors: any[]; items: any[]; rawLlm?: string } | null>(null);
     page = 0;
     limit = 20;
@@ -48,8 +49,9 @@ export class ChatPageComponent {
         this.controller = new AbortController();
         try {
             this.page = 0;
-            const { reply, action, uiHints } = await this.chat.ask(msg, this.language, this.controller.signal);
+            const { reply, action, uiHints, guard } = await this.chat.ask(msg, this.language, this.controller.signal);
             this.log.update((l) => [...l, { role: 'assistant', text: reply }]);
+            this.guard.set(guard || null);
             this.debugResponse(action);
             if (action?.action === 'results') {
                 this.results.set({ vendors: action.data.vendors || [], items: action.data.items || [], rawLlm: (action.data as any).rawLlm });
@@ -78,8 +80,9 @@ export class ChatPageComponent {
         this.controller?.abort();
         this.controller = new AbortController();
         try {
-            const { reply, action, uiHints } = await this.chat.clarify(h.patch, this.language, this.controller.signal);
+            const { reply, action, uiHints, guard } = await this.chat.clarify(h.patch, this.language, this.controller.signal);
             this.log.update((l) => [...l, { role: 'assistant', text: reply }]);
+            this.guard.set(guard || null);
             this.debugResponse(action);
             if (action?.action === 'results') {
                 this.results.set({ vendors: action.data.vendors || [], items: action.data.items || [], rawLlm: (action.data as any).rawLlm });
