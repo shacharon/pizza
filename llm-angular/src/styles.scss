@@ -1,1 +1,16 @@
-/* You can add global styles to this file, and also import other style files */
+/* Global tokens */
+:root {
+    --bg: #f7f8fb;
+    --card: #ffffff;
+    --text: #111827;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --ring: #93c5fd;
+    --radius: 12px;
+    --space: 8px;
+}
+
+body {
+    background: var(--bg);
+    color: var(--text);
+}

@@ -9,50 +9,14 @@
             <span>ETA: <b>{{ display(q.deliveryEtaMinutes) }}</b></span>
         </div>
     </div>
-    <div class="box">
-        <div *ngFor="let m of log()">
-            <b>{{ m.role === 'user' ? 'You' : 'AI' }}:</b> {{ m.text }}
-        </div>
-    </div>
-    <div class="row">
-        <input [(ngModel)]="input" placeholder="שאל משהו…" [disabled]="pending()" (keyup.enter)="send()" />
-        <button (click)="send()" [disabled]="pending()">{{ pending() ? 'Sending…' : 'Send' }}</button>
-        <div class="settings">
-            <label>Language:
-                <select [(ngModel)]="language" [disabled]="pending()">
-                    <option value="mirror">Mirror</option>
-                    <option value="he">Hebrew</option>
-                    <option value="en">English</option>
-                </select>
-            </label>
-        </div>
-        <span class="dot" *ngIf="pending()" title="Streaming…">•</span>
-    </div>
-    <div class="guard-note" *ngIf="guard() as g">{{ g === 'off_domain' ? 'Food-only: please specify city, cuisine, and
-        budget.' : 'Policy active: focused on food ordering.' }}</div>
-    <div class="summary card" *ngIf="top3().length || pending()">
-        <h3>Top picks</h3>
-        <div class="chips">
-            <button type="button" *ngFor="let c of chips(); let i = index" [class.active]="c.active"
-                (click)="toggleChip(i)">{{ c.label }} <span *ngIf="c.active">×</span></button>
-        </div>
-        <ol class="list">
-            <li *ngFor="let v of top3(); trackBy: trackByVendor">
-                <span class="name" [title]="v.description || ''">{{ v.name }}</span>
-                <span class="price">{{ v.price !== undefined ? ('₪' + v.price) : '—' }}</span>
-                <span class="rating" *ngIf="v.rating"><span class="icon-star">★</span> {{ v.rating }}</span>
-                <span class="eta"><span class="icon-clock">⏱</span> {{ v.distanceMinutes || 0 }} min</span>
-                <span class="ctas">
-                    <a class="btn btn-xs outline" [href]="'tel:'" target="_self">Call</a>
-                    <a class="btn btn-xs outline" [href]="vendorUrl(v)" target="_blank" rel="noopener">Website</a>
-                    <a class="btn btn-xs outline" [href]="mapsUrl(v)" target="_blank" rel="noopener">Maps</a>
-                </span>
-            </li>
-            <li *ngIf="pending() && top3().length === 0" class="skeleton"></li>
-            <li *ngIf="pending() && top3().length === 0" class="skeleton"></li>
-            <li *ngIf="pending() && top3().length === 0" class="skeleton"></li>
-        </ol>
-    </div>
+    <app-chat-log [log]="log()"></app-chat-log>
+    <app-chat-composer [pending]="pending()" [language]="language" (send)="input=$event; send()"
+        (languageChange)="language=$event"></app-chat-composer>
+    <app-guard-note
+        [message]="guard() ? (guard()==='off_domain' ? 'Food-only: please specify city, cuisine, and budget.' : 'Policy active: focused on food ordering.') : null"></app-guard-note>
+    <app-summary-card [top]="top3()" [pending]="pending()"></app-summary-card>
+    <app-refine-chips [chips]="(chips() as any)" [disabled]="pending()" (toggle)="toggleChip($event)"
+        (clearAll)="chips.set(chips().map(c=>({...c,active:false})))"></app-refine-chips>
     <div *ngIf="error()" class="err">{{ error() }}</div>
 
     <div *ngIf="hints() as hs" class="hints">
@@ -76,47 +40,8 @@
     <div *ngIf="results() as r" class="results">
         <h2>Results</h2>
         <div class="tables">
-            <div class="vendors card">
-                <div class="card-header">
-                    <h3>Top picks</h3>
-                    <div class="segments">
-                        <button type="button" class="seg active">Top picks</button>
-                        <button type="button" class="seg">Budget</button>
-                        <button type="button" class="seg">Closest</button>
-                    </div>
-                </div>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Name</th>
-                            <th>Address</th>
-                            <th class="num">Price</th>
-                            <th>Item</th>
-                            <th>Rating</th>
-                            <th class="num">ETA (min)</th>
-
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr *ngFor="let v of r.vendors | slice:0:10; trackBy: trackByVendor">
-                            <td [title]="v.description || ''">{{ v.name }}</td>
-                            <td>{{ v.address || '—' }}</td>
-                            <td class="num">{{ v.price !== undefined ? ('₪' + v.price) : '—' }}</td>
-                            <td>{{ v.itemName || '—' }}</td>
-                            <td>{{ v.rating ?? '—' }}</td>
-                            <td class="num">{{ v.distanceMinutes }}</td>
-
-                        </tr>
-                        <tr *ngIf="pending()">
-                            <td colspan="6">Loading more…</td>
-                        </tr>
-                    </tbody>
-                </table>
-                <div class="more">
-                    <button (click)="loadMore()" [disabled]="pending()">{{ pending() ? 'Loading…' : 'Load more'
-                        }}</button>
-                </div>
-            </div>
+            <app-results-table [vendors]="r.vendors" [pending]="pending()" [canLoadMore]="true"
+                (loadMore)="loadMore()" />
 
             <div class="items" *ngIf="false">
                 <h3>Items</h3>

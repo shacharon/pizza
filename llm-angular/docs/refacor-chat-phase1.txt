@@ -1,0 +1,117 @@
+Context
+
+The ChatPageComponent has grown into a God Component: it manages state, calls services, and renders everything. This is natural in prototypes, but now it hurts maintainability, testability, and performance.
+
+The refactor goal is to adopt a Smart Container / Dumb Components pattern:
+
+Smart Container (ChatPageComponent): owns state and service calls.
+
+Dumb Components: pure UI, with @Input() for data and @Output() for events.
+
+📦 Component Breakdown
+
+ChatPageContainer (smart): holds signals/state; injects ChatService; composes children.
+
+ChatComposer: input box + Send button + language selector; emits send(message) and languageChange(lang).
+
+ChatLog: renders [ { role, text } ].
+
+SummaryCard: top-3 vendors with CTAs (cta(vendor, action)).
+
+RefineChips: pills with active state; emits toggle(index) and clearAll().
+
+ResultsTable: table of vendors; Inputs = vendors, pending, canLoadMore; emits loadMore().
+
+Virtualization (cdkVirtualScrollViewport) when rows >200.
+
+GuardNote: small policy banner.
+
+Shared:
+
+models/vendor.ts
+
+ui/trackBy.ts
+
+services/prefs.service.ts (persist language/chips)
+
+pipes/currencyIls
+
+CSS tokens in styles.scss
+
+⚡ State & Performance
+
+Keep state in container for now; later option: ChatStore service.
+
+Use Angular signals (signal, computed) for derived UI (top3 vendors, chip states).
+
+OnPush change detection everywhere + trackBy helpers.
+
+Debounce chip toggles (250–400 ms) and batch updates before triggering clarify().
+
+🎨 UX & Accessibility
+
+Consistent icons (★ rating, ⏱ ETA) across Summary & Table.
+
+Keyboard support for chips & composer.
+
+Visible focus rings.
+
+Table headers use scope="col".
+
+Skeleton rows while loading.
+
+Status line: “Loaded N/20 • best first”.
+
+Persist language + chip prefs to localStorage.
+
+🎨 Styling & System
+
+Centralize tokens (radius, spacing, colors) in styles.scss via CSS variables.
+
+Keep component styles local; container manages only layout.
+
+RTL-safe layout (flex directions, text alignment).
+
+✅ Testing
+
+Unit tests for each dumb component (Inputs/Outputs only).
+
+Snapshot tests for ResultsTable rows + SummaryCard layout.
+
+Container tests for chip debounce + pagination.
+
+🚶 Migration Steps (safe & incremental)
+
+Extract ResultsTable first (lowest coupling).
+
+Extract RefineChips with debounced emit.
+
+Extract SummaryCard.
+
+Extract ChatComposer + GuardNote.
+
+Add PrefsService for language/chips.
+
+Gate virtualization in ResultsTable when >200 rows.
+
+❓ Key Questions to Align
+
+Keep state in container for now (no store service)?
+
+Component names & directories under app/chat/*?
+
+Debounce chips ~300 ms OK?
+
+Virtual scroll auto-switch at >200 rows, or behind a feature flag?
+
+Persist only language + chips, or also last query?
+
+Any table features needed soon (sort, pin)?
+
+Accessibility: basic keyboard + labels now, full audit later?
+
+Should I codify brand design tokens (colors, spacing) now?
+
+Should SummaryCard CTAs trigger analytics (future)?
+
+Inputs/Outputs vs. Angular signal inputs?

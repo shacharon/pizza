@@ -2,11 +2,19 @@ import { Component, signal, ChangeDetectionStrategy, computed } from '@angular/c
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ChatService } from '../chat.service';
+import { ResultsTableComponent } from '../basicChat/results-table/results-table.component';
+import { RefineChipsComponent, type ChipVM } from '../basicChat/refine-chips/refine-chips.component';
+import { SummaryCardComponent } from '../basicChat/summary-card/summary-card.component';
+import { ChatComposerComponent } from '../basicChat/composer/chat-composer.component';
+import { GuardNoteComponent } from '../basicChat/guard-note/guard-note.component';
+import { ChatLogComponent } from '../basicChat/chat-log/chat-log.component';
+import { PrefsService } from '../shared/services/prefs.service';
+import { debounceTime, Subject } from 'rxjs';
 
 @Component({
     selector: 'app-chat-page',
     standalone: true,
-    imports: [CommonModule, FormsModule],
+    imports: [CommonModule, FormsModule, ResultsTableComponent, RefineChipsComponent, SummaryCardComponent, ChatComposerComponent, GuardNoteComponent, ChatLogComponent],
     templateUrl: './chat-page.component.html',
     styleUrl: './chat-page.component.scss',
     changeDetection: ChangeDetectionStrategy.OnPush
@@ -34,11 +42,27 @@ export class ChatPageComponent {
 
     top3 = computed(() => (this.results()?.vendors || []).slice(0, 3));
     private controller: AbortController | null = null;
-    constructor(private chat: ChatService) { }
+    private chipToggle$ = new Subject<void>();
+    constructor(private chat: ChatService, private prefs: PrefsService) {
+        // restore prefs
+        const pref = this.prefs.load();
+        if (pref.language) this.language = pref.language;
+        if (Array.isArray(pref.chips)) {
+            try { this.chips.set(pref.chips as any); } catch { }
+        }
+        if (typeof pref.lastMessage === 'string') this.input = pref.lastMessage;
+
+        // debounce chip toggles
+        this.chipToggle$.pipe(debounceTime(300)).subscribe(() => {
+            this.applyActiveChips();
+            this.prefs.save({ chips: this.chips() });
+        });
+    }
 
     async send() {
         const msg = this.input.trim();
         if (!msg || this.pending()) return;
+        this.prefs.save({ lastMessage: msg, language: this.language });
         this.log.update((l) => [...l, { role: 'user', text: msg }]);
         this.input = '';
         this.pending.set(true);
@@ -181,7 +205,7 @@ export class ChatPageComponent {
         const arr = [...this.chips()];
         arr[idx] = { ...arr[idx], active: !arr[idx].active };
         this.chips.set(arr);
-        this.applyActiveChips();
+        this.chipToggle$.next();
     }
 
     private async applyActiveChips() {

@@ -1,0 +1,5 @@
+<div class="box">
+    <div *ngFor="let m of log">
+        <b>{{ m.role === 'user' ? 'You' : 'AI' }}:</b> {{ m.text }}
+    </div>
+</div>

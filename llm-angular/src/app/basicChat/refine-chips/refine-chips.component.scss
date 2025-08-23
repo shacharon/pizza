@@ -1,0 +1,21 @@
+.chips {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.chips button {
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 6px 12px;
+    background: #f8f9fb;
+}
+
+.chips button.active {
+    background: #eef6ff;
+    border-color: #69f;
+}
+
+.chips .clear {
+    background: #fff;
+}

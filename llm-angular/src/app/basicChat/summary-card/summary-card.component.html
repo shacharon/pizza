@@ -1,0 +1,21 @@
+<div class="summary card" *ngIf="top.length || pending">
+    <h3>Top picks</h3>
+    <ol class="list">
+        <li *ngFor="let v of top; let i = index">
+            <span class="name" [title]="v.description || ''">{{ v.name }}</span>
+            <span class="price">{{ v.price !== undefined ? ('₪' + v.price) : '—' }}</span>
+            <span class="eta">{{ v.distanceMinutes || 0 }} min</span>
+            <span class="ctas">
+                <a class="btn btn-xs outline" href="tel:"
+                    (click)="$event.preventDefault(); cta.emit({vendor:v, action:'call'})">Call</a>
+                <a class="btn btn-xs outline" href="#"
+                    (click)="$event.preventDefault(); cta.emit({vendor:v, action:'web'})">Website</a>
+                <a class="btn btn-xs outline" href="#"
+                    (click)="$event.preventDefault(); cta.emit({vendor:v, action:'maps'})">Maps</a>
+            </span>
+        </li>
+        <li *ngIf="pending && top.length === 0" class="skeleton"></li>
+        <li *ngIf="pending && top.length === 0" class="skeleton"></li>
+        <li *ngIf="pending && top.length === 0" class="skeleton"></li>
+    </ol>
+</div>
