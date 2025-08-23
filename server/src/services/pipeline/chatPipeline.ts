@@ -1,8 +1,9 @@
-import { FoodQueryDTOZ, type FoodQueryDTO } from "@api";
+import { FoodQueryDTOZ, type FoodQueryDTO as TFoodQueryDTO } from "@api";
 import { detectIntent, type Intent } from "../intent.js";
 import { openai } from "../openai.client.js";
 import { foodOnlyPolicy, promptGuardPreFilter } from "./promptGuard.js";
 
+export type FoodQueryDTO = TFoodQueryDTO;
 export type PipelineOk = { kind: "ok"; intent: Intent; dto: FoodQueryDTO };
 export type PipelineClarify = { kind: "clarify" };
 export type PipelineRefuse = { kind: "refuse" };

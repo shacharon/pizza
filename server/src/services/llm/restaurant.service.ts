@@ -1,5 +1,6 @@
 import { openai } from '../openai.client.js';
 import { OPENAI_TIMEOUT_MS, RESTAURANT_CACHE_TTL_MS } from '../../controllers/constants.js';
+import { InMemoryCacheAgent } from '../../store/inMemoryCacheAgent.js';
 
 export type MenuItem = { name: string; price: number };
 export type RestaurantResult = {
@@ -33,6 +34,9 @@ function languageInstruction(pref?: 'mirror' | 'he' | 'en', sample?: string): st
     return lang === 'he' ? 'Answer in Hebrew.' : 'Answer in English.';
 }
 
+// In-memory cache instance (can be swapped for Redis adapter later)
+const cache = new InMemoryCacheAgent();
+
 function buildPrompt(q: RestaurantQuery): { system: string; user: string } {
     const sys = `You return ONLY JSON. Shape: {"restaurants":[{"name":string,"address"?:string,"price"?:number,"description"?:string,"items"?:[{"name":string,"price":number}]}]}.\n- price numbers are in ILS (number only, no currency sign).\n- Include 1-2 sentence description in the requested language.\n- Up to 20 restaurants. If multiple items are relevant include them under items[].`;
     const details: string[] = [];
@@ -52,9 +56,8 @@ export async function getRestaurants(q: RestaurantQuery): Promise<{ restaurants:
         l: q.language || 'mirror'
     };
     const key = JSON.stringify(norm);
-    const now = Date.now();
-    const hit = cache.get(key);
-    if (hit && hit.expiresAt > now) return hit.value;
+    const hit = await cache.get<{ restaurants: RestaurantResult[]; raw: string }>(key);
+    if (hit) return hit;
 
     const { system, user } = buildPrompt(q);
     const controller = new AbortController();
@@ -106,7 +109,7 @@ export async function getRestaurants(q: RestaurantQuery): Promise<{ restaurants:
         const start = page * limit;
         const restaurants = restaurantsAll.slice(start, start + limit);
         const value = { restaurants, raw };
-        cache.set(key, { value, expiresAt: now + RESTAURANT_CACHE_TTL_MS });
+        await cache.set(key, value, RESTAURANT_CACHE_TTL_MS / 1000);
         return value;
     } finally {
         clearTimeout(timeout);
@@ -123,7 +126,6 @@ export function isValidRestaurantsOutput(raw: string, q: RestaurantQuery, restau
 }
 
 // local cache store
-const cache: Map<string, { value: { restaurants: RestaurantResult[]; raw: string }; expiresAt: number }> = new Map();
 
 function extractJsonLoose(text: string): any | null {
     if (!text) return null;

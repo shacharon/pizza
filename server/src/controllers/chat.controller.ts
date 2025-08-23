@@ -2,7 +2,6 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import type { UiHint } from '../agent/reducer.js';
 import { randomUUID } from 'node:crypto';
-import { getSession, setSession } from '../agent/session.js';
 import { openai } from '../services/openai.client.js';
 import { DEFAULT_MODEL, INTENT_CONFIDENCE_MIN, MESSAGES } from './constants.js';
 import { runChatPipeline } from '../services/pipeline/chatPipeline.js';
@@ -15,10 +14,12 @@ import { createInitialNode, reduce } from '../agent/reducer.js';
 import { enrichCards } from '../services/og.js';
 import { getRestaurants, isValidRestaurantsOutput } from '../services/llm/restaurant.service.js';
 import { promptGuardPreFilter } from '../services/pipeline/promptGuard.js';
+import { InMemorySessionAgent } from '../store/inMemorySessionAgent.js';
 
 // Schemas and reply type
 import { ChatReply, ReqSchema, ResSchema } from './schemas.js';
 
+const sessionAgent = new InMemorySessionAgent();
 
 function slugify(input: string): string {
     return input.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40);
@@ -81,13 +82,13 @@ export async function postChat(req: Request, res: Response) {
         const pre = promptGuardPreFilter(message || '', language || 'mirror');
         if (!pre.allow) {
             res.setHeader('x-guard', pre.reason);
-            const stored = getSession(sessionId);
+            const stored = await sessionAgent.get(sessionId);
             const now = Date.now();
             const within5 = stored?.guard?.lastOffDomainAt && (now - stored.guard.lastOffDomainAt < 5 * 60_000);
             const count = within5 ? (stored?.guard?.offDomainCount || 0) + 1 : 1;
             const hardRefuse = count >= 2; // first time soft nudge, then firmer refusal
             const reply = hardRefuse ? MESSAGES.refuse : pre.reply;
-            setSession(sessionId, { dto: (stored?.dto || { raw: message || '' }) as any, guard: { lastOffDomainAt: now, offDomainCount: count } });
+            await sessionAgent.set(sessionId, { dto: (stored?.dto || { raw: message || '' }) as any, guard: { lastOffDomainAt: now, offDomainCount: count } });
             const payload: ChatReply = { reply, uiHints: hardRefuse ? undefined : ([{ label: 'Pizza', patch: { type: 'pizza' } }, { label: '≤ ₪60', patch: { maxPrice: 60 } }] as any), state: AgentState.COLLECTING };
             ResSchema.parse(payload);
             return json(res, payload);
@@ -99,7 +100,7 @@ export async function postChat(req: Request, res: Response) {
             node = reduce(node, { type: 'INTENT_OK' });
             node = reduce(node, { type: 'CLARIFIED', patch: patch as any });
 
-            const stored = getSession(sessionId);
+            const stored = await sessionAgent.get(sessionId);
             const baseDto = (stored?.dto || { raw: message || '' }) as any;
             const mergedDto = { ...baseDto, ...patch } as any;
             const t0 = Date.now();
@@ -139,7 +140,7 @@ export async function postChat(req: Request, res: Response) {
             const reply = node.reply || `Found ${vendors.length} options.`;
             const payload: ChatReply = { reply, action, uiHints: node.uiHints, state: node.state };
             ResSchema.parse(payload);
-            setSession(sessionId, { dto: mergedDto });
+            await sessionAgent.set(sessionId, { dto: mergedDto });
             res.setHeader('x-session-id', sessionId);
             console.log(`[reqId=${requestId}] LLM refine done in ${Date.now() - t0}ms, vendors=${vendors.length}`);
             return json(res, payload);
@@ -211,7 +212,7 @@ export async function postChat(req: Request, res: Response) {
                 node = reduce(node, { type: 'SEARCH_OK', results: { vendors, items: [], query: result.dto } as any });
             }
             const reply = node.reply || `Found ${vendors.length} options.`;
-            { const payload: ChatReply = { reply, action, uiHints: node.uiHints, state: node.state }; ResSchema.parse(payload); setSession(sessionId, { dto: result.dto }); res.setHeader('x-session-id', sessionId); console.log(`[reqId=${requestId}] LLM initial done in ${Date.now() - t0}ms, vendors=${vendors.length}`); return json(res, payload); }
+            { const payload: ChatReply = { reply, action, uiHints: node.uiHints, state: node.state }; ResSchema.parse(payload); await sessionAgent.set(sessionId, { dto: result.dto }); res.setHeader('x-session-id', sessionId); console.log(`[reqId=${requestId}] LLM initial done in ${Date.now() - t0}ms, vendors=${vendors.length}`); return json(res, payload); }
         }
 
         // ok → dispatch to strategy handler (order only)
@@ -231,20 +232,20 @@ export async function postChat(req: Request, res: Response) {
                 node = reduce(node, { type: 'SEARCH_OK', results: { vendors: action.data.vendors, items: action.data.items, query: action.data.query } as any });
             }
             const reply = node.reply || `Found ${action.data.vendors.length} vendors and ${action.data.items.length} items.`;
-            { const payload: ChatReply = { reply, action, uiHints: node.uiHints, state: node.state }; ResSchema.parse(payload); setSession(sessionId, { dto: result.dto }); res.setHeader('x-session-id', sessionId); return json(res, payload); }
+            { const payload: ChatReply = { reply, action, uiHints: node.uiHints, state: node.state }; ResSchema.parse(payload); await sessionAgent.set(sessionId, { dto: result.dto }); res.setHeader('x-session-id', sessionId); return json(res, payload); }
         }
         if (action.action === 'refuse') {
             node = reduce(node, { type: 'INTENT_OTHER' });
             const reply = node.reply || action.data.message;
-            { const payload: ChatReply = { reply, action, uiHints: node.uiHints, state: node.state }; ResSchema.parse(payload); setSession(sessionId, { dto: result.dto }); res.setHeader('x-session-id', sessionId); return json(res, payload); }
+            { const payload: ChatReply = { reply, action, uiHints: node.uiHints, state: node.state }; ResSchema.parse(payload); await sessionAgent.set(sessionId, { dto: result.dto }); res.setHeader('x-session-id', sessionId); return json(res, payload); }
         }
         if (action.action === 'clarify') {
             const reply = node.reply || action.data.question;
-            { const payload: ChatReply = { reply, action, uiHints: node.uiHints, state: node.state }; ResSchema.parse(payload); setSession(sessionId, { dto: result.dto }); res.setHeader('x-session-id', sessionId); return json(res, payload); }
+            { const payload: ChatReply = { reply, action, uiHints: node.uiHints, state: node.state }; ResSchema.parse(payload); await sessionAgent.set(sessionId, { dto: result.dto }); res.setHeader('x-session-id', sessionId); return json(res, payload); }
         }
         if (action.action === 'confirm') {
             const reply = `Order total ₪${action.data.total}, ETA ${action.data.etaMinutes}m. Confirm?`;
-            { const payload: ChatReply = { reply, action, uiHints: node.uiHints, state: node.state }; ResSchema.parse(payload); setSession(sessionId, { dto: result.dto }); res.setHeader('x-session-id', sessionId); return json(res, payload); }
+            { const payload: ChatReply = { reply, action, uiHints: node.uiHints, state: node.state }; ResSchema.parse(payload); await sessionAgent.set(sessionId, { dto: result.dto }); res.setHeader('x-session-id', sessionId); return json(res, payload); }
         }
         { const payload: ChatReply = { reply: MESSAGES.clarify, uiHints: node.uiHints, state: node.state }; ResSchema.parse(payload); return json(res, payload); }
     } catch (e: any) {
