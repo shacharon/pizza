@@ -9,7 +9,7 @@ export type PipelineRefuse = { kind: "refuse" };
 export type PipelineGreeting = { kind: "greeting" };
 export type PipelineResult = PipelineOk | PipelineClarify | PipelineRefuse | PipelineGreeting;
 
-const INTENT_CONFIDENCE_MIN = 0.65;
+const INTENT_CONFIDENCE_MIN = 0.55;
 const CITY_SYNONYMS: Record<string, string> = {
     "ta": "tel aviv",
     "tlv": "tel aviv",
@@ -44,6 +44,15 @@ function mapTypeSynonym(t?: unknown): FoodQueryDTO["type"] | undefined {
     if (/(sushi|סושי)/.test(s)) return "sushi";
     if (/(burger|המבורגר)/.test(s)) return "burger";
     return "other";
+}
+
+function toLegacy(dto: FoodQueryDTO): any {
+    const out: any = { ...dto } as any;
+    const c: any = (dto as any).constraints || {};
+    if (c.maxPrice !== undefined) out.maxPrice = c.maxPrice;
+    if (Array.isArray(c.dietary)) out.dietary = c.dietary;
+    if (c.deliveryEtaMinutes !== undefined) out.deliveryEtaMinutes = c.deliveryEtaMinutes;
+    return out;
 }
 
 function localRepair(rawJson: unknown, message: string): unknown {
@@ -152,7 +161,7 @@ export async function runChatPipeline(message: string): Promise<PipelineResult> 
         const repaired = localRepair({}, message);
         const probe = FoodQueryDTOZ.safeParse(repaired);
         if (probe.success) {
-            return { kind: "ok", intent, dto: probe.data };
+            return { kind: "ok", intent, dto: toLegacy(probe.data) };
         }
         return { kind: "clarify" };
     }
@@ -165,7 +174,7 @@ export async function runChatPipeline(message: string): Promise<PipelineResult> 
         if (!parsed.success) return { kind: "clarify" };
     }
 
-    return { kind: "ok", intent, dto: parsed.data };
+    return { kind: "ok", intent, dto: toLegacy(parsed.data) };
 }
 
 

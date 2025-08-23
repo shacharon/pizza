@@ -113,8 +113,6 @@ export async function getRestaurants(q: RestaurantQuery): Promise<{ restaurants:
     }
 }
 export function isValidRestaurantsOutput(raw: string, q: RestaurantQuery, restaurants: RestaurantResult[]): boolean {
-    // Reject if LLM returned code blocks or markdown instead of JSON
-    if (/```[\s\S]*?```/.test(raw)) return false;
     // Bound sizes
     if (restaurants.length > 100) return false;
     for (const r of restaurants) {

@@ -103,7 +103,7 @@ export async function detectIntent(message: string, signal?: AbortSignal): Promi
         return { intent: "greeting", confidence: 0.95, source: "rules" };
     }
     if (hasAny(m, FOOD_TYPES) || hasAny(m, HUNGER_SYNS) || hasAny(m, FOOD_CONTEXT_SYNS)) {
-        return { intent: "find_food", confidence: 0.70, source: "rules" };
+        return { intent: "find_food", confidence: 0.62, source: "rules" };
     }
     if (hasAny(m, ["order", "להזמין"]) && (hasAny(m, FOOD_TYPES) || hasAny(m, ["this", "number"]))) {
         return { intent: "order_food", confidence: 0.70, source: "rules" };
