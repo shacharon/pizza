@@ -1,14 +1,14 @@
 import { Component, signal, ChangeDetectionStrategy, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ChatService } from '../chat.service';
-import { ResultsTableComponent } from '../basicChat/results-table/results-table.component';
-import { RefineChipsComponent, type ChipVM } from '../basicChat/refine-chips/refine-chips.component';
-import { SummaryCardComponent } from '../basicChat/summary-card/summary-card.component';
-import { ChatComposerComponent } from '../basicChat/composer/chat-composer.component';
-import { GuardNoteComponent } from '../basicChat/guard-note/guard-note.component';
-import { ChatLogComponent } from '../basicChat/chat-log/chat-log.component';
-import { PrefsService } from '../shared/services/prefs.service';
+import { ChatService } from '../../chat.service';
+import { PrefsService } from '../../shared/services/prefs.service';
+import { ResultsTableComponent } from '../../shared/components/results-table/results-table.component';
+import { RefineChipsComponent } from '../../basicChat/refine-chips/refine-chips.component';
+import { SummaryCardComponent } from '../../basicChat/summary-card/summary-card.component';
+import { ChatComposerComponent } from '../../basicChat/composer/chat-composer.component';
+import { GuardNoteComponent } from '../../basicChat/guard-note/guard-note.component';
+import { ChatLogComponent } from '../../basicChat/chat-log/chat-log.component';
 import { debounceTime, Subject } from 'rxjs';
 
 @Component({
@@ -16,7 +16,7 @@ import { debounceTime, Subject } from 'rxjs';
     standalone: true,
     imports: [CommonModule, FormsModule, ResultsTableComponent, RefineChipsComponent, SummaryCardComponent, ChatComposerComponent, GuardNoteComponent, ChatLogComponent],
     templateUrl: './chat-page.component.html',
-    styleUrl: './chat-page.component.scss',
+    styleUrls: ['./chat-page.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class ChatPageComponent {
@@ -205,6 +205,11 @@ export class ChatPageComponent {
         const arr = [...this.chips()];
         arr[idx] = { ...arr[idx], active: !arr[idx].active };
         this.chips.set(arr);
+        this.chipToggle$.next();
+    }
+
+    clearAllChips() {
+        this.chips.set(this.chips().map(c => ({ ...c, active: false })));
         this.chipToggle$.next();
     }
 

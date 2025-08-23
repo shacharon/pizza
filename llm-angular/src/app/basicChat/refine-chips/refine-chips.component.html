@@ -1,6 +1,6 @@
 <div class="chips">
     <button type="button" *ngFor="let c of chips; let i = index" [class.active]="c.active" [disabled]="disabled"
-        (click)="toggle.emit(i)" aria-pressed="{{c.active}}">
+        (click)="toggle.emit(i)" [attr.aria-pressed]="c.active">
         {{ c.label }} <span *ngIf="c.active">×</span>
     </button>
     <button type="button" class="clear" (click)="clearAll.emit()" [disabled]="disabled">Clear</button>

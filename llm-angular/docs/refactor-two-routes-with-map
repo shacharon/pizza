@@ -1,0 +1,49 @@
+Excellent. This is a very clear and strategic direction. A "baby steps" approach is perfect for a refactor of this size. We will establish the new routing and folder structure first, ensuring everything still works, before adding any new features like the map.
+
+Here is my proposed plan, broken down into small, safe steps.
+
+### The Plan: Establish a Scalable Routing and Folder Structure
+
+**Goal:** Restructure the application to support two distinct top-level routes (`/chat` and `/explore`), with shared components correctly placed in a `shared` directory.
+
+**Phase 1: Create the New `basic-chat` and `explore` Feature Modules**
+
+This phase is all about creating the new folder structure and routes, without changing any component logic yet.
+
+1.  **Create New Directories:**
+    *   `llm-angular/src/app/features/basic-chat`
+    *   `llm-angular/src/app/features/explore`
+    *   `llm-angular/src/app/shared/components` (for future shared UI)
+
+2.  **Establish New Routing:**
+    *   I will modify `app.config.ts` to set up the main application routes.
+    *   The default route `/` will redirect to `/chat`.
+    *   The `/chat` path will load our existing `ChatPageComponent`.
+    *   The `/explore` path will load a new, placeholder `ExplorePageComponent` which we will create.
+
+3.  **Move Existing Components:**
+    *   I will move the `ChatPageComponent` and all its recently created child components (`results-table`, `summary-card`, etc.) into the new `features/basic-chat` folder. I will carefully update all the import paths to reflect this move.
+
+**Pause Point 1:** At the end of this phase, the application will look and behave *exactly* as it does now. The only difference will be the URL (`/chat`) and the new, organized folder structure. I will stop here for your review.
+
+---
+
+**Phase 2: Identify and Move the First Shared Component**
+
+This phase is about proving our shared component architecture works.
+
+1.  **Identify a Candidate:** The `ResultsTableComponent` is a perfect candidate. The "explore" page will need a very similar list of vendors, even if the layout becomes card-based later.
+2.  **Move to Shared:** I will move `results-table` from `features/basic-chat` into `shared/components`.
+3.  **Update Imports:** I will update the `ChatPageComponent` to import `ResultsTableComponent` from its new shared location.
+
+**Pause Point 2:** Again, the application will look and behave identically. We will have proven that both feature modules can successfully use a component from the shared directory. This is a crucial step for avoiding code duplication.
+
+---
+
+### Questions to Confirm Before I Start
+
+1.  For the new feature folders, do the names `basic-chat` and `explore` sound good to you?
+2.  For shared UI components, does the directory `shared/components` make sense? (We already have `shared/models`, `shared/pipes`, etc., so this feels consistent).
+3.  Are you comfortable with me starting Phase 1 (creating the folders/routes and moving the existing chat components) right now?
+
+I will wait for your confirmation before I begin making these structural changes.

@@ -15,8 +15,8 @@
     <app-guard-note
         [message]="guard() ? (guard()==='off_domain' ? 'Food-only: please specify city, cuisine, and budget.' : 'Policy active: focused on food ordering.') : null"></app-guard-note>
     <app-summary-card [top]="top3()" [pending]="pending()"></app-summary-card>
-    <app-refine-chips [chips]="(chips() as any)" [disabled]="pending()" (toggle)="toggleChip($event)"
-        (clearAll)="chips.set(chips().map(c=>({...c,active:false})))"></app-refine-chips>
+    <app-refine-chips [chips]="chips()" [disabled]="pending()" (toggle)="toggleChip($event)"
+        (clearAll)="clearAllChips()"></app-refine-chips>
     <div *ngIf="error()" class="err">{{ error() }}</div>
 
     <div *ngIf="hints() as hs" class="hints">
