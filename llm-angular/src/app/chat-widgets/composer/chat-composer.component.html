@@ -1,5 +1,6 @@
 <div class="row">
-    <input [(ngModel)]="text" [placeholder]="placeholder" [disabled]="pending" (keyup.enter)="onSend()" />
+    <input [(ngModel)]="input" (ngModelChange)="inputChange.emit($event)" [placeholder]="placeholder"
+        [disabled]="pending" (keyup.enter)="onSend()" />
     <button (click)="onSend()" [disabled]="pending">{{ pending ? 'Sending…' : 'Send' }}</button>
     <div class="settings">
         <label>Language:

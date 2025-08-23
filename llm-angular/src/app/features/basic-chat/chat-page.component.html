@@ -1,46 +1,36 @@
 <div class="wrap">
     <div class="header-row">
         <h1>Chat</h1>
-        <div class="query-inline" *ngIf="query() as q">
-            <span>City: <b>{{ display(q.city) }}</b></span>
-            <span>Type: <b>{{ display(q.type) }}</b></span>
-            <span>Max Price: <b>{{ display(q.maxPrice) }}</b></span>
-            <span>Dietary: <b>{{ display(q.dietary) }}</b></span>
-            <span>ETA: <b>{{ display(q.deliveryEtaMinutes) }}</b></span>
+        <div class="query-inline" *ngIf="facade.query() as q">
+            <span>City: <b>{{ facade.display(q.city) }}</b></span>
+            <span>Type: <b>{{ facade.display(q.type) }}</b></span>
+            <span>Max Price: <b>{{ facade.display(q.maxPrice) }}</b></span>
+            <span>Dietary: <b>{{ facade.display(q.dietary) }}</b></span>
+            <span>ETA: <b>{{ facade.display(q.deliveryEtaMinutes) }}</b></span>
         </div>
     </div>
-    <app-chat-log [log]="log()"></app-chat-log>
-    <app-chat-composer [pending]="pending()" [language]="language" (send)="input=$event; send()"
-        (languageChange)="language=$event"></app-chat-composer>
+    <app-chat-log [log]="facade.log()"></app-chat-log>
+    <app-chat-composer [(input)]="input" [pending]="facade.pending()" [language]="facade.language()" (send)="send()"
+        (languageChange)="facade.language.set($event)"></app-chat-composer>
     <app-guard-note
-        [message]="guard() ? (guard()==='off_domain' ? 'Food-only: please specify city, cuisine, and budget.' : 'Policy active: focused on food ordering.') : null"></app-guard-note>
-    <app-summary-card [top]="top3()" [pending]="pending()"></app-summary-card>
-    <app-refine-chips [chips]="chips()" [disabled]="pending()" (toggle)="toggleChip($event)"
+        [message]="facade.guard() ? (facade.guard()==='off_domain' ? 'Food-only: please specify city, cuisine, and budget.' : 'Policy active: focused on food ordering.') : null"></app-guard-note>
+    <app-summary-card [top]="top3" [pending]="facade.pending()"></app-summary-card>
+    <app-refine-chips [chips]="facade.chips()" [disabled]="facade.pending()" (toggle)="toggleChip($event)"
         (clearAll)="clearAllChips()"></app-refine-chips>
-    <div *ngIf="error()" class="err">{{ error() }}</div>
+    <div *ngIf="facade.error()" class="err">{{ facade.error() }}</div>
 
-    <div *ngIf="hints() as hs" class="hints">
+    <div *ngIf="facade.hints() as hs" class="hints">
         <button type="button" *ngFor="let h of hs" (click)="pick(h)">{{ h.label }}</button>
     </div>
 
-    <div *ngIf="cards() as cs" class="cards">
-        <h3>Recommended</h3>
-        <div class="card-list">
-            <div class="card" *ngFor="let c of cs | slice:0:7">
-                <a [href]="c.url" target="_blank" rel="noopener noreferrer">{{ c.title }}</a>
-                <div class="subtitle" *ngIf="c.subtitle">{{ c.subtitle }}</div>
-                <img *ngIf="c.imageUrl" [src]="c.imageUrl" alt="preview"
-                    style="max-width: 200px; display:block; margin-top:6px;" />
-            </div>
-        </div>
-    </div>
 
 
 
-    <div *ngIf="results() as r" class="results">
+
+    <div *ngIf="facade.results() as r" class="results">
         <h2>Results</h2>
         <div class="tables">
-            <app-results-table [vendors]="r.vendors" [pending]="pending()" [canLoadMore]="true"
+            <app-results-table [vendors]="r.vendors" [pending]="facade.pending()" [canLoadMore]="true"
                 (loadMore)="loadMore()" />
 
             <div class="items" *ngIf="false">

@@ -14,16 +14,15 @@ export class ChatComposerComponent {
     @Input() pending = false;
     @Input() language: 'mirror' | 'he' | 'en' = 'mirror';
     @Input() placeholder = 'שאל משהו…';
-    @Output() send = new EventEmitter<string>();
+    @Input() input = '';
+    @Output() inputChange = new EventEmitter<string>();
+    @Output() send = new EventEmitter<void>();
     @Output() languageChange = new EventEmitter<'mirror' | 'he' | 'en'>();
 
-    text = '';
-
     onSend() {
-        const msg = (this.text || '').trim();
+        const msg = (this.input || '').trim();
         if (!msg || this.pending) return;
-        this.send.emit(msg);
-        this.text = '';
+        this.send.emit();
     }
 }
 

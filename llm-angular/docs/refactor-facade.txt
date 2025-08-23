@@ -1,0 +1,22 @@
+You are right to point this out. The `ChatPageComponent` is becoming a "God Component" — it's managing state, handling API calls, dealing with user input, managing side effects like persistence, and also orchestrating multiple child components. This makes it hard to test and maintain.
+
+A local service that acts as a **Facade** for the `basic-chat` feature is an excellent design pattern to apply here.
+
+### My Thinking & Proposal: The Chat Facade
+
+A "Facade" is a class that provides a simple, clean interface to a more complex system. In our case, a `ChatFacade` service would handle all the complex logic, and the `ChatPageComponent` would become a simple "presentational" component that just displays data and forwards user events.
+
+**Here's how it would work:**
+
+1.  **Create `chat.facade.ts`**: A new service, living inside `features/basic-chat`.
+2.  **Move State & Logic**:
+    *   All the `signal`s (`log`, `pending`, `results`, `chips`, etc.) would move into the `ChatFacade`.
+    *   All the business logic methods (`send`, `pick`, `loadMore`, `applyActiveChips`) would also move into the `ChatFacade`.
+3.  **Centralize Dependencies**: The `ChatFacade` would be the only thing that injects the `ChatService` and `PrefsService`.
+4.  **Slim Down the Component**: The `ChatPageComponent` would inject *only* the `ChatFacade`. Its job would be to:
+    *   Read public signals from the facade for its template (e.g., `facade.results()`).
+    *   Call public methods on the facade in response to user events (e.g., `(send)="facade.send($event)"`).
+
+This separates the "what" (the view) from the "how" (the logic), which is a very robust and testable pattern.
+
+ 
