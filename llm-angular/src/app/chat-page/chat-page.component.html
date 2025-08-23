@@ -1,5 +1,14 @@
 <div class="wrap">
-    <h1>Chat</h1>
+    <div class="header-row">
+        <h1>Chat</h1>
+        <div class="query-inline" *ngIf="query() as q">
+            <span>City: <b>{{ display(q.city) }}</b></span>
+            <span>Type: <b>{{ display(q.type) }}</b></span>
+            <span>Max Price: <b>{{ display(q.maxPrice) }}</b></span>
+            <span>Dietary: <b>{{ display(q.dietary) }}</b></span>
+            <span>ETA: <b>{{ display(q.deliveryEtaMinutes) }}</b></span>
+        </div>
+    </div>
     <div class="box">
         <div *ngFor="let m of log()">
             <b>{{ m.role === 'user' ? 'You' : 'AI' }}:</b> {{ m.text }}
@@ -17,6 +26,30 @@
                 </select>
             </label>
         </div>
+        <span class="dot" *ngIf="pending()" title="Streaming…">•</span>
+    </div>
+    <div class="summary card" *ngIf="top3().length || pending()">
+        <h3>Top picks</h3>
+        <div class="chips">
+            <button type="button" *ngFor="let c of chips(); let i = index" [class.active]="c.active"
+                (click)="toggleChip(i)">{{ c.label }} <span *ngIf="c.active">×</span></button>
+        </div>
+        <ol class="list">
+            <li *ngFor="let v of top3(); trackBy: trackByVendor">
+                <span class="name" [title]="v.description || ''">{{ v.name }}</span>
+                <span class="price">{{ v.price !== undefined ? ('₪' + v.price) : '—' }}</span>
+                <span class="rating" *ngIf="v.rating">★ {{ v.rating }}</span>
+                <span class="eta">{{ v.distanceMinutes || 0 }} min</span>
+                <span class="ctas">
+                    <a class="btn btn-xs outline" [href]="'tel:'" target="_self">Call</a>
+                    <a class="btn btn-xs outline" [href]="vendorUrl(v)" target="_blank" rel="noopener">Website</a>
+                    <a class="btn btn-xs outline" [href]="mapsUrl(v)" target="_blank" rel="noopener">Maps</a>
+                </span>
+            </li>
+            <li *ngIf="pending() && top3().length === 0" class="skeleton"></li>
+            <li *ngIf="pending() && top3().length === 0" class="skeleton"></li>
+            <li *ngIf="pending() && top3().length === 0" class="skeleton"></li>
+        </ol>
     </div>
     <div *ngIf="error()" class="err">{{ error() }}</div>
 
@@ -36,53 +69,51 @@
         </div>
     </div>
 
-    <div *ngIf="query() as q" class="cards">
-        <h3>Query Details</h3>
-        <div class="card-list">
-            <div class="card">
-                <div><b>City:</b> <span [style.color]="isMissing(q.city) ? 'red' : 'inherit'">{{ display(q.city)
-                        }}</span></div>
-                <div><b>Type:</b> <span [style.color]="isMissing(q.type) ? 'red' : 'inherit'">{{ display(q.type)
-                        }}</span></div>
-                <div><b>Max Price:</b> <span [style.color]="isMissing(q.maxPrice) ? 'red' : 'inherit'">{{
-                        display(q.maxPrice) }}</span></div>
-                <div><b>Dietary:</b> <span [style.color]="isMissing(q.dietary) ? 'red' : 'inherit'">{{
-                        display(q.dietary) }}</span></div>
-                <div><b>ETA (min):</b> <span [style.color]="isMissing(q.deliveryEtaMinutes) ? 'red' : 'inherit'">{{
-                        display(q.deliveryEtaMinutes) }}</span></div>
-            </div>
-        </div>
-    </div>
+
 
     <div *ngIf="results() as r" class="results">
         <h2>Results</h2>
         <div class="tables">
-            <div class="vendors">
-                <h3>Vendors</h3>
+            <div class="vendors card">
+                <div class="card-header">
+                    <h3>Top picks</h3>
+                    <div class="segments">
+                        <button type="button" class="seg active">Top picks</button>
+                        <button type="button" class="seg">Budget</button>
+                        <button type="button" class="seg">Closest</button>
+                    </div>
+                </div>
                 <table>
                     <thead>
                         <tr>
                             <th>Name</th>
                             <th>Address</th>
-                            <th>Price</th>
+                            <th class="num">Price</th>
                             <th>Item</th>
                             <th>Rating</th>
-                            <th>ETA (min)</th>
+                            <th class="num">ETA (min)</th>
 
                         </tr>
                     </thead>
                     <tbody>
-                        <tr *ngFor="let v of r.vendors | slice:0:10">
+                        <tr *ngFor="let v of r.vendors | slice:0:10; trackBy: trackByVendor">
                             <td [title]="v.description || ''">{{ v.name }}</td>
                             <td>{{ v.address || '—' }}</td>
-                            <td>{{ v.price !== undefined ? ('₪' + v.price) : '—' }}</td>
+                            <td class="num">{{ v.price !== undefined ? ('₪' + v.price) : '—' }}</td>
                             <td>{{ v.itemName || '—' }}</td>
                             <td>{{ v.rating ?? '—' }}</td>
-                            <td>{{ v.distanceMinutes }}</td>
+                            <td class="num">{{ v.distanceMinutes }}</td>
 
+                        </tr>
+                        <tr *ngIf="pending()">
+                            <td colspan="6">Loading more…</td>
                         </tr>
                     </tbody>
                 </table>
+                <div class="more">
+                    <button (click)="loadMore()" [disabled]="pending()">{{ pending() ? 'Loading…' : 'Load more'
+                        }}</button>
+                </div>
             </div>
 
             <div class="items" *ngIf="false">

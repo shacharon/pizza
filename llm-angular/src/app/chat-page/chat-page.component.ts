@@ -1,4 +1,4 @@
-import { Component, signal } from '@angular/core';
+import { Component, signal, ChangeDetectionStrategy, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ChatService } from '../chat.service';
@@ -8,7 +8,8 @@ import { ChatService } from '../chat.service';
     standalone: true,
     imports: [CommonModule, FormsModule],
     templateUrl: './chat-page.component.html',
-    styleUrl: './chat-page.component.scss'
+    styleUrl: './chat-page.component.scss',
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class ChatPageComponent {
     input = '';
@@ -22,6 +23,15 @@ export class ChatPageComponent {
     hints = signal<{ label: string; patch: Record<string, unknown> }[] | null>(null);
     cards = signal<{ title: string; subtitle?: string; url: string; source?: string; imageUrl?: string }[] | null>(null);
     query = signal<any | null>(null);
+    chips = signal<{ label: string; active: boolean; patch: Record<string, unknown> }[]>([
+        { label: 'Vegan', active: false, patch: { dietary: ['vegan'] } },
+        { label: '≤ ₪60', active: false, patch: { maxPrice: 60 } },
+        { label: '≤ 30m ETA', active: false, patch: { deliveryEtaMinutes: 30 } },
+        { label: 'Near', active: false, patch: {} },
+        { label: 'Kosher', active: false, patch: { dietary: ['kosher'] } }
+    ]);
+
+    top3 = computed(() => (this.results()?.vendors || []).slice(0, 3));
     private controller: AbortController | null = null;
     constructor(private chat: ChatService) { }
 
@@ -162,6 +172,33 @@ export class ChatPageComponent {
             // eslint-disable-next-line no-console
             console.log('API action', action);
         } catch { }
+    }
+
+    toggleChip(idx: number) {
+        const arr = [...this.chips()];
+        arr[idx] = { ...arr[idx], active: !arr[idx].active };
+        this.chips.set(arr);
+        this.applyActiveChips();
+    }
+
+    private async applyActiveChips() {
+        if (this.pending()) return;
+        const active = this.chips().filter(c => c.active).map(c => c.patch);
+        const patch = active.reduce((acc, p) => ({ ...acc, ...p }), {} as Record<string, unknown>);
+        if (Object.keys(patch).length === 0) return; // nothing to do
+        await this.pick({ label: 'refine', patch });
+    }
+
+    trackByVendor = (_: number, v: any) => v.id || v.name || _;
+
+    vendorUrl(v: any): string {
+        const q = encodeURIComponent(`${v.name || ''} ${v.address || ''}`.trim());
+        return `https://www.google.com/search?q=${q}`;
+    }
+
+    mapsUrl(v: any): string {
+        const q = encodeURIComponent(`${v.name || ''} ${v.address || ''}`.trim());
+        return `https://www.google.com/maps/search/${q}`;
     }
 }
 
