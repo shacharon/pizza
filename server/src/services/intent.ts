@@ -99,14 +99,15 @@ export async function detectIntent(message: string, signal?: AbortSignal): Promi
     const m = message.trim().toLowerCase();
 
     // 1) Fast, forgiving rules (broad synonyms)
-    if (hasAny(m, ["hi", "hello", "hey", "שלום", "היי"])) {
-        return { intent: "greeting", confidence: 0.95, source: "rules" };
+    // Prefer food/order intents over greeting when both appear in the same message
+    if (hasAny(m, ["order", "להזמין"]) && (hasAny(m, FOOD_TYPES) || hasAny(m, ["this", "number"]))) {
+        return { intent: "order_food", confidence: 0.70, source: "rules" };
     }
     if (hasAny(m, FOOD_TYPES) || hasAny(m, HUNGER_SYNS) || hasAny(m, FOOD_CONTEXT_SYNS)) {
         return { intent: "find_food", confidence: 0.62, source: "rules" };
     }
-    if (hasAny(m, ["order", "להזמין"]) && (hasAny(m, FOOD_TYPES) || hasAny(m, ["this", "number"]))) {
-        return { intent: "order_food", confidence: 0.70, source: "rules" };
+    if (hasAny(m, ["hi", "hello", "hey", "שלום", "היי"])) {
+        return { intent: "greeting", confidence: 0.95, source: "rules" };
     }
 
     // 2) LLM fallback (compact, cheap)
@@ -117,23 +118,25 @@ export async function detectIntent(message: string, signal?: AbortSignal): Promi
         }
         return { intent: "not_food", confidence: 0.5, source: "fallback", rationale: "llm disabled" };
     }
-    const sys = `
-You classify user messages for a BUY-FOOD assistant.
-Return JSON only: {"intent":"find_food|order_food|greeting|not_food","confidence":0..1,"why":"..."}.
-Rules:
-- "find_food": user wants places/options to buy prepared food (delivery/takeout/dine-in).
-- "order_food": user wants to place an order or refers to a specific menu item/number to buy now.
-- "greeting": hello/thanks/small talk.
-- "not_food": recipes, cooking at home, groceries, finance, code, weather, etc.
-Ambiguous hunger like "I'm starving, any ideas?" => "find_food".
-Hebrew/English both. Output JSON ONLY.`;
+    function buildIntentSystemPrompt(): string {
+        return `You classify user messages for a BUY-FOOD assistant.\n` +
+            `Return JSON only: {"intent":"find_food|order_food|greeting|not_food","confidence":0..1,"why":"..."}.\n` +
+            `Rules:\n` +
+            `- "find_food": user wants places/options to buy prepared food (delivery/takeout/dine-in).\n` +
+            `- "order_food": user wants to place an order or refers to a specific menu item/number to buy now.\n` +
+            `- "greeting": hello/thanks/small talk.\n` +
+            `- "not_food": recipes, cooking at home, groceries, finance, code, weather, etc.\n` +
+            `Ambiguous hunger like "I'm starving, any ideas?" => "find_food".\n` +
+            `Hebrew/English both. Output JSON ONLY.`;
+    }
     const resp = await openai.responses.create({
         model: process.env.OPENAI_MODEL || "gpt-4o-mini",
         input: [
-            { role: "system", content: sys },
+            { role: "system", content: buildIntentSystemPrompt() },
             { role: "user", content: message }
         ],
         // keep text mode; small payload, fast
+        temperature: 0.1
     }, { signal });
 
     const raw = (resp.output_text || "{}").trim();

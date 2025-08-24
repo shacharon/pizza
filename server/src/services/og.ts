@@ -22,7 +22,11 @@ export async function fetchOpenGraph(url: string, timeoutMs: number = 2500): Pro
         const image = pick('og:image') || pick('twitter:image');
         const title = pick('og:title');
         const description = pick('og:description');
-        return { imageUrl: image, title, description };
+        const result: { imageUrl?: string; title?: string; description?: string } = {};
+        if (image) result.imageUrl = image;
+        if (title) result.title = title;
+        if (description) result.description = description;
+        return result;
     } catch {
         return {};
     }
