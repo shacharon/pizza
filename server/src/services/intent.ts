@@ -163,49 +163,7 @@ export async function detectIntent(message: string, signal?: AbortSignal): Promi
         return { intent: rule.intent, confidence: clamp01(rule.confidence), source: "rules", rationale: "strong rule match" };
     }
 
-    // 2) LLM (only if available) → request JSON and validate with Zod
-    if (openai) {
-        const resp = await openai.responses.create({
-            model: process.env.OPENAI_MODEL || "gpt-4o-mini",
-            input: [
-                { role: "system", content: `Classify BUY-FOOD messages. ${zodTextFormat(IntentSchema, "json")}` },
-                { role: "user", content: m }
-            ]
-        }, { signal });
-
-        const raw = (resp.output_text || "{}").trim();
-        let parsedUnknown: unknown;
-        try { parsedUnknown = JSON.parse(raw); } catch { parsedUnknown = null; }
-        const parsed = IntentSchema.safeParse(parsedUnknown);
-        if (!parsed.success) {
-            // fall back to rules/heuristic
-            if (smellsLikeFood) {
-                return { intent: "find_food", confidence: 0.60, source: "fallback", rationale: "schema parse failed" };
-            }
-            return { intent: "not_food", confidence: 0.50, source: "fallback", rationale: "schema parse failed" };
-        }
-
-        let intent: Intent = parsed.data.intent;
-        let confidence = parsed.data.confidence;
-        confidence = clamp01(confidence);
-
-        // 3) Soft safety: if LLM is unsure "not_food" but smells like food → nudge to find_food
-        if (intent === "not_food" && confidence < 0.60 && smellsLikeFood) {
-            return {
-                intent: "find_food",
-                confidence: 0.60,
-                source: "fallback",
-                rationale: "low-confidence not_food but hunger/nearby phrasing detected"
-            };
-        }
-
-        return {
-            intent,
-            confidence,
-            source: "llm",
-            ...(parsed.data.why ? { rationale: parsed.data.why } : {})
-        };
-    }
+    // (old direct OpenAI call removed in favor of LLM provider)
 
     // 3) No LLM available → graceful fallback
     if (smellsLikeFood) {

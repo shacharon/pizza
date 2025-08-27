@@ -1,6 +1,6 @@
 import { OPENAI_TIMEOUT_MS, RESTAURANT_CACHE_TTL_MS } from '../../controllers/constants.js';
 import { InMemoryCacheAgent } from '../../store/inMemoryCacheAgent.js';
-import { OpenAiProvider } from '../../llm/openai.provider.js';
+import { createLLMProvider } from '../../llm/factory.js';
 import { z } from 'zod';
 
 export type MenuItem = { name: string; price: number };
@@ -37,7 +37,7 @@ function languageInstruction(pref?: 'mirror' | 'he' | 'en', sample?: string): st
 
 // In-memory cache instance (can be swapped for Redis adapter later)
 const cache = new InMemoryCacheAgent();
-const llm = new OpenAiProvider();
+const llm = createLLMProvider();
 
 function buildPrompt(q: RestaurantQuery): { system: string; user: string } {
     const sys = `You return ONLY JSON. Shape: {"restaurants":[{"name":string,"address"?:string,"price"?:number,"description"?:string,"items"?:[{"name":string,"price":number}]}]}.\n- price numbers are in ILS (number only, no currency sign).\n- Include 1-2 sentence description in the requested language.\n- Up to 20 restaurants. If multiple items are relevant include them under items[].`;
@@ -63,6 +63,9 @@ export async function getRestaurants(q: RestaurantQuery): Promise<{ restaurants:
 
     const { system, user } = buildPrompt(q);
     try {
+        if (!llm) {
+            throw new Error('LLM provider not available');
+        }
         const schema = z.object({
             restaurants: z.array(z.object({
                 name: z.string(),

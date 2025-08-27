@@ -1,7 +1,7 @@
 import { FoodQueryDTOZ, type FoodQueryDTO as TFoodQueryDTO } from "@api";
 import { detectIntent, type Intent } from "../intent.js";
 import { foodOnlyPolicy, promptGuardPreFilter } from "./promptGuard.js";
-import { OpenAiProvider } from "../../llm/openai.provider.js";
+import { createLLMProvider } from "../../llm/factory.js";
 import { z } from "zod";
 
 export type FoodQueryDTO = TFoodQueryDTO;
@@ -89,8 +89,11 @@ Shape (omit unknown fields):
   "cards"?: { title: string, subtitle?: string, url: string }[]
 }` as const;
 
-const llm = new OpenAiProvider();
+const llm = createLLMProvider();
 async function callLlmForQuery(message: string): Promise<unknown> {
+    if (!llm) {
+        throw new Error('LLM provider not available');
+    }
     const schema = z.any(); // pipeline will repair+validate after
     const result = await llm.completeJSON([
         { role: "system", content: foodOnlyPolicy('mirror') },
