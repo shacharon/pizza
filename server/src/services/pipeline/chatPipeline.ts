@@ -95,11 +95,19 @@ async function callLlmForQuery(message: string): Promise<unknown> {
         throw new Error('LLM provider not available');
     }
     const schema = z.any(); // pipeline will repair+validate after
+    console.log('callLlmForQuery-llm-system', foodOnlyPolicy('mirror'));
+    console.log('callLlmForQuery-llm-system', FOOD_QUERY_SYS);
+    console.log('callLlmForQuery-llm-user', message);
+
     const result = await llm.completeJSON([
         { role: "system", content: foodOnlyPolicy('mirror') },
         { role: "system", content: FOOD_QUERY_SYS },
         { role: "user", content: message }
-    ], schema, { temperature: 0, timeout: 30_000 });
+    ], schema, {
+        ...(process.env.OPENAI_MODEL_EXTRACTION ? { model: process.env.OPENAI_MODEL_EXTRACTION } : {}),
+        temperature: 0,
+        timeout: 30_000
+    });
     return result;
 }
 

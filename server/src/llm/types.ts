@@ -10,6 +10,7 @@ export interface LLMProvider {
         messages: Message[],
         schema: T,
         opts?: {
+            model?: string;
             temperature?: number;
             timeout?: number;
         }

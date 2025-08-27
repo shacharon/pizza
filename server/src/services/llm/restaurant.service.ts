@@ -78,7 +78,11 @@ export async function getRestaurants(q: RestaurantQuery): Promise<{ restaurants:
         const result = await llm.completeJSON([
             { role: 'system', content: system },
             { role: 'user', content: user }
-        ], schema, { temperature: 0, timeout: OPENAI_TIMEOUT_MS });
+        ], schema, {
+            ...(process.env.OPENAI_MODEL_RESTAURANTS ? { model: process.env.OPENAI_MODEL_RESTAURANTS } : {}),
+            temperature: 0,
+            timeout: OPENAI_TIMEOUT_MS
+        });
         const raw = JSON.stringify(result);
         const list: any[] = Array.isArray((result as any)?.restaurants) ? (result as any).restaurants : [];
         // Map + filter by maxPrice deterministically

@@ -44,7 +44,7 @@ export class OpenAiProvider implements LLMProvider {
             const t = setTimeout(() => controller.abort(), timeoutMs);
             try {
                 const resp = await openai.responses.create({
-                    model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+                    model: (opts as any)?.model || process.env.OPENAI_MODEL || 'gpt-4o-mini',
                     input: toInput(messages),
                     temperature
                 }, { signal: controller.signal });

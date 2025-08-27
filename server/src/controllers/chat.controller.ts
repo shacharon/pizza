@@ -2,12 +2,15 @@ import type { Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
 import { MESSAGES } from './constants.js';
 import { getRestaurants } from '../services/llm/restaurant.service.js';
+import { createLLMProvider } from '../llm/factory.js';
 import { InMemorySessionAgent } from '../store/inMemorySessionAgent.js';
 import { ChatService, HandleMessageBody } from '../services/chat/chat.service.js';
 import { ChatReply, ReqSchema } from './schemas.js';
 
 const sessionAgent = new InMemorySessionAgent();
-const chatService = new ChatService(sessionAgent, getRestaurants);
+const llm = createLLMProvider();
+const restaurantsWithLlm = (args: Parameters<typeof getRestaurants>[0]) => getRestaurants(args);
+const chatService = new ChatService(sessionAgent, restaurantsWithLlm);
 
 function json(res: Response, payload: ChatReply, status: number = 200) {
     return res.status(status).json(payload);
