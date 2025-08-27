@@ -39,7 +39,7 @@ export class OpenAiProvider implements LLMProvider {
         let lastErr: any;
 
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
-            if (backoffs[attempt] > 0) await sleep(backoffs[attempt]);
+            if ((backoffs[attempt] ?? 0) > 0) await sleep(backoffs[attempt] ?? 0);
             const controller = new AbortController();
             const t = setTimeout(() => controller.abort(), timeoutMs);
             try {

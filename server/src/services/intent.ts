@@ -1,14 +1,9 @@
 import 'dotenv/config';
-import OpenAI from "openai";
 import { z } from "zod";
 import { zodTextFormat } from "openai/helpers/zod";
-let openai: OpenAI | null = null;
-{
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (apiKey) {
-        openai = new OpenAI({ apiKey });
-    }
-}
+import type { LLMProvider, Message } from "../llm/types.js";
+import { createLLMProvider } from "../llm/factory.js";
+const llm: LLMProvider | null = createLLMProvider();
 
 export type Intent = "find_food" | "order_food" | "greeting" | "not_food";
 const GREETINGS = ["hi", "hello", "hey", "שלום", "היי"];
@@ -111,15 +106,16 @@ export async function detectIntent(message: string, signal?: AbortSignal): Promi
     }
 
     // 2) LLM fallback (compact, cheap)
-    if (!openai) {
+    if (!llm) {
         const smellsLikeFoodEarly = hasAny(m, HUNGER_SYNS) || hasAny(m, FOOD_CONTEXT_SYNS);
         if (smellsLikeFoodEarly) {
             return { intent: "find_food", confidence: 0.66, source: "fallback", rationale: "llm disabled; hunger/context detected" };
         }
         return { intent: "not_food", confidence: 0.5, source: "fallback", rationale: "llm disabled" };
     }
-    function buildIntentSystemPrompt(): string {
-        return `You classify user messages for a BUY-FOOD assistant.\n` +
+    function messagesForIntent(m: string): Message[] {
+        const system =
+            `You classify user messages for a BUY-FOOD assistant.\n` +
             `Return JSON only: {"intent":"find_food|order_food|greeting|not_food","confidence":0..1,"why":"..."}.\n` +
             `Rules:\n` +
             `- "find_food": user wants places/options to buy prepared food (delivery/takeout/dine-in).\n` +
@@ -128,23 +124,15 @@ export async function detectIntent(message: string, signal?: AbortSignal): Promi
             `- "not_food": recipes, cooking at home, groceries, finance, code, weather, etc.\n` +
             `Ambiguous hunger like "I'm starving, any ideas?" => "find_food".\n` +
             `Hebrew/English both. Output JSON ONLY.`;
+        return [
+            { role: "system", content: system },
+            { role: "user", content: m }
+        ];
     }
-    const resp = await openai.responses.create({
-        model: process.env.OPENAI_MODEL || "gpt-4o-mini",
-        input: [
-            { role: "system", content: buildIntentSystemPrompt() },
-            { role: "user", content: message }
-        ],
-        // keep text mode; small payload, fast
-        temperature: 0.1
-    }, { signal });
+    const parsed = await llm.completeJSON(messagesForIntent(message), IntentSchema, { temperature: 0.1, timeout: 30_000 });
 
-    const raw = (resp.output_text || "{}").trim();
-    let parsed: { intent?: Intent; confidence?: number; why?: string } = {};
-    try { parsed = JSON.parse(raw); } catch { }
-
-    let intent = (parsed.intent as Intent) || "not_food";
-    let confidence = typeof parsed.confidence === "number" ? parsed.confidence : 0.5;
+    let intent = parsed.intent as Intent;
+    let confidence = parsed.confidence;
 
     // 3) Soft safety: if LLM says not_food with low confidence but message smells like food,
     // nudge to find_food instead of blocking.
