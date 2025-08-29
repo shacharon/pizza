@@ -27,6 +27,9 @@ function normalizeCity(raw?: string): string | undefined {
 function deriveCityFromText(text: string): string | undefined {
     const t = text.toLowerCase();
     if (/tel\s*aviv|tlv|תל\s*אביב/.test(t)) return "tel aviv";
+    if (/ashkelon|אשקלון/.test(t)) return "ashkelon";
+    if (/jerusalem|ירושלים/.test(t)) return "jerusalem";
+    if (/haifa|חיפה/.test(t)) return "haifa";
     return undefined;
 }
 
@@ -44,7 +47,7 @@ function mapTypeSynonym(t?: unknown): FoodQueryDTO["type"] | undefined {
     const s = t.toLowerCase().trim();
     if (/(pizza|piza|pitza|pitsa|פיצה)/.test(s)) return "pizza";
     if (/(sushi|סושי)/.test(s)) return "sushi";
-    if (/(burger|המבורגר)/.test(s)) return "burger";
+    if (/(burger|hamburger|המבורגר)/.test(s)) return "burger";
     return "other";
 }
 
@@ -108,6 +111,7 @@ async function callLlmForQuery(message: string): Promise<unknown> {
         temperature: 0,
         timeout: 30_000
     });
+    console.log('callLlmForQuery-llm-result', JSON.stringify(result, null, 2));
     return result;
 }
 
@@ -149,7 +153,9 @@ export async function runChatPipeline(message: string): Promise<PipelineResult> 
         if (!parsed.success) return { kind: "clarify" };
     }
 
-    return { kind: "ok", intent, dto: toLegacy(parsed.data) };
+    const finalDto = toLegacy(parsed.data);
+    console.log('runChatPipeline-final-dto', JSON.stringify(finalDto, null, 2));
+    return { kind: "ok", intent, dto: finalDto };
 }
 
 
