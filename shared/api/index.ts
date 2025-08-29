@@ -6,3 +6,4 @@ export * from "./order-response.dto.js";
 export * from "./chat-message.dto.js";
 export * from "./chat-action.dto.js";
 export * from "./card.dto.js";
+export * from "./restaurants.types.js";
