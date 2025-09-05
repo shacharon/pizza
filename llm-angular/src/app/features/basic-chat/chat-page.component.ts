@@ -42,7 +42,7 @@ export class ChatPageComponent {
     constructor() {
         // restore prefs
         const pref = this.prefs.load();
-        if (pref.language) this.facade.language.set(pref.language);
+        if (pref.language) this.facade.language.set(pref.language as 'mirror' | 'he' | 'en' | 'ar');
         if (Array.isArray(pref.chips)) {
             try { this.facade.chips.set(pref.chips as any); } catch { }
         }

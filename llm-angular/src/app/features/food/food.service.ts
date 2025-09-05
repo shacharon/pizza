@@ -56,6 +56,11 @@ export class FoodService {
     parseAndSearch(request: NLURequest) {
         return this.http.post<NLUResponse>('/api/nlu/parse', request);
     }
+
+    // LangChain conversation endpoint
+    chatConversation(body: { sessionId: string; text: string; language: 'he' | 'en' | 'ar' }) {
+        return this.http.post<{ reply: string }>('/api/chat/conversation', body);
+    }
 }
 
 

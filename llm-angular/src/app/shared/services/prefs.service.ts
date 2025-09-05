@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 
-export type LanguagePref = 'mirror' | 'he' | 'en';
+export type LanguagePref = 'mirror' | 'he' | 'en' | 'ar';
 
 @Injectable({ providedIn: 'root' })
 export class PrefsService {

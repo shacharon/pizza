@@ -7,7 +7,7 @@ import { debounceTime, Subject } from 'rxjs';
 export class ChatFacade {
 
     // State Signals
-    language = signal<'mirror' | 'he' | 'en'>('mirror');
+    language = signal<'mirror' | 'he' | 'en' | 'ar'>('mirror');
     log = signal<{ role: 'user' | 'assistant'; text: string }[]>([]);
     pending = signal(false);
     error = signal<string | null>(null);

@@ -37,7 +37,7 @@ export class FoodFacade {
         this.input.set('');
         this.pending.set(true);
 
-        // Call NLU endpoint
+        // Call NLU endpoint (stable path)
         this.api.parseAndSearch({ text: t, language: detected }).subscribe({
             next: (response: NLUResponse) => {
                 this.handleNLUResponse(response);
