@@ -1,5 +1,5 @@
 import { Injectable, signal, computed, inject } from '@angular/core';
-import { FoodService } from './food.service';
+import { FoodService, type NLUResponse } from './food.service';
 
 @Injectable()
 export class FoodFacade {
@@ -27,26 +27,61 @@ export class FoodFacade {
     send(text?: string) {
         const t = (text ?? this.input() ?? '').trim();
         if (!t || this.pending()) return;
+
+        // Add user message to log
         this.log.update(list => [...list, { role: 'user', text: t }]);
-        // auto-detect and set language
+
+        // Auto-detect and set language
         const detected = this.detectLanguage(t);
         this.language.set(detected);
         this.input.set('');
         this.pending.set(true);
-        const lang = this.language();
-        // No regex parsing; rely on future NLU or explicit inputs.
-        this.api.search({ language: lang }).subscribe({
-            next: (resp) => {
-                const names = Array.isArray(resp?.restaurants) ? resp.restaurants.map((r: any) => `• ${r.name} — ${r.address || ''}`).join('\n') : 'No results';
-                const msg = names || 'No results';
-                this.log.update(list => [...list, { role: 'assistant', text: msg }]);
+
+        // Call NLU endpoint
+        this.api.parseAndSearch({ text: t, language: detected }).subscribe({
+            next: (response: NLUResponse) => {
+                this.handleNLUResponse(response);
             },
             error: (err) => {
-                this.log.update(list => [...list, { role: 'assistant', text: 'Something went wrong. Please try again.' }]);
-                console.error('food search error', err);
+                this.log.update(list => [...list, {
+                    role: 'assistant',
+                    text: 'Sorry, I had trouble understanding your request. Could you try rephrasing?'
+                }]);
+                console.error('NLU error', err);
             },
             complete: () => this.pending.set(false)
         });
+    }
+
+    private handleNLUResponse(response: NLUResponse) {
+        if (response.type === 'results') {
+            // Display restaurant results
+            const restaurants = response.restaurants || [];
+            if (restaurants.length === 0) {
+                this.log.update(list => [...list, {
+                    role: 'assistant',
+                    text: `No restaurants found in ${response.query.city}. Try another area or type?`
+                }]);
+            } else {
+                const resultText = restaurants
+                    .map((r: any) => `• ${r.name} — ${r.address || ''}`)
+                    .join('\n');
+
+                const confidence = response.meta.nluConfidence;
+                const confidenceText = confidence > 0.8 ? '' : ' (let me know if this isn\'t what you meant)';
+
+                this.log.update(list => [...list, {
+                    role: 'assistant',
+                    text: `Here are restaurants in ${response.query.city}:\n\n${resultText}${confidenceText}`
+                }]);
+            }
+        } else if (response.type === 'clarify') {
+            // Ask for clarification
+            this.log.update(list => [...list, {
+                role: 'assistant',
+                text: response.message
+            }]);
+        }
     }
 }
 
