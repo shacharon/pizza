@@ -5,6 +5,7 @@ import { ExplorePageComponent } from './features/explore/explore-page/explore-pa
 export const routes: Routes = [
     { path: '', pathMatch: 'full', redirectTo: 'chat' },
     { path: 'chat', component: ChatPageComponent },
+    { path: 'food', loadComponent: () => import('./features/food/food-page.component').then(m => m.FoodPageComponent) },
     { path: 'explore', component: ExplorePageComponent },
     { path: 'guardrails', loadComponent: () => import('./guardrails/guardrails.component').then(m => m.GuardrailsComponent) },
     { path: '**', redirectTo: 'chat' }

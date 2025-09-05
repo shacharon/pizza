@@ -12,12 +12,12 @@ import { FormsModule } from '@angular/forms';
 })
 export class ChatComposerComponent {
     @Input() pending = false;
-    @Input() language: 'mirror' | 'he' | 'en' = 'mirror';
+    @Input() language: 'mirror' | 'he' | 'en' | 'ar' = 'mirror';
     @Input() placeholder = 'שאל משהו…';
     @Input() input = '';
     @Output() inputChange = new EventEmitter<string>();
     @Output() send = new EventEmitter<void>();
-    @Output() languageChange = new EventEmitter<'mirror' | 'he' | 'en'>();
+    @Output() languageChange = new EventEmitter<'mirror' | 'he' | 'en' | 'ar'>();
 
     onSend() {
         const msg = (this.input || '').trim();
