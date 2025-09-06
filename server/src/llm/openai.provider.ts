@@ -80,4 +80,29 @@ export class OpenAiProvider implements LLMProvider {
         }
         throw lastErr ?? new Error('LLM failed');
     }
+
+    async complete(
+        messages: Message[],
+        opts?: { temperature?: number; timeout?: number; model?: string; }
+    ): Promise<string> {
+        const temperature = opts?.temperature ?? 0;
+        const timeoutMs = opts?.timeout ?? 10_000;
+
+        const controller = new AbortController();
+        const t = setTimeout(() => controller.abort(), timeoutMs);
+
+        try {
+            const resp = await openai.responses.create({
+                model: opts?.model || process.env.OPENAI_MODEL || 'gpt-4o-mini',
+                input: toInput(messages),
+                temperature
+            }, { signal: controller.signal });
+            clearTimeout(t);
+            return resp.output_text || '';
+        } catch (e: any) {
+            clearTimeout(t);
+            console.error('[llm] simple complete failed', e?.status ?? e?.code ?? e?.name);
+            throw e;
+        }
+    }
 }

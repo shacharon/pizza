@@ -4,14 +4,15 @@ import { createLLMProvider } from '../llm/factory.js';
 // Slot extraction schema - city is the anchor, everything else is optional
 const SlotsSchema = z.object({
     city: z.string().nullable(),
-    type: z.enum(['pizza', 'sushi', 'burger', 'other']).nullable(),
+    type: z.string().nullable(), // Allow any food type as a string
     maxPrice: z.number().positive().nullable(),
     dietary: z.array(z.enum(['kosher', 'halal', 'vegan', 'vegetarian', 'gluten_free'])).default([]),
     spicy: z.boolean().nullable(),
     quantity: z.number().int().positive().nullable()
 });
 
-export type ExtractedSlots = z.infer<typeof SlotsSchema>;
+// Add a flag to indicate if the type is a valid food
+export type ExtractedSlots = z.infer<typeof SlotsSchema> & { isFood?: boolean };
 
 export interface NLURequest {
     text: string;
@@ -36,7 +37,7 @@ export class NLUService {
 Return ONLY valid JSON matching this schema:
 {
   "city": string | null,
-  "type": "pizza" | "sushi" | "burger" | "other" | null,
+  "type": string | null,
   "maxPrice": number | null,
   "dietary": string[],
   "spicy": boolean | null,
@@ -45,8 +46,8 @@ Return ONLY valid JSON matching this schema:
 
 Rules:
 - CITY is the anchor - extract any location/place name accurately
-- Handle Hebrew/Arabic transliteration (תל אביב → Tel Aviv, القدس → Jerusalem)
-- Map food types: Italian→pizza, Japanese→sushi, American→burger, etc.
+- Handle Hebrew/Arabic transliteration (תל אביב → Tel Aviv, القدס → Jerusalem)
+- 'type' should be a specific food, dish, or cuisine (e.g., "shawarma", "italian", "seafood").
 - Extract price from "under X", "below X", "max X", "up to X" patterns
 - Dietary: kosher, halal, vegan, vegetarian, gluten_free
 - Spicy: true if mentioned (חריף, spicy, hot)
@@ -72,11 +73,15 @@ Extract the food search parameters as JSON.`;
                 throw new Error('LLM returned undefined result');
             }
 
+            // Verify if the extracted type is a food
+            const slotsWithFoodCheck: ExtractedSlots = result;
+            slotsWithFoodCheck.isFood = await this.isFoodType(result.type);
+
             // Calculate confidence based on extracted information
-            const confidence = this.calculateConfidence(result, text);
+            const confidence = this.calculateConfidence(slotsWithFoodCheck, text);
 
             return {
-                slots: result,
+                slots: slotsWithFoodCheck,
                 confidence,
                 originalText: text,
                 language
@@ -94,6 +99,24 @@ Extract the food search parameters as JSON.`;
                 originalText: text,
                 language
             };
+        }
+    }
+
+    private async isFoodType(type: string | null): Promise<boolean> {
+        if (!type) return true; // No type provided, so no need to check
+
+        // Simple heuristic check for common non-food items to save an LLM call
+        if (/\b(table|car|house|chair)\b/i.test(type)) return false;
+
+        try {
+            const result = await this.llm?.complete([
+                { role: 'system', content: `Is "${type}" a type of food, dish, or cuisine? Answer with a single word: 'yes' or 'no'.` }
+            ], { temperature: 0, timeout: 5_000 });
+
+            return result?.toLowerCase().trim() === 'yes';
+        } catch (error) {
+            console.warn('[NLU] Food type verification LLM call failed', error);
+            return true; // Fail open - assume it's food if the check fails
         }
     }
 
@@ -152,10 +175,10 @@ Extract the food search parameters as JSON.`;
 
         // Simple type extraction
         let type: ExtractedSlots['type'] = null;
-        if (lowerText.includes('pizza') || lowerText.includes('פיצה') || lowerText.includes('piza') || lowerText.includes('pitza')) type = 'pizza';
+        if (lowerText.includes('pizza') || lowerText.includes('פיצה')) type = 'pizza';
         else if (lowerText.includes('sushi') || lowerText.includes('סושי')) type = 'sushi';
         else if (lowerText.includes('burger') || lowerText.includes('המבורגר')) type = 'burger';
-        else if (lowerText.includes('food') || lowerText.includes('אוכל')) type = 'other';
+        else if (lowerText.includes('shawarma') || lowerText.includes('שווארמה')) type = 'shawarma';
 
         // Simple price extraction
         let maxPrice: number | null = null;

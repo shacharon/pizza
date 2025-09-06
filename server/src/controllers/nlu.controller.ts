@@ -4,6 +4,7 @@ import { nluService } from '../services/nlu.service.js';
 import { nluPolicy } from '../services/nlu.policy.js';
 import { getRestaurantsProvider } from '../services/restaurants.provider.js';
 import { phraseResults } from '../services/phraser.service.js';
+import { nluSessionService } from '../services/nlu-session.service.js';
 
 // Request validation schema
 const NLURequestSchema = z.object({
@@ -16,7 +17,7 @@ export interface NLUResultsResponse {
     type: 'results';
     query: {
         city: string;
-        type?: 'pizza' | 'sushi' | 'burger' | 'other';
+        type?: string;
         constraints?: { maxPrice?: number };
         language: string;
     };
@@ -53,14 +54,27 @@ export async function nluParseHandler(req: Request, res: Response) {
 
         const { text, language } = parsed.data;
 
+        // Generate session ID from request headers or create one
+        const sessionId = req.headers['x-session-id'] as string || `session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
         // Step 1: Extract slots using NLU
         const nluResult = await nluService.extractSlots({ text, language });
-        const { slots, confidence } = nluResult;
+        let { slots, confidence } = nluResult;
 
-        // Step 2: Apply policy to determine intent/action
-        const policy = nluPolicy.decide(slots, language, confidence);
+        // Step 2: Get session context *before* updating it
+        const sessionContext = nluSessionService.getSessionContext(sessionId);
+        const previousSlots = sessionContext ? sessionContext.lastSlots : null;
 
-        // Step 3: Execute action
+        // Step 3: Merge with session context
+        slots = nluSessionService.mergeWithSession(sessionId, slots);
+
+        // Update session with merged slots
+        nluSessionService.updateSession(sessionId, slots, text);
+
+        // Step 3: Apply policy to determine intent/action
+        const policy = nluPolicy.decideContextual(slots, text, language);
+
+        // Step 4: Execute action
         if (policy.action === 'ask_clarification') {
             const clarifyResponse: NLUClarifyResponse = {
                 type: 'clarify',
@@ -72,7 +86,18 @@ export async function nluParseHandler(req: Request, res: Response) {
             return res.json(clarifyResponse);
         }
 
-        // Step 4: Fetch results if we have anchor (city)
+        if (policy.action === 'clarify_not_food') {
+            const clarifyResponse: NLUClarifyResponse = {
+                type: 'clarify',
+                message: policy.message || 'That doesn\'t seem to be a food type.',
+                missing: [],
+                language,
+                extractedSlots: slots
+            };
+            return res.json(clarifyResponse);
+        }
+
+        // Step 5: Fetch results if we have anchor (city)
         if (policy.action === 'fetch_results' && slots.city) {
             const provider = getRestaurantsProvider();
 
@@ -95,16 +120,20 @@ export async function nluParseHandler(req: Request, res: Response) {
             let phrased: string | undefined;
             try {
                 const names = (searchResult.restaurants || []).map(r => r.name).filter(Boolean);
-                const typeForPhrase = slots.type as ('pizza' | 'sushi' | 'burger' | 'other') | undefined;
-                const maxForPhrase = (typeof slots.maxPrice === 'number' ? slots.maxPrice : undefined);
+
+                // TODO: Fix this type casting. There is a subtle issue with exactOptionalPropertyTypes.
                 phrased = await phraseResults({
                     language,
-                    city: slots.city,
-                    type: typeForPhrase,
-                    maxPrice: maxForPhrase,
-                    names
-                });
-            } catch { /* ignore phrasing errors */ }
+                    currentSlots: slots,
+                    previousSlots: previousSlots,
+                    topResultName: names[0],
+                    names,
+                    sessionId: req.ip || 'default'
+                } as any);
+            } catch (e) {
+                console.error('Error phrasing results:', e);
+                /* ignore phrasing errors */
+            }
 
             // Return unified results response
             const resultsResponse: NLUResultsResponse & { message?: string } = {

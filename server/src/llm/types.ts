@@ -15,4 +15,13 @@ export interface LLMProvider {
             timeout?: number;
         }
     ): Promise<z.infer<T>>;
+
+    complete(
+        messages: Message[],
+        opts?: {
+            model?: string;
+            temperature?: number;
+            timeout?: number;
+        }
+    ): Promise<string>;
 }

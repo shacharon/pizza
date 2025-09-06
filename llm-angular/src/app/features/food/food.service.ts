@@ -46,6 +46,7 @@ export type NLUResponse = NLUResultsResponse | NLUClarifyResponse;
 @Injectable({ providedIn: 'root' })
 export class FoodService {
     private http = inject(HttpClient);
+    private sessionId = this.generateSessionId();
 
     // Direct search (legacy)
     search(body: FoodSearchBody) {
@@ -54,12 +55,23 @@ export class FoodService {
 
     // NLU-powered parse and search
     parseAndSearch(request: NLURequest) {
-        return this.http.post<NLUResponse>('/api/nlu/parse', request);
+        return this.http.post<NLUResponse>('/api/nlu/parse', request, {
+            headers: { 'x-session-id': this.sessionId }
+        });
     }
 
     // LangChain conversation endpoint
     chatConversation(body: { sessionId: string; text: string; language: 'he' | 'en' | 'ar' }) {
         return this.http.post<{ reply: string }>('/api/chat/conversation', body);
+    }
+
+    private generateSessionId(): string {
+        const stored = localStorage.getItem('food-session-id');
+        if (stored) return stored;
+
+        const newId = `food-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        localStorage.setItem('food-session-id', newId);
+        return newId;
     }
 }
 

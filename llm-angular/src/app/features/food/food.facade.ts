@@ -1,9 +1,11 @@
 import { Injectable, signal, computed, inject } from '@angular/core';
 import { FoodService, type NLUResponse } from './food.service';
+import { SmartChipsService, SmartChip } from './smart-chips.service';
 
 @Injectable()
 export class FoodFacade {
     private api = inject(FoodService);
+    private chipsService = inject(SmartChipsService);
 
     log = signal<{ role: 'user' | 'assistant'; text: string }[]>([]);
     input = signal<string>('');
@@ -11,6 +13,7 @@ export class FoodFacade {
     language = signal<'mirror' | 'he' | 'en' | 'ar'>('mirror'); // auto-detects from input
     restaurants = signal<any[]>([]);
     summary = signal<string | null>(null);
+    chips = signal<SmartChip[]>([]);
 
     private detectLanguage(text: string): 'he' | 'en' | 'ar' {
         // Simple heuristic: check first char script; default EN
@@ -61,6 +64,16 @@ export class FoodFacade {
             const restaurants = response.restaurants || [];
             this.restaurants.set(restaurants);
             this.summary.set((response as any).message || null);
+
+            // Generate smart chips from results
+            const chips = this.chipsService.generateChips({
+                nluSlots: (response as any).extractedSlots,
+                results: response.restaurants,
+                lastQuery: response.query,
+                language: response.query.language as 'he' | 'en' | 'ar'
+            });
+            this.chips.set(chips);
+
             if (restaurants.length === 0) {
                 this.log.update(list => [...list, {
                     role: 'assistant',
@@ -78,6 +91,23 @@ export class FoodFacade {
                 text: response.message
             }]);
         }
+    }
+
+    onChipClick(chip: SmartChip) {
+        // When a chip is clicked, send its label as a new user query
+        this.send(chip.label);
+
+        // Update chip state to 'active'
+        const updatedChips = this.chipsService.activateChip(chip.id, this.chips());
+        this.chips.set(updatedChips);
+    }
+
+    onChipDismiss(chipId: string) {
+        // Dismiss the chip and update preferences
+        this.chipsService.dismissChip(chipId);
+
+        // Visually remove the chip from the current list
+        this.chips.update(chips => chips.filter(c => c.id !== chipId));
     }
 }
 
