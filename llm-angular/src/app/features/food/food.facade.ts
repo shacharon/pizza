@@ -9,6 +9,8 @@ export class FoodFacade {
     input = signal<string>('');
     pending = signal<boolean>(false);
     language = signal<'mirror' | 'he' | 'en' | 'ar'>('mirror'); // auto-detects from input
+    restaurants = signal<any[]>([]);
+    summary = signal<string | null>(null);
 
     private detectLanguage(text: string): 'he' | 'en' | 'ar' {
         // Simple heuristic: check first char script; default EN
@@ -57,23 +59,17 @@ export class FoodFacade {
         if (response.type === 'results') {
             // Display restaurant results
             const restaurants = response.restaurants || [];
+            this.restaurants.set(restaurants);
+            this.summary.set((response as any).message || null);
             if (restaurants.length === 0) {
                 this.log.update(list => [...list, {
                     role: 'assistant',
                     text: `No restaurants found in ${response.query.city}. Try another area or type?`
                 }]);
             } else {
-                const resultText = restaurants
-                    .map((r: any) => `• ${r.name} — ${r.address || ''}`)
-                    .join('\n');
-
-                const confidence = response.meta.nluConfidence;
-                const confidenceText = confidence > 0.8 ? '' : ' (let me know if this isn\'t what you meant)';
-
-                this.log.update(list => [...list, {
-                    role: 'assistant',
-                    text: `Here are restaurants in ${response.query.city}:\n\n${resultText}${confidenceText}`
-                }]);
+                const summary = (response as any).message
+                    || `Here are places I found in ${response.query.city}. You can refine by type, price, or dietary.`;
+                this.log.update(list => [...list, { role: 'assistant', text: summary }]);
             }
         } else if (response.type === 'clarify') {
             // Ask for clarification

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { nluService } from '../services/nlu.service.js';
 import { nluPolicy } from '../services/nlu.policy.js';
 import { getRestaurantsProvider } from '../services/restaurants.provider.js';
+import { phraseResults } from '../services/phraser.service.js';
 
 // Request validation schema
 const NLURequestSchema = z.object({
@@ -90,8 +91,23 @@ export async function nluParseHandler(req: Request, res: Response) {
             // Call existing restaurant search
             const searchResult = await provider.search(searchQuery);
 
+            // Generate polite, concise phrased message
+            let phrased: string | undefined;
+            try {
+                const names = (searchResult.restaurants || []).map(r => r.name).filter(Boolean);
+                const typeForPhrase = slots.type as ('pizza' | 'sushi' | 'burger' | 'other') | undefined;
+                const maxForPhrase = (typeof slots.maxPrice === 'number' ? slots.maxPrice : undefined);
+                phrased = await phraseResults({
+                    language,
+                    city: slots.city,
+                    type: typeForPhrase,
+                    maxPrice: maxForPhrase,
+                    names
+                });
+            } catch { /* ignore phrasing errors */ }
+
             // Return unified results response
-            const resultsResponse: NLUResultsResponse = {
+            const resultsResponse: NLUResultsResponse & { message?: string } = {
                 type: 'results',
                 query: {
                     city: slots.city,
@@ -105,6 +121,8 @@ export async function nluParseHandler(req: Request, res: Response) {
                     nluConfidence: confidence
                 }
             };
+
+            if (phrased) (resultsResponse as any).message = phrased;
 
             return res.json(resultsResponse);
         }

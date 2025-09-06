@@ -1,0 +1,13 @@
+<section class="results-strip" *ngIf="items?.length">
+    <div class="summary" *ngIf="summary">{{ summary }}</div>
+    <div class="track">
+        <div class="card" *ngFor="let r of items">
+            <div class="title">{{ r.name }}</div>
+            <div class="meta">
+                <span class="addr" *ngIf="r.address">{{ r.address }}</span>
+                <span class="dot" *ngIf="r.address && r.rating != null">•</span>
+                <span class="rating" *ngIf="r.rating != null">★ {{ r.rating | number:'1.1-1' }}</span>
+            </div>
+        </div>
+    </div>
+</section>

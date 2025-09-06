@@ -143,9 +143,16 @@ Extract the food search parameters as JSON.`;
             }
         }
 
+        // Heuristic transliteration/typo corrections
+        if (!city) {
+            if (/tel\s?aviv|תלאביב|ת"א/.test(lowerText)) city = 'Tel Aviv';
+            if (/אשלקון|אשקלון|ashkelon/.test(lowerText)) city = city || 'Ashkelon';
+            if (/jerusalem|al\s?quds|القدس|ירושלימ/.test(lowerText)) city = city || 'Jerusalem';
+        }
+
         // Simple type extraction
         let type: ExtractedSlots['type'] = null;
-        if (lowerText.includes('pizza') || lowerText.includes('פיצה')) type = 'pizza';
+        if (lowerText.includes('pizza') || lowerText.includes('פיצה') || lowerText.includes('piza') || lowerText.includes('pitza')) type = 'pizza';
         else if (lowerText.includes('sushi') || lowerText.includes('סושי')) type = 'sushi';
         else if (lowerText.includes('burger') || lowerText.includes('המבורגר')) type = 'burger';
         else if (lowerText.includes('food') || lowerText.includes('אוכל')) type = 'other';

@@ -2,12 +2,13 @@ import { Component, ChangeDetectionStrategy, signal, inject } from '@angular/cor
 import { CommonModule } from '@angular/common';
 import { ChatLogComponent } from '../../chat-widgets/chat-log/chat-log.component';
 import { ChatComposerComponent } from '../../chat-widgets/composer/chat-composer.component';
+import { FoodResultsStripComponent } from './food-results-strip.component';
 import { FoodFacade } from './food.facade';
 
 @Component({
     selector: 'app-food-page',
     standalone: true,
-    imports: [CommonModule, ChatLogComponent, ChatComposerComponent],
+    imports: [CommonModule, ChatLogComponent, ChatComposerComponent, FoodResultsStripComponent],
     providers: [FoodFacade],
     templateUrl: './food-page.component.html',
     styleUrls: ['./food-page.component.scss'],

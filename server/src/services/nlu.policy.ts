@@ -56,12 +56,12 @@ export class NLUPolicy {
     private getCityPrompt(language: string): string {
         switch (language) {
             case 'he':
-                return 'באיזה עיר אתה רוצה לחפש?';
+                return 'באיזה עיר לחפש? למשל: תל אביב, ירושלים, חיפה. אפשר לכתוב כל עיר.';
             case 'ar':
-                return 'في أي مدينة تريد البحث؟';
+                return 'في أي مدينة أبحث؟ مثلاً: تل أبيب، القدس، حيفا. يمكنك كتابة أي مدينة.';
             case 'en':
             default:
-                return 'In which city should I search?';
+                return 'In which city should I search? For example: Tel Aviv, Jerusalem, Haifa. You can type any city.';
         }
     }
 
