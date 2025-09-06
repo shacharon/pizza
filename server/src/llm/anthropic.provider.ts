@@ -2,6 +2,13 @@ import { z } from "zod";
 import type { LLMProvider, Message } from "./types.js";
 
 export class AnthropicProvider implements LLMProvider {
+    async complete(
+        _messages: Message[],
+        _opts?: { model?: string; temperature?: number; timeout?: number; }
+    ): Promise<string> {
+        throw new Error("AnthropicProvider is a placeholder; implementation not provided yet");
+    }
+
     async completeJSON<T extends z.ZodTypeAny>(
         _messages: Message[],
         _schema: T,

@@ -2,6 +2,8 @@ import type { Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
 import { MESSAGES } from './constants.js';
 import { getRestaurants } from '../services/llm/restaurant.service.js';
+import config from '../config/index.js';
+import { ConversationOrchestrator } from '../services/conversation/orchestrator.service.js';
 import { createLLMProvider } from '../llm/factory.js';
 import { InMemorySessionAgent } from '../store/inMemorySessionAgent.js';
 import { ChatService, HandleMessageBody } from '../services/chat/chat.service.js';
@@ -26,6 +28,15 @@ export async function postChat(req: Request, res: Response) {
     const requestId = randomUUID();
 
     try {
+        // Route through new orchestrator when enabled for consistent UI payload
+        if (config.CONVERSATION_ENGINE && config.CONVERSATION_ENGINE !== 'legacy') {
+            const orchestrator = new ConversationOrchestrator();
+            const lang = (parsedBody.data.language === 'mirror' ? 'he' : (parsedBody.data.language || 'he')) as any;
+            const message = (parsedBody.data as any).message || '';
+            const reply = await orchestrator.chat(sessionId, message, lang);
+            return json(res, { reply });
+        }
+
         const result = await chatService.handleMessage(sessionId, requestId, parsedBody.data as HandleMessageBody);
         if (result.headers) {
             for (const [key, value] of Object.entries(result.headers)) {

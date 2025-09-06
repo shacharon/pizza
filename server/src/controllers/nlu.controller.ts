@@ -1,45 +1,15 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
-import { nluService } from '../services/nlu.service.js';
+import { NLUService } from '../services/nlu.service.js';
 import { nluPolicy } from '../services/nlu.policy.js';
 import { getRestaurantsProvider } from '../services/restaurants.provider.js';
-import { phraserService } from '../services/phraser.service.js';
-import { nluSessionService } from '../services/nlu-session.service.js';
+
 
 // Request validation schema
 const NLURequestSchema = z.object({
     text: z.string().min(1).max(500),
     language: z.enum(['he', 'en', 'ar']).default('he')
 });
-
-// Response types
-export interface NLUResultsResponse {
-    type: 'results';
-    query: {
-        city: string;
-        type?: string;
-        constraints?: { maxPrice?: number };
-        language: string;
-    };
-    restaurants: any[];
-    meta: {
-        source: string;
-        cached: boolean;
-        nextPageToken?: string | null;
-        enrichedTopN: number;
-        nluConfidence: number;
-    };
-}
-
-export interface NLUClarifyResponse {
-    type: 'clarify';
-    message: string;
-    missing: string[];
-    language: string;
-    extractedSlots: any;
-}
-
-export type NLUResponse = NLUResultsResponse | NLUClarifyResponse;
 
 export async function nluParseHandler(req: Request, res: Response) {
     try {
@@ -53,124 +23,62 @@ export async function nluParseHandler(req: Request, res: Response) {
         }
 
         const { text, language } = parsed.data;
-
-        // Generate session ID from request headers or create one
         const sessionId = req.headers['x-session-id'] as string || `session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-        // Step 1: Extract slots using NLU
-        const nluResult = await nluService.extractSlots({ text, language });
-        let { slots, confidence } = nluResult;
+        // Use NLU + Policy + Provider to return structured response for Food UI
+        const nlu = new NLUService();
+        const provider = getRestaurantsProvider();
 
-        // Step 2: Get session context *before* updating it
-        const sessionContext = nluSessionService.getSessionContext(sessionId);
-        const previousSlots = sessionContext ? sessionContext.lastSlots : null;
+        const nluRes = await nlu.extractSlots({ text, language });
+        const policy = nluPolicy.decideContextual(nluRes.slots, text, language);
 
-        // Step 3: Merge with session context
-        slots = nluSessionService.mergeWithSession(sessionId, slots);
-
-        // Update session with merged slots
-        nluSessionService.updateSession(sessionId, slots, text);
-
-        // Step 3: Apply policy to determine intent/action
-        const policy = nluPolicy.decideContextual(slots, text, language);
-
-        // Step 4: Execute action
-        if (policy.action === 'ask_clarification') {
-            const clarifyResponse: NLUClarifyResponse = {
+        // Return clarification if needed
+        if (policy.action === 'ask_clarification' || policy.action === 'clarify_not_food') {
+            return res.json({
                 type: 'clarify',
-                message: policy.message || 'Please provide more information.',
-                missing: policy.missingFields,
-                language,
-                extractedSlots: slots
-            };
-            return res.json(clarifyResponse);
-        }
-
-        if (policy.action === 'clarify_not_food') {
-            const clarifyResponse: NLUClarifyResponse = {
-                type: 'clarify',
-                message: policy.message || 'That doesn\'t seem to be a food type.',
-                missing: [],
-                language,
-                extractedSlots: slots
-            };
-            return res.json(clarifyResponse);
-        }
-
-        // Step 5: Fetch results if we have anchor (city)
-        if (policy.action === 'fetch_results' && slots.city) {
-            const provider = getRestaurantsProvider();
-
-            // Build search query from slots
-            const searchQuery: any = {
-                city: slots.city,
+                message: policy.message || 'Could you provide more details?',
+                missing: policy.missingFields || [],
                 language
-            };
+            });
+        }
 
-            // Add optional enhancements
-            if (slots.type) searchQuery.type = slots.type;
-            if (slots.maxPrice) {
-                searchQuery.constraints = { maxPrice: slots.maxPrice };
-            }
+        // Fetch and return results
+        if (policy.action === 'fetch_results' && nluRes.slots.city) {
+            const dto: any = { city: nluRes.slots.city };
+            if (nluRes.slots.type) dto.type = nluRes.slots.type;
+            if (typeof nluRes.slots.maxPrice === 'number') dto.constraints = { maxPrice: nluRes.slots.maxPrice };
+            dto.language = language as any;
 
-            // Call existing restaurant search
-            const searchResult = await provider.search(searchQuery);
-
-            // Generate polite, concise phrased message
-            let phrased: string | undefined;
-            try {
-                const names = (searchResult.restaurants || []).map(r => r.name).filter(Boolean);
-
-                // TODO: Fix this type casting. There is a subtle issue with exactOptionalPropertyTypes.
-                phrased = await phraserService.phraseResults({
-                    language,
-                    currentSlots: slots,
-                    previousSlots: previousSlots,
-                    topResultName: names[0],
-                    names,
-                    sessionId: req.ip || 'default'
-                } as any);
-            } catch (e) {
-                console.error('Error phrasing results:', e);
-                /* ignore phrasing errors */
-            }
-
-            // Return unified results response
-            const resultsResponse: NLUResultsResponse & { message?: string } = {
+            const result = await provider.search(dto);
+            return res.json({
                 type: 'results',
                 query: {
-                    city: slots.city,
-                    ...(slots.type ? { type: slots.type } : {}),
-                    ...(slots.maxPrice ? { constraints: { maxPrice: slots.maxPrice } } : {}),
+                    city: nluRes.slots.city,
+                    type: nluRes.slots.type || undefined,
+                    constraints: nluRes.slots.maxPrice ? { maxPrice: nluRes.slots.maxPrice } : undefined,
                     language
                 },
-                restaurants: searchResult.restaurants,
+                restaurants: result.restaurants || [],
                 meta: {
-                    ...searchResult.meta,
-                    nluConfidence: confidence
+                    source: result.meta?.source || 'google',
+                    cached: false,
+                    nextPageToken: result.meta?.nextPageToken || null,
+                    enrichedTopN: result.meta?.enrichedTopN || 0,
+                    nluConfidence: nluRes.confidence
                 }
-            };
-
-            if (phrased) (resultsResponse as any).message = phrased;
-
-            return res.json(resultsResponse);
+            });
         }
 
-        // Fallback (shouldn't reach here)
-        return res.status(500).json({ error: 'Unexpected policy result' });
+        // Fallback clarification
+        return res.json({
+            type: 'clarify',
+            message: 'I need more information to help you find restaurants.',
+            missing: ['city'],
+            language
+        });
 
     } catch (error: any) {
         console.error('[NLU] Parse handler error:', error);
-
-        // Graceful error response
-        const errorResponse: NLUClarifyResponse = {
-            type: 'clarify',
-            message: 'Sorry, I had trouble understanding your request. Could you try rephrasing?',
-            missing: ['city'],
-            language: (req.body?.language as string) || 'en',
-            extractedSlots: {}
-        };
-
-        return res.status(500).json(errorResponse);
+        return res.status(500).json({ type: 'clarify', message: 'Sorry, an unexpected error occurred.' });
     }
 }

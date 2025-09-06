@@ -7,8 +7,17 @@
 
 // === LLM Provider Settings ===
 
-/** The default LLM model to use for completions. */
+/** The default (high-quality) LLM model to use for complex tasks like slot extraction. */
 export const DEFAULT_LLM_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+
+/** A cheaper, faster LLM model for simple, high-frequency tasks like classification. */
+export const FAST_LLM_MODEL = process.env.FAST_OPENAI_MODEL || 'gpt-3.5-turbo';
+
+/** Specific model override for the NLU Classifier Agent (falls back to FAST_LLM_MODEL). */
+export const NLU_CLASSIFIER_MODEL = process.env.NLU_CLASSIFIER_MODEL || FAST_LLM_MODEL;
+
+/** Specific model override for the NLU Extractor Agent (falls back to DEFAULT_LLM_MODEL). */
+export const NLU_EXTRACTOR_MODEL = process.env.NLU_EXTRACTOR_MODEL || DEFAULT_LLM_MODEL;
 
 /** The maximum number of retries for a failed LLM call. */
 export const LLM_RETRY_ATTEMPTS = 3;
@@ -32,3 +41,33 @@ export const FALLBACK_HEBREW_CITIES = ['תל אביב', 'ירושלים', 'חי�
 
 /** A list of common English city names for the fallback NLU extractor. */
 export const FALLBACK_ENGLISH_CITIES = ['tel aviv', 'jerusalem', 'haifa', 'beer sheva', 'ashkelon', 'ashdod', 'ramat gan'];
+
+// === Conversation Mode ===
+
+/**
+ * When true, the chat pipeline bypasses the LangChain agent and runs
+ * a deterministic NLU + Policy flow to guarantee a response.
+ */
+export const CONVERSATION_SIMPLE_MODE = process.env.CONVERSATION_SIMPLE_MODE === 'true';
+
+/** Select conversation engine implementation: 'legacy' | 'simple' | 'langgraph' */
+export const CONVERSATION_ENGINE = (process.env.CONVERSATION_ENGINE || (CONVERSATION_SIMPLE_MODE ? 'simple' : 'legacy')) as 'legacy' | 'simple' | 'langgraph';
+
+// Default export for robust interop (ESM/CJS)
+const config = {
+    DEFAULT_LLM_MODEL,
+    FAST_LLM_MODEL,
+    NLU_CLASSIFIER_MODEL,
+    NLU_EXTRACTOR_MODEL,
+    LLM_RETRY_ATTEMPTS,
+    LLM_RETRY_BACKOFF_MS,
+    LLM_JSON_TIMEOUT_MS,
+    LLM_COMPLETION_TIMEOUT_MS,
+    LLM_FOOD_CHECK_TIMEOUT_MS,
+    FALLBACK_HEBREW_CITIES,
+    FALLBACK_ENGLISH_CITIES,
+    CONVERSATION_SIMPLE_MODE,
+    CONVERSATION_ENGINE,
+};
+
+export default config;

@@ -1,8 +1,9 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
-import { ConversationService } from '../services/conversation.service.js';
+import config from '../config/index.js';
+import { ConversationOrchestrator } from '../services/conversation/orchestrator.service.js';
 
-const conversationService = new ConversationService();
+const orchestrator = new ConversationOrchestrator();
 
 const BodyZ = z.object({
     sessionId: z.string().min(1),
@@ -18,7 +19,7 @@ export async function conversationHandler(req: Request, res: Response) {
         }
 
         const { sessionId, text, language } = parsed.data;
-        const reply = await conversationService.chat(sessionId, text, (language as any) ?? 'he');
+        const reply = await orchestrator.chat(sessionId, text, (language as any) ?? 'he');
         return res.json({ reply });
     } catch (e: any) {
         return res.status(500).json({ error: e?.message || 'Unexpected error' });
