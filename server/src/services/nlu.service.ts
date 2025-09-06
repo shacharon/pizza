@@ -98,7 +98,7 @@ Rules:
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt }
         ], SlotsSchema, {
-            temperature: 0,
+            temperature: 0.18,
             timeout: config.LLM_COMPLETION_TIMEOUT_MS
         });
         // Do not set isFood to undefined; simply return the extracted slots
@@ -116,7 +116,7 @@ Rules:
                 { role: 'system', content: `Is the user's request about food? Answer with a single word: FOOD, NOT_FOOD, or AMBIGUOUS.` },
                 { role: 'user', content: text }
             ], {
-                temperature: 0,
+                temperature: 0.18,
                 timeout: config.LLM_FOOD_CHECK_TIMEOUT_MS,
                 model: config.NLU_CLASSIFIER_MODEL
             });
@@ -148,7 +148,7 @@ Answer with a single word: NEW_QUERY or CORRECTION.`;
         try {
             const result = await this.llm?.complete(
                 [{ role: 'user', content: prompt }],
-                { model: config.NLU_CLASSIFIER_MODEL, temperature: 0, timeout: config.LLM_FOOD_CHECK_TIMEOUT_MS }
+                { model: config.NLU_CLASSIFIER_MODEL, temperature: 0.18, timeout: config.LLM_FOOD_CHECK_TIMEOUT_MS }
             );
             const intent = result?.trim().toUpperCase();
             if (intent === 'CORRECTION') {
@@ -184,7 +184,7 @@ Answer with a single word: NEW_QUERY or CORRECTION.`;
             const result = await this.llm?.completeJSON(
                 [{ role: 'user', content: prompt }],
                 CorrectionSchema,
-                { temperature: 0 }
+                { temperature: 0.18 }
             );
             // Clean undefined properties to satisfy exactOptionalPropertyTypes
             const cleaned: Partial<ExtractedSlots> = {};
@@ -209,7 +209,7 @@ Answer with a single word: NEW_QUERY or CORRECTION.`;
                 { role: 'system', content: `What is the primary food, dish, or cuisine in the user's query? Correct typos. If no food is mentioned, respond with "None".` },
                 { role: 'user', content: text }
             ], {
-                temperature: 0,
+                temperature: 0.18,
                 timeout: config.LLM_COMPLETION_TIMEOUT_MS,
                 model: config.NLU_EXTRACTOR_MODEL
             });

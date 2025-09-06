@@ -11,7 +11,7 @@
 export const DEFAULT_LLM_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
 /** A cheaper, faster LLM model for simple, high-frequency tasks like classification. */
-export const FAST_LLM_MODEL = process.env.FAST_OPENAI_MODEL || 'gpt-3.5-turbo';
+export const FAST_LLM_MODEL = process.env.FAST_OPENAI_MODEL || 'gpt-4o-mini';
 
 /** Specific model override for the NLU Classifier Agent (falls back to FAST_LLM_MODEL). */
 export const NLU_CLASSIFIER_MODEL = process.env.NLU_CLASSIFIER_MODEL || FAST_LLM_MODEL;

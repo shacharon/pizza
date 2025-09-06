@@ -24,6 +24,7 @@ export async function nluParseHandler(req: Request, res: Response) {
 
         const { text, language } = parsed.data;
         const sessionId = req.headers['x-session-id'] as string || `session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const t0 = Date.now();
 
         // Use NLU + Policy + Provider to return structured response for Food UI
         const nlu = new NLUService();
@@ -34,6 +35,16 @@ export async function nluParseHandler(req: Request, res: Response) {
 
         // Return clarification if needed
         if (policy.action === 'ask_clarification' || policy.action === 'clarify_not_food') {
+            try {
+                console.log('[NLUParse]', {
+                    sessionId,
+                    language,
+                    tookMs: Date.now() - t0,
+                    action: policy.action,
+                    input: text.slice(0, 120),
+                    missing: policy.missingFields || [],
+                });
+            } catch { }
             return res.json({
                 type: 'clarify',
                 message: policy.message || 'Could you provide more details?',
@@ -50,6 +61,18 @@ export async function nluParseHandler(req: Request, res: Response) {
             dto.language = language as any;
 
             const result = await provider.search(dto);
+            try {
+                console.log('[NLUParse]', {
+                    sessionId,
+                    language,
+                    tookMs: Date.now() - t0,
+                    action: policy.action,
+                    city: nluRes.slots.city,
+                    type: nluRes.slots.type || null,
+                    maxPrice: nluRes.slots.maxPrice ?? null,
+                    count: (result.restaurants || []).length,
+                });
+            } catch { }
             return res.json({
                 type: 'results',
                 query: {
@@ -70,6 +93,16 @@ export async function nluParseHandler(req: Request, res: Response) {
         }
 
         // Fallback clarification
+        try {
+            console.log('[NLUParse]', {
+                sessionId,
+                language,
+                tookMs: Date.now() - t0,
+                action: 'clarify_fallback',
+                input: text.slice(0, 120),
+                missing: ['city'],
+            });
+        } catch { }
         return res.json({
             type: 'clarify',
             message: 'I need more information to help you find restaurants.',

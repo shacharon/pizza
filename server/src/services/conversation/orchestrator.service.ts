@@ -32,7 +32,18 @@ export class ConversationOrchestrator {
             toolResults: [],
         };
 
+        const t0 = Date.now();
         const finalState = await this.engine.invoke(initialState);
+        const took = Date.now() - t0;
+        try {
+            console.log('[Conversation]', {
+                sessionId,
+                language,
+                tookMs: took,
+                input: userMessage.slice(0, 100),
+                reply: (finalState.finalResponse || '').slice(0, 140),
+            });
+        } catch { }
         return finalState.finalResponse || '';
     }
 
