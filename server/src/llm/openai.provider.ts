@@ -1,6 +1,13 @@
 import { z } from "zod";
 import type { LLMProvider, Message } from "./types.js";
 import { openai } from "../services/openai.client.js";
+import {
+    DEFAULT_LLM_MODEL,
+    LLM_JSON_TIMEOUT_MS,
+    LLM_RETRY_ATTEMPTS,
+    LLM_RETRY_BACKOFF_MS,
+    LLM_COMPLETION_TIMEOUT_MS
+} from "../config/index.js";
 
 function sleep(ms: number) { return new Promise(res => setTimeout(res, ms)); }
 
@@ -32,9 +39,9 @@ export class OpenAiProvider implements LLMProvider {
         opts?: { temperature?: number; timeout?: number }
     ): Promise<z.infer<T>> {
         const temperature = opts?.temperature ?? 0;
-        const timeoutMs = opts?.timeout ?? 30_000;
-        const maxAttempts = 3; // 1 try + 2 retries
-        const backoffs = [0, 250, 750];
+        const timeoutMs = opts?.timeout ?? LLM_JSON_TIMEOUT_MS;
+        const maxAttempts = LLM_RETRY_ATTEMPTS;
+        const backoffs = LLM_RETRY_BACKOFF_MS;
         const tStart = Date.now();
         let lastErr: any;
 
@@ -44,7 +51,7 @@ export class OpenAiProvider implements LLMProvider {
             const t = setTimeout(() => controller.abort(), timeoutMs);
             try {
                 const resp = await openai.responses.create({
-                    model: (opts as any)?.model || process.env.OPENAI_MODEL || 'gpt-4o-mini',
+                    model: (opts as any)?.model || DEFAULT_LLM_MODEL,
                     input: toInput(messages),
                     temperature
                 }, { signal: controller.signal });
@@ -86,14 +93,14 @@ export class OpenAiProvider implements LLMProvider {
         opts?: { temperature?: number; timeout?: number; model?: string; }
     ): Promise<string> {
         const temperature = opts?.temperature ?? 0;
-        const timeoutMs = opts?.timeout ?? 10_000;
+        const timeoutMs = opts?.timeout ?? LLM_COMPLETION_TIMEOUT_MS;
 
         const controller = new AbortController();
         const t = setTimeout(() => controller.abort(), timeoutMs);
 
         try {
             const resp = await openai.responses.create({
-                model: opts?.model || process.env.OPENAI_MODEL || 'gpt-4o-mini',
+                model: opts?.model || DEFAULT_LLM_MODEL,
                 input: toInput(messages),
                 temperature
             }, { signal: controller.signal });

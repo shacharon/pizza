@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { nluService } from '../services/nlu.service.js';
 import { nluPolicy } from '../services/nlu.policy.js';
 import { getRestaurantsProvider } from '../services/restaurants.provider.js';
-import { phraseResults } from '../services/phraser.service.js';
+import { phraserService } from '../services/phraser.service.js';
 import { nluSessionService } from '../services/nlu-session.service.js';
 
 // Request validation schema
@@ -122,7 +122,7 @@ export async function nluParseHandler(req: Request, res: Response) {
                 const names = (searchResult.restaurants || []).map(r => r.name).filter(Boolean);
 
                 // TODO: Fix this type casting. There is a subtle issue with exactOptionalPropertyTypes.
-                phrased = await phraseResults({
+                phrased = await phraserService.phraseResults({
                     language,
                     currentSlots: slots,
                     previousSlots: previousSlots,

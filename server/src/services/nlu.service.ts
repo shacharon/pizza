@@ -1,5 +1,11 @@
 import { z } from 'zod';
 import { createLLMProvider } from '../llm/factory.js';
+import {
+    LLM_COMPLETION_TIMEOUT_MS,
+    LLM_FOOD_CHECK_TIMEOUT_MS,
+    FALLBACK_HEBREW_CITIES,
+    FALLBACK_ENGLISH_CITIES
+} from '../config/index.js';
 
 // Slot extraction schema - city is the anchor, everything else is optional
 const SlotsSchema = z.object({
@@ -66,7 +72,7 @@ Extract the food search parameters as JSON.`;
                 { role: 'user', content: userPrompt }
             ], SlotsSchema, {
                 temperature: 0,
-                timeout: 10_000
+                timeout: LLM_COMPLETION_TIMEOUT_MS
             });
 
             if (!result) {
@@ -111,7 +117,7 @@ Extract the food search parameters as JSON.`;
         try {
             const result = await this.llm?.complete([
                 { role: 'system', content: `Is "${type}" a type of food, dish, or cuisine? Answer with a single word: 'yes' or 'no'.` }
-            ], { temperature: 0, timeout: 5_000 });
+            ], { temperature: 0, timeout: LLM_FOOD_CHECK_TIMEOUT_MS });
 
             return result?.toLowerCase().trim() === 'yes';
         } catch (error) {
@@ -147,10 +153,7 @@ Extract the food search parameters as JSON.`;
         let city: string | null = null;
 
         // Hebrew cities
-        const hebrewCities = ['תל אביב', 'ירושלים', 'חיפה', 'באר שבע', 'אשקלון', 'אשדוד', 'רמת גן'];
-        const englishCities = ['tel aviv', 'jerusalem', 'haifa', 'beer sheva', 'ashkelon', 'ashdod', 'ramat gan'];
-
-        for (const heCity of hebrewCities) {
+        for (const heCity of FALLBACK_HEBREW_CITIES) {
             if (text.includes(heCity)) {
                 city = heCity;
                 break;
@@ -158,7 +161,7 @@ Extract the food search parameters as JSON.`;
         }
 
         if (!city) {
-            for (const enCity of englishCities) {
+            for (const enCity of FALLBACK_ENGLISH_CITIES) {
                 if (lowerText.includes(enCity)) {
                     city = enCity;
                     break;
