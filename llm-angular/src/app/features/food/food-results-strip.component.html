@@ -1,6 +1,7 @@
 <section class="results-strip" *ngIf="items?.length">
     <div class="track">
         <div class="card" *ngFor="let r of items">
+            <img class="thumb" *ngIf="r.photoUrl" [src]="r.photoUrl" alt="{{ r.name }}" loading="lazy" />
             <div class="title">{{ r.name }}</div>
             <div class="meta">
                 <span class="addr" *ngIf="r.address">{{ r.address }}</span>

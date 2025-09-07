@@ -38,8 +38,17 @@ export class NLUService {
         // Step 1: Use the fast Classifier agent to check intent
         const intent = await this.classifyQueryIntent(text);
 
+        // Special-case: user might be providing only a city (e.g., after we asked for city)
         if (intent === 'NOT_FOOD') {
-            const slots: ExtractedSlots = { city: null, type: text, maxPrice: null, dietary: [], spicy: null, quantity: null, isFood: false };
+            const cityGuess = this.fallbackExtraction(text, language);
+            if (cityGuess.city) {
+                // Treat as city anchor rather than non-food; keep type null here (will be merged from memory upstream)
+                const slots: ExtractedSlots = { ...cityGuess, isFood: true };
+                const confidence = this.calculateConfidence(slots, text);
+                return { slots, confidence, originalText: text, language };
+            }
+            // Otherwise truly not food
+            const slots: ExtractedSlots = { city: null, type: null, maxPrice: null, dietary: [], spicy: null, quantity: null, isFood: false };
             return { slots, confidence: 0.9, originalText: text, language };
         }
 
@@ -108,7 +117,7 @@ Rules:
     /**
      * Agent 1: Classifier
      */
-    private async classifyQueryIntent(text: string): Promise<FoodIntent> {
+    async classifyQueryIntent(text: string): Promise<FoodIntent> {
         if (!text.trim()) return 'AMBIGUOUS';
 
         try {
@@ -126,8 +135,13 @@ Rules:
                 return classification as FoodIntent;
             }
             return 'AMBIGUOUS';
-        } catch (error) {
-            console.warn('[NLU] Food classification agent failed', error);
+        } catch (error: any) {
+            // Downgrade noise on deliberate/transport aborts
+            const name = error?.name || '';
+            const msg: string = error?.message || '';
+            if (!/abort/i.test(name) && !/abort/i.test(msg)) {
+                console.warn('[NLU] Food classification agent failed', error);
+            }
             return 'AMBIGUOUS'; // Fail open
         }
     }
@@ -155,8 +169,12 @@ Answer with a single word: NEW_QUERY or CORRECTION.`;
                 return 'CORRECTION';
             }
             return 'NEW_QUERY';
-        } catch (error) {
-            console.warn('[NLU] Intent routing agent failed', error);
+        } catch (error: any) {
+            const name = error?.name || '';
+            const msg: string = error?.message || '';
+            if (!/abort/i.test(name) && !/abort/i.test(msg)) {
+                console.warn('[NLU] Intent routing agent failed', error);
+            }
             return 'NEW_QUERY';
         }
     }
@@ -203,7 +221,7 @@ Answer with a single word: NEW_QUERY or CORRECTION.`;
     /**
      * Agent 2: Extractor
      */
-    private async extractCleanFoodType(text: string): Promise<string | null> {
+    async extractCleanFoodType(text: string): Promise<string | null> {
         try {
             const result = await this.llm?.complete([
                 { role: 'system', content: `What is the primary food, dish, or cuisine in the user's query? Correct typos. If no food is mentioned, respond with "None".` },
@@ -219,8 +237,12 @@ Answer with a single word: NEW_QUERY or CORRECTION.`;
                 return foodType;
             }
             return null;
-        } catch (error) {
-            console.warn('[NLU] Food extraction agent failed', error);
+        } catch (error: any) {
+            const name = error?.name || '';
+            const msg: string = error?.message || '';
+            if (!/abort/i.test(name) && !/abort/i.test(msg)) {
+                console.warn('[NLU] Food extraction agent failed', error);
+            }
             return null;
         }
     }

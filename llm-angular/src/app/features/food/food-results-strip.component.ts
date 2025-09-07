@@ -10,7 +10,7 @@ import { CommonModule } from '@angular/common';
     changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class FoodResultsStripComponent {
-    @Input() items: { name: string; address?: string | null; rating?: number | null }[] = [];
+    @Input() items: { name: string; address?: string | null; rating?: number | null; photoUrl?: string | null }[] = [];
     @Input() summary: string | null = null;
 }
 

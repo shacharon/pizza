@@ -37,10 +37,10 @@ export const LLM_FOOD_CHECK_TIMEOUT_MS = 5_000;
 // === NLU Fallback Settings ===
 
 /** A list of common Hebrew city names for the fallback NLU extractor. */
-export const FALLBACK_HEBREW_CITIES = ['תל אביב', 'ירושלים', 'חיפה', 'באר שבע', 'אשקלון', 'אשדוד', 'רמת גן'];
+export const FALLBACK_HEBREW_CITIES = ['תל אביב', 'ירושלים', 'חיפה', 'באר שבע', 'אשקלון', 'אשדוד', 'רמת גן', 'גדרה'];
 
 /** A list of common English city names for the fallback NLU extractor. */
-export const FALLBACK_ENGLISH_CITIES = ['tel aviv', 'jerusalem', 'haifa', 'beer sheva', 'ashkelon', 'ashdod', 'ramat gan'];
+export const FALLBACK_ENGLISH_CITIES = ['tel aviv', 'jerusalem', 'haifa', 'beer sheva', 'ashkelon', 'ashdod', 'ramat gan', 'gedera'];
 
 // === Conversation Mode ===
 
@@ -52,6 +52,9 @@ export const CONVERSATION_SIMPLE_MODE = process.env.CONVERSATION_SIMPLE_MODE ===
 
 /** Select conversation engine implementation: 'legacy' | 'simple' | 'langgraph' */
 export const CONVERSATION_ENGINE = (process.env.CONVERSATION_ENGINE || (CONVERSATION_SIMPLE_MODE ? 'simple' : 'legacy')) as 'legacy' | 'simple' | 'langgraph';
+
+/** Enable FoodGraph on /api/nlu/parse */
+export const FOOD_GRAPH_ENABLED = process.env.FOOD_GRAPH_ENABLED === 'true';
 
 // Default export for robust interop (ESM/CJS)
 const config = {
@@ -68,6 +71,7 @@ const config = {
     FALLBACK_ENGLISH_CITIES,
     CONVERSATION_SIMPLE_MODE,
     CONVERSATION_ENGINE,
+    FOOD_GRAPH_ENABLED,
 };
 
 export default config;

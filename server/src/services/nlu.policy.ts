@@ -1,8 +1,21 @@
 import type { ExtractedSlots } from './nlu.service.js';
 import { promptManager } from './prompt.service.js';
 
-export type Intent = 'search' | 'clarify_city' | 'clarify_type' | 'clarify_price' | 'clarify_not_food';
-export type Action = 'fetch_results' | 'ask_clarification' | 'clarify_not_food';
+export const Intent = {
+    Search: 'search',
+    ClarifyCity: 'clarify_city',
+    ClarifyType: 'clarify_type',
+    ClarifyPrice: 'clarify_price',
+    ClarifyNotFood: 'clarify_not_food',
+} as const;
+export type Intent = typeof Intent[keyof typeof Intent];
+
+export const Action = {
+    FetchResults: 'fetch_results',
+    AskClarification: 'ask_clarification',
+    ClarifyNotFood: 'clarify_not_food',
+} as const;
+export type Action = typeof Action[keyof typeof Action];
 
 export interface PolicyResult {
     intent: Intent;
@@ -26,8 +39,8 @@ export class NLUPolicy {
         // City is the anchor - if we have it, we can search
         if (hasCity) {
             return {
-                intent: 'search',
-                action: 'fetch_results',
+                intent: Intent.Search,
+                action: Action.FetchResults,
                 hasAnchor: true,
                 missingFields: []
             };
@@ -35,8 +48,8 @@ export class NLUPolicy {
 
         // No city = no anchor = need clarification
         return {
-            intent: 'clarify_city',
-            action: 'ask_clarification',
+            intent: Intent.ClarifyCity,
+            action: Action.AskClarification,
             message: promptManager.get('clarify_city', language),
             hasAnchor: false,
             missingFields: ['city']
@@ -53,8 +66,8 @@ export class NLUPolicy {
         // If a type was extracted but it's not a food, clarify with the user
         if (slots.type && slots.isFood === false) {
             return {
-                intent: 'clarify_not_food',
-                action: 'clarify_not_food',
+                intent: Intent.ClarifyNotFood,
+                action: Action.ClarifyNotFood,
                 message: promptManager.get('clarify_not_food', language, slots.type),
                 hasAnchor: hasCity,
                 missingFields: []
@@ -64,8 +77,8 @@ export class NLUPolicy {
         // If user mentioned price-related words but no specific amount
         if ((lowerText.includes('מחיר') || lowerText.includes('price') || lowerText.includes('תקציב') || lowerText.includes('budget')) && !slots.maxPrice) {
             return {
-                intent: 'clarify_price',
-                action: 'ask_clarification',
+                intent: Intent.ClarifyPrice,
+                action: Action.AskClarification,
                 message: promptManager.get('clarify_price', language),
                 hasAnchor: hasCity,
                 missingFields: hasCity ? ['maxPrice'] : ['city', 'maxPrice']
@@ -75,8 +88,8 @@ export class NLUPolicy {
         // Default to city if missing
         if (!hasCity) {
             return {
-                intent: 'clarify_city',
-                action: 'ask_clarification',
+                intent: Intent.ClarifyCity,
+                action: Action.AskClarification,
                 message: promptManager.get('clarify_city', language),
                 hasAnchor: false,
                 missingFields: ['city']
@@ -85,8 +98,8 @@ export class NLUPolicy {
 
         // Has city, can search
         return {
-            intent: 'search',
-            action: 'fetch_results',
+            intent: Intent.Search,
+            action: Action.FetchResults,
             hasAnchor: true,
             missingFields: []
         };
