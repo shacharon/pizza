@@ -55,7 +55,7 @@ export async function nluParseHandler(req: Request, res: Response) {
                 placeId: r.placeId ?? null,
                 photoUrl: r.photoUrl ?? null,
             }));
-            const meta: any = out.results?.meta ? (out.results.meta as Record<string, unknown>) : undefined;
+            const meta = out.results?.meta; // preserve provider meta type
             return res.json({
                 type: 'results',
                 query: {
@@ -65,7 +65,7 @@ export async function nluParseHandler(req: Request, res: Response) {
                     language
                 },
                 restaurants,
-                meta: { ...(meta || {}), nluConfidence: 1 }
+                meta: { ...(meta ?? {} as any), nluConfidence: 1 }
             });
         }
 

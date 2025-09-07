@@ -58,7 +58,7 @@ export function buildGraph(deps: { nlu: NLUService; provider: RestaurantsProvide
 
         // Clarify path
         if (policy.action === 'ask_clarification') {
-            const ask = policy.message || (state.language === 'he'
+            const ask = policy?.message || (state.language === 'he'
                 ? 'צריך עיר כדי להתחיל. באיזו עיר?'
                 : state.language === 'ar'
                     ? 'أحتاج إلى اسم المدينة للبدء. ما هي المدينة؟'
@@ -67,7 +67,7 @@ export function buildGraph(deps: { nlu: NLUService; provider: RestaurantsProvide
         }
 
         if (policy.action === 'clarify_not_food') {
-            const ask = policy.message || (state.language === 'he'
+            const ask = policy?.message || (state.language === 'he'
                 ? 'זה לא נשמע כמו אוכל. מה סוג האוכל שתרצה?'
                 : state.language === 'ar'
                     ? 'هذا لا يبدو طعاماً. ما نوع الطعام الذي تريده؟'

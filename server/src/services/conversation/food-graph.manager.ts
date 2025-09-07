@@ -1,5 +1,6 @@
 import type { Language } from './state.js';
 import type { ExtractedSlots } from '../nlu.service.js';
+import type { RestaurantsResponse, FoodQueryDTO, Restaurant } from '@api';
 import { NLUService } from '../nlu.service.js';
 import { nluSessionService, NLUSessionService } from '../nlu-session.service.js';
 import { nluPolicy, Action } from '../nlu.policy.js';
@@ -17,7 +18,7 @@ export interface FoodGraphState {
     // Outputs from nodes (progressively filled)
     slots?: ExtractedSlots;
     policy?: { action: string; intent?: string; message?: string; missing?: string[] };
-    results?: { restaurants: any[]; meta?: Record<string, unknown> };
+    results?: RestaurantsResponse;
     intent?: string;
 
     // Final response helpers
@@ -194,6 +195,28 @@ export function buildFoodGraph(deps: { nlu?: NLUService; session?: NLUSessionSer
 
     const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
+    // Extract a likely location phrase from user text (Hebrew/English/Arabic)
+    function extractLocationCandidate(text: string, language: Language): string | null {
+        const t = (text || '').trim();
+        if (!t) return null;
+        if (language === 'he') {
+            // Prefer phrase after the last 'ב' (meaning "in"). If not present, take last 1–4 words.
+            const afterIn = t.match(/.*ב[-\s]?([^,.!?\d]+)$/u);
+            let tail = (afterIn?.[1] || t).trim();
+            const words = tail.split(/\s+/).slice(-4);
+            let candidate = words.join(' ').trim();
+            // Strip common Hebrew prefixes and the definite article
+            candidate = candidate.replace(/^\s*(ה)?(קיבוץ|מושב|כפר|עיר|יישוב)\s+/u, '').replace(/^\s*ה/u, '').trim();
+            // Normalize common spelling variants
+            candidate = candidate.replace(/פתח\s+תקוה/u, 'פתח תקווה');
+            return candidate.length >= 2 ? candidate : null;
+        }
+        // English/Arabic: phrase after " in " / " في "
+        const m = t.match(/\s(?:in|في)\s([^,.;!?]+)$/i);
+        if (m?.[1]) return m[1].trim();
+        return null;
+    }
+
     const g = new FoodGraphBuilder()
         .addNode('nlu', async (s) => {
             const rules = rulesFirstExtract(s.text, s.language);
@@ -208,7 +231,11 @@ export function buildFoodGraph(deps: { nlu?: NLUService; session?: NLUSessionSer
             // If no city, try city resolver via Geocoding API (language-aware)
             if (!slots.city) {
                 try {
-                    const resolved = await findCity(s.text, s.language);
+                    const cand = extractLocationCandidate(s.text, s.language);
+                    let resolved = cand ? await findCity(cand, s.language) : null;
+                    if (!resolved) {
+                        resolved = await findCity(s.text, s.language);
+                    }
                     if (resolved?.city) slots = { ...slots, city: resolved.city } as ExtractedSlots;
                 } catch { }
             }
@@ -252,20 +279,20 @@ export function buildFoodGraph(deps: { nlu?: NLUService; session?: NLUSessionSer
         .addNode('policy', async (s) => {
             const slots = s.slots as ExtractedSlots;
             const p = nluPolicy.decideContextual(slots, s.text, s.language);
-            const next: FoodGraphState = { ...s, policy: { action: p.action, intent: p.intent, missing: p.missingFields } };
-            if (p.message) {
-                (next.policy as any).message = p.message; // include only when defined
-            }
-            return next;
+            const base = { action: p.action as string, intent: p.intent as string, missing: p.missingFields as string[] };
+            const policy = p.message ? { ...base, message: p.message as string } : base;
+            return { ...s, policy } as FoodGraphState;
         })
         // fetch node: call provider with timeout/retries and update memory
         .addNode('fetch', async (s) => {
             const slots = s.slots as ExtractedSlots;
             if (!slots?.city) return s;
-            const dto: any = { city: slots.city };
-            if (slots.type) dto.type = slots.type;
-            if (typeof slots.maxPrice === 'number') dto.constraints = { maxPrice: slots.maxPrice };
-            dto.language = s.language as any;
+            const dto: FoodQueryDTO = {
+                city: slots.city,
+                type: slots.type || undefined,
+                constraints: typeof slots.maxPrice === 'number' ? { maxPrice: slots.maxPrice } : undefined,
+                language: s.language,
+            } as FoodQueryDTO;
 
             const attempts = (config.LLM_RETRY_ATTEMPTS ?? 3) as number;
             const backoff = (config.LLM_RETRY_BACKOFF_MS as number[]) || [0, 250, 750];
@@ -275,9 +302,7 @@ export function buildFoodGraph(deps: { nlu?: NLUService; session?: NLUSessionSer
                     const res = await withTimeout(provider.search(dto), FETCH_TIMEOUT_MS);
                     // update memory on success
                     session.updateSession(s.sessionId, slots, s.text);
-                    const metaObj: Record<string, unknown> | undefined = res.meta ? (res.meta as unknown as Record<string, unknown>) : undefined;
-                    const results = metaObj ? { restaurants: res.restaurants || [], meta: metaObj } : { restaurants: res.restaurants || [] } as any;
-                    return { ...s, results };
+                    return { ...s, results: res };
                 } catch (e: any) {
                     lastErr = e;
                     const wait = backoff[i] ?? 0;
