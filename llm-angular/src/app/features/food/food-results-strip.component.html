@@ -1,12 +1,205 @@
-<section class="results-strip" *ngIf="items?.length">
-    <div class="track">
-        <div class="card" *ngFor="let r of items">
-            <img class="thumb" *ngIf="r.photoUrl" [src]="r.photoUrl" alt="{{ r.name }}" loading="lazy" />
-            <div class="title">{{ r.name }}</div>
-            <div class="meta">
-                <span class="addr" *ngIf="r.address">{{ r.address }}</span>
-                <span class="dot" *ngIf="r.address && r.rating != null">•</span>
-                <span class="rating" *ngIf="r.rating != null">★ {{ r.rating | number:'1.1-1' }}</span>
+<!-- UX Concept 1: Enhanced Card Grid Layout -->
+<section class="food-results-grid" *ngIf="items?.length">
+    <div class="grid-container">
+        <div class="restaurant-card" *ngFor="let r of items; trackBy: trackByPlaceId" [class.featured]="isTopRated(r)"
+            (click)="selectRestaurant(r)">
+
+            <!-- Hero Image with Overlay -->
+            <div class="card-image-container">
+                <img *ngIf="r.photoUrl" [src]="r.photoUrl" [alt]="r.name" class="card-hero-image" loading="lazy" />
+                <div class="image-overlay">
+                    <div class="price-indicator" *ngIf="r.priceLevel">
+                        <span class="price-dots">{{ getPriceDots(r.priceLevel) }}</span>
+                        <span class="price-text">{{ getPriceText(r.priceLevel) }}</span>
+                    </div>
+                    <button class="favorite-btn" (click)="toggleFavorite(r, $event)">{{ isFavorite(r) ? '♥' : '♡'
+                        }}</button>
+                </div>
+            </div>
+
+            <!-- Card Content -->
+            <div class="card-content">
+                <div class="restaurant-header">
+                    <h3 class="restaurant-name">{{ r.name }}</h3>
+                    <div class="rating-section">
+                        <div class="stars">{{ (r.rating || 0) >= 1 ? '★' : '☆' }}{{ (r.rating || 0) >= 2 ? '★' : '☆'
+                            }}{{ (r.rating || 0) >= 3 ? '★' : '☆' }}{{ (r.rating || 0) >= 4 ? '★' : '☆' }}{{ (r.rating
+                            || 0) >= 5 ? '★' : '☆' }}</div>
+                        <span class="rating-number">{{ r.rating | number:'1.1-1' }}</span>
+                        <span class="review-count">({{ r.userRatingsTotal || 0 }})</span>
+                    </div>
+                </div>
+
+                <div class="restaurant-meta">
+                    <div class="location-info">
+                        <span class="location-icon">📍</span>
+                        <span class="address">{{ r.address || r.vicinity }}</span>
+                        <span class="distance" *ngIf="r.distance">{{ r.distance }}km</span>
+                    </div>
+
+                    <div class="cuisine-badges" *ngIf="r.types">
+                        <span class="badge" *ngFor="let type of getCuisineTypes(r.types)">
+                            {{ type }}
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="card-actions">
+                    <button class="action-btn directions" (click)="getDirections(r, $event)">🧭 Directions</button>
+                    <button class="action-btn call" (click)="callRestaurant(r, $event)" *ngIf="r.phoneNumber">📞
+                        Call</button>
+                    <button class="action-btn menu" (click)="viewMenu(r, $event)">📋 Menu</button>
+                </div>
+            </div>
+
+            <!-- Status Indicators -->
+            <div class="status-badges">
+                <span class="badge open" *ngIf="r.openingHours?.openNow">Open</span>
+                <span class="badge closed" *ngIf="!r.openingHours?.openNow">Closed</span>
+                <span class="badge delivery" *ngIf="r.delivery">Delivery</span>
+                <span class="badge takeaway" *ngIf="r.takeaway">Takeaway</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load More Button -->
+    <div class="load-more-container" *ngIf="hasMoreResults">
+        <button class="load-more-btn" (click)="loadMore()">▼ Load More Restaurants</button>
+    </div>
+</section>
+
+<!-- UX Concept 2: Swipe Stack Layout -->
+<section class="food-swipe-stack" *ngIf="items?.length">
+    <div class="stack-container">
+        <div class="restaurant-stack" *ngFor="let r of items; let i = index" [style.z-index]="items.length - i"
+            [style.transform]="'translateY(' + (i * -4) + 'px) scale(' + (1 - i * 0.05) + ')'" [class.active]="i === 0">
+
+            <div class="stack-card">
+                <!-- Full-screen image background -->
+                <div class="card-background">
+                    <img *ngIf="r.photoUrl" [src]="r.photoUrl" [alt]="r.name" />
+                    <div class="background-overlay"></div>
+                </div>
+
+                <!-- Swipe content overlay -->
+                <div class="swipe-content">
+                    <div class="restaurant-info">
+                        <h2 class="restaurant-title">{{ r.name }}</h2>
+
+                        <div class="rating-display">
+                            <div class="rating-stars">
+                                <span *ngFor="let star of getStars(r.rating || 0)" class="star">
+                                    {{ star.filled ? '★' : '☆' }}
+                                </span>
+                                <span class="rating-value">{{ r.rating | number:'1.1-1' }}</span>
+                            </div>
+                        </div>
+
+                        <div class="restaurant-details">
+                            <div class="detail-row">
+                                <span>📍</span>
+                                <span>{{ r.address || r.vicinity }}</span>
+                            </div>
+                            <div class="detail-row" *ngIf="r.priceLevel">
+                                <span>💵</span>
+                                <span>{{ getPriceText(r.priceLevel) }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Swipe action buttons -->
+                    <div class="swipe-actions">
+                        <button class="action-btn dislike" (click)="swipeLeft()">✖</button>
+                        <button class="action-btn like" (click)="swipeRight()">♥</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Swipe hints -->
+    <div class="swipe-hints" *ngIf="!hasSwiped">
+        <div class="hint-text">Swipe right to like • Swipe left to pass</div>
+    </div>
+</section>
+
+<!-- UX Concept 3: Map + List Hybrid Layout -->
+<section class="food-map-hybrid" *ngIf="items?.length">
+    <div class="hybrid-container">
+        <!-- Map Section -->
+        <div class="map-section">
+            <div class="map-container" #mapContainer>
+                <!-- Google Maps integration would go here -->
+                <div class="map-placeholder">
+                    <div class="map-icon">🗺️</div>
+                    <div class="map-overlay">
+                        <div class="restaurant-markers">
+                            <div class="marker" *ngFor="let r of items; let i = index"
+                                [style.left.%]="getMarkerPosition(r, i).x" [style.top.%]="getMarkerPosition(r, i).y"
+                                (click)="selectMarker(r)" [class.selected]="selectedRestaurant?.placeId === r.placeId">
+                                <span>🍽️</span>
+                                <div class="marker-label">{{ r.name }}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Map Controls -->
+            <div class="map-controls">
+                <button class="control-btn" (click)="centerMap()">📍</button>
+                <button class="control-btn" (click)="toggleTraffic()">🚦</button>
+            </div>
+        </div>
+
+        <!-- Results List Section -->
+        <div class="results-panel">
+            <div class="panel-header">
+                <h3>{{ items.length }} Restaurants Found</h3>
+                <div class="view-toggle">
+                    <button class="icon-btn" [class.active]="viewMode === 'list'"
+                        (click)="setViewMode('list')">☰</button>
+                    <button class="icon-btn" [class.active]="viewMode === 'grid'"
+                        (click)="setViewMode('grid')">▦</button>
+                </div>
+            </div>
+
+            <div class="results-list" [class.grid-view]="viewMode === 'grid'">
+                <div class="result-item" *ngFor="let r of items"
+                    [class.selected]="selectedRestaurant?.placeId === r.placeId" (click)="selectRestaurant(r)">
+
+                    <div class="item-image">
+                        <img *ngIf="r.photoUrl" [src]="r.photoUrl" [alt]="r.name" />
+                        <div class="image-placeholder" *ngIf="!r.photoUrl">🍽️</div>
+                    </div>
+
+                    <div class="item-content">
+                        <div class="item-header">
+                            <h4>{{ r.name }}</h4>
+                            <div class="item-rating">
+                                <span class="stars">{{ getStarsDisplay(r.rating || 0) }}</span>
+                                <span class="rating">{{ r.rating | number:'1.1-1' }}</span>
+                            </div>
+                        </div>
+
+                        <div class="item-meta">
+                            <div class="meta-row">
+                                <span>📍</span>
+                                <span>{{ r.address || r.vicinity }}</span>
+                            </div>
+                            <div class="meta-row" *ngIf="r.distance">
+                                <span>🚶</span>
+                                <span>{{ r.distance }}km away</span>
+                            </div>
+                        </div>
+
+                        <div class="item-actions">
+                            <button class="btn" (click)="getDirections(r, $event)">Directions</button>
+                            <button class="btn" (click)="viewDetails(r, $event)">Details</button>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
