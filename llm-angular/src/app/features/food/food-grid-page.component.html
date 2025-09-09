@@ -1,0 +1,126 @@
+<div class="food-grid-page">
+    <!-- Header -->
+    <div class="page-header">
+        <div class="header-content">
+            <button class="icon-btn back-btn" (click)="goBack()" aria-label="Back">←</button>
+            <h1 class="page-title">🍕 Restaurant Grid</h1>
+            <div class="header-actions">
+                <button class="icon-btn" (click)="toggleViewMode()" aria-label="Toggle view">{{ viewMode === 'grid' ?
+                    '☰' : '▦' }}</button>
+                <button class="icon-btn" (click)="navigateToSwipe()" aria-label="Swipe view">👆</button>
+                <button class="icon-btn" (click)="navigateToMap()" aria-label="Map view">🗺️</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Search Section -->
+    <div class="search-section">
+        <div class="search-container">
+            <div class="search-field">
+                <span class="search-prefix">🔎</span>
+                <input [(ngModel)]="searchQuery" (input)="onSearchInput($event)"
+                    placeholder="Search for restaurants, cuisine, or location..." autocomplete="off">
+                <button *ngIf="searchQuery" class="icon-btn" (click)="clearSearch()" aria-label="Clear">✖</button>
+            </div>
+
+            <button class="btn primary search-btn px-4 py-2 rounded-lg shadow-sm" (click)="performSearch()"
+                [disabled]="!searchQuery.trim() || isSearching">
+                <span *ngIf="!isSearching">Search</span>
+                <span *ngIf="isSearching" class="spinner small" aria-label="loading"></span>
+            </button>
+        </div>
+
+        <!-- Quick Filters -->
+        <div class="quick-filters" *ngIf="restaurants.length > 0">
+            <div class="chip-set flex flex-wrap gap-2 justify-center">
+                <button class="chip px-3 py-1 rounded-full bg-gray-100 hover:bg-gray-200 text-sm"
+                    [class.selected]="activeFilter === 'all'" (click)="setFilter('all')">All ({{ restaurants.length
+                    }})</button>
+                <button class="chip px-3 py-1 rounded-full bg-gray-100 hover:bg-gray-200 text-sm"
+                    [class.selected]="activeFilter === 'open'" (click)="setFilter('open')">Open Now</button>
+                <button class="chip px-3 py-1 rounded-full bg-gray-100 hover:bg-gray-200 text-sm"
+                    [class.selected]="activeFilter === 'rating'" (click)="setFilter('rating')">Top Rated</button>
+                <button class="chip px-3 py-1 rounded-full bg-gray-100 hover:bg-gray-200 text-sm"
+                    [class.selected]="activeFilter === 'price'" (click)="setFilter('price')">Budget Friendly</button>
+                <button class="chip px-3 py-1 rounded-full bg-gray-100 hover:bg-gray-200 text-sm"
+                    [class.selected]="activeFilter === 'delivery'" (click)="setFilter('delivery')">Delivery</button>
+            </div>
+        </div>
+
+        <!-- Search Suggestions -->
+        <div class="suggestions" *ngIf="showSuggestions && suggestions.length > 0">
+            <div class="suggestion-item" *ngFor="let suggestion of suggestions" (click)="selectSuggestion(suggestion)">
+                <span class="suggestion-icon">🍽️</span>
+                <span>{{ suggestion.text }}</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Results Section -->
+    <div class="results-section" *ngIf="!isSearching">
+        <div class="results-header" *ngIf="restaurants.length > 0">
+            <h2 class="results-title">
+                {{ getResultsTitle() }}
+            </h2>
+            <div class="results-meta">
+                <span class="results-count">{{ filteredRestaurants.length }} restaurants</span>
+                <span class="results-location" *ngIf="lastSearchLocation">
+                    in {{ lastSearchLocation }}
+                </span>
+            </div>
+        </div>
+
+        <!-- Loading State -->
+        <div class="loading-state" *ngIf="isSearching">
+            <div class="spinner"></div>
+            <p>Finding the best restaurants...</p>
+        </div>
+
+        <!-- Empty State -->
+        <div class="empty-state" *ngIf="!isSearching && restaurants.length === 0 && hasSearched">
+            <div class="empty-icon">🍽️</div>
+            <h3>No restaurants found</h3>
+            <p>Try adjusting your search terms or location</p>
+            <button class="btn primary" (click)="showSuggestions = true">
+                Get Suggestions
+            </button>
+        </div>
+
+        <!-- Results Grid -->
+        <app-food-grid-results *ngIf="filteredRestaurants.length > 0" [restaurants]="filteredRestaurants"
+            [hasMoreResults]="hasMoreResults" (restaurantSelected)="onRestaurantSelected($event)"
+            (loadMoreRequested)="loadMore()">
+        </app-food-grid-results>
+    </div>
+
+    <!-- Floating Action Button for Quick Search -->
+    <button class="fab-search fab" (click)="toggleQuickSearch()" aria-label="Quick Search">{{ showQuickSearch ? '✖' :
+        '🔎' }}</button>
+
+    <!-- Quick Search Overlay -->
+    <div class="quick-search-overlay" *ngIf="showQuickSearch">
+        <div class="quick-search-content">
+            <h3>Quick Search</h3>
+            <div class="quick-options">
+                <button class="btn quick-btn" (click)="quickSearch('pizza')">
+                    🍕 Pizza
+                </button>
+                <button class="btn quick-btn" (click)="quickSearch('sushi')">
+                    🍣 Sushi
+                </button>
+                <button class="btn quick-btn" (click)="quickSearch('burger')">
+                    🍔 Burgers
+                </button>
+                <button class="btn quick-btn" (click)="quickSearch('italian')">
+                    🍝 Italian
+                </button>
+                <button class="btn quick-btn" (click)="quickSearch('chinese')">
+                    🥡 Chinese
+                </button>
+                <button class="btn quick-btn" (click)="quickSearch('coffee')">
+                    ☕ Coffee
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

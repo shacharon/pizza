@@ -1,0 +1,92 @@
+<div class="p-5 bg-gradient-to-br from-gray-50 to-gray-200" *ngIf="restaurants?.length">
+    <div class="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 max-w-[1200px] mx-auto">
+        <div class="bg-white rounded-2xl shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden relative cursor-pointer animate-fade-in-up"
+            *ngFor="let restaurant of restaurants; trackBy: trackByPlaceId"
+            [class]="isTopRated(restaurant) ? 'border-2 border-primary shadow-primary/20' : ''"
+            (click)="selectRestaurant(restaurant)">
+
+            <!-- Hero Image with Price Overlay -->
+            <div class="card-image-container relative h-[200px] overflow-hidden">
+                <img *ngIf="restaurant.photoUrl" [src]="restaurant.photoUrl" [alt]="restaurant.name" loading="lazy"
+                    class="w-full h-full object-cover transition-transform duration-200 hover:scale-[1.03]" />
+                <div
+                    class="image-overlay absolute inset-0 bg-gradient-to-br from-transparent to-black/40 p-3 flex items-start justify-between">
+                    <div *ngIf="restaurant.priceLevel"
+                        class="price-indicator bg-white/90 text-gray-800 text-xs font-semibold rounded-md px-2 py-1">
+                        <span class="price-dots mr-1">{{ getPriceDots(restaurant.priceLevel) }}</span>
+                        <span class="price-text">{{ getPriceText(restaurant.priceLevel) }}</span>
+                    </div>
+                    <button
+                        class="favorite-btn w-9 h-9 rounded-full bg-primary text-white flex items-center justify-center shadow hover:scale-105 active:scale-95"
+                        (click)="toggleFavorite(restaurant, $event)">{{ isFavorite(restaurant) ? '♥' : '♡' }}</button>
+                </div>
+            </div>
+
+            <!-- Card Content -->
+            <div class="card-content p-4">
+                <div class="flex justify-between items-start mb-3">
+                    <h3 class="text-lg font-bold text-gray-900 leading-tight flex-1 mr-2">{{
+                        restaurant.name }}</h3>
+                    <div class="flex flex-col items-end gap-1">
+                        <div class="stars text-yellow-400 text-sm">{{ (restaurant.rating || 0) >= 1 ? '★' : '☆' }}{{
+                            (restaurant.rating || 0) >= 2 ? '★' : '☆' }}{{ (restaurant.rating || 0) >= 3 ? '★' : '☆'
+                            }}{{ (restaurant.rating || 0) >= 4 ? '★' : '☆' }}{{ (restaurant.rating || 0) >= 5 ? '★' :
+                            '☆' }}</div>
+                        <span class="rating-number text-sm font-semibold text-gray-600">{{ restaurant.rating |
+                            number:'1.1-1' }}</span>
+                        <span class="review-count text-xs text-gray-400">({{ restaurant.userRatingsTotal || 0 }})</span>
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <div class="flex items-center gap-1 text-sm text-gray-600 mb-2">
+                        <span class="location-icon">📍</span>
+                        <span class="address truncate">{{ restaurant.address || restaurant.vicinity }}</span>
+                        <span class="distance text-primary" *ngIf="restaurant.distance">• {{ restaurant.distance
+                            }}km</span>
+                    </div>
+
+                    <div class="flex flex-wrap gap-2" *ngIf="restaurant.types && restaurant.types.length > 0">
+                        <span class="text-[11px] h-6 rounded-md bg-gray-100 text-gray-600 px-2 py-1 flex items-center"
+                            *ngFor="let type of getCuisineTypes(restaurant.types)">{{ type }}</span>
+                    </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="mt-4 flex gap-2 md:flex-col lg:flex-row">
+                    <button
+                        class="flex-1 rounded-md bg-accent text-white text-sm font-semibold py-2 hover:opacity-95 active:scale-[0.99] transition-all"
+                        (click)="getDirections(restaurant, $event)">🧭 Directions</button>
+                    <button
+                        class="flex-1 rounded-md bg-green-600 text-white text-sm font-semibold py-2 hover:opacity-95 transition-all"
+                        (click)="callRestaurant(restaurant, $event)" *ngIf="restaurant.phoneNumber">📞 Call</button>
+                    <button
+                        class="flex-1 rounded-md bg-primary text-white text-sm font-semibold py-2 hover:opacity-95 transition-all"
+                        (click)="viewMenu(restaurant, $event)">📋 Menu</button>
+                </div>
+            </div>
+
+            <!-- Status Indicators -->
+            <div class="absolute top-3 left-3 flex flex-col gap-1.5 md:flex-row lg:flex-col">
+                <span
+                    class="text-[10px] h-5 min-h-5 px-2 rounded-full bg-green-500 text-white flex items-center font-medium"
+                    *ngIf="restaurant.openingHours?.openNow">Open</span>
+                <span
+                    class="text-[10px] h-5 min-h-5 px-2 rounded-full bg-primary text-white flex items-center font-medium"
+                    *ngIf="restaurant.delivery">Delivery</span>
+                <span
+                    class="text-[10px] h-5 min-h-5 px-2 rounded-full bg-purple-600 text-white flex items-center font-medium"
+                    *ngIf="restaurant.takeaway">Takeaway</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load More Button -->
+    <div class="text-center mt-8" *ngIf="hasMoreResults">
+        <button
+            class="bg-gradient-to-r from-primary to-orange-400 text-white rounded-3xl px-6 py-3 font-semibold shadow-lg shadow-primary/30 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-primary/40 transition-all duration-300"
+            (click)="loadMoreRequested.emit()">
+            ▼ Load More Restaurants
+        </button>
+    </div>
+</div>
