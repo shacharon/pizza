@@ -6,6 +6,14 @@
                 (input)="onSearch($event)">
             <button (click)="onSearchClick()">Search</button>
         </div>
+
+        <div class="search-options">
+            <label class="distance-toggle">
+                <input type="checkbox" [checked]="showDistances()" (change)="onDistanceToggle($event)">
+                <span class="checkmark"></span>
+                Show distances from my location
+            </label>
+        </div>
     </header>
 
     <main class="results-container">
@@ -24,7 +32,8 @@
         }
 
         <!-- Results grid -->
-        <app-food-grid-results [searchQuery]="searchQuery()" [isLoading]="isLoading()" [restaurants]="restaurants()">
+        <app-food-grid-results [searchQuery]="searchQuery()" [isLoading]="isLoading()" [restaurants]="restaurants()"
+            [userLocation]="userLocation()" [showDistances]="showDistances()">
         </app-food-grid-results>
     </main>
 </div>

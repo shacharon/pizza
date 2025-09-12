@@ -30,7 +30,8 @@
         @for (restaurant of displayRestaurants(); track restaurant.id) {
         <div class="restaurant-card">
             <div class="card-image">
-                <img [src]="restaurant.imageUrl" [alt]="restaurant.name" loading="lazy">
+                <img [src]="restaurant.imageUrl" [alt]="restaurant.name" loading="lazy"
+                    (error)="onImageError($event, restaurant.name)" (load)="onImageLoad($event, restaurant.name)">
                 <div class="rating-badge">
                     <span class="rating-star">⭐</span>
                     <span class="rating-value">{{ restaurant.rating }}</span>

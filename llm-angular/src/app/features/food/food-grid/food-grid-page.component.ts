@@ -21,8 +21,16 @@ export class FoodGridPageComponent {
     restaurants = signal<any[]>([]);
     errorMessage = signal<string>('');
     clarificationMessage = signal<string>('');
+    userLocation = signal<{ lat: number; lng: number } | null>(null);
+    locationError = signal<string>('');
+    showDistances = signal<boolean>(false);
 
     private searchTimeout: any;
+
+    constructor() {
+        // Request user location on component init
+        this.requestUserLocation();
+    }
 
     async onSearch(event: Event) {
         const input = event.target as HTMLInputElement;
@@ -80,6 +88,13 @@ export class FoodGridPageComponent {
             }
 
             if (response.type === 'results') {
+                // Debug: Log the raw API response
+                console.log('=== RAW API RESPONSE ===');
+                console.log('Full response:', response);
+                console.log('Restaurants array:', response.restaurants);
+                console.log('First restaurant:', response.restaurants?.[0]);
+                console.log('========================');
+
                 this.restaurants.set(response.restaurants || []);
                 this.clarificationMessage.set('');
             } else if (response.type === 'clarify') {
@@ -91,6 +106,55 @@ export class FoodGridPageComponent {
             this.isLoading.set(false);
             this.errorMessage.set('Search failed. Please try again.');
             console.error('LLM search error:', error);
+        }
+    }
+
+    private requestUserLocation() {
+        if (!navigator.geolocation) {
+            this.locationError.set('Geolocation not supported by browser');
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                this.userLocation.set({
+                    lat: position.coords.latitude,
+                    lng: position.coords.longitude
+                });
+                this.locationError.set('');
+                console.log('User location obtained:', this.userLocation());
+            },
+            (error) => {
+                let errorMsg = 'Location access denied';
+                switch (error.code) {
+                    case error.PERMISSION_DENIED:
+                        errorMsg = 'Location access denied by user';
+                        break;
+                    case error.POSITION_UNAVAILABLE:
+                        errorMsg = 'Location information unavailable';
+                        break;
+                    case error.TIMEOUT:
+                        errorMsg = 'Location request timed out';
+                        break;
+                }
+                this.locationError.set(errorMsg);
+                console.log('Location error:', errorMsg);
+            },
+            {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 300000 // Cache for 5 minutes
+            }
+        );
+    }
+
+    onDistanceToggle(event: Event) {
+        const checkbox = event.target as HTMLInputElement;
+        this.showDistances.set(checkbox.checked);
+
+        // Request location if user enables distances and we don't have it yet
+        if (checkbox.checked && !this.userLocation()) {
+            this.requestUserLocation();
         }
     }
 }
