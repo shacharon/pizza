@@ -1,0 +1,10 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+
+- Angular 19, **Standalone Components**, `ChangeDetectionStrategy.OnPush` by default.
+- Containers vs Presentational: container orchestrates data; presentational is dumb & accessible.
+- Prefer **signals** for local UI; RxJS for async/HTTP; convert to signals with `toSignal`.
+- Respect existing legacy code when present; interop safely (no sweeping refactors without plan).

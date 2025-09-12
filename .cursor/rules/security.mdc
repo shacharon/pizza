@@ -1,0 +1,9 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+
+- Validate all inputs. Sanitize user strings that might reach logs or storage.
+- Auth: middleware handles auth; controllers assume `req.user` typed.
+- Secrets via env only; never commit keys. Rate-limit sensitive endpoints.

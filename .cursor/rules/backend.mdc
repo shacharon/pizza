@@ -1,0 +1,12 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+
+Node.js + TypeScript (strict). ESM or TS path aliases consistent across packages.
+
+- Layering: `routes` → `controllers` → `services` → `repos/clients` → `infra`.
+- Keep controllers thin (validation, orchestration). Business logic lives in services.
+  Central error middleware. Never expose raw stack traces in prod responses.
+- Use structured logging (pino-like). Include `reqId`, `userId` if available.

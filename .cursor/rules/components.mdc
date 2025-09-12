@@ -1,0 +1,9 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+
+- Generate with HTML+SCSS files; no inline templates/styles.
+- Keep templates simple; no business logic in HTML.
+- Use `trackBy` on `*ngFor`; avoid heavy computations in template expressions.

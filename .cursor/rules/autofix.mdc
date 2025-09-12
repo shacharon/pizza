@@ -1,0 +1,9 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+
+Text/i18n copy, SCSS token tweaks, one-line null/type guards, template a11y attributes.
+
+- Anything larger (routing, public interfaces, complex refactors) → ask first.

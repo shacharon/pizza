@@ -1,0 +1,35 @@
+<div class="grid-container">
+    <div class="restaurant-grid">
+        @for (restaurant of restaurants(); track restaurant.id) {
+        <div class="restaurant-card">
+            <div class="card-image">
+                <img [src]="restaurant.imageUrl" [alt]="restaurant.name" loading="lazy">
+                <div class="rating-badge">
+                    <span class="rating-star">⭐</span>
+                    <span class="rating-value">{{ restaurant.rating }}</span>
+                </div>
+            </div>
+
+            <div class="card-content">
+                <div class="card-header">
+                    <h3 class="restaurant-name">{{ restaurant.name }}</h3>
+                    <span class="price-range">{{ restaurant.priceRange }}</span>
+                </div>
+
+                <div class="card-details">
+                    <span class="cuisine-type">{{ restaurant.cuisine }}</span>
+                    <span class="delivery-time">{{ restaurant.deliveryTime }}</span>
+                </div>
+
+                <p class="description">{{ restaurant.description }}</p>
+            </div>
+        </div>
+        }
+    </div>
+
+    @if (restaurants().length === 0) {
+    <div class="empty-state">
+        <p>No restaurants found. Try adjusting your search.</p>
+    </div>
+    }
+</div>
