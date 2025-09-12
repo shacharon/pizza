@@ -1,6 +1,33 @@
 <div class="grid-container">
     <div class="restaurant-grid">
-        @for (restaurant of restaurants(); track restaurant.id) {
+
+        <!-- Loading skeleton cards -->
+        @if (isLoading()) {
+        @for (i of [1,2,3,4,5,6]; track i) {
+        <div class="restaurant-card skeleton-card">
+            <div class="card-image skeleton-image">
+                <div class="skeleton-shimmer"></div>
+            </div>
+
+            <div class="card-content">
+                <div class="card-header">
+                    <div class="skeleton-text skeleton-title"></div>
+                    <div class="skeleton-text skeleton-price"></div>
+                </div>
+
+                <div class="card-details">
+                    <div class="skeleton-text skeleton-cuisine"></div>
+                    <div class="skeleton-text skeleton-time"></div>
+                </div>
+
+                <div class="skeleton-text skeleton-description"></div>
+                <div class="skeleton-text skeleton-description-short"></div>
+            </div>
+        </div>
+        }
+        } @else {
+        <!-- Real restaurant cards -->
+        @for (restaurant of displayRestaurants(); track restaurant.id) {
         <div class="restaurant-card">
             <div class="card-image">
                 <img [src]="restaurant.imageUrl" [alt]="restaurant.name" loading="lazy">
@@ -25,9 +52,10 @@
             </div>
         </div>
         }
+        }
     </div>
 
-    @if (restaurants().length === 0) {
+    @if (!isLoading() && displayRestaurants().length === 0) {
     <div class="empty-state">
         <p>No restaurants found. Try adjusting your search.</p>
     </div>

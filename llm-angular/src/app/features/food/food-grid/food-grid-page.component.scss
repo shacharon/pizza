@@ -55,3 +55,33 @@
     max-width: 1200px;
     margin: 0 auto;
 }
+
+.error-message {
+    background-color: #fee;
+    border: 1px solid #fcc;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+    text-align: center;
+
+    p {
+        color: #c33;
+        margin: 0;
+        font-weight: 500;
+    }
+}
+
+.clarification-message {
+    background-color: #fff3cd;
+    border: 1px solid #ffeaa7;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+    text-align: center;
+
+    p {
+        color: #856404;
+        margin: 0;
+        font-weight: 500;
+    }
+}

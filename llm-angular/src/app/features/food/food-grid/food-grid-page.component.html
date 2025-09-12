@@ -2,12 +2,29 @@
     <header class="search-header">
         <h1>Find Your Next Favorite Meal</h1>
         <div class="search-bar">
-            <input type="text" placeholder="Search for pizza, sushi, burgers...">
-            <button>Search</button>
+            <input type="text" placeholder="Search for pizza, sushi, burgers..." [value]="searchQuery()"
+                (input)="onSearch($event)">
+            <button (click)="onSearchClick()">Search</button>
         </div>
     </header>
 
     <main class="results-container">
-        <app-food-grid-results></app-food-grid-results>
+        <!-- Error message -->
+        @if (errorMessage()) {
+        <div class="error-message">
+            <p>{{ errorMessage() }}</p>
+        </div>
+        }
+
+        <!-- Clarification message -->
+        @if (clarificationMessage()) {
+        <div class="clarification-message">
+            <p>{{ clarificationMessage() }}</p>
+        </div>
+        }
+
+        <!-- Results grid -->
+        <app-food-grid-results [searchQuery]="searchQuery()" [isLoading]="isLoading()" [restaurants]="restaurants()">
+        </app-food-grid-results>
     </main>
 </div>
