@@ -40,6 +40,7 @@ function mapBasic(r: any): Restaurant {
         placeId: r.place_id,
         photoUrl: photoUrlFromReference(firstPhotoRef),
         location: r.geometry?.location ?? null,
+        types: r.types ?? null,
     } as any;
 }
 

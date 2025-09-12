@@ -1,0 +1,9 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+
+Derive view state with `computed`; side effects only in `effect`.
+
+- Keep service APIs typed (DTO → domain mappers). Do not leak backend shapes into templates.

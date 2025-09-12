@@ -1,0 +1,9 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+
+- Keep the **NLU / Policy / Providers** separated by interfaces.
+- Domain DTOs live in `packages/domain` and are the only types crossing layers.
+- Providers (e.g., WebSearch, Places) implement interfaces and return domain DTOs.

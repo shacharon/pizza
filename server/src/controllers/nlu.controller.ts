@@ -50,10 +50,12 @@ export async function nluParseHandler(req: Request, res: Response) {
 
             const restaurants = (out.results?.restaurants || []).map((r: any) => ({
                 name: r.name,
+                address: r.address ?? null,
                 rating: r.rating ?? null,
                 priceLevel: r.priceLevel ?? null,
                 placeId: r.placeId ?? null,
                 photoUrl: r.photoUrl ?? null,
+                location: r.location ?? null,
             }));
             const meta = out.results?.meta; // preserve provider meta type
             return res.json({
@@ -127,10 +129,13 @@ export async function nluParseHandler(req: Request, res: Response) {
             } catch { }
             const restaurants = (result.restaurants || []).map((r: any) => ({
                 name: r.name,
+                address: r.address ?? null,
                 rating: r.rating ?? null,
                 priceLevel: r.priceLevel ?? null,
                 placeId: r.placeId ?? null,
                 photoUrl: r.photoUrl ?? null,
+                location: r.location ?? null,
+                types: r.types ?? null,
             }));
             const meta: any = {
                 source: result.meta?.source || 'google',

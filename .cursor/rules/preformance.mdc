@@ -1,0 +1,9 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+
+- Async/await with proper timeouts and retries on external calls.
+- Use caching where safe (e.g., popular queries) with explicit TTL.
+- Add idempotency keys for write endpoints when applicable.

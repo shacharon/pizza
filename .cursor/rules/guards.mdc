@@ -1,0 +1,8 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+
+- Lazy-load features; defer non-critical modules where helpful.
+- Guards/Resolvers must be side-effect free and fast.

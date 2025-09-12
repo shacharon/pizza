@@ -1,5 +1,5 @@
 import { Injectable, signal, computed, inject } from '@angular/core';
-import { FoodService, type NLUResponse } from './food.service';
+import { FoodService, type FoodSearchResponse } from './food.service';
 import { SmartChipsService, SmartChip } from './smart-chips.service';
 
 @Injectable()
@@ -43,11 +43,11 @@ export class FoodFacade {
         this.pending.set(true);
 
         // Call NLU endpoint (stable path)
-        this.api.parseAndSearch({ text: t, language: detected }).subscribe({
-            next: (response: NLUResponse) => {
-                this.handleNLUResponse(response);
+        this.api.search(t).subscribe({
+            next: (response: FoodSearchResponse) => {
+                this.handleSearchResponse(response);
             },
-            error: (err) => {
+            error: (err: any) => {
                 this.log.update(list => [...list, {
                     role: 'assistant',
                     text: 'Sorry, I had trouble understanding your request. Could you try rephrasing?'
@@ -58,38 +58,31 @@ export class FoodFacade {
         });
     }
 
-    private handleNLUResponse(response: NLUResponse) {
-        if (response.type === 'results') {
-            // Display restaurant results
-            const restaurants = response.restaurants || [];
-            this.restaurants.set(restaurants);
-            this.summary.set((response as any).message || null);
+    private handleSearchResponse(response: FoodSearchResponse) {
+        // Display restaurant results
+        const restaurants = response.restaurants || [];
+        this.restaurants.set(restaurants);
+        this.summary.set(null); // No message in this response format
 
-            // Generate smart chips from results
-            const chips = this.chipsService.generateChips({
-                nluSlots: (response as any).extractedSlots,
-                results: response.restaurants,
-                lastQuery: response.query,
-                language: response.query.language as 'he' | 'en' | 'ar'
-            });
-            this.chips.set(chips);
+        // Generate smart chips from results (simplified)
+        const chips = this.chipsService.generateChips({
+            nluSlots: null,
+            results: response.restaurants,
+            lastQuery: null,
+            language: 'en'
+        });
+        this.chips.set(chips);
 
-            if (restaurants.length === 0) {
-                this.log.update(list => [...list, {
-                    role: 'assistant',
-                    text: `No restaurants found in ${response.query.city}. Try another area or type?`
-                }]);
-            } else {
-                const summary = (response as any).message
-                    || `Here are places I found in ${response.query.city}. You can refine by type, price, or dietary.`;
-                this.log.update(list => [...list, { role: 'assistant', text: summary }]);
-            }
-        } else if (response.type === 'clarify') {
-            // Ask for clarification
+        if (restaurants.length === 0) {
             this.log.update(list => [...list, {
                 role: 'assistant',
-                text: response.message
+                text: 'No restaurants found. Try a different search term or location.'
             }]);
+        } else {
+            const count = restaurants.length;
+            const source = response.meta.source;
+            const summary = `Found ${count} restaurant${count !== 1 ? 's' : ''} from ${source}. You can refine your search or ask for more details.`;
+            this.log.update(list => [...list, { role: 'assistant', text: summary }]);
         }
     }
 

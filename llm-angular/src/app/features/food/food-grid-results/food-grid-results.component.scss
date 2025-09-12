@@ -1,0 +1,233 @@
+.grid-container {
+    width: 100%;
+}
+
+.restaurant-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 1.5rem;
+    padding: 1rem 0;
+}
+
+.restaurant-card {
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+    transition: all 0.3s ease;
+    cursor: pointer;
+
+    &:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+    }
+}
+
+.card-image {
+    position: relative;
+    height: 200px;
+    overflow: hidden;
+
+    img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transition: transform 0.3s ease;
+    }
+
+    &:hover img {
+        transform: scale(1.05);
+    }
+}
+
+.rating-badge {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 0.4rem 0.8rem;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+
+    .rating-star {
+        font-size: 0.8rem;
+    }
+}
+
+.card-content {
+    padding: 1.2rem;
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 0.8rem;
+}
+
+.restaurant-name {
+    font-size: 1.3rem;
+    font-weight: 600;
+    color: #222;
+    margin: 0;
+    line-height: 1.3;
+}
+
+.price-range {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #16a085;
+    background: #e8f8f5;
+    padding: 0.2rem 0.6rem;
+    border-radius: 12px;
+    flex-shrink: 0;
+}
+
+.card-details {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.8rem;
+    font-size: 0.9rem;
+}
+
+.cuisine-type {
+    color: #666;
+    background: #f8f9fa;
+    padding: 0.3rem 0.8rem;
+    border-radius: 16px;
+    font-weight: 500;
+}
+
+.delivery-time {
+    color: #e67e22;
+    font-weight: 600;
+}
+
+.description {
+    color: #555;
+    font-size: 0.95rem;
+    line-height: 1.4;
+    margin: 0;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 3rem;
+    color: #666;
+    font-size: 1.1rem;
+}
+
+// Skeleton loading styles
+.skeleton-card {
+    pointer-events: none;
+
+    .card-image {
+        background: #f0f0f0;
+    }
+}
+
+.skeleton-image {
+    position: relative;
+    overflow: hidden;
+    background: #f0f0f0;
+}
+
+.skeleton-shimmer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg,
+            transparent,
+            rgba(255, 255, 255, 0.6),
+            transparent);
+    animation: shimmer 1.5s infinite;
+}
+
+.skeleton-text {
+    background: #f0f0f0;
+    border-radius: 4px;
+    position: relative;
+    overflow: hidden;
+
+    &::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg,
+                transparent,
+                rgba(255, 255, 255, 0.6),
+                transparent);
+        animation: shimmer 1.5s infinite;
+    }
+}
+
+.skeleton-title {
+    height: 1.3rem;
+    width: 70%;
+    margin-bottom: 0.5rem;
+}
+
+.skeleton-price {
+    height: 1.1rem;
+    width: 40px;
+    border-radius: 12px;
+}
+
+.skeleton-cuisine {
+    height: 1rem;
+    width: 60px;
+    border-radius: 16px;
+}
+
+.skeleton-time {
+    height: 1rem;
+    width: 80px;
+}
+
+.skeleton-description {
+    height: 0.95rem;
+    width: 100%;
+    margin-bottom: 0.4rem;
+}
+
+.skeleton-description-short {
+    height: 0.95rem;
+    width: 75%;
+}
+
+@keyframes shimmer {
+    0% {
+        transform: translateX(-100%);
+    }
+
+    100% {
+        transform: translateX(100%);
+    }
+}
+
+// Responsive adjustments
+@media (max-width: 768px) {
+    .restaurant-grid {
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 1rem;
+    }
+
+    .card-content {
+        padding: 1rem;
+    }
+
+    .restaurant-name {
+        font-size: 1.2rem;
+    }
+}

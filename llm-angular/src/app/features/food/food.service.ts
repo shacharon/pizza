@@ -37,15 +37,30 @@ export class FoodService {
      * @param options Additional search options
      */
     search(query: string, options?: SearchOptions): Observable<FoodSearchResponse> {
-        const params = new HttpParams()
-            .set('text', query)
-            .set('language', 'he'); // Default to Hebrew, could be dynamic
+        const body = {
+            text: query,
+            language: 'en' // Default to English, could be dynamic based on query
+        };
 
-        return this.http.get<FoodSearchResponse>(`${this.apiUrl}/nlu/parse`, { params })
+        const headers = {
+            'Content-Type': 'application/json',
+            'x-session-id': this.generateSessionId()
+        };
+
+        return this.http.post<any>(`${this.apiUrl}/nlu/parse`, body, { headers })
             .pipe(
                 map(response => this.transformResponse(response)),
                 catchError(error => this.handleError(error))
             );
+    }
+
+    private generateSessionId(): string {
+        const stored = localStorage.getItem('food-session-id');
+        if (stored) return stored;
+
+        const newId = `food-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        localStorage.setItem('food-session-id', newId);
+        return newId;
     }
 
     /**

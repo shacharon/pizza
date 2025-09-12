@@ -1,0 +1,64 @@
+<div class="grid-container">
+    <div class="restaurant-grid">
+
+        <!-- Loading skeleton cards -->
+        @if (isLoading()) {
+        @for (i of [1,2,3,4,5,6]; track i) {
+        <div class="restaurant-card skeleton-card">
+            <div class="card-image skeleton-image">
+                <div class="skeleton-shimmer"></div>
+            </div>
+
+            <div class="card-content">
+                <div class="card-header">
+                    <div class="skeleton-text skeleton-title"></div>
+                    <div class="skeleton-text skeleton-price"></div>
+                </div>
+
+                <div class="card-details">
+                    <div class="skeleton-text skeleton-cuisine"></div>
+                    <div class="skeleton-text skeleton-time"></div>
+                </div>
+
+                <div class="skeleton-text skeleton-description"></div>
+                <div class="skeleton-text skeleton-description-short"></div>
+            </div>
+        </div>
+        }
+        } @else {
+        <!-- Real restaurant cards -->
+        @for (restaurant of displayRestaurants(); track restaurant.id) {
+        <div class="restaurant-card">
+            <div class="card-image">
+                <img [src]="restaurant.imageUrl" [alt]="restaurant.name" loading="lazy"
+                    (error)="onImageError($event, restaurant.name)" (load)="onImageLoad($event, restaurant.name)">
+                <div class="rating-badge">
+                    <span class="rating-star">⭐</span>
+                    <span class="rating-value">{{ restaurant.rating }}</span>
+                </div>
+            </div>
+
+            <div class="card-content">
+                <div class="card-header">
+                    <h3 class="restaurant-name">{{ restaurant.name }}</h3>
+                    <span class="price-range">{{ restaurant.priceRange }}</span>
+                </div>
+
+                <div class="card-details">
+                    <span class="cuisine-type">{{ restaurant.cuisine }}</span>
+                    <span class="delivery-time">{{ restaurant.deliveryTime }}</span>
+                </div>
+
+                <p class="description">{{ restaurant.description }}</p>
+            </div>
+        </div>
+        }
+        }
+    </div>
+
+    @if (!isLoading() && displayRestaurants().length === 0) {
+    <div class="empty-state">
+        <p>No restaurants found. Try adjusting your search.</p>
+    </div>
+    }
+</div>

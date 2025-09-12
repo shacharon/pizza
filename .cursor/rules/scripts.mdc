@@ -1,0 +1,8 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+
+- Generate: `ng g c feature/<x>/components/<y> --standalone --change-detection OnPush`
+- Lint/Test/Build must pass before suggesting merge.
