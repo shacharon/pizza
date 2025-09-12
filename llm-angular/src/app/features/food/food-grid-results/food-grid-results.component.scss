@@ -16,10 +16,16 @@
     overflow: hidden;
     transition: all 0.3s ease;
     cursor: pointer;
+    user-select: none;
 
     &:hover {
         transform: translateY(-4px);
         box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+    }
+
+    &:active {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
     }
 }
 

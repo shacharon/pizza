@@ -147,6 +147,35 @@ Rules:
     }
 
     /**
+     * Follow-up question generator (LLM, tiny prompt)
+     * Produces ONE short leading question in the user's language, or empty string.
+     */
+    async generateFollowUpMessage(params: {
+        language: 'he' | 'en' | 'ar';
+        slots: ExtractedSlots;
+        resultCount: number;
+    }): Promise<string> {
+        const { language, slots, resultCount } = params;
+        try {
+            const system = `You are a concise food assistant. Output ONE short leading question only (no preface). Max 14 words.`;
+            // Minimal context to avoid long prompts; encourage practical narrowing
+            const user = `Lang:${language}
+City:${slots.city ?? 'null'} Type:${slots.type ?? 'null'} Price:${slots.maxPrice ?? 'null'} Results:${resultCount}
+Rules:
+- If city is null: ask for city or offer "near me".
+- If results > 15: suggest narrowing: kosher? budget? rating? delivery? specific area?
+- If results == 0: suggest change: nearby city or different cuisine or higher budget.
+- Keep tone professional, practical. ONE question only in user's language.`;
+            const out = await this.llm?.complete([
+                { role: 'system', content: system },
+                { role: 'user', content: user }
+            ], { temperature: 0.35, timeout: 8_000 });
+            return (out || '').trim();
+        } catch {
+            return '';
+        }
+    }
+    /**
      * Agent 0: Intent Router (simple)
      */
     async routeIntent(userQuery: string, lastAssistantResponse: string): Promise<UserIntent> {

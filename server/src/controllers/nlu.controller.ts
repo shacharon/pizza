@@ -105,7 +105,7 @@ export async function nluParseHandler(req: Request, res: Response) {
             });
         }
 
-        // Fetch and return results
+        // Fetch and return results ONLY if city anchor exists
         if (policy.action === Action.FetchResults && nluRes.slots.city) {
             const dto: any = { city: mergedSlots.city };
             if (mergedSlots.type) dto.type = mergedSlots.type;
@@ -136,6 +136,7 @@ export async function nluParseHandler(req: Request, res: Response) {
                 photoUrl: r.photoUrl ?? null,
                 location: r.location ?? null,
                 types: r.types ?? null,
+                website: r.website ?? null,
             }));
             const meta: any = {
                 source: result.meta?.source || 'google',
@@ -144,6 +145,12 @@ export async function nluParseHandler(req: Request, res: Response) {
                 nluConfidence: nluRes.confidence
             };
             if (typeof result.meta?.cached === 'boolean') meta.cached = result.meta.cached;
+            // Optional: concise follow-up to help user narrow/confirm
+            const followUp = await nluService.generateFollowUpMessage({
+                language,
+                slots: mergedSlots as any,
+                resultCount: (result.restaurants || []).length,
+            });
             return res.json({
                 type: 'results',
                 query: {
@@ -153,11 +160,12 @@ export async function nluParseHandler(req: Request, res: Response) {
                     language
                 },
                 restaurants,
-                meta
+                meta,
+                message: followUp || undefined
             });
         }
 
-        // Fallback clarification
+        // Fallback clarification: ensure we ask for city anchor explicitly
         try {
             console.log('[NLUParse]', {
                 sessionId,

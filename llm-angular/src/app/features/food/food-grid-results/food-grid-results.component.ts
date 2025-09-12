@@ -17,6 +17,7 @@ interface Restaurant {
     priceLevel?: number;
     location?: { lat: number; lng: number }; // Google Places coordinates
     types?: string[]; // Google Places types array
+    website?: string; // Restaurant website URL
 }
 
 @Component({
@@ -388,6 +389,22 @@ export class FoodGridResultsComponent {
             naturalWidth: img.naturalWidth,
             naturalHeight: img.naturalHeight
         });
+    }
+
+    onRestaurantClick(restaurant: any) {
+        const website = restaurant.website;
+
+        if (website) {
+            // Open restaurant website in new tab
+            console.log(`🔗 Opening website for "${restaurant.name}":`, website);
+            window.open(website, '_blank', 'noopener,noreferrer');
+        } else {
+            // Fallback: search for restaurant on Google
+            const searchQuery = encodeURIComponent(`${restaurant.name} ${restaurant.address || ''}`);
+            const googleSearchUrl = `https://www.google.com/search?q=${searchQuery}`;
+            console.log(`🔍 No website found for "${restaurant.name}", opening Google search:`, googleSearchUrl);
+            window.open(googleSearchUrl, '_blank', 'noopener,noreferrer');
+        }
     }
 
 }

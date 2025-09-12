@@ -24,8 +24,13 @@ export class FoodGridPageComponent {
     userLocation = signal<{ lat: number; lng: number } | null>(null);
     locationError = signal<string>('');
     showDistances = signal<boolean>(false);
+    llmSuggestion: string | null = null;
 
     private searchTimeout: any;
+    private loadingTimeout: any;
+    // Prevent stale responses from overwriting newer results
+    private requestSeq = 0;
+    private activeRequestId = 0;
 
     constructor() {
         // Request user location on component init
@@ -36,24 +41,43 @@ export class FoodGridPageComponent {
         const input = event.target as HTMLInputElement;
         const query = input.value.trim();
 
-        // Clear previous timeout
+        // Update search query immediately (for UI binding)
+        this.searchQuery.set(query);
+
+        // Clear previous timeouts
         if (this.searchTimeout) {
             clearTimeout(this.searchTimeout);
         }
+        if (this.loadingTimeout) {
+            clearTimeout(this.loadingTimeout);
+        }
 
-        // Clear previous results
+        // Clear previous error messages
         this.errorMessage.set('');
         this.clarificationMessage.set('');
 
         if (!query) {
+            // Clear results immediately when search is empty
+            // Invalidate any in-flight responses
+            this.activeRequestId = ++this.requestSeq;
             this.restaurants.set([]);
-            this.searchQuery.set('');
+            this.isLoading.set(false);
+            this.llmSuggestion = null;
+            this.clarificationMessage.set('');
             return;
         }
 
-        // Show loading and debounce
-        this.isLoading.set(true);
+        // Only show loading after a short delay to prevent flickering
+        this.loadingTimeout = setTimeout(() => {
+            this.isLoading.set(true);
+        }, 200);
+
+        // Debounce the actual search
         this.searchTimeout = setTimeout(async () => {
+            if (this.loadingTimeout) {
+                clearTimeout(this.loadingTimeout); // Cancel loading timeout if search executes
+            }
+            this.isLoading.set(true); // Ensure loading is shown during search
             await this.performLLMSearch(query);
         }, 800);
     }
@@ -74,10 +98,18 @@ export class FoodGridPageComponent {
     private async performLLMSearch(query: string) {
         try {
             this.searchQuery.set(query);
+            // Mark this request as the latest
+            const requestId = ++this.requestSeq;
+            this.activeRequestId = requestId;
 
             const response = await this.foodService.search(query).toPromise();
 
             this.isLoading.set(false);
+
+            // Ignore stale responses
+            if (requestId !== this.activeRequestId) {
+                return;
+            }
 
             if (!response) {
                 this.errorMessage.set('No response from server');
@@ -96,12 +128,19 @@ export class FoodGridPageComponent {
             this.restaurants.set(response.restaurants || []);
             this.clarificationMessage.set('');
 
+            // Optional LLM follow-up suggestion
+            this.llmSuggestion = (response as any).message || null;
+
             if (response.restaurants.length === 0) {
-                this.clarificationMessage.set('No restaurants found. Try a different search term or location.');
+                // Avoid duplicate empty-state banners; rely on results grid empty-state and optional LLM suggestion
+                this.clarificationMessage.set('');
             }
 
         } catch (error) {
             this.isLoading.set(false);
+            // Ignore stale errors
+            // (if a newer request started, don't show older error)
+            // Note: activeRequestId already advanced when newer request began
             this.errorMessage.set('Search failed. Please try again.');
             console.error('LLM search error:', error);
         }

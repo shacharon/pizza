@@ -12,6 +12,8 @@ export interface FoodSearchResponse {
         nluConfidence?: number;
         cached?: boolean;
     };
+    // Optional concise follow-up question from backend
+    message?: string;
 }
 
 export interface SearchOptions {
@@ -39,7 +41,7 @@ export class FoodService {
     search(query: string, options?: SearchOptions): Observable<FoodSearchResponse> {
         const body = {
             text: query,
-            language: 'en' // Default to English, could be dynamic based on query
+            language: this.detectLanguage(query)
         };
 
         const headers = {
@@ -61,6 +63,20 @@ export class FoodService {
         const newId = `food-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         localStorage.setItem('food-session-id', newId);
         return newId;
+    }
+
+    private detectLanguage(text: string): 'he' | 'en' | 'ar' {
+        // Simple heuristic: check first char script; default EN
+        const trimmed = (text || '').trim();
+
+        // Check for Hebrew characters
+        if (/[\u0590-\u05FF]/.test(trimmed)) return 'he';
+
+        // Check for Arabic characters  
+        if (/[\u0600-\u06FF]/.test(trimmed)) return 'ar';
+
+        // Default to English
+        return 'en';
     }
 
     /**
@@ -172,7 +188,8 @@ export class FoodService {
                     totalResults: response.restaurants?.length || 0,
                     nluConfidence: response.meta?.nluConfidence || 0,
                     cached: response.meta?.cached || false
-                }
+                },
+                message: response.message
             };
         }
 
@@ -184,7 +201,8 @@ export class FoodService {
                     source: 'nlu',
                     nluConfidence: 0,
                     cached: false
-                }
+                },
+                message: response.message
             };
         }
 

@@ -17,6 +17,12 @@
     </header>
 
     <main class="results-container">
+        <!-- LLM follow-up suggestion -->
+        @if (!errorMessage() && !isLoading() && llmSuggestion) {
+        <div class="clarification-message">
+            <p>{{ llmSuggestion }}</p>
+        </div>
+        }
         <!-- Error message -->
         @if (errorMessage()) {
         <div class="error-message">

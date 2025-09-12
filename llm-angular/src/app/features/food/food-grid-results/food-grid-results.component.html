@@ -28,7 +28,7 @@
         } @else {
         <!-- Real restaurant cards -->
         @for (restaurant of displayRestaurants(); track restaurant.id) {
-        <div class="restaurant-card">
+        <div class="restaurant-card" (click)="onRestaurantClick(restaurant)">
             <div class="card-image">
                 <img [src]="restaurant.imageUrl" [alt]="restaurant.name" loading="lazy"
                     (error)="onImageError($event, restaurant.name)" (load)="onImageLoad($event, restaurant.name)">
