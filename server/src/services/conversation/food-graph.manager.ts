@@ -175,8 +175,15 @@ function rulesFirstExtract(text: string, language: Language): ExtractedSlots {
     let maxPrice: number | null = null;
     const priceMatch = text.match(/(?:under|below|max|up to|עד)\s*(\d+)/i);
     if (priceMatch?.[1]) maxPrice = parseInt(priceMatch[1], 10);
+    // Basic dietary keyword extraction
+    const dietary: ExtractedSlots['dietary'] = [];
+    if (/(vegan|טבעוני)/i.test(text)) dietary.push('vegan');
+    if (/(vegetarian|צמחוני)/i.test(text)) dietary.push('vegetarian');
+    if (/(gluten[\s-]?free|ללא\s?גלוטן)/i.test(text)) dietary.push('gluten_free');
+    if (/(kosher|כשר|מהדרין)/i.test(text)) dietary.push('kosher');
+    if (/(halal|حلال)/i.test(text)) dietary.push('halal');
 
-    return { city, type, maxPrice, dietary: [], spicy: null, quantity: null } as ExtractedSlots;
+    return { city, type, maxPrice, dietary, spicy: null, quantity: null } as ExtractedSlots;
 }
 
 export function buildFoodGraph(deps: { nlu?: NLUService; session?: NLUSessionService; provider?: RestaurantsProvider }) {
@@ -287,10 +294,13 @@ export function buildFoodGraph(deps: { nlu?: NLUService; session?: NLUSessionSer
         .addNode('fetch', async (s) => {
             const slots = s.slots as ExtractedSlots;
             if (!slots?.city) return s;
+            const constraints: any = {};
+            if (typeof slots.maxPrice === 'number') constraints.maxPrice = slots.maxPrice;
+            if (Array.isArray(slots.dietary) && slots.dietary.length > 0) constraints.dietary = slots.dietary;
             const dto: FoodQueryDTO = {
                 city: slots.city,
                 type: slots.type || undefined,
-                constraints: typeof slots.maxPrice === 'number' ? { maxPrice: slots.maxPrice } : undefined,
+                constraints: Object.keys(constraints).length ? constraints : undefined,
                 language: s.language,
             } as FoodQueryDTO;
 

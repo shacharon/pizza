@@ -36,6 +36,15 @@
                     <span class="rating-star">⭐</span>
                     <span class="rating-value">{{ restaurant.rating }}</span>
                 </div>
+                @if (restaurant.dietary.vegetarian || restaurant.dietary.vegan || restaurant.dietary.glutenFree ||
+                restaurant.dietary.kosher) {
+                <div class="dietary-badges">
+                    @if (restaurant.dietary.vegetarian) { <span class="diet-badge veg">Vegetarian</span> }
+                    @if (restaurant.dietary.vegan) { <span class="diet-badge vegan">Vegan</span> }
+                    @if (restaurant.dietary.glutenFree) { <span class="diet-badge gf">Gluten‑free</span> }
+                    @if (restaurant.dietary.kosher) { <span class="diet-badge kosher">Kosher</span> }
+                </div>
+                }
             </div>
 
             <div class="card-content">

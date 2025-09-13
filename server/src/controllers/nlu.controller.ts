@@ -56,6 +56,9 @@ export async function nluParseHandler(req: Request, res: Response) {
                 placeId: r.placeId ?? null,
                 photoUrl: r.photoUrl ?? null,
                 location: r.location ?? null,
+                types: r.types ?? null,
+                website: r.website ?? null,
+                dietary: r.dietary ?? null,
             }));
             const meta = out.results?.meta; // preserve provider meta type
             return res.json({
@@ -110,7 +113,16 @@ export async function nluParseHandler(req: Request, res: Response) {
             const dto: any = { city: mergedSlots.city };
             if (mergedSlots.type) dto.type = mergedSlots.type;
             if (typeof mergedSlots.maxPrice === 'number') dto.constraints = { maxPrice: mergedSlots.maxPrice };
+            if (mergedSlots.dietary && mergedSlots.dietary.length > 0) {
+                dto.constraints = dto.constraints || {};
+                dto.constraints.dietary = mergedSlots.dietary;
+                console.log(`🍽️ NLU extracted dietary requirements:`, mergedSlots.dietary);
+            } else {
+                console.log(`🍽️ No dietary requirements extracted from: "${text}"`);
+            }
             dto.language = language as any;
+
+            console.log(`📋 Sending DTO to restaurant service:`, dto);
 
             const result = await provider.search(dto);
             // Update session memory after successful fetch
@@ -124,6 +136,7 @@ export async function nluParseHandler(req: Request, res: Response) {
                     city: nluRes.slots.city,
                     type: nluRes.slots.type || null,
                     maxPrice: nluRes.slots.maxPrice ?? null,
+                    dietary: nluRes.slots.dietary || [],
                     count: (result.restaurants || []).length,
                 });
             } catch { }

@@ -35,7 +35,7 @@ export async function fetchDetails(placeId: string, language = "he", signal?: Ab
     url.searchParams.set("place_id", placeId);
     url.searchParams.set("language", language);
     url.searchParams.set("key", key);
-    url.searchParams.set("fields", "name,formatted_address,geometry/location,rating,international_phone_number,website,opening_hours,url");
+    url.searchParams.set("fields", "name,formatted_address,geometry/location,rating,international_phone_number,website,opening_hours,url,editorial_summary,reviews,types");
     const res = await fetch(url, { signal: signal ?? null });
     if (!res.ok) throw new Error(`Places Details failed: ${res.status}`);
     const json = await res.json();

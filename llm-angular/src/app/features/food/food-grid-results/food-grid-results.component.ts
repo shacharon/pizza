@@ -18,6 +18,13 @@ interface Restaurant {
     location?: { lat: number; lng: number }; // Google Places coordinates
     types?: string[]; // Google Places types array
     website?: string; // Restaurant website URL
+    // Optional dietary flags (to be enriched by backend later)
+    dietary?: {
+        vegetarian?: boolean;
+        vegan?: boolean;
+        glutenFree?: boolean;
+        kosher?: boolean;
+    };
 }
 
 @Component({
@@ -78,9 +85,21 @@ export class FoodGridResultsComponent {
             deliveryTime: this.getLocationInfo(restaurant),
             description: restaurant.description || restaurant.address || 'Great food at this location',
             address: restaurant.address,
-            items: restaurant.items
+            items: restaurant.items,
+            dietary: this.deriveDietaryFlags(restaurant)
         }));
     });
+
+    private deriveDietaryFlags(r: Restaurant): { vegetarian?: boolean; vegan?: boolean; glutenFree?: boolean; kosher?: boolean } {
+        const incoming = (r as any).dietary || {};
+        const types = Array.isArray(r.types) ? r.types : [];
+        const vegetarianFromTypes = types.includes('vegetarian_restaurant');
+        const vegetarian: boolean | undefined = incoming.vegetarian ?? (vegetarianFromTypes || undefined);
+        const vegan: boolean | undefined = incoming.vegan;
+        const glutenFree: boolean | undefined = incoming.glutenFree ?? incoming.gluten_free;
+        const kosher: boolean | undefined = incoming.kosher;
+        return { vegetarian, vegan, glutenFree, kosher };
+    }
 
     private getFallbackImage(restaurantName: string): string {
         // Generate food images based on restaurant name/type

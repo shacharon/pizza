@@ -46,6 +46,43 @@
     }
 }
 
+.dietary-badges {
+    position: absolute;
+    bottom: 12px;
+    left: 12px;
+    display: flex;
+    gap: 6px;
+}
+
+.diet-badge {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #1f5132;
+    background: #e9f7ef;
+    border: 1px solid #c6eed7;
+    padding: 0.18rem 0.5rem;
+    border-radius: 999px;
+    backdrop-filter: saturate(120%) blur(2px);
+}
+
+.diet-badge.vegan {
+    color: #0f5132;
+    background: #e8f5e9;
+    border-color: #c8e6c9;
+}
+
+.diet-badge.gf {
+    color: #533e1f;
+    background: #fff8e1;
+    border-color: #ffecb3;
+}
+
+.diet-badge.kosher {
+    color: #1e3a8a;
+    background: #dbeafe;
+    border-color: #93c5fd;
+}
+
 .rating-badge {
     position: absolute;
     top: 12px;
