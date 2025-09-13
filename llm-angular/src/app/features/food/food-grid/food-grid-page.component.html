@@ -5,15 +5,15 @@
             <input type="text" placeholder="Search for pizza, sushi, burgers..." [value]="searchQuery()"
                 (input)="onSearch($event)">
             <button (click)="onSearchClick()">Search</button>
-        </div>
-
-        <div class="search-options">
-            <label class="distance-toggle">
+            @if (!userLocation()) { <button class="use-location" (click)="onUseMyLocation()">Use my location</button> }
+            <label class="distance-toggle inline">
                 <input type="checkbox" [checked]="showDistances()" (change)="onDistanceToggle($event)">
                 <span class="checkmark"></span>
                 Show distances from my location
             </label>
         </div>
+
+        <div class="search-options"></div>
     </header>
 
     <main class="results-container">

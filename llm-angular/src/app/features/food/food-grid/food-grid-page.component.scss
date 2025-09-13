@@ -49,6 +49,14 @@
             background-color: #2b6cb0;
         }
     }
+
+    .use-location {
+        background-color: #1f9d55;
+
+        &:hover {
+            background-color: #17834a;
+        }
+    }
 }
 
 .results-container {
@@ -87,9 +95,14 @@
 }
 
 .search-options {
-    display: flex;
-    justify-content: center;
-    margin-top: 1rem;
+    margin-top: 0.5rem;
+}
+
+.distance-toggle.inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: 0.75rem;
 }
 
 .distance-toggle {
@@ -111,4 +124,9 @@
     &:hover {
         color: #333;
     }
+}
+
+.search-hint {
+    font-size: 0.9rem;
+    color: #666;
 }

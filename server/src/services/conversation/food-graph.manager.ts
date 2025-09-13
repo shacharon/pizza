@@ -14,6 +14,8 @@ export interface FoodGraphState {
     sessionId: string;
     text: string;
     language: Language;
+    nearMe?: boolean;
+    userLocation?: { lat: number; lng: number };
 
     // Outputs from nodes (progressively filled)
     slots?: ExtractedSlots;
@@ -191,7 +193,7 @@ export function buildFoodGraph(deps: { nlu?: NLUService; session?: NLUSessionSer
     const session = deps.session || nluSessionService;
     const provider = deps.provider || getRestaurantsProvider();
 
-    const FETCH_TIMEOUT_MS = 8_000;
+    const FETCH_TIMEOUT_MS = 6_000; // tighter timeout to avoid UI "no response"
 
     function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
         return new Promise<T>((resolve, reject) => {
@@ -226,6 +228,7 @@ export function buildFoodGraph(deps: { nlu?: NLUService; session?: NLUSessionSer
 
     const g = new FoodGraphBuilder()
         .addNode('nlu', async (s) => {
+            try { console.log('[FoodGraph] nlu node start', { nearMe: (s as any).nearMe, userLocation: (s as any).userLocation }); } catch { }
             const rules = rulesFirstExtract(s.text, s.language);
             const hasUseful = !!(rules.city || rules.type || rules.maxPrice);
             let slots: ExtractedSlots;
@@ -246,17 +249,14 @@ export function buildFoodGraph(deps: { nlu?: NLUService; session?: NLUSessionSer
                     if (resolved?.city) slots = { ...slots, city: resolved.city } as ExtractedSlots;
                 } catch { }
             }
-            // Merge with memory only for follow-ups/corrections, not for fresh NEW_QUERY like "i want pizza"
+            // Merge with memory only for explicit follow-ups (no heuristic)
             const followUpPattern = /(cheaper|less|more|again|same|not\s|without|בלעדי|בלי|זול|יקר|עוד|פחות|יותר|זה לא)/i;
-            let isFollowUp = followUpPattern.test(s.text);
-            // Heuristic: if user provided only type (or price) and session has a city, treat as follow-up
-            if (!isFollowUp) {
-                const ctx = session.getSessionContext(s.sessionId);
-                if (ctx?.lastSlots?.city && !slots.city && (slots.type || slots.maxPrice != null)) {
-                    isFollowUp = true;
-                }
-            }
+            const isFollowUp = followUpPattern.test(s.text);
             const slotsOut = isFollowUp ? session.mergeWithSession(s.sessionId, slots) : slots;
+            // If this is a fresh query, clear previous session to avoid sticky city/dietary
+            if (!isFollowUp) {
+                try { session.clearSession(s.sessionId); } catch { }
+            }
             return { ...s, slots: slotsOut };
         })
         // classify node: fast FOOD/NOT_FOOD/AMBIGUOUS to aid policy
@@ -282,30 +282,97 @@ export function buildFoodGraph(deps: { nlu?: NLUService; session?: NLUSessionSer
             } catch { }
             return s;
         })
-        // policy node: decide action based on slots
+        // policy node: freestyle decision with location permission prompt when needed
         .addNode('policy', async (s) => {
             const slots = s.slots as ExtractedSlots;
-            const p = nluPolicy.decideContextual(slots, s.text, s.language);
-            const base = { action: p.action as string, intent: p.intent as string, missing: p.missingFields as string[] };
-            const policy = p.message ? { ...base, message: p.message as string } : base;
+            const hasAnchor = !!(slots?.city || s.userLocation || s.nearMe);
+            const hasFilters = !!(slots?.type || (slots?.dietary && slots.dietary.length > 0) || typeof slots?.maxPrice === 'number');
+
+            if (hasAnchor || (hasFilters && slots?.city)) {
+                const policy = { action: Action.FetchResults as string, intent: 'search' as string, missing: [] as string[] };
+                return { ...s, policy } as FoodGraphState;
+            }
+
+            if (hasFilters && !slots?.city && !s.userLocation) {
+                const policy = {
+                    action: Action.AskClarification as string,
+                    intent: 'clarify_location' as string,
+                    missing: ['location'] as string[],
+                    message: 'I can search 10km around you. Share your location or type a city?'
+                };
+                return { ...s, policy } as FoodGraphState;
+            }
+
+            // default: ask for city
+            const policy = {
+                action: Action.AskClarification as string,
+                intent: 'clarify_city' as string,
+                missing: ['city'] as string[],
+                message: undefined as any
+            };
             return { ...s, policy } as FoodGraphState;
         })
         // fetch node: call provider with timeout/retries and update memory
         .addNode('fetch', async (s) => {
             const slots = s.slots as ExtractedSlots;
-            if (!slots?.city) return s;
             const constraints: any = {};
-            if (typeof slots.maxPrice === 'number') constraints.maxPrice = slots.maxPrice;
-            if (Array.isArray(slots.dietary) && slots.dietary.length > 0) constraints.dietary = slots.dietary;
+            if (typeof slots?.maxPrice === 'number') constraints.maxPrice = slots.maxPrice;
+            if (Array.isArray(slots?.dietary) && slots.dietary.length > 0) constraints.dietary = slots.dietary;
+
+            let city: string | undefined = slots?.city || undefined;
+            const address: string | undefined = (slots as any).address || undefined;
+            const requestedRadiusKm: number | undefined = (slots as any).radiusKm || undefined;
+            let location = s.userLocation;
+            let radiusMeters: number | undefined = undefined;
+            if (requestedRadiusKm) radiusMeters = Math.max(500, Math.min(30_000, Math.floor(requestedRadiusKm * 1000)));
+            if (!radiusMeters && location) radiusMeters = 2_000; // default 2km around user
+            if (!city && !location) {
+                // fallback: keep city undefined; provider may still handle
+            }
+
+            // If address provided, resolve to geo (best-effort using city fallback elsewhere)
+            if (address) {
+                try {
+                    const geo = await findCity(address, s.language);
+                    if (geo) {
+                        location = { lat: geo.lat, lng: geo.lng } as any;
+                    }
+                } catch { }
+            }
+
+            // If city provided (and no explicit address), geocode city to anchor search by geo instead of plain text
+            if (!address && city && !location) {
+                try {
+                    const geo = await findCity(city, s.language);
+                    if (geo) {
+                        location = { lat: geo.lat, lng: geo.lng } as any;
+                        if (!radiusMeters) radiusMeters = 10_000; // default 10km around city
+                        // Clear city to avoid text bias; rely on geo + minimal query
+                        city = undefined;
+                    }
+                } catch { }
+            }
+
+            // If caller explicitly asked for "near me", prefer geo and ignore any residual city
+            if ((s as any).nearMe) {
+                city = undefined;
+            }
+
+            // IMPORTANT: if user specified a city, it overrides near-me geo anchor.
+            if (!city && location && radiusMeters) {
+                constraints.location = location;
+                constraints.radiusMeters = radiusMeters;
+            }
+
             const dto: FoodQueryDTO = {
-                city: slots.city,
-                type: slots.type || undefined,
+                city,
+                type: slots?.type || undefined,
                 constraints: Object.keys(constraints).length ? constraints : undefined,
                 language: s.language,
-            } as FoodQueryDTO;
+            } as any;
 
-            const attempts = (config.LLM_RETRY_ATTEMPTS ?? 3) as number;
-            const backoff = (config.LLM_RETRY_BACKOFF_MS as number[]) || [0, 250, 750];
+            const attempts = Math.min(2, (config.LLM_RETRY_ATTEMPTS ?? 2) as number);
+            const backoff = (config.LLM_RETRY_BACKOFF_MS as number[]) || [0, 300];
             let lastErr: any = null;
             for (let i = 0; i < attempts; i++) {
                 try {

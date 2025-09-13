@@ -10,7 +10,10 @@ const SlotsSchema = z.object({
     maxPrice: z.number().positive().nullable(),
     dietary: z.array(z.enum(['kosher', 'halal', 'vegan', 'vegetarian', 'gluten_free'])).default([]),
     spicy: z.boolean().nullable(),
-    quantity: z.number().int().positive().nullable()
+    quantity: z.number().int().positive().nullable(),
+    address: z.string().nullable(),
+    radiusKm: z.number().positive().nullable(),
+    aroundMe: z.boolean().nullable()
 });
 export type ExtractedSlots = z.infer<typeof SlotsSchema> & { isFood?: boolean };
 
@@ -48,7 +51,7 @@ export class NLUService {
                 return { slots, confidence, originalText: text, language };
             }
             // Otherwise truly not food
-            const slots: ExtractedSlots = { city: null, type: null, maxPrice: null, dietary: [], spicy: null, quantity: null, isFood: false };
+            const slots: ExtractedSlots = { city: null, type: null, maxPrice: null, dietary: [], spicy: null, quantity: null, address: null, radiusKm: null, aroundMe: null, isFood: false } as any;
             return { slots, confidence: 0.9, originalText: text, language };
         }
 
@@ -88,11 +91,14 @@ Return ONLY valid JSON matching this schema:
   "maxPrice": number | null,
   "dietary": string[],
   "spicy": boolean | null,
-  "quantity": number | null
+  "quantity": number | null,
+  "address": string | null,
+  "radiusKm": number | null,
+  "aroundMe": boolean | null
 }
 
 Rules:
-- CITY is the anchor - extract any location/place name accurately
+- CITY or ADDRESS can be the anchor. If the user provides a specific address (street+number or venue name), return it in "address". When user says 'around me' set aroundMe=true. If a radius is mentioned (e.g., 'within 3 km', 'in 2 kilometers'), extract radiusKm as a number.
 - Handle Hebrew/Arabic transliteration (תל אביב → Tel Aviv, القدס → Jerusalem)
 - 'type' should be a specific food, dish, or cuisine (e.g., "shawarma", "italian", "seafood").
 - Extract price from "under X", "below X", "max X", "up to X" patterns
@@ -314,7 +320,7 @@ Answer with a single word: NEW_QUERY or CORRECTION.`;
         let maxPrice: number | null = null;
         const priceMatch = text.match(/(?:under|below|max|up to|עד)\s*(\d+)/i);
         if (priceMatch?.[1]) maxPrice = parseInt(priceMatch[1], 10);
-        return { city, type, maxPrice, dietary: [], spicy: null, quantity: null };
+        return { city, type, maxPrice, dietary: [], spicy: null, quantity: null, address: null, radiusKm: null, aroundMe: null } as any;
     }
 }
 

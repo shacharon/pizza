@@ -11,18 +11,49 @@ const CACHE_VERSION = 'dietary-v1';
 
 
 function buildQuery(dto: FoodQueryDTO): string {
+    const hasGeo = !!((dto as any)?.constraints?.location && (dto as any)?.constraints?.radiusMeters);
+
+    // Build query parts from type and dietary keywords
+    const dietary = (dto.constraints as any)?.dietary as string[] | undefined;
+    let dietPhrase: string | null = null;
+    if (dietary && dietary.length > 0) {
+        if (dietary.includes('vegan')) dietPhrase = 'vegan';
+        else if (dietary.includes('vegetarian')) dietPhrase = 'vegetarian';
+        else if (dietary.includes('gluten_free')) dietPhrase = 'gluten free';
+        else if (dietary.includes('kosher')) dietPhrase = 'kosher';
+    }
+
+    // When geo-anchored, keep query minimal but embed dietary/type so Google can match
+    if (hasGeo) {
+        if (dto.type && dietPhrase) return `${dietPhrase} ${dto.type}`;
+        if (dto.type) return `${dto.type}`;
+        if (dietPhrase) return `${dietPhrase} restaurants`;
+        return `restaurants`;
+    }
+
+    // City-anchored
     const city = dto.city ?? "Tel Aviv";
+    if (dto.type && dietPhrase) return `${dietPhrase} ${dto.type} in ${city}`;
     if (dto.type) return `${dto.type} in ${city}`;
+    if (dietPhrase) return `${dietPhrase} restaurants in ${city}`;
     return `restaurants in ${city}`;
 }
 
 function cacheKey(dto: FoodQueryDTO) {
-    const city = (dto.city ?? 'tel aviv').toLowerCase().trim();
+    const hasGeo = !!((dto as any)?.constraints?.location && (dto as any)?.constraints?.radiusMeters);
     const type = dto.type ?? 'any';
     const maxPrice = dto.constraints?.maxPrice ?? 'any';
     const dietary = dto.constraints?.dietary?.sort().join(',') ?? 'any';
     const lang = (dto as any).language ?? 'he';
-    return `restaurants:v2:${CACHE_VERSION}:${lang}:${city}:${type}:${maxPrice}:${dietary}`;
+    const cityOrGeo = hasGeo
+        ? (() => {
+            const { location, radiusMeters } = (dto as any).constraints;
+            const lat = Number(location.lat).toFixed(3);
+            const lng = Number(location.lng).toFixed(3);
+            return `geo:${lat},${lng}:${radiusMeters}`;
+        })()
+        : (dto.city ?? 'tel aviv').toLowerCase().trim();
+    return `restaurants:v2:${CACHE_VERSION}:${lang}:${cityOrGeo}:${type}:${maxPrice}:${dietary}`;
 }
 
 function photoUrlFromReference(ref?: string | null, maxwidth: number = 640): string | null {
@@ -47,6 +78,19 @@ function mapBasic(r: any): Restaurant {
     } as any;
 }
 
+function distanceMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+    const R = 6371e3;
+    const toRad = (d: number) => (d * Math.PI) / 180;
+    const dLat = toRad(b.lat - a.lat);
+    const dLng = toRad(b.lng - a.lng);
+    const lat1 = toRad(a.lat);
+    const lat2 = toRad(b.lat);
+    const sinDLat = Math.sin(dLat / 2);
+    const sinDLng = Math.sin(dLng / 2);
+    const h = sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLng * sinDLng;
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
 export async function getRestaurantsV2(dto: FoodQueryDTO): Promise<RestaurantsResponse> {
     const key = cacheKey(dto);
     const hit = await cache.get<RestaurantsResponse>(key);
@@ -60,8 +104,74 @@ export async function getRestaurantsV2(dto: FoodQueryDTO): Promise<RestaurantsRe
     if (dto.constraints?.maxPrice !== undefined) queryEcho.maxPrice = dto.constraints.maxPrice;
     queryEcho.language = lang;
 
-    const data = await textSearch(buildQuery(dto), lang);
-    let list: Restaurant[] = Array.isArray(data?.results) ? data.results.slice(0, 20).map(mapBasic) : [];
+    // Prefer location+radius when provided (near me or address geocoded upstream)
+    let data: any = null;
+    let list: Restaurant[] = [];
+    const hasGeo = (dto as any)?.constraints?.location && (dto as any)?.constraints?.radiusMeters;
+    try {
+        if (hasGeo) {
+            const { location, radiusMeters } = (dto as any).constraints;
+            // Attempt 1: requested radius (e.g., 2km)
+            data = await textSearch(buildQuery(dto), lang, undefined, { location, radiusMeters });
+            list = Array.isArray(data?.results) ? data.results.slice(0, 20).map(mapBasic) : [];
+            // Defensive filter: ensure results are within radius
+            list = list.filter(r => {
+                const loc = (r as any).location;
+                if (!loc) return true;
+                return distanceMeters({ lat: location.lat, lng: location.lng }, { lat: loc.lat, lng: loc.lng }) <= (radiusMeters + 1500);
+            });
+            // If none, progressively widen near-me radius (stay geo-anchored)
+            if (list.length === 0) {
+                const widen1 = Math.min(6_000, Math.max(radiusMeters * 3, 3_000));
+                const d1 = await textSearch(buildQuery(dto), lang, undefined, { location, radiusMeters: widen1 });
+                let l1: Restaurant[] = Array.isArray(d1?.results) ? d1.results.slice(0, 20).map(mapBasic) : [];
+                l1 = l1.filter(r => {
+                    const loc = (r as any).location;
+                    if (!loc) return true;
+                    return distanceMeters({ lat: location.lat, lng: location.lng }, { lat: loc.lat, lng: loc.lng }) <= (widen1 + 2000);
+                });
+                if (l1.length > 0) { data = d1; list = l1; }
+            }
+            if (list.length === 0) {
+                const widen2 = 10_000;
+                const d2 = await textSearch(buildQuery(dto), lang, undefined, { location, radiusMeters: widen2 });
+                let l2: Restaurant[] = Array.isArray(d2?.results) ? d2.results.slice(0, 20).map(mapBasic) : [];
+                l2 = l2.filter(r => {
+                    const loc = (r as any).location;
+                    if (!loc) return true;
+                    return distanceMeters({ lat: location.lat, lng: location.lng }, { lat: loc.lat, lng: loc.lng }) <= (widen2 + 3000);
+                });
+                if (l2.length > 0) { data = d2; list = l2; }
+            }
+        }
+    } catch { }
+    // If geo + dietary query yielded nothing, broaden the textual query and rely on enrichment filtering
+    const dietaryList: string[] | undefined = (dto as any)?.constraints?.dietary;
+    if (list.length === 0 && hasGeo && dietaryList && dietaryList.length > 0) {
+        try {
+            const { location } = (dto as any).constraints;
+            const broadDto: FoodQueryDTO = { ...dto } as any;
+            // Temporarily drop diet phrase from query builder by cloning with no dietary
+            (broadDto as any).constraints = { ...(dto as any).constraints };
+            (broadDto as any).constraints.dietary = dietaryList; // keep for filtering later
+            const q = dto.type ? `${dto.type}` : `restaurants`;
+            // Use builder path with geo but without diet phrase: call textSearch directly
+            const d = await textSearch(q, lang, undefined, { location, radiusMeters: (dto as any).constraints.radiusMeters || 2_000 });
+            let l: Restaurant[] = Array.isArray(d?.results) ? d.results.slice(0, 20).map(mapBasic) : [];
+            l = l.filter(r => {
+                const loc = (r as any).location;
+                if (!loc) return true;
+                return distanceMeters({ lat: location.lat, lng: location.lng }, { lat: loc.lat, lng: loc.lng }) <= (((dto as any).constraints.radiusMeters || 2_000) + 2000);
+            });
+            if (l.length > 0) { data = d; list = l; }
+        } catch { }
+    }
+
+    if (list.length === 0) {
+        // Final fallback: plain text search (only if we didn't have geo or widening failed)
+        data = await textSearch(buildQuery(dto), lang);
+        list = Array.isArray(data?.results) ? data.results.slice(0, 20).map(mapBasic) : [];
+    }
 
     // If no results, expand search by 10km around resolved city center (IL-first geocode)
     let expanded = false;
@@ -79,10 +189,12 @@ export async function getRestaurantsV2(dto: FoodQueryDTO): Promise<RestaurantsRe
         } catch { }
     }
 
-    const ENRICH_TOP_N = Math.min(20, list.length);
+    const wantDietary = !!((dto as any)?.constraints?.dietary && (dto as any).constraints.dietary.length > 0);
+    const ENRICH_TOP_N = Math.min(wantDietary ? 40 : 12, list.length);
     const top = list.slice(0, ENRICH_TOP_N);
     if (ENRICH_TOP_N > 0) {
         console.log(`🔍 ENRICHING ${ENRICH_TOP_N} restaurants with dietary info...`);
+        // Fetch details with a per-request timeout guard
         const settled = await Promise.allSettled(top.map(r => fetchDetails(r.placeId, lang)));
         settled.forEach((s, i) => {
             const target = top[i]; if (!target) return;

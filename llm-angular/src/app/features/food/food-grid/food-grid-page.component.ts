@@ -1,4 +1,4 @@
-import { Component, ChangeDetectionStrategy, signal, inject } from '@angular/core';
+import { Component, ChangeDetectionStrategy, signal, inject, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { FoodGridResultsComponent } from '../food-grid-results/food-grid-results.component';
@@ -25,6 +25,7 @@ export class FoodGridPageComponent {
     locationError = signal<string>('');
     showDistances = signal<boolean>(false);
     llmSuggestion: string | null = null;
+    locationStatus = computed(() => this.userLocation() ? 'Using your location (±10km)' : 'No location — using city fallback');
 
     private searchTimeout: any;
     private loadingTimeout: any;
@@ -33,8 +34,20 @@ export class FoodGridPageComponent {
     private activeRequestId = 0;
 
     constructor() {
-        // Request user location on component init
-        this.requestUserLocation();
+        // Restore saved location if previously granted
+        try {
+            const saved = localStorage.getItem('userLocation');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (parsed && typeof parsed.lat === 'number' && typeof parsed.lng === 'number') {
+                    this.userLocation.set(parsed);
+                    // Auto-search around me on first load
+                    this.isLoading.set(true);
+                    // Run after microtask so template is ready
+                    Promise.resolve().then(() => this.performLLMSearch('restaurants'));
+                }
+            }
+        } catch { }
     }
 
     async onSearch(event: Event) {
@@ -102,7 +115,13 @@ export class FoodGridPageComponent {
             const requestId = ++this.requestSeq;
             this.activeRequestId = requestId;
 
-            const response = await this.foodService.search(query).toPromise();
+            // When text includes a city/address, don't force-send userLocation;
+            // allow backend to use the city anchor to avoid mixing near-me and city.
+            const lower = (query || '').toLowerCase();
+            const hasCityLike = /\b(tel\s*aviv|jerusalem|haifa|ashkelon|ashdod|beer\s*sheva|\d+\s+|street|st\.|road|rd\.|ave)\b/i.test(lower);
+            const locToSend = hasCityLike ? undefined : (this.userLocation() || undefined);
+            const response = await this.foodService.search(query, undefined, locToSend).toPromise();
+            console.log('Search sent with userLocation:', locToSend);
 
             this.isLoading.set(false);
 
@@ -154,10 +173,9 @@ export class FoodGridPageComponent {
 
         navigator.geolocation.getCurrentPosition(
             (position) => {
-                this.userLocation.set({
-                    lat: position.coords.latitude,
-                    lng: position.coords.longitude
-                });
+                const loc = { lat: position.coords.latitude, lng: position.coords.longitude };
+                this.userLocation.set(loc);
+                try { localStorage.setItem('userLocation', JSON.stringify(loc)); } catch { }
                 this.locationError.set('');
                 console.log('User location obtained:', this.userLocation());
             },
@@ -193,5 +211,48 @@ export class FoodGridPageComponent {
         if (checkbox.checked && !this.userLocation()) {
             this.requestUserLocation();
         }
+    }
+
+    async onUseMyLocation() {
+        try {
+            this.isLoading.set(true);
+            await new Promise<void>((resolve, reject) => {
+                if (!navigator.geolocation) return reject(new Error('Geolocation not supported'));
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                        const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                        this.userLocation.set(loc);
+                        try { localStorage.setItem('userLocation', JSON.stringify(loc)); } catch { }
+                        resolve();
+                    },
+                    (err) => reject(err),
+                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 }
+                );
+            });
+            // Immediately re-run search with location if there is a query
+            const q = this.searchQuery().trim();
+            if (q) { await this.performLLMSearch(q); }
+        } catch (e) {
+            console.warn('Location error:', e);
+            this.errorMessage.set('Unable to access your location. You can type a city instead.');
+        } finally {
+            this.isLoading.set(false);
+        }
+    }
+
+    async retryLocation() {
+        try {
+            // If permission is blocked, inform how to enable
+            const permissions: any = (navigator as any).permissions;
+            if (permissions && permissions.query) {
+                const status = await permissions.query({ name: 'geolocation' as any });
+                if (status.state === 'denied') {
+                    this.errorMessage.set('Location is blocked. Click the site lock icon → Site settings → Allow Location, then try again.');
+                    return;
+                }
+            }
+        } catch { /* ignore */ }
+        // Re-request
+        await this.onUseMyLocation();
     }
 }

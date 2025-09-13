@@ -38,11 +38,16 @@ export class FoodService {
      * @param query Natural language search query (e.g., "pizza in Tel Aviv")
      * @param options Additional search options
      */
-    search(query: string, options?: SearchOptions): Observable<FoodSearchResponse> {
-        const body = {
+    search(query: string, options?: SearchOptions, userLocation?: { lat: number; lng: number }): Observable<FoodSearchResponse> {
+        const body: any = {
             text: query,
             language: this.detectLanguage(query)
         };
+
+        if (userLocation) {
+            body.userLocation = userLocation;
+            body.nearMe = true;
+        }
 
         const headers = {
             'Content-Type': 'application/json',
