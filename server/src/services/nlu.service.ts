@@ -181,6 +181,118 @@ Rules:
             return '';
         }
     }
+
+    /**
+     * Evidence-only conversational reply
+     * Builds a short natural response referencing ONLY provided restaurants.
+     * Falls back to a deterministic template on timeout or when LLM is disabled.
+     */
+    async generateEvidenceReply(params: {
+        language: 'he' | 'en' | 'ar';
+        slots: Partial<ExtractedSlots>;
+        restaurants: Array<{ name: string; address?: string | null; rating?: number | null }>;
+        userQuery: string;
+    }): Promise<string> {
+        const { language, slots, restaurants, userQuery } = params;
+
+        // Fallback template (no LLM or no restaurants)
+        const template = () => {
+            const top = restaurants.slice(0, 3);
+            if (language === 'he') {
+                if (top.length === 0) return 'לא מצאתי תוצאות כרגע. נרצה להרחיב את הרדיוס או לשנות סינון?';
+                const lines = top.map(r => `• ${r.name}${r.address ? ` — ${r.address}` : ''}${r.rating ? ` (${r.rating.toFixed(1)}⭐)` : ''}`);
+                const introParts: string[] = ['מצאתי כמה אפשרויות'];
+                if (slots?.type) introParts.push(`ל${slots.type}`);
+                if (slots?.dietary && (slots.dietary as any[])?.length > 0) introParts.push((slots.dietary as any[]).join(' ו'));
+                if (slots?.city) introParts.push(`ב${slots.city}`);
+                const intro = introParts.join(' ') + ':';
+                return `${intro}\n${lines.join('\n')}\nרוצה שאסנן לפי דירוג 4.2⭐ ומעלה או להשאיר הכל?`;
+            }
+            // English fallback
+            if (top.length === 0) return 'No results yet. Want to widen the radius or change filters?';
+            const linesEn = top.map(r => `• ${r.name}${r.address ? ` — ${r.address}` : ''}${r.rating ? ` (${r.rating.toFixed(1)}⭐)` : ''}`);
+            return `Found a few options:${'\n'}${linesEn.join('\n')}${'\n'}Filter by 4.2⭐+ or show all?`;
+        };
+
+        // If LLM is not configured, use template
+        if (!this.llm) return template();
+
+        try {
+            const evidence = restaurants.slice(0, 6).map((r, i) => ({ id: `r${i + 1}`, name: r.name, address: r.address || undefined, rating: r.rating ?? undefined }));
+            const system = `You are a concise, friendly food assistant. Write a short natural reply in ${language}.
+Rules:
+- Reference ONLY the evidence items by their names; do not invent venues or facts.
+- 2 short lines max + ONE follow-up question.
+- Tone: helpful, practical; minimal emoji.
+`;
+            const user = `User query: ${userQuery}
+Slots: ${JSON.stringify({ type: slots?.type || null, dietary: slots?.dietary || [], city: (slots as any)?.city || null })}
+Evidence restaurants (use only these names):
+${JSON.stringify(evidence)}
+
+Compose:
+1) One-line intro tailored to slots (type/dietary/city if present).
+2) Bullet list of 2–3 places with 5–9 words each (name + tiny reason).
+3) One follow-up question (e.g., delivery/dine-in, budget, rating).
+`;
+            const out = await this.llm.complete([
+                { role: 'system', content: system },
+                { role: 'user', content: user }
+            ], { temperature: 0.65, timeout: 9000 });
+            return (out || '').trim() || template();
+        } catch {
+            return template();
+        }
+    }
+
+    /**
+     * Warm, single-sentence clarification question tailored to context.
+     */
+    async generateClarifyMessage(params: {
+        language: 'he' | 'en' | 'ar';
+        slots: Partial<ExtractedSlots>;
+        kind: 'missing_location' | 'missing_city' | 'first_turn';
+        topic?: 'type' | 'dietary' | 'toppings' | 'budget' | 'delivery' | 'openNow' | 'location';
+    }): Promise<string> {
+        const { language, slots, kind, topic } = params;
+
+        const fallback = () => {
+            if (language === 'he') {
+                if (kind === 'first_turn') {
+                    const type = (slots as any)?.type ? `ל${(slots as any).type} ` : '';
+                    return `מחפש ${type}סביבך (2 ק״מ) או להקליד עיר/כתובת?`;
+                }
+                if (kind === 'missing_location') {
+                    return 'מחפש סביבך (2 ק״מ) או להקליד עיר/כתובת?';
+                }
+                return 'לאיזה אזור לכוון? אפשר עיר או כתובת (למשל "מרינה אשקלון").';
+            }
+            // English fallback
+            if (kind === 'first_turn') {
+                const type = (slots as any)?.type ? `${(slots as any).type} ` : '';
+                return `Should I search ${type}2 km around you, or use a city/address?`;
+            }
+            if (kind === 'missing_location') {
+                return 'Want me to search 2 km around you or use a city/address?';
+            }
+            return 'Which area should I target? You can type a city or address.';
+        };
+
+        if (!this.llm) return fallback();
+
+        try {
+            const system = `You are a warm, concise assistant. Output ONE friendly follow-up line in ${language}. Max 16 words. No lists.`;
+            const user = `Context: kind=${kind}, topic=${topic || 'auto'}, slots=${JSON.stringify({ type: (slots as any)?.type || null, dietary: (slots as any)?.dietary || [], city: (slots as any)?.city || null, maxPrice: (slots as any)?.maxPrice ?? null, toppings: (slots as any)?.toppings || [] })}
+Goal: Ask a natural question to gently move the conversation forward on the indicated topic if provided. Avoid sounding robotic. One sentence only.`;
+            const out = await this.llm.complete([
+                { role: 'system', content: system },
+                { role: 'user', content: user }
+            ], { temperature: 0.6, timeout: 3000 });
+            return (out || '').trim() || fallback();
+        } catch {
+            return fallback();
+        }
+    }
     /**
      * Agent 0: Intent Router (simple)
      */

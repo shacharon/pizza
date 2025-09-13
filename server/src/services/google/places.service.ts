@@ -67,8 +67,16 @@ export async function findCity(input: string, language = "he", signal?: AbortSig
         return (json?.results || []) as any[];
     }
 
-    const preferredTypes = new Set(['locality', 'sublocality', 'postal_town', 'administrative_area_level_3', 'administrative_area_level_2', 'administrative_area_level_1', 'political']);
-    const pick = (arr: any[]) => arr.find(r => Array.isArray(r.types) && r.types.some((t: string) => preferredTypes.has(t))) || arr[0] || null;
+    // Prefer precise POIs when user typed a landmark (e.g., "Marina Tel Aviv"), else fall back to locality
+    const poiTypes = new Set(['point_of_interest', 'premise', 'establishment', 'natural_feature', 'tourist_attraction']);
+    const cityTypes = new Set(['locality', 'sublocality', 'postal_town', 'administrative_area_level_3', 'administrative_area_level_2', 'administrative_area_level_1', 'political']);
+    const pick = (arr: any[]) => {
+        const withTypes = arr.filter(r => Array.isArray(r.types) && r.types.length > 0);
+        const poi = withTypes.find(r => r.types.some((t: string) => poiTypes.has(t)));
+        if (poi) return poi;
+        const city = withTypes.find(r => r.types.some((t: string) => cityTypes.has(t)));
+        return city || arr[0] || null;
+    };
 
     // 1) Geocode IL
     let results = await geocodeIL(input);
@@ -78,7 +86,7 @@ export async function findCity(input: string, language = "he", signal?: AbortSig
         results = await geocodeIL(`${input} ישראל`);
         chosen = pick(results);
     }
-    // 3) If still nothing, try Places Text Search in IL
+    // 3) Places Text Search in IL (favor POIs when present)
     if (!chosen) {
         try {
             const ts = new URL(`${BASE}/textsearch/json`);

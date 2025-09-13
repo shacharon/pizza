@@ -55,6 +55,7 @@ export const CONVERSATION_ENGINE = (process.env.CONVERSATION_ENGINE || (CONVERSA
 
 /** Enable FoodGraph on /api/nlu/parse */
 export const FOOD_GRAPH_ENABLED = process.env.FOOD_GRAPH_ENABLED === 'true';
+export const FEATURE_AGENT_LOOP = process.env.FEATURE_AGENT_LOOP === 'true';
 
 // Default export for robust interop (ESM/CJS)
 const config = {
@@ -72,6 +73,7 @@ const config = {
     CONVERSATION_SIMPLE_MODE,
     CONVERSATION_ENGINE,
     FOOD_GRAPH_ENABLED,
+    FEATURE_AGENT_LOOP,
 };
 
 export default config;

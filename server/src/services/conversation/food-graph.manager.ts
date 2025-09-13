@@ -249,11 +249,24 @@ export function buildFoodGraph(deps: { nlu?: NLUService; session?: NLUSessionSer
                     if (resolved?.city) slots = { ...slots, city: resolved.city } as ExtractedSlots;
                 } catch { }
             }
-            // Merge with memory only for explicit follow-ups (no heuristic)
+            // Merge with memory for explicit follow-ups OR when the user provides only a location correction
             const followUpPattern = /(cheaper|less|more|again|same|not\s|without|בלעדי|בלי|זול|יקר|עוד|פחות|יותר|זה לא)/i;
-            const isFollowUp = followUpPattern.test(s.text);
+            const existing = session.getSessionContext(s.sessionId);
+            const words = (s.text || '').trim().split(/\s+/);
+            const isShort = words.length <= 5; // short clarifications like "tel aviv", "near marina", "pizza"
+            const hasOnlyLocation = (!!slots.city || /(street|st\.?|road|rd\.?|avenue|ave\.?|marina|port|harbor|נמל|מרינה|רחוב|שדרה|שד\.)/i.test(s.text))
+                && !slots.type && !slots.maxPrice && (!slots.dietary || slots.dietary.length === 0);
+            const looksLikeLocationFollowUp = !!existing && isShort && hasOnlyLocation;
+            // Type-only replies (e.g., "pizza") should merge prior dietary/price/location context
+            const hasOnlyType = !!slots.type && !slots.city && typeof slots.maxPrice !== 'number' && (!slots.dietary || slots.dietary.length === 0);
+            const looksLikeTypeFollowUp = !!existing && isShort && hasOnlyType;
+            // Dietary-only replies (e.g., "vegan") should merge prior type/location
+            const hasOnlyDietary = (!slots.type && !slots.city && typeof slots.maxPrice !== 'number' && Array.isArray(slots.dietary) && slots.dietary.length > 0 && isShort);
+            const looksLikeDietaryFollowUp = !!existing && hasOnlyDietary;
+            const isFollowUp = followUpPattern.test(s.text) || looksLikeLocationFollowUp || looksLikeTypeFollowUp || looksLikeDietaryFollowUp;
+
             const slotsOut = isFollowUp ? session.mergeWithSession(s.sessionId, slots) : slots;
-            // If this is a fresh query, clear previous session to avoid sticky city/dietary
+            // If this is a fresh query, clear previous session to avoid sticky context
             if (!isFollowUp) {
                 try { session.clearSession(s.sessionId); } catch { }
             }
@@ -287,7 +300,7 @@ export function buildFoodGraph(deps: { nlu?: NLUService; session?: NLUSessionSer
             const slots = s.slots as ExtractedSlots;
             const hasAnchor = !!(slots?.city || s.userLocation || s.nearMe);
             const hasFilters = !!(slots?.type || (slots?.dietary && slots.dietary.length > 0) || typeof slots?.maxPrice === 'number');
-
+            // Fetch as soon as we have a reliable anchor, or filters + city
             if (hasAnchor || (hasFilters && slots?.city)) {
                 const policy = { action: Action.FetchResults as string, intent: 'search' as string, missing: [] as string[] };
                 return { ...s, policy } as FoodGraphState;

@@ -1,0 +1,25 @@
+<div class="dialogue-container">
+    <form (ngSubmit)="send()" class="composer" novalidate>
+        <input type="text" [ngModel]="input()" (ngModelChange)="input.set($event)" name="query"
+            placeholder="Type your food request..." [disabled]="pending()" />
+        <button type="submit" [disabled]="pending()">Send</button>
+    </form>
+
+    <div class="assistant" *ngIf="message()">
+        {{ message() }}
+    </div>
+
+    <div class="chips" *ngIf="chips().length > 0">
+        <button *ngFor="let c of chips()" (click)="applyChip(c.patch)">{{ c.label }}</button>
+    </div>
+
+    <div class="results" *ngIf="restaurants().length > 0">
+        <div class="card" *ngFor="let r of restaurants()">
+            <div class="title">{{ r.name }}</div>
+            <div class="meta">
+                <span *ngIf="r.address">{{ r.address }}</span>
+                <span *ngIf="r.rating"> · {{ r.rating }}★</span>
+            </div>
+        </div>
+    </div>
+</div>

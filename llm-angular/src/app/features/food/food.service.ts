@@ -61,6 +61,19 @@ export class FoodService {
             );
     }
 
+    /** Dialogue endpoint for ping-pong conversation */
+    dialogue(text: string, sessionId: string): Observable<any> {
+        const body: any = { text, language: this.detectLanguage(text) };
+        const headers = {
+            'Content-Type': 'application/json',
+            'x-session-id': sessionId
+        };
+        return this.http.post<any>(`${this.apiUrl}/food/dialogue`, body, { headers })
+            .pipe(
+                catchError(error => this.handleError(error))
+            );
+    }
+
     private generateSessionId(): string {
         const stored = localStorage.getItem('food-session-id');
         if (stored) return stored;
