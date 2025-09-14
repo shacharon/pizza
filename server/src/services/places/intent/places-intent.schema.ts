@@ -47,4 +47,32 @@ export const PlacesIntentSchema = z.object({
 
 export type PlacesIntent = z.infer<typeof PlacesIntentSchema>;
 
+// Additional Google-specific rule validation (refinements)
+export function validateGoogleRules(intent: PlacesIntent) {
+    const mode = intent.search.mode;
+    const filters = intent.search.filters || {} as any;
+    const target = intent.search.target || {} as any;
+
+    // nearbysearch: require coords and one of keyword/type
+    if (mode === 'nearbysearch') {
+        const hasCoords = !!target.coords || target.kind === 'me';
+        const hasSearchTerm = !!filters.keyword || !!filters.type;
+        if (!hasCoords) throw new Error('nearbysearch requires coords or target.kind="me"');
+        if (!hasSearchTerm) throw new Error('nearbysearch requires filters.keyword or filters.type');
+        if (filters.rankby === 'distance' && filters.radius != null) {
+            throw new Error('rankby=distance: omit filters.radius');
+        }
+    }
+
+    // textsearch: ignore rankby (reject if provided to keep API clean)
+    if (mode === 'textsearch' && filters.rankby) {
+        throw new Error('textsearch does not support rankby');
+    }
+
+    // findplace: require query
+    if (mode === 'findplace' && !intent.search.query) {
+        throw new Error('findplace requires search.query');
+    }
+}
+
 

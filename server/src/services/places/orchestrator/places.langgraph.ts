@@ -20,8 +20,12 @@ export class PlacesLangGraph {
         const t0 = Date.now();
         // Stub behavior: just echo a minimal structured response for wiring tests
         const mode = (input.schema?.search.mode || 'textsearch') as 'textsearch' | 'nearbysearch' | 'findplace';
+        const lang = input.language ?? input.schema?.search.filters?.language;
+        const query = (lang
+            ? { mode, language: lang }
+            : { mode }) as PlacesChainOutput['query'];
         return {
-            query: { mode, language: input.language || input.schema?.search.filters?.language },
+            query,
             restaurants: [],
             meta: { source: 'google', mode, nextPageToken: null, cached: false, tookMs: Date.now() - t0 },
         };

@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import { PlacesLangGraph } from '../../services/places/orchestrator/places.langgraph.js';
-import { PlacesIntentSchema } from '../../services/places/intent/places-intent.schema.js';
+import { PlacesIntentSchema, validateGoogleRules } from '../../services/places/intent/places-intent.schema.js';
 
 // Minimal stub handler: validates presence of text or schema and returns 501 for now
 export async function placesSearchHandler(req: Request, res: Response) {
@@ -16,6 +16,11 @@ export async function placesSearchHandler(req: Request, res: Response) {
         if (schema) {
             const parsed = PlacesIntentSchema.safeParse(schema);
             if (!parsed.success) return res.status(400).json({ error: 'Invalid schema', details: parsed.error.flatten() });
+            try {
+                validateGoogleRules(parsed.data as any);
+            } catch (err: any) {
+                return res.status(400).json({ error: 'Schema rule violation', details: err?.message || String(err) });
+            }
             validated = parsed.data;
         }
 
