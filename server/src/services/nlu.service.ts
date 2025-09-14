@@ -42,18 +42,7 @@ export class NLUService {
         const intent = await this.classifyQueryIntent(text);
 
         // Special-case: user might be providing only a city (e.g., after we asked for city)
-        if (intent === 'NOT_FOOD') {
-            const cityGuess = this.fallbackExtraction(text, language);
-            if (cityGuess.city) {
-                // Treat as city anchor rather than non-food; keep type null here (will be merged from memory upstream)
-                const slots: ExtractedSlots = { ...cityGuess, isFood: true };
-                const confidence = this.calculateConfidence(slots, text);
-                return { slots, confidence, originalText: text, language };
-            }
-            // Otherwise truly not food
-            const slots: ExtractedSlots = { city: null, type: null, maxPrice: null, dietary: [], spicy: null, quantity: null, address: null, radiusKm: null, aroundMe: null, isFood: false } as any;
-            return { slots, confidence: 0.9, originalText: text, language };
-        }
+
 
         // Step 2: If intent is ambiguous or food, use the main slot extractor
         try {

@@ -2,7 +2,7 @@
     <header class="search-header">
         <h1>Find Your Next Favorite Meal</h1>
         <div class="search-bar">
-            <input type="text" placeholder="Search for pizza, sushi, burgers..." [value]="searchQuery()"
+            <input type="text" placeholder="Type a food or place (e.g., pizza, Haifa)..." [value]="searchQuery()"
                 (input)="onSearch($event)">
             <button (click)="onSearchClick()">Search</button>
             @if (!userLocation()) { <button class="use-location" (click)="onUseMyLocation()">Use my location</button> }

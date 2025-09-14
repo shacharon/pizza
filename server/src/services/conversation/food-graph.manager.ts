@@ -229,15 +229,22 @@ export function buildFoodGraph(deps: { nlu?: NLUService; session?: NLUSessionSer
     const g = new FoodGraphBuilder()
         .addNode('nlu', async (s) => {
             try { console.log('[FoodGraph] nlu node start', { nearMe: (s as any).nearMe, userLocation: (s as any).userLocation }); } catch { }
-            const rules = rulesFirstExtract(s.text, s.language);
-            const hasUseful = !!(rules.city || rules.type || rules.maxPrice);
+            const useLlmOnly = (config as any).FEATURE_NLU_LLM_ONLY === true;
             let slots: ExtractedSlots;
-            if (hasUseful) {
-                slots = rules;
+            if (!useLlmOnly) {
+                const rules = rulesFirstExtract(s.text, s.language);
+                const hasUseful = !!(rules.city || rules.type || rules.maxPrice);
+                if (hasUseful) {
+                    slots = rules;
+                } else {
+                    const res = await nlu.extractSlots({ text: s.text, language: s.language });
+                    slots = res.slots;
+                }
             } else {
                 const res = await nlu.extractSlots({ text: s.text, language: s.language });
                 slots = res.slots;
             }
+            console.log('[FoodGraph] nlu node end', { slots });
             // If no city, try city resolver via Geocoding API (language-aware)
             if (!slots.city) {
                 try {
@@ -366,8 +373,8 @@ export function buildFoodGraph(deps: { nlu?: NLUService; session?: NLUSessionSer
                 } catch { }
             }
 
-            // If caller explicitly asked for "near me", prefer geo and ignore any residual city
-            if ((s as any).nearMe) {
+            // If caller explicitly asked for "near me", prefer geo only when user didn't specify a city explicitly
+            if ((s as any).nearMe && !slots?.city) {
                 city = undefined;
             }
 

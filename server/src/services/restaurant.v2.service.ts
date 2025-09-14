@@ -25,8 +25,8 @@ function buildQuery(dto: FoodQueryDTO): string {
 
     // When geo-anchored, keep query minimal but embed dietary/type so Google can match
     if (hasGeo) {
-        if (dto.type && dietPhrase) return `${dietPhrase} ${dto.type}`;
-        if (dto.type) return `${dto.type}`;
+        if (dto.type && dietPhrase) return `${dietPhrase} ${dto.type} restaurant`;
+        if (dto.type) return `${dto.type} restaurant`;
         if (dietPhrase) return `${dietPhrase} restaurants`;
         return `restaurants`;
     }
@@ -36,7 +36,8 @@ function buildQuery(dto: FoodQueryDTO): string {
     if (dto.type && dietPhrase) return `${dietPhrase} ${dto.type} in ${city}`;
     if (dto.type) return `${dto.type} in ${city}`;
     if (dietPhrase) return `${dietPhrase} restaurants in ${city}`;
-    return `restaurants in ${city}`;
+    // Support token-only queries like "vegan" or "restaurants"
+    return `${dietPhrase ? dietPhrase + ' ' : ''}restaurants in ${city}`;
 }
 
 function cacheKey(dto: FoodQueryDTO) {
@@ -143,8 +144,43 @@ export async function getRestaurantsV2(dto: FoodQueryDTO): Promise<RestaurantsRe
                 });
                 if (l2.length > 0) { data = d2; list = l2; }
             }
+            // Variant queries for type-only: try "{type} restaurant(s)" and common synonyms (e.g., pizzeria)
+            if (list.length === 0 && dto.type) {
+                const variants = [
+                    `${dto.type} restaurant`,
+                    `${dto.type} restaurants`,
+                    dto.type.toLowerCase() === 'pizza' ? 'pizzeria' : ''
+                ].filter(Boolean) as string[];
+                for (const v of variants) {
+                    const dv = await textSearch(v, lang, undefined, { location, radiusMeters: (dto as any).constraints.radiusMeters || 2_000 });
+                    const lv: Restaurant[] = Array.isArray(dv?.results) ? dv.results.slice(0, 20).map(mapBasic) : [];
+                    if (lv.length > 0) { data = dv; list = lv; break; }
+                }
+            }
         }
     } catch { }
+    // Fallback for type-only near-me queries: if no results, search generic restaurants then filter by type keyword
+    if (list.length === 0 && hasGeo && dto.type) {
+        try {
+            const { location } = (dto as any).constraints;
+            const generic = await textSearch('restaurants', lang, undefined, { location, radiusMeters: (dto as any).constraints.radiusMeters || 2_000 });
+            const genericList: Restaurant[] = Array.isArray(generic?.results) ? generic.results.slice(0, 40).map(mapBasic) : [];
+            const typeLower = String(dto.type).toLowerCase();
+            const filtered = genericList.filter(r => {
+                const name = (r.name || '').toLowerCase();
+                const types = Array.isArray((r as any).types) ? ((r as any).types as string[]).join(' ').toLowerCase() : '';
+                return name.includes(typeLower) || types.includes(typeLower);
+            });
+            if (filtered.length > 0) {
+                list = filtered;
+                data = generic;
+            } else if (genericList.length > 0) {
+                // Final safety: return generic restaurants so the UI is never empty for token-only queries
+                list = genericList;
+                data = generic;
+            }
+        } catch { }
+    }
     // If geo + dietary query yielded nothing, broaden the textual query and rely on enrichment filtering
     const dietaryList: string[] | undefined = (dto as any)?.constraints?.dietary;
     if (list.length === 0 && hasGeo && dietaryList && dietaryList.length > 0) {

@@ -36,54 +36,52 @@ export async function nluParseHandler(req: Request, res: Response) {
         const sessionId = req.headers['x-session-id'] as string || `session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         const t0 = Date.now();
 
-        // If enabled, run FoodGraph orchestrator
-        if (config.FOOD_GRAPH_ENABLED) {
-            const graph = buildFoodGraph({ nlu: nluService as any, session: nluSessionService as any, provider });
-            const runPayload = { sessionId, text, language, nearMe: !!nearMe, userLocation: userLocation || undefined } as any;
-            try { console.log('[NLU] Graph run payload:', runPayload); } catch { }
-            const out = await graph.run(runPayload);
+        // Always run FoodGraph orchestrator so grid works regardless of env flags
+        const graph = buildFoodGraph({ nlu: nluService as any, session: nluSessionService as any, provider });
+        const runPayload = { sessionId, text, language, nearMe: !!nearMe, userLocation: userLocation || undefined } as any;
+        try { console.log('[NLU] Graph run payload:', runPayload); } catch { }
+        const out = await graph.run(runPayload);
 
-            if (out.policy?.action !== Action.FetchResults) {
-                const msg = out.policy?.message
-                    || (out.policy?.missing?.includes('location')
-                        ? (language === 'he'
-                            ? 'אפשר לחפש 10 ק"מ סביב המיקום שלך. לאשר גישה למיקום או לרשום עיר?'
-                            : language === 'ar'
-                                ? 'أقدر أبحث ضمن 10 كم حول موقعك. تسمح بالموقع أو اكتب مدينة؟'
-                                : 'I can search 10km around you. Share your location or type a city?')
-                        : out.policy?.missing?.includes('city')
-                            ? promptManager.get('clarify_city', language)
-                            : out.policy?.missing?.includes('maxPrice')
-                                ? promptManager.get('clarify_price', language)
-                                : promptManager.get('clarify_city', language));
-                return res.json({ type: 'clarify', message: msg, missing: out.policy?.missing || [], language });
-            }
-
-            const restaurants = (out.results?.restaurants || []).map((r: any) => ({
-                name: r.name,
-                address: r.address ?? null,
-                rating: r.rating ?? null,
-                priceLevel: r.priceLevel ?? null,
-                placeId: r.placeId ?? null,
-                photoUrl: r.photoUrl ?? null,
-                location: r.location ?? null,
-                types: r.types ?? null,
-                website: r.website ?? null,
-                dietary: r.dietary ?? null,
-            }));
-            const meta = out.results?.meta; // preserve provider meta type
-            return res.json({
-                type: 'results',
-                query: {
-                    city: out.slots?.city!,
-                    type: out.slots?.type || undefined,
-                    constraints: out.slots?.maxPrice ? { maxPrice: out.slots?.maxPrice } : undefined,
-                    language
-                },
-                restaurants,
-                meta: { ...(meta ?? {} as any), nluConfidence: 1 }
-            });
+        if (out.policy?.action !== Action.FetchResults) {
+            const msg = out.policy?.message
+                || (out.policy?.missing?.includes('location')
+                    ? (language === 'he'
+                        ? 'אפשר לחפש 10 ק"מ סביב המיקום שלך. לאשר גישה למיקום או לרשום עיר?'
+                        : language === 'ar'
+                            ? 'أقدر أبحث ضمن 10 كم حول موقعك. تسمح بالموقع أو اكتب مدينة؟'
+                            : 'I can search 10km around you. Share your location or type a city?')
+                    : out.policy?.missing?.includes('city')
+                        ? promptManager.get('clarify_city', language)
+                        : out.policy?.missing?.includes('maxPrice')
+                            ? promptManager.get('clarify_price', language)
+                            : promptManager.get('clarify_city', language));
+            return res.json({ type: 'clarify', message: msg, missing: out.policy?.missing || [], language });
         }
+
+        const restaurants = (out.results?.restaurants || []).map((r: any) => ({
+            name: r.name,
+            address: r.address ?? null,
+            rating: r.rating ?? null,
+            priceLevel: r.priceLevel ?? null,
+            placeId: r.placeId ?? null,
+            photoUrl: r.photoUrl ?? null,
+            location: r.location ?? null,
+            types: r.types ?? null,
+            website: r.website ?? null,
+            dietary: r.dietary ?? null,
+        }));
+        const meta = out.results?.meta; // preserve provider meta type
+        return res.json({
+            type: 'results',
+            query: {
+                city: out.slots?.city!,
+                type: out.slots?.type || undefined,
+                constraints: out.slots?.maxPrice ? { maxPrice: out.slots?.maxPrice } : undefined,
+                language
+            },
+            restaurants,
+            meta: { ...(meta ?? {} as any), nluConfidence: 1 }
+        });
 
         // Use NLU + Policy + Provider to return structured response for Food UI
 

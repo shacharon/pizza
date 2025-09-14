@@ -34,20 +34,18 @@ export class FoodGridPageComponent {
     private activeRequestId = 0;
 
     constructor() {
-        // Restore saved location if previously granted
+        // Restore saved location if previously granted (but do NOT auto-search)
         try {
             const saved = localStorage.getItem('userLocation');
             if (saved) {
                 const parsed = JSON.parse(saved);
                 if (parsed && typeof parsed.lat === 'number' && typeof parsed.lng === 'number') {
                     this.userLocation.set(parsed);
-                    // Auto-search around me on first load
-                    this.isLoading.set(true);
-                    // Run after microtask so template is ready
-                    Promise.resolve().then(() => this.performLLMSearch('restaurants'));
                 }
             }
         } catch { }
+        // Show a friendly placeholder instead of auto-calling
+        this.clarificationMessage.set('Start by typing a food or place (e.g., "pizza" or "Haifa").');
     }
 
     async onSearch(event: Event) {

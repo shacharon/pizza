@@ -1,7 +1,7 @@
 const BASE = "https://maps.googleapis.com/maps/api/place";
 
 function requireKey(): string {
-    const key = process.env.GOOGLE_API_KEY;
+    const key = process.env.GOOGLE_API_KEY || process.env.GOOGLE_PLACES_API_KEY;
     if (!key) throw new Error("GOOGLE_API_KEY is not set");
     return key;
 }
@@ -12,12 +12,14 @@ export async function textSearch(query: string, language = "he", signal?: AbortS
     url.searchParams.set("query", query);
     url.searchParams.set("language", language);
     url.searchParams.set("key", key);
+
     if (opts?.location) {
         url.searchParams.set("location", `${opts.location.lat},${opts.location.lng}`);
     }
     if (opts?.radiusMeters) {
         url.searchParams.set("radius", String(opts.radiusMeters));
     }
+    console.log('[PlacesService] textSearch', { url, query, language, key, opts });
     const res = await fetch(url, { signal: signal ?? null });
     if (!res.ok) throw new Error(`Places TextSearch failed: ${res.status}`);
     const json = await res.json();
