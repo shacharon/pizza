@@ -3,6 +3,7 @@ import type { RestaurantsResponse, Restaurant } from "@api";
 import { textSearch, fetchDetails } from "./google/places.service.js";
 import { findCity } from './google/places.service.js';
 import { InMemoryCache } from './cache.js';
+import config from '../config/index.js';
 
 
 const cache = new InMemoryCache();
@@ -114,7 +115,7 @@ export async function getRestaurantsV2(dto: FoodQueryDTO): Promise<RestaurantsRe
             const { location, radiusMeters } = (dto as any).constraints;
             // Attempt 1: requested radius (e.g., 2km)
             data = await textSearch(buildQuery(dto), lang, undefined, { location, radiusMeters });
-            list = Array.isArray(data?.results) ? data.results.slice(0, 20).map(mapBasic) : [];
+            list = Array.isArray(data?.results) ? data.results.slice(0, config.PROVIDER_RESULT_LIMIT).map(mapBasic) : [];
             // Defensive filter: ensure results are within radius
             list = list.filter(r => {
                 const loc = (r as any).location;
@@ -125,7 +126,7 @@ export async function getRestaurantsV2(dto: FoodQueryDTO): Promise<RestaurantsRe
             if (list.length === 0) {
                 const widen1 = Math.min(6_000, Math.max(radiusMeters * 3, 3_000));
                 const d1 = await textSearch(buildQuery(dto), lang, undefined, { location, radiusMeters: widen1 });
-                let l1: Restaurant[] = Array.isArray(d1?.results) ? d1.results.slice(0, 20).map(mapBasic) : [];
+                let l1: Restaurant[] = Array.isArray(d1?.results) ? d1.results.slice(0, config.PROVIDER_RESULT_LIMIT).map(mapBasic) : [];
                 l1 = l1.filter(r => {
                     const loc = (r as any).location;
                     if (!loc) return true;
@@ -136,7 +137,7 @@ export async function getRestaurantsV2(dto: FoodQueryDTO): Promise<RestaurantsRe
             if (list.length === 0) {
                 const widen2 = 10_000;
                 const d2 = await textSearch(buildQuery(dto), lang, undefined, { location, radiusMeters: widen2 });
-                let l2: Restaurant[] = Array.isArray(d2?.results) ? d2.results.slice(0, 20).map(mapBasic) : [];
+                let l2: Restaurant[] = Array.isArray(d2?.results) ? d2.results.slice(0, config.PROVIDER_RESULT_LIMIT).map(mapBasic) : [];
                 l2 = l2.filter(r => {
                     const loc = (r as any).location;
                     if (!loc) return true;
@@ -153,7 +154,7 @@ export async function getRestaurantsV2(dto: FoodQueryDTO): Promise<RestaurantsRe
                 ].filter(Boolean) as string[];
                 for (const v of variants) {
                     const dv = await textSearch(v, lang, undefined, { location, radiusMeters: (dto as any).constraints.radiusMeters || 2_000 });
-                    const lv: Restaurant[] = Array.isArray(dv?.results) ? dv.results.slice(0, 20).map(mapBasic) : [];
+                    const lv: Restaurant[] = Array.isArray(dv?.results) ? dv.results.slice(0, config.PROVIDER_RESULT_LIMIT).map(mapBasic) : [];
                     if (lv.length > 0) { data = dv; list = lv; break; }
                 }
             }
@@ -164,7 +165,7 @@ export async function getRestaurantsV2(dto: FoodQueryDTO): Promise<RestaurantsRe
         try {
             const { location } = (dto as any).constraints;
             const generic = await textSearch('restaurants', lang, undefined, { location, radiusMeters: (dto as any).constraints.radiusMeters || 2_000 });
-            const genericList: Restaurant[] = Array.isArray(generic?.results) ? generic.results.slice(0, 40).map(mapBasic) : [];
+            const genericList: Restaurant[] = Array.isArray(generic?.results) ? generic.results.slice(0, config.PROVIDER_RESULT_LIMIT * 2).map(mapBasic) : [];
             const typeLower = String(dto.type).toLowerCase();
             const filtered = genericList.filter(r => {
                 const name = (r.name || '').toLowerCase();
@@ -193,7 +194,7 @@ export async function getRestaurantsV2(dto: FoodQueryDTO): Promise<RestaurantsRe
             const q = dto.type ? `${dto.type}` : `restaurants`;
             // Use builder path with geo but without diet phrase: call textSearch directly
             const d = await textSearch(q, lang, undefined, { location, radiusMeters: (dto as any).constraints.radiusMeters || 2_000 });
-            let l: Restaurant[] = Array.isArray(d?.results) ? d.results.slice(0, 20).map(mapBasic) : [];
+            let l: Restaurant[] = Array.isArray(d?.results) ? d.results.slice(0, config.PROVIDER_RESULT_LIMIT).map(mapBasic) : [];
             l = l.filter(r => {
                 const loc = (r as any).location;
                 if (!loc) return true;
@@ -206,7 +207,7 @@ export async function getRestaurantsV2(dto: FoodQueryDTO): Promise<RestaurantsRe
     if (list.length === 0) {
         // Final fallback: plain text search (only if we didn't have geo or widening failed)
         data = await textSearch(buildQuery(dto), lang);
-        list = Array.isArray(data?.results) ? data.results.slice(0, 20).map(mapBasic) : [];
+        list = Array.isArray(data?.results) ? data.results.slice(0, config.PROVIDER_RESULT_LIMIT).map(mapBasic) : [];
     }
 
     // If no results, expand search by 10km around resolved city center (IL-first geocode)
@@ -216,7 +217,7 @@ export async function getRestaurantsV2(dto: FoodQueryDTO): Promise<RestaurantsRe
             const geo = await findCity(dto.city, lang);
             if (geo) {
                 const expandedData = await textSearch(buildQuery(dto), lang, undefined, { location: { lat: geo.lat, lng: geo.lng }, radiusMeters: 10_000 });
-                const expandedList: Restaurant[] = Array.isArray(expandedData?.results) ? expandedData.results.slice(0, 20).map(mapBasic) : [];
+                const expandedList: Restaurant[] = Array.isArray(expandedData?.results) ? expandedData.results.slice(0, config.PROVIDER_RESULT_LIMIT).map(mapBasic) : [];
                 if (expandedList.length > 0) {
                     list = expandedList;
                     expanded = true;

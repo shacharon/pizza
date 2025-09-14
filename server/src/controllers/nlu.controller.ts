@@ -58,7 +58,7 @@ export async function nluParseHandler(req: Request, res: Response) {
             return res.json({ type: 'clarify', message: msg, missing: out.policy?.missing || [], language });
         }
 
-        const restaurants = (out.results?.restaurants || []).map((r: any) => ({
+        const restaurants = (out.results?.restaurants || []).slice(0, config.UI_RESULT_LIMIT).map((r: any) => ({
             name: r.name,
             address: r.address ?? null,
             rating: r.rating ?? null,

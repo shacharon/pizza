@@ -58,6 +58,16 @@ export const FOOD_GRAPH_ENABLED = process.env.FOOD_GRAPH_ENABLED === 'true';
 export const FEATURE_AGENT_LOOP = process.env.FEATURE_AGENT_LOOP === 'true';
 export const FEATURE_NLU_LLM_ONLY = process.env.FEATURE_NLU_LLM_ONLY === 'true';
 
+/**
+ * The maximum number of results to return from the provider (Google Places, etc).
+ */
+export const PROVIDER_RESULT_LIMIT = parseInt(process.env.PROVIDER_RESULT_LIMIT || '10', 10);
+
+/**
+ * The maximum number of results to return to the UI (grid route).
+ */
+export const UI_RESULT_LIMIT = parseInt(process.env.UI_RESULT_LIMIT || '8', 10);
+
 // Default export for robust interop (ESM/CJS)
 const config = {
     DEFAULT_LLM_MODEL,
@@ -76,6 +86,8 @@ const config = {
     FOOD_GRAPH_ENABLED,
     FEATURE_AGENT_LOOP,
     FEATURE_NLU_LLM_ONLY,
+    PROVIDER_RESULT_LIMIT,
+    UI_RESULT_LIMIT,
 };
 
 export default config;
