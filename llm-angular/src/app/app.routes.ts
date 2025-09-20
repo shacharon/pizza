@@ -15,6 +15,7 @@ export const routes: Routes = [
     { path: 'dialogue', loadComponent: () => import('./features/food/food-dialogue/dialogue-page.component').then(m => m.DialoguePageComponent) },
     { path: 'explore', component: ExplorePageComponent },
     { path: 'guardrails', loadComponent: () => import('./guardrails/guardrails.component').then(m => m.GuardrailsComponent) },
+    { path: 'places', loadComponent: () => import('./features/places/places-page/places-page.component').then(m => m.PlacesPageComponent) },
     { path: '**', redirectTo: 'chat' }
 ];
 

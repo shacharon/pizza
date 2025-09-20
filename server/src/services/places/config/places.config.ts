@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 const EnvSchema = z.object({
     GOOGLE_API_KEY: z.string().min(1, 'GOOGLE_API_KEY is required'),
+    DEFAULT_REGION: z.string().default('il'),
     PLACES_TEXTSEARCH_TIMEOUT_MS: z.coerce.number().int().positive().default(6000),
     PLACES_NEARBY_TIMEOUT_MS: z.coerce.number().int().positive().default(6000),
     PLACES_FINDPLACE_TIMEOUT_MS: z.coerce.number().int().positive().default(4000),
@@ -21,6 +22,7 @@ const EnvSchema = z.object({
 
 const parsed = EnvSchema.safeParse({
     GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
+    DEFAULT_REGION: process.env.DEFAULT_REGION,
     PLACES_TEXTSEARCH_TIMEOUT_MS: process.env.PLACES_TEXTSEARCH_TIMEOUT_MS,
     PLACES_NEARBY_TIMEOUT_MS: process.env.PLACES_NEARBY_TIMEOUT_MS,
     PLACES_FINDPLACE_TIMEOUT_MS: process.env.PLACES_FINDPLACE_TIMEOUT_MS,
@@ -53,6 +55,7 @@ const allowedLanguages = new Set(
 
 export const PlacesConfig = {
     apiKey: parsed.data.GOOGLE_API_KEY,
+    defaultRegion: parsed.data.DEFAULT_REGION,
     timeouts: {
         textsearchMs: parsed.data.PLACES_TEXTSEARCH_TIMEOUT_MS,
         nearbyMs: parsed.data.PLACES_NEARBY_TIMEOUT_MS,

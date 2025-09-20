@@ -285,16 +285,16 @@ server/src/config/places.config.ts (zod-validated):
 
 ## Implementation checklist
 
-- [ ] Add route and controller.
-- [ ] Implement LangGraph chain and nodes.
-- [ ] Implement intent service (LLM) + zod validation.
+- [x] Add route and controller.
+- [~] Implement LangGraph chain and nodes (initial stub wired; continues).
+- [x] Implement intent service (LLM) + zod validation.
 - [ ] Implement location resolver (me/city/place/coords).
-- [ ] Implement strategies (textsearch/nearbysearch/findplace).
-- [ ] Implement query builder with Google rules enforced.
-- [ ] Implement client with timeouts/retries and structured errors.
-- [ ] Implement normalizer with projection and page sizing.
-- [ ] Add context store (in-memory; pluggable).
-- [ ] Add config with zod validation.
+- [~] Implement strategies (textsearch/nearbysearch/findplace) — text/nearby wired; findplace pending client.
+- [x] Implement query builder with Google rules enforced.
+- [~] Implement client with timeouts/retries and structured errors — text/nearby done; findplace TODO.
+- [~] Implement normalizer with projection and page sizing — minimal mapping; page_size enforcement pending.
+- [x] Add context store (in-memory; pluggable).
+- [x] Add config with zod validation.
 - [ ] Add logging/metrics and rate limiting.
 - [ ] Add tests (unit/integration/E2E).
 

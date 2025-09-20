@@ -6,6 +6,7 @@ import { TextSearchStrategyImpl } from '../strategy/textsearch.strategy.js';
 import { NearbySearchStrategyImpl } from '../strategy/nearbysearch.strategy.js';
 import { FindPlaceStrategyImpl } from '../strategy/findplace.strategy.js';
 import { ResponseNormalizerService } from '../normalize/response-normalizer.service.js';
+import { PlacesIntentService } from '../intent/places-intent.service.js';
 
 export interface PlacesChainInput {
     text?: string;
@@ -13,6 +14,7 @@ export interface PlacesChainInput {
     sessionId?: string;
     userLocation?: { lat: number; lng: number } | null;
     language?: 'he' | 'en';
+    nearMe?: boolean;
 }
 
 export interface PlacesChainOutput extends PlacesResponseDto { }
@@ -46,18 +48,49 @@ export class PlacesLangGraph {
             } as any;
         }
 
+        // LLM-first: if only text is provided, call intent service to determine mode/filters
+        if (!input.schema && input.text) {
+            const intentService = new PlacesIntentService();
+            try {
+                const llmIntent = await intentService.resolve(input.text, input.language);
+                effectiveIntent.search.mode = llmIntent.search.mode;
+                effectiveIntent.search.query = llmIntent.search.query;
+                effectiveIntent.search.target = llmIntent.search.target;
+                effectiveIntent.search.filters = { ...(effectiveIntent.search.filters || {}), ...(llmIntent.search.filters || {}) } as any;
+            } catch {
+                // fallback: keep heuristic below
+            }
+        }
+
+        // Heuristic fallback: if nearMe flag is true or text includes near-me phrases, and we have a location, use nearbysearch
+        const text = input.text?.toLowerCase() || '';
+        const looksNearMe = input.nearMe || /\b(near me|nearby|close to me|around me|לידי|קרוב אליי)\b/.test(text);
+        if (!input.schema && looksNearMe && (input.userLocation || effectiveIntent.search.target.coords)) {
+            effectiveIntent.search.mode = 'nearbysearch';
+        }
+
         const mode = effectiveIntent.search.mode;
         const lang = input.language ?? effectiveIntent.search.filters?.language;
         const query: QuerySummary = lang ? { mode, language: lang } : { mode };
 
+        // Debug: log effective intent just before building params
+        console.log('[PlacesLangGraph] effective intent', {
+            mode: effectiveIntent.search.mode,
+            query: effectiveIntent.search.query,
+            target: effectiveIntent.search.target,
+        });
+
         const builder = new QueryBuilderService();
         const normalizer = new ResponseNormalizerService();
+        console.log('[PlacesLangGraph] builder', builder);
+        console.log('[PlacesLangGraph] normalizer', normalizer);
 
         let nextPageToken: string | null = null;
         let restaurants: any[] = [];
 
         if (mode === 'textsearch') {
-            const params = builder.buildTextSearch(effectiveIntent);
+            const params = await builder.buildTextSearchAsync(effectiveIntent);
+            console.log('[PlacesLangGraph] textsearch params', params);
             const raw = await new TextSearchStrategyImpl().execute(params);
             const norm = normalizer.normalizeList(raw, effectiveIntent.output?.fields ?? []);
             restaurants = norm.items;

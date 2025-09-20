@@ -1,0 +1,46 @@
+<section class="places-page" aria-labelledby="places-heading">
+    <h1 id="places-heading">{{ title() }}</h1>
+
+    <form class="controls" (submit)="onSubmit(); $event.preventDefault()">
+        <label>
+            <span>Query</span>
+            <input type="text" [value]="query()" (input)="onQueryInput($event)"
+                placeholder="e.g., vegan pizza near me" />
+        </label>
+
+        <label>
+            <span>Language</span>
+            <select [value]="language()" (change)="onLanguageChange($event)">
+                <option value="he">Hebrew</option>
+                <option value="en">English</option>
+            </select>
+        </label>
+
+        <label>
+            <span>Mode</span>
+            <select [value]="mode()" (change)="onModeChange($event)">
+                <option value="textsearch">Text search</option>
+                <option value="nearbysearch">Nearby</option>
+                <option value="findplace">Find place</option>
+            </select>
+        </label>
+
+        <button type="button" (click)="useMyLocation()">Use my location</button>
+
+        <button type="submit" [disabled]="!canSearch">{{ loading() ? 'Searching…' : 'Search' }}</button>
+    </form>
+
+    <div class="results" aria-live="polite">
+        <p *ngIf="userLocation() as loc">📍 {{ loc.lat | number:'1.4-4' }}, {{ loc.lng | number:'1.4-4' }}</p>
+        <p *ngIf="error()" class="error">{{ error() }}</p>
+        <div *ngIf="results() as r">
+            <p><strong>Mode:</strong> {{ r.query.mode }} <ng-container *ngIf="r.query.language as lg">/ {{ lg
+                    }}</ng-container></p>
+            <p><strong>Took:</strong> {{ r.meta.tookMs }} ms</p>
+            <p><strong>Items:</strong> {{ r.restaurants.length }}</p>
+            <ul>
+                <li *ngFor="let it of r.restaurants; trackBy: trackByNameOrIndex">{{ it?.name || (it | json) }}</li>
+            </ul>
+        </div>
+    </div>
+</section>
