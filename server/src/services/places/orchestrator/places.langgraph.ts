@@ -7,14 +7,16 @@ import { NearbySearchStrategyImpl } from '../strategy/nearbysearch.strategy.js';
 import { FindPlaceStrategyImpl } from '../strategy/findplace.strategy.js';
 import { ResponseNormalizerService } from '../normalize/response-normalizer.service.js';
 import { PlacesIntentService } from '../intent/places-intent.service.js';
+import { TranslationService } from '../translation/translation.service.js';
+import type { TranslationResult } from '../translation/translation.types.js';
 
 export interface PlacesChainInput {
     text?: string;
     schema?: PlacesIntent | null;
     sessionId?: string;
     userLocation?: { lat: number; lng: number } | null;
-    language?: 'he' | 'en';
     nearMe?: boolean;
+    browserLanguage?: string;
 }
 
 export interface PlacesChainOutput extends PlacesResponseDto { }
@@ -22,15 +24,47 @@ export interface PlacesChainOutput extends PlacesResponseDto { }
 export class PlacesLangGraph {
     async run(input: PlacesChainInput): Promise<PlacesChainOutput> {
         const t0 = Date.now();
-        // Minimal wiring: build an effective intent, build params, execute strategy (stub client), normalize
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // STEP 1: TRANSLATION - Analyze and translate query if needed
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        let translation: TranslationResult | null = null;
+        let queryForIntent = input.text || '';
+        let languageForIntent: 'he' | 'en' | undefined = undefined;
+
+        if (!input.schema && input.text) {
+            const translationService = new TranslationService();
+            translation = await translationService.analyzeAndTranslate(
+                input.text,
+                input.nearMe || false,
+                input.userLocation ?? undefined,
+                input.browserLanguage
+            );
+
+            // Use translated query and region language for intent resolution
+            queryForIntent = translation.translatedQuery;
+            languageForIntent = translation.regionLanguage as 'he' | 'en';
+
+            console.log('[PlacesLangGraph] translation result', {
+                inputLanguage: translation.inputLanguage,
+                targetRegion: translation.targetRegion,
+                regionLanguage: translation.regionLanguage,
+                skipTranslation: translation.skipTranslation,
+                fallback: translation.fallback
+            });
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // STEP 2: Build effective intent
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         const effectiveIntent: PlacesIntent = input.schema ?? {
             intent: 'find_food',
             provider: 'google_places',
             search: {
                 mode: 'textsearch',
-                query: input.text || '',
+                query: queryForIntent,
                 target: input.userLocation ? { kind: 'coords', coords: input.userLocation } : { kind: 'me' },
-                filters: input.language ? { language: input.language } : undefined,
+                filters: languageForIntent ? { language: languageForIntent } : undefined,
             },
             output: {
                 fields: [
@@ -41,18 +75,20 @@ export class PlacesLangGraph {
         };
 
         // Ensure language preference is applied if provided explicitly
-        if (input.language) {
+        if (languageForIntent) {
             effectiveIntent.search.filters = {
                 ...(effectiveIntent.search.filters || {}),
-                language: input.language,
+                language: languageForIntent,
             } as any;
         }
 
-        // LLM-first: if only text is provided, call intent service to determine mode/filters
-        if (!input.schema && input.text) {
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // STEP 3: LLM Intent Resolution (uses translated query)
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        if (!input.schema && queryForIntent) {
             const intentService = new PlacesIntentService();
             try {
-                const llmIntent = await intentService.resolve(input.text, input.language);
+                const llmIntent = await intentService.resolve(queryForIntent, languageForIntent);
                 effectiveIntent.search.mode = llmIntent.search.mode;
                 effectiveIntent.search.query = llmIntent.search.query;
                 effectiveIntent.search.target = llmIntent.search.target;
@@ -147,7 +183,7 @@ export class PlacesLangGraph {
         } catch { }
 
         let mode = effectiveIntent.search.mode;
-        const lang = input.language ?? effectiveIntent.search.filters?.language;
+        const lang = languageForIntent ?? effectiveIntent.search.filters?.language;
         const query: QuerySummary = lang ? { mode, language: lang } : { mode };
 
         // Debug: log effective intent just before building params
@@ -280,10 +316,45 @@ export class PlacesLangGraph {
             } // if no coords, keep textsearch results as-is
         }
 
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // STEP N: TRANSLATE RESULTS BACK (if needed)
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        let finalRestaurants = restaurants;
+        let translationNote: string | undefined = translation?.note;
+
+        if (translation && !translation.skipTranslation && restaurants.length > 0) {
+            try {
+                const translationService = new TranslationService();
+                finalRestaurants = await translationService.translateResults(
+                    restaurants,
+                    translation.regionLanguage,
+                    translation.inputLanguage
+                );
+                console.log('[PlacesLangGraph] translated results back to', translation.inputLanguage);
+            } catch (error) {
+                console.warn('[PlacesLangGraph] result translation failed', (error as Error)?.message);
+                translationNote = translationNote
+                    ? `${translationNote}; Result translation failed`
+                    : 'Result translation failed; showing original language';
+            }
+        }
+
+        const meta: any = {
+            source: 'google',
+            mode,
+            nextPageToken,
+            cached: false,
+            tookMs: Date.now() - t0
+        };
+
+        if (translationNote) {
+            meta.note = translationNote;
+        }
+
         return {
             query,
-            restaurants,
-            meta: { source: 'google', mode, nextPageToken, cached: false, tookMs: Date.now() - t0 },
+            restaurants: finalRestaurants,
+            meta,
         };
     }
 }

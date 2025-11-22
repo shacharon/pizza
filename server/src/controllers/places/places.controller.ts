@@ -5,11 +5,14 @@ import { PlacesIntentSchema, validateGoogleRules } from '../../services/places/i
 // Minimal stub handler: validates presence of text or schema and returns 501 for now
 export async function placesSearchHandler(req: Request, res: Response) {
     try {
-        const { text, schema, userLocation, language, nearMe } = req.body || {};
+        const { text, schema, userLocation, nearMe, browserLanguage } = req.body || {};
         if (!text && !schema) {
             return res.status(400).json({ error: 'Provide either text or schema' });
         }
         const sessionId = (req.headers['x-session-id'] as string) || `places-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+        // Extract browserLanguage from headers if not in body
+        const finalBrowserLanguage = browserLanguage || req.headers['accept-language']?.split(',')[0];
 
         // If schema is provided, validate now; otherwise allow stub chain to proceed with text
         let validated: any = null;
@@ -25,7 +28,14 @@ export async function placesSearchHandler(req: Request, res: Response) {
         }
 
         const chain = new PlacesLangGraph();
-        const out = await chain.run({ text, schema: validated, sessionId, userLocation, language, nearMe: Boolean(nearMe) });
+        const out = await chain.run({
+            text,
+            schema: validated,
+            sessionId,
+            userLocation,
+            nearMe: Boolean(nearMe),
+            browserLanguage: finalBrowserLanguage
+        });
 
         return res.json(out);
     } catch (e: any) {
