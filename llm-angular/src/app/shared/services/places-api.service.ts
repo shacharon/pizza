@@ -8,6 +8,7 @@ export interface PlacesRequestText {
     text: string;
     language?: Language;
     userLocation?: { lat: number; lng: number };
+    nearMe?: boolean;
     sessionId?: string;
 }
 
@@ -23,8 +24,9 @@ export interface PlacesResponseDto {
         photoUrl?: string;
         website?: string;
         openNow?: boolean;
+        location?: { lat: number; lng: number };
     }>;
-    meta: { source: 'google'; mode: 'textsearch' | 'nearbysearch' | 'findplace'; nextPageToken: string | null; cached: boolean; tookMs: number };
+    meta: { source: 'google'; mode: 'textsearch' | 'nearbysearch' | 'findplace'; nextPageToken: string | null; cached: boolean; tookMs: number; note?: string };
 }
 
 @Injectable({ providedIn: 'root' })
@@ -39,7 +41,8 @@ export class PlacesApiService {
         return this.http.post<PlacesResponseDto>('/api/places/search', {
             text: request.text,
             language: request.language,
-            userLocation: request.userLocation
+            userLocation: request.userLocation,
+            nearMe: request.nearMe
         }, { headers });
     }
 

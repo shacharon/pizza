@@ -33,6 +33,7 @@ export interface MetaInfo {
     nextPageToken: string | null;
     cached: boolean;
     tookMs: number;
+    note?: string;
 }
 
 export interface PlacesResponseDto {

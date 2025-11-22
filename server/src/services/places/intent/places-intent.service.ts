@@ -134,7 +134,7 @@ export class PlacesIntentService {
             return PlacesIntentSchema.parse(intent);
         }
 
-        const system = `You are an intent resolver for Google Places. Always output STRICT JSON for this schema:\n\n{\n  "intent": "find_food",\n  "provider": "google_places",\n  "search": {\n    "mode": "textsearch" | "nearbysearch" | "findplace",\n    "query": string,                     // food/topic only (NO locations)\n    "target": {\n      "kind": "me" | "city" | "place" | "coords",\n      "city"?: string,                   // e.g., "Tel Aviv"\n      "place"?: string,                  // e.g., "Azrieli Tel Aviv" | "Marina Tel Aviv"\n      "coords"?: { "lat": number, "lng": number }\n    },\n    "filters"?: {\n      "language"?: "he" | "en",\n      "opennow"?: boolean,              // use 'opennow' key (not openNow)\n      "price"?: { "min": number, "max": number }\n    }\n  },\n  "output": { "fields": string[], "page_size": number }\n}\n\nRules:\n- Extract ANY city/place from the text into target.* (never leave it inside "query").\n- If user implies near-me or provides coords -> mode:"nearbysearch".\n- If user specifies a single venue (Azrieli/Marina/etc.) -> mode:"findplace".\n- Otherwise -> "textsearch".\n- If no location given -> target.kind:"me".\n- "query" MUST contain only the food/topic (e.g., "vegan pizza", "gluten-free burgers").\n- Prefer "city" for general city names (Tel Aviv, Ashkelon); prefer "place" for specific venues.\n- Never hallucinate coords.\n- Do not include rankby for textsearch.\n- Keep language within allow-list.`;
+        const system = `You are an intent resolver for Google Places. Always output STRICT JSON for this schema:\n\n{\n  "intent": "find_food",\n  "provider": "google_places",\n  "search": {\n    "mode": "textsearch" | "nearbysearch" | "findplace",\n    "query": string,                     // food/topic only (NO locations)\n    "target": {\n      "kind": "me" | "city" | "place" | "coords",\n      "city"?: string,                   // e.g., "Tel Aviv"\n      "place"?: string,                  // e.g., "Azrieli Tel Aviv" | "Marina Tel Aviv" | "Allenby Tel Aviv"\n      "coords"?: { "lat": number, "lng": number }\n    },\n    "filters"?: {\n      "language"?: "he" | "en",\n      "opennow"?: boolean,              // use 'opennow' key (not openNow)\n      "price"?: { "min": number, "max": number }\n    }\n  },\n  "output": { "fields": string[], "page_size": number }\n}\n\nRules:\n- Extract ANY city/place from the text into target.* (never leave it inside "query").\n- If a street or landmark is present, set target.kind="place" and include the city (e.g., "Allenby Tel Aviv").\n- If user implies near-me/closest -> mode:"nearbysearch".\n- If the text is ONLY a venue (no food/topic) -> mode:"findplace".\n- Otherwise -> "textsearch".\n- If no location given -> target.kind:"me".\n- "query" MUST contain only the food/topic (e.g., "vegan pizza", "gluten-free burgers").\n- Prefer "city" for general city names (Tel Aviv, Ashkelon); prefer "place" for specific venues/streets.\n- Never hallucinate coords.\n- Do not include rankby for textsearch.\n- Keep language within allow-list.`;
         const user = `User text: ${text}\nLanguage: ${language ?? 'he'}\nReturn only the JSON. Examples:\nUser: "vegan pizza in Tel Aviv"\n→ { "search": { "mode": "textsearch", "query": "vegan pizza", "target": { "kind": "city", "city": "Tel Aviv" } } }\n\nUser: "open burger places at the Marina Tel Aviv"\n→ { "search": { "mode": "findplace", "query": "burger", "target": { "kind": "place", "place": "Marina Tel Aviv" }, "filters": { "opennow": true } } }\n\nUser: "pizza near me"\n→ { "search": { "mode": "nearbysearch", "query": "pizza", "target": { "kind": "me" } } }`;
         const messages: Message[] = [
             { role: 'system', content: system },
@@ -157,14 +157,15 @@ export class PlacesIntentService {
                     target: extracted.place ? { kind: 'place', place: extracted.place } : { kind: 'city', city: extracted.city! }
                 }
             });
-        } else if (intent.search.target.kind === 'city' && extracted.place && extracted.city && intent.search.target.city === extracted.city) {
-            // Upgrade from city to place when both detected
+        } else if (intent.search.target.kind === 'city' && extracted.place && extracted.city) {
+            // Upgrade to place when both are detected; append city to place for precise geocoding
+            const placeWithCity = `${extracted.place} ${extracted.city}`.trim();
             intent = PlacesIntentSchema.parse({
                 ...intent,
                 search: {
                     ...intent.search,
                     query: extracted.stripped,
-                    target: { kind: 'place', place: extracted.place }
+                    target: { kind: 'place', place: placeWithCity }
                 }
             });
         }

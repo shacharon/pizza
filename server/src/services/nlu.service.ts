@@ -90,7 +90,7 @@ Rules:
 - CITY or ADDRESS can be the anchor. If the user provides a specific address (street+number or venue name), return it in "address". When user says 'around me' set aroundMe=true. If a radius is mentioned (e.g., 'within 3 km', 'in 2 kilometers'), extract radiusKm as a number.
 - Handle Hebrew/Arabic transliteration (תל אביב → Tel Aviv, القدס → Jerusalem)
 - 'type' should be a specific food, dish, or cuisine (e.g., "shawarma", "italian", "seafood").
-- Extract price from "under X", "below X", "max X", "up to X" patterns
+- Extract price from "under X", "below X", "max X", "up to X" , expinsve , cheap  patterns
 - Dietary: kosher, halal, vegan, vegetarian, gluten_free
 - Spicy: true if mentioned (חריף, spicy, hot)
 - Quantity: number of orders/portions
