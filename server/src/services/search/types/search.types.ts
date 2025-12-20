@@ -208,6 +208,7 @@ export interface IIntentService {
  */
 export interface IGeoResolverService {
   resolve(location: string | Coordinates): Promise<ResolvedLocation>;
+  getCacheStats?(): { size: number; hits: number; misses: number; hitRate: number };
 }
 
 /**

@@ -9,9 +9,19 @@ const placesGraph = new PlacesLangGraph();
 /**
  * Handle places search requests
  * POST /api/places/search
+ * 
+ * @deprecated Use POST /api/search instead (Phase 3 unified endpoint)
  */
 export async function placesSearchHandler(req: Request, res: Response) {
     try {
+        // Add deprecation headers
+        res.setHeader('X-API-Deprecated', 'true');
+        res.setHeader('X-API-Sunset', '2026-06-01'); // 6 months deprecation period
+        res.setHeader('X-API-Alternative', 'POST /api/search');
+        res.setHeader('Deprecation', 'true'); // RFC 8594 standard header
+        
+        console.warn('[DEPRECATED] /api/places/search called - migrate to POST /api/search');
+
         const { text, schema, userLocation, nearMe, browserLanguage } = req.body || {};
         if (!text && !schema) {
             return res.status(400).json({ error: 'Provide either text or schema' });

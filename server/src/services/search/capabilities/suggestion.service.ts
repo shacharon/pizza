@@ -19,15 +19,23 @@ export class SuggestionService implements ISuggestionService {
    */
   generate(intent: ParsedIntent, results: RestaurantResult[]): RefinementChip[] {
     // Convert to format expected by SuggestionGenerator
-    const places = results.map(r => ({
-      placeId: r.placeId,
-      name: r.name,
-      rating: r.rating,
-      priceLevel: r.priceLevel,
-      openNow: r.openNow,
-      delivery: r.tags?.includes('delivery') || r.tags?.includes('meal_delivery'),
-      takeout: r.tags?.includes('takeout') || r.tags?.includes('meal_takeaway'),
-    }));
+    const places = results.map(r => {
+      const place: any = {
+        placeId: r.placeId,
+        name: r.name,
+      };
+      
+      // Only add optional properties if they exist
+      if (r.rating !== undefined) place.rating = r.rating;
+      if (r.priceLevel !== undefined) place.priceLevel = r.priceLevel;
+      if (r.openNow !== undefined) place.openNow = r.openNow;
+      if (r.tags) {
+        place.delivery = r.tags.includes('delivery') || r.tags.includes('meal_delivery');
+        place.takeout = r.tags.includes('takeout') || r.tags.includes('meal_takeaway');
+      }
+
+      return place;
+    });
 
     // Convert ParsedIntent to the format expected by SuggestionGenerator
     const legacyIntent = {
@@ -60,13 +68,19 @@ export class SuggestionService implements ISuggestionService {
    * Convert Suggestion to RefinementChip
    */
   private convertToChip(suggestion: Suggestion): RefinementChip {
-    return {
+    const chip: RefinementChip = {
       id: suggestion.id,
       emoji: suggestion.emoji,
       label: suggestion.label,
       action: suggestion.action,
-      filter: suggestion.filter,
     };
+
+    // Only add filter if it exists
+    if (suggestion.filter) {
+      chip.filter = suggestion.filter;
+    }
+
+    return chip;
   }
 
   /**

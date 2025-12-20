@@ -23,6 +23,8 @@ const dialogueService = new DialogueService();
  * Handle dialogue message
  * POST /api/dialogue
  * 
+ * @deprecated Use POST /api/search instead (Phase 3 unified endpoint)
+ * 
  * Request body:
  * {
  *   "text": "pizza in haifa",
@@ -47,6 +49,14 @@ export async function dialogueHandler(req: Request, res: Response) {
     const t0 = Date.now();
 
     try {
+        // Add deprecation headers
+        res.setHeader('X-API-Deprecated', 'true');
+        res.setHeader('X-API-Sunset', '2026-06-01'); // 6 months deprecation period
+        res.setHeader('X-API-Alternative', 'POST /api/search');
+        res.setHeader('Deprecation', 'true'); // RFC 8594 standard header
+        
+        console.warn('[DEPRECATED] /api/dialogue called - migrate to POST /api/search');
+
         // Validate request body
         const parsed = RequestSchema.safeParse(req.body);
         if (!parsed.success) {

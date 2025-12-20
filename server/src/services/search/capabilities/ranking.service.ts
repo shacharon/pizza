@@ -27,8 +27,6 @@ export class RankingService implements IRankingService {
     
     this.weights = {
       ...this.config.weights,
-      distance: undefined,
-      vibeMatch: undefined,
     };
   }
 

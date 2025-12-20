@@ -58,18 +58,34 @@ export class SearchOrchestrator {
       console.log(`[SearchOrchestrator] Location resolved: ${location.displayName}`);
 
       // Step 4: Search for places
+      const filters: SearchParams['filters'] = {};
+      
+      // Merge filters carefully
+      const openNow = request.filters?.openNow ?? intent.filters.openNow;
+      if (openNow !== undefined) filters.openNow = openNow;
+      
+      const priceLevel = request.filters?.priceLevel ?? intent.filters.priceLevel;
+      if (priceLevel !== undefined) filters.priceLevel = priceLevel;
+      
+      const dietary = request.filters?.dietary ?? intent.filters.dietary;
+      if (dietary !== undefined) filters.dietary = dietary;
+      
+      const mustHave = request.filters?.mustHave ?? intent.filters.mustHave;
+      if (mustHave !== undefined) filters.mustHave = mustHave;
+
       const searchParams: SearchParams = {
         query: intent.query,
         location: location.coords,
-        radius: intent.location?.radius,
         language: intent.language,
-        filters: {
-          ...intent.filters,
-          ...request.filters,
-        },
+        filters,
         mode: intent.searchMode,
         pageSize: 10,
       };
+
+      // Only add radius if it exists
+      if (intent.location?.radius !== undefined) {
+        searchParams.radius = intent.location.radius;
+      }
 
       const rawResults = await this.placesProvider.search(searchParams);
       console.log(`[SearchOrchestrator] Found ${rawResults.length} raw results`);
@@ -102,13 +118,12 @@ export class SearchOrchestrator {
 
       // Step 10: Build and return response
       const tookMs = Date.now() - startTime;
-      const response = createSearchResponse({
+      const responseParams: Parameters<typeof createSearchResponse>[0] = {
         sessionId: session.id,
         originalQuery: request.query,
         intent,
         results: topResults,
         chips,
-        assist,
         meta: {
           tookMs,
           mode: intent.searchMode,
@@ -116,7 +131,14 @@ export class SearchOrchestrator {
           confidence,
           source: this.placesProvider.getName(),
         },
-      });
+      };
+
+      // Only add assist if it exists
+      if (assist) {
+        responseParams.assist = assist;
+      }
+
+      const response = createSearchResponse(responseParams);
 
       console.log(`[SearchOrchestrator] ✅ Search complete in ${tookMs}ms`);
       return response;
@@ -246,8 +268,8 @@ export class SearchOrchestrator {
    */
   getStats() {
     return {
-      sessionStats: this.sessionService.getStats(),
-      geocodeStats: this.geoResolver.getCacheStats(),
+      sessionStats: this.sessionService.getStats?.(),
+      geocodeStats: this.geoResolver.getCacheStats?.(),
     };
   }
 }

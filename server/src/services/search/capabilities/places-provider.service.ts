@@ -78,11 +78,15 @@ export class PlacesProviderService implements IPlacesProviderService {
       query: params.query,
       language: params.language as any,
       location: params.location,
-      radius: params.radius,
-      openNow: params.filters.openNow,
-      priceMin: params.filters.priceLevel ? params.filters.priceLevel : undefined,
-      priceMax: params.filters.priceLevel ? params.filters.priceLevel : undefined,
     };
+
+    // Only add optional params if they exist
+    if (params.radius !== undefined) searchParams.radius = params.radius;
+    if (params.filters.openNow !== undefined) searchParams.openNow = params.filters.openNow;
+    if (params.filters.priceLevel !== undefined) {
+      searchParams.priceMin = params.filters.priceLevel;
+      searchParams.priceMax = params.filters.priceLevel;
+    }
 
     return await this.googlePlacesClient.textSearch(searchParams);
   }
@@ -94,12 +98,16 @@ export class PlacesProviderService implements IPlacesProviderService {
     const searchParams: NearbySearchParams = {
       location: params.location,
       keyword: params.query,
-      radius: params.radius,
       language: params.language as any,
-      openNow: params.filters.openNow,
-      priceMin: params.filters.priceLevel ? params.filters.priceLevel : undefined,
-      priceMax: params.filters.priceLevel ? params.filters.priceLevel : undefined,
     };
+
+    // Only add optional params if they exist
+    if (params.radius !== undefined) searchParams.radius = params.radius;
+    if (params.filters.openNow !== undefined) searchParams.openNow = params.filters.openNow;
+    if (params.filters.priceLevel !== undefined) {
+      searchParams.priceMin = params.filters.priceLevel;
+      searchParams.priceMax = params.filters.priceLevel;
+    }
 
     return await this.googlePlacesClient.nearbySearch(searchParams);
   }
@@ -142,20 +150,31 @@ export class PlacesProviderService implements IPlacesProviderService {
         lat: location.lat,
         lng: location.lng,
       },
-      rating: place.rating,
-      userRatingsTotal: place.user_ratings_total,
-      priceLevel: place.price_level,
-      openNow: place.opening_hours?.open_now,
       googleMapsUrl: place.url || `https://maps.google.com/?q=place_id:${place.place_id}`,
-      phoneNumber: place.formatted_phone_number || place.international_phone_number,
-      website: place.website,
-      photoUrl: this.getPhotoUrl(place.photos?.[0]),
-      photos: place.photos?.map((photo: any) => this.getPhotoUrl(photo)).filter(Boolean),
       tags: this.extractTags(place),
-      metadata: {
-        lastUpdated: new Date(),
-      },
     };
+
+    // Only add optional properties if they exist
+    if (place.rating !== undefined) result.rating = place.rating;
+    if (place.user_ratings_total !== undefined) result.userRatingsTotal = place.user_ratings_total;
+    if (place.price_level !== undefined) result.priceLevel = place.price_level;
+    if (place.opening_hours?.open_now !== undefined) result.openNow = place.opening_hours.open_now;
+    if (place.formatted_phone_number || place.international_phone_number) {
+      result.phoneNumber = place.formatted_phone_number || place.international_phone_number;
+    }
+    if (place.website) result.website = place.website;
+    
+    const photoUrl = this.getPhotoUrl(place.photos?.[0]);
+    if (photoUrl) result.photoUrl = photoUrl;
+    
+    if (place.photos) {
+      const photos = place.photos.map((photo: any) => this.getPhotoUrl(photo)).filter(Boolean);
+      if (photos.length > 0) result.photos = photos as string[];
+    }
+
+    if (result.metadata === undefined) {
+      result.metadata = { lastUpdated: new Date() };
+    }
 
     return result;
   }

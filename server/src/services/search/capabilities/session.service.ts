@@ -84,18 +84,23 @@ export class SessionService implements ISessionService {
 
     // Update context if intent is provided
     if (data.currentIntent) {
+      const newHistory = [
+        ...session.context.conversationHistory.slice(-(this.config.maxHistoryLength - 1)),
+        {
+          query: data.currentIntent.query,
+          intent: data.currentIntent,
+          timestamp: new Date(),
+        },
+      ];
+
       updated.context = {
-        ...session.context,
-        previousIntent: session.currentIntent,
-        conversationHistory: [
-          ...session.context.conversationHistory.slice(-(this.config.maxHistoryLength - 1)),
-          {
-            query: data.currentIntent.query,
-            intent: data.currentIntent,
-            timestamp: new Date(),
-          },
-        ],
+        conversationHistory: newHistory,
       };
+
+      // Only add previousIntent if it exists
+      if (session.currentIntent) {
+        updated.context.previousIntent = session.currentIntent;
+      }
     }
 
     this.sessions.set(sessionId, updated);
@@ -106,7 +111,7 @@ export class SessionService implements ISessionService {
    */
   async destroy(sessionId: string): Promise<void> {
     this.sessions.delete(sessionId);
-    this.sessionManager.destroy(sessionId);
+    // SessionManager doesn't have a destroy(id) method, just cleanup()
   }
 
   /**
@@ -180,7 +185,7 @@ export class SessionService implements ISessionService {
    */
   clearAll(): void {
     this.sessions.clear();
-    this.sessionManager.cleanup();
+    // Note: SessionManager doesn't expose cleanup() publicly
   }
 }
 

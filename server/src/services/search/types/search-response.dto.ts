@@ -9,7 +9,7 @@ import type {
   RefinementChip,
   AssistPayload,
   SearchMode,
-} from './search.types';
+} from './search.types.js';
 
 // ============================================================================
 // Response Types
@@ -83,7 +83,7 @@ export function createSearchResponse(params: {
     cached?: boolean;
   };
 }): SearchResponse {
-  return {
+  const response: SearchResponse = {
     sessionId: params.sessionId,
     query: {
       original: params.originalQuery,
@@ -92,9 +92,15 @@ export function createSearchResponse(params: {
     },
     results: params.results,
     chips: params.chips,
-    assist: params.assist,
     meta: params.meta,
   };
+
+  // Only add assist if it exists
+  if (params.assist) {
+    response.assist = params.assist;
+  }
+
+  return response;
 }
 
 /**
@@ -105,6 +111,9 @@ export function createSearchError(
   code?: string,
   details?: unknown
 ): SearchErrorResponse {
-  return { error, code, details };
+  const response: SearchErrorResponse = { error };
+  if (code) response.code = code;
+  if (details) response.details = details;
+  return response;
 }
 
