@@ -275,3 +275,4 @@ If users want to override the output language:
 - Verify both English and Hebrew queries return same places
 - Check console logs for correct language detection
 
+

@@ -248,3 +248,4 @@ const BATCH_SIZE = 10;  // Change this value
 - ✅ Console shows: `[TranslationService] Translating X places in Y batch(es)`
 - ✅ Results are translated correctly
 
+

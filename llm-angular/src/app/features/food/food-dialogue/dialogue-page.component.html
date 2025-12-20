@@ -1,25 +1,97 @@
-<div class="dialogue-container">
-    <form (ngSubmit)="send()" class="composer" novalidate>
-        <input type="text" [ngModel]="input()" (ngModelChange)="input.set($event)" name="query"
-            placeholder="Type your food request..." [disabled]="pending()" />
-        <button type="submit" [disabled]="pending()">Send</button>
-    </form>
+<div class="dialogue-page">
+  <header class="dialogue-header">
+    <h1>Food Search Chat</h1>
+    <div class="header-actions">
+      <button (click)="useMyLocation()" class="location-btn" title="Use my location">
+        📍
+      </button>
+      <button (click)="onClearClick()" class="clear-btn">
+        Clear
+      </button>
+    </div>
+  </header>
 
-    <div class="assistant" *ngIf="message()">
-        {{ message() }}
+  <div class="messages-container">
+    <!-- Welcome message if no messages -->
+    <div *ngIf="!facade.hasMessages()" class="welcome-message">
+      <h2>👋 Hi! I'm your food search assistant</h2>
+      <p>Ask me anything like:</p>
+      <ul>
+        <li>"Pizza for a date in Tel Aviv"</li>
+        <li>"Quick lunch near me"</li>
+        <li>"Family-friendly burger place"</li>
+      </ul>
     </div>
 
-    <div class="chips" *ngIf="chips().length > 0">
-        <button *ngFor="let c of chips()" (click)="applyChip(c.patch)">{{ c.label }}</button>
-    </div>
+    <!-- Messages -->
+    <div *ngFor="let message of facade.messages(); trackBy: trackByTimestamp"
+         class="message"
+         [class.user-message]="message.role === 'user'"
+         [class.assistant-message]="message.role === 'assistant'">
+      
+      <div class="message-content">
+        {{ message.content }}
+      </div>
 
-    <div class="results" *ngIf="restaurants().length > 0">
-        <div class="card" *ngFor="let r of restaurants()">
-            <div class="title">{{ r.name }}</div>
-            <div class="meta">
-                <span *ngIf="r.address">{{ r.address }}</span>
-                <span *ngIf="r.rating"> · {{ r.rating }}★</span>
-            </div>
+      <!-- Results cards (for assistant messages) -->
+      <div *ngIf="message.results && message.results.length > 0" class="results-grid">
+        <div *ngFor="let place of message.results; trackBy: trackByPlaceId" class="place-card">
+          <h3>{{ place.name }}</h3>
+          <p *ngIf="place.rating" class="rating">
+            ⭐ {{ place.rating }}
+            <span *ngIf="place.userRatingsTotal" class="rating-count">
+              ({{ place.userRatingsTotal }})
+            </span>
+          </p>
+          <p *ngIf="place.address" class="address">📍 {{ place.address }}</p>
+          <a *ngIf="place.location"
+             [href]="'https://www.google.com/maps/search/?api=1&query=' + place.location.lat + ',' + place.location.lng"
+             target="_blank" 
+             rel="noopener noreferrer" 
+             class="map-link">
+            View on Map →
+          </a>
         </div>
+      </div>
+
+      <!-- Suggestions (for assistant messages) -->
+      <div *ngIf="message.suggestions && message.suggestions.length > 0" class="suggestions">
+        <button *ngFor="let suggestion of message.suggestions; trackBy: trackBySuggestionId"
+                (click)="onSuggestionClick(suggestion)"
+                class="suggestion-btn"
+                [disabled]="facade.loading()">
+          {{ suggestion.emoji }} {{ suggestion.label }}
+        </button>
+      </div>
     </div>
+
+    <!-- Loading indicator -->
+    <div *ngIf="facade.loading()" class="loading-indicator">
+      <div class="typing-dots">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+    </div>
+
+    <!-- Error message -->
+    <div *ngIf="facade.error()" class="error-message">
+      ⚠️ {{ facade.error() }}
+    </div>
+  </div>
+
+  <form class="input-area" (submit)="onSubmit(); $event.preventDefault()">
+    <input type="text"
+           [value]="inputText()"
+           (input)="inputText.set($any($event.target).value)"
+           placeholder="Ask me anything..."
+           [disabled]="facade.loading()"
+           class="message-input"
+           autofocus />
+    <button type="submit" 
+            [disabled]="!inputText().trim() || facade.loading()" 
+            class="send-btn">
+      {{ facade.loading() ? '...' : 'Send' }}
+    </button>
+  </form>
 </div>

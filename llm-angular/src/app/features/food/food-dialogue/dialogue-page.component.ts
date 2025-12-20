@@ -1,7 +1,7 @@
-import { Component, ChangeDetectionStrategy, signal, inject } from '@angular/core';
+import { Component, ChangeDetectionStrategy, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { FoodService } from '../food.service';
+import { DialogueFacade } from '../../dialogue/dialogue.facade';
 
 @Component({
     selector: 'app-dialogue-page',
@@ -12,44 +12,56 @@ import { FoodService } from '../food.service';
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DialoguePageComponent {
-    private api = inject(FoodService);
+    readonly inputText = signal('');
 
-    input = signal<string>('');
-    pending = signal<boolean>(false);
-    sessionId = signal<string>('dialogue-' + Math.random().toString(36).slice(2));
+    constructor(readonly facade: DialogueFacade) {}
 
-    message = signal<string>('');
-    restaurants = signal<any[]>([]);
-    chips = signal<{ label: string; patch: Record<string, unknown> }[]>([]);
+    onSubmit(): void {
+        const text = this.inputText().trim();
+        if (!text) return;
 
-    async send() {
-        const text = (this.input() || '').trim();
-        if (!text || this.pending()) return;
-        this.pending.set(true);
-        try {
-            const res = await this.api.dialogue(text, this.sessionId()).toPromise();
-            if (!res) return;
-            this.message.set((res as any).message || '');
-            this.restaurants.set((res as any).restaurants || []);
-            this.chips.set((res as any).chips || []);
-            this.input.set('');
-        } finally {
-            this.pending.set(false);
-        }
+        this.facade.sendMessage(text);
+        this.inputText.set('');
     }
 
-    async applyChip(patch: Record<string, unknown>) {
-        if (this.pending()) return;
-        this.pending.set(true);
-        try {
-            const res = await this.api.dialogue(JSON.stringify(patch), this.sessionId()).toPromise();
-            if (!res) return;
-            this.message.set((res as any).message || '');
-            this.restaurants.set((res as any).restaurants || []);
-            this.chips.set((res as any).chips || []);
-        } finally {
-            this.pending.set(false);
+    onSuggestionClick(suggestion: any): void {
+        this.facade.handleSuggestion(suggestion);
+    }
+
+    onClearClick(): void {
+        this.facade.clearConversation();
+    }
+
+    trackByTimestamp(index: number, message: any): number {
+        return message.timestamp;
+    }
+
+    trackBySuggestionId(index: number, suggestion: any): string {
+        return suggestion.id;
+    }
+
+    trackByPlaceId(index: number, place: any): string {
+        return place.placeId;
+    }
+
+    useMyLocation(): void {
+        if (!navigator.geolocation) {
+            this.facade.setError('Geolocation not supported');
+            return;
         }
+
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                const { latitude, longitude } = pos.coords;
+                this.facade.setUserLocation({ lat: latitude, lng: longitude });
+                this.facade.setError(null);
+            },
+            (err) => {
+                this.facade.setError(err.message || 'Failed to get location');
+                this.facade.setUserLocation(null);
+            },
+            { enableHighAccuracy: true, timeout: 7000 }
+        );
     }
 }
 

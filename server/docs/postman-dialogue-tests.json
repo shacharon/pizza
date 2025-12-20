@@ -1,0 +1,147 @@
+{
+  "info": {
+    "name": "Dialogue API Tests",
+    "description": "Test cases for dialogue conversational search",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Test 1: First Message - Pizza in Haifa",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-session-id",
+            "value": "test-session-1"
+          }
+        ],
+        "url": {
+          "raw": "http://localhost:3000/api/dialogue",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "3000",
+          "path": ["api", "dialogue"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"text\": \"pizza in haifa\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Test 2: Follow-up - Romantic",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-session-id",
+            "value": "test-session-1"
+          }
+        ],
+        "url": {
+          "raw": "http://localhost:3000/api/dialogue",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "3000",
+          "path": ["api", "dialogue"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"text\": \"romantic places\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Test 3: Follow-up - Which has parking?",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-session-id",
+            "value": "test-session-1"
+          }
+        ],
+        "url": {
+          "raw": "http://localhost:3000/api/dialogue",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "3000",
+          "path": ["api", "dialogue"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"text\": \"which one has parking?\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Test 4: With User Location",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-session-id",
+            "value": "test-session-2"
+          }
+        ],
+        "url": {
+          "raw": "http://localhost:3000/api/dialogue",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "3000",
+          "path": ["api", "dialogue"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"text\": \"pizza near me\",\n  \"userLocation\": {\n    \"lat\": 32.8191,\n    \"lng\": 34.9983\n  }\n}"
+        }
+      }
+    },
+    {
+      "name": "Get Stats",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:3000/api/dialogue/stats",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "3000",
+          "path": ["api", "dialogue", "stats"]
+        }
+      }
+    },
+    {
+      "name": "Clear Session",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:3000/api/dialogue/session/test-session-1",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "3000",
+          "path": ["api", "dialogue", "session", "test-session-1"]
+        }
+      }
+    }
+  ]
+}
+
+
