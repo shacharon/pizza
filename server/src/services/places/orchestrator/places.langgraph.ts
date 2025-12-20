@@ -96,8 +96,8 @@ export class PlacesLangGraph {
                 input.browserLanguage
             );
 
-            // Use translated query for intent resolution
-            queryForIntent = translation.translatedQuery;
+            // TEMP TEST: Skip translation - use original query to test "pizza" vs "פיצה"
+            queryForIntent = input.text;  // ← Using original instead of translatedQuery
             // USE USER'S INPUT LANGUAGE (not region language) - Google will return results in this language!
             languageForIntent = translation.inputLanguage as 'he' | 'en';
 
@@ -145,7 +145,24 @@ export class PlacesLangGraph {
             try {
                 const llmIntent = await this.intentService.resolve(queryForIntent, languageForIntent);
                 effectiveIntent.search.mode = llmIntent.search.mode;
-                effectiveIntent.search.query = llmIntent.search.query;
+
+                // HYBRID APPROACH: Translate only the category word if needed
+                let finalQuery = llmIntent.search.query; // Intent LLM extracts category (e.g., "pizza")
+
+                // If input language differs from region language, translate just the category
+                if (translation && !translation.skipTranslation &&
+                    translation.inputLanguage !== translation.regionLanguage) {
+                    // Simple category translation using LLM
+                    const categoryTranslation = await this.translationService.translateCategory(
+                        finalQuery,
+                        translation.inputLanguage,
+                        translation.regionLanguage
+                    );
+                    finalQuery = categoryTranslation;
+                    console.log('[PlacesLangGraph] Translated category:', finalQuery, '(from', llmIntent.search.query, ')');
+                }
+
+                effectiveIntent.search.query = finalQuery;
                 effectiveIntent.search.target = llmIntent.search.target;
                 effectiveIntent.search.filters = { ...(effectiveIntent.search.filters || {}), ...(llmIntent.search.filters || {}) } as any;
             } catch {

@@ -219,6 +219,56 @@ Examples:
     }
 
     /**
+     * Translate a single category word (e.g., "pizza" → "פיצה")
+     * Fast, simple translation for the hybrid approach
+     * 
+     * @param category - Single word or short phrase (e.g., "pizza", "italian restaurant")
+     * @param fromLang - Source language
+     * @param toLang - Target language
+     */
+    async translateCategory(
+        category: string,
+        fromLang: Language,
+        toLang: Language
+    ): Promise<string> {
+        // Skip if same language
+        if (fromLang === toLang) {
+            return category;
+        }
+
+        // Skip if no LLM
+        if (!this.llm) {
+            console.warn('[TranslationService] LLM not available for category translation');
+            return category;
+        }
+
+        try {
+            const system = `You are a translator. Translate the food category from ${fromLang} to ${toLang}.
+Return ONLY the translated word, nothing else. Keep it simple and natural.
+
+Examples:
+- "pizza" (en→he) → "פיצה"
+- "burger" (en→he) → "המבורגר"
+- "italian restaurant" (en→he) → "מסעדה איטלקית"
+- "פלאפל" (he→en) → "falafel"`;
+
+            const user = `Translate: "${category}"`;
+
+            const response = await this.llm.completeText([
+                { role: 'system', content: system },
+                { role: 'user', content: user }
+            ]);
+
+            const translated = response.trim();
+            console.log(`[TranslationService] Category: "${category}" → "${translated}" (${fromLang}→${toLang})`);
+            return translated;
+        } catch (error) {
+            console.warn('[TranslationService] Category translation failed:', (error as Error)?.message);
+            return category; // Fallback to original
+        }
+    }
+
+    /**
      * Translate result fields back to user's input language
      * Only translates name and address (MVP scope)
      * Uses batching to prevent timeouts on large result sets
