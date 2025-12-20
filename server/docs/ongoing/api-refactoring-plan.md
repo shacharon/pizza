@@ -152,24 +152,28 @@ const [translation, intent] = await Promise.all([
 
 ---
 
-## 🔜 **Phase 3: Unified BFF Architecture** [PLANNED]
+## 🚧 **Phase 3: Unified BFF Architecture** [IN PROGRESS]
 
-### Objectives (from `requirements.md`):
+### Objectives:
 
 - Single `POST /search` endpoint (BFF pattern)
 - Capability-based services:
-  - IntentService
-  - GeoResolver
-  - PlacesProvider
-  - Ranker
+  - IntentService (with confidence scoring)
+  - GeoResolverService
+  - PlacesProviderService
+  - RankingService
   - SuggestionService
-  - SessionContextService
-- Adaptive micro-assist UI (chips, assist cards)
-- Remove duplicate `/api/dialogue` endpoint
+  - SessionService
+- Gradual deprecation of old endpoints
+- Minimal frontend changes (one component proof-of-concept)
+- Prepare for future swipe/list features
 
 ### Status:
 
-**On hold** - Phase 2 performance gains achieved. Assess if full BFF refactor needed or if current architecture is sufficient.
+**Started:** December 20, 2025  
+**Week 1:** Foundation - Defining interfaces and extracting capability services
+
+**Detailed Plan:** See `phase-3-bff-architecture.md`
 
 ---
 

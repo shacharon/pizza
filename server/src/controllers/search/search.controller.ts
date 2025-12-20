@@ -1,0 +1,103 @@
+/**
+ * Unified Search Controller
+ * POST /api/search - The new BFF endpoint
+ */
+
+import { Router, type Request, type Response } from 'express';
+import { SearchOrchestrator } from '../../services/search/orchestrator/search.orchestrator.js';
+import { IntentService } from '../../services/search/capabilities/intent.service.js';
+import { GeoResolverService } from '../../services/search/capabilities/geo-resolver.service.js';
+import { PlacesProviderService } from '../../services/search/capabilities/places-provider.service.js';
+import { RankingService } from '../../services/search/capabilities/ranking.service.js';
+import { SuggestionService } from '../../services/search/capabilities/suggestion.service.js';
+import { SessionService } from '../../services/search/capabilities/session.service.js';
+import { safeParseSearchRequest } from '../../services/search/types/search-request.dto.js';
+import { createSearchError } from '../../services/search/types/search-response.dto.js';
+
+const router = Router();
+
+// Singleton orchestrator (instantiate services once)
+const orchestrator = createSearchOrchestrator();
+
+/**
+ * POST /api/search
+ * Unified search endpoint
+ */
+router.post('/search', async (req: Request, res: Response) => {
+  try {
+    // Validate request
+    const validation = safeParseSearchRequest(req.body);
+    
+    if (!validation.success) {
+      res.status(400).json(createSearchError(
+        'Invalid request',
+        'VALIDATION_ERROR',
+        validation.error
+      ));
+      return;
+    }
+
+    // Execute search
+    const response = await orchestrator.search(validation.data!);
+    
+    res.json(response);
+    
+  } catch (error) {
+    console.error('[SearchController] Error:', error);
+    
+    res.status(500).json(createSearchError(
+      error instanceof Error ? error.message : 'Internal server error',
+      'SEARCH_ERROR'
+    ));
+  }
+});
+
+/**
+ * GET /api/search/stats
+ * Get orchestrator statistics (for monitoring)
+ */
+router.get('/search/stats', (req: Request, res: Response) => {
+  try {
+    const stats = orchestrator.getStats();
+    res.json(stats);
+  } catch (error) {
+    console.error('[SearchController] Stats error:', error);
+    res.status(500).json({ error: 'Failed to get stats' });
+  }
+});
+
+/**
+ * Create the SearchOrchestrator with all services
+ * Singleton pattern - instantiate once and reuse
+ */
+function createSearchOrchestrator(): SearchOrchestrator {
+  console.log('[SearchController] Initializing SearchOrchestrator...');
+
+  // Instantiate all capability services
+  const intentService = new IntentService();
+  const geoResolver = new GeoResolverService();
+  const placesProvider = new PlacesProviderService();
+  const rankingService = new RankingService();
+  const suggestionService = new SuggestionService();
+  const sessionService = new SessionService();
+
+  // Start session cleanup
+  sessionService.startCleanup();
+
+  // Create orchestrator
+  const orchestrator = new SearchOrchestrator(
+    intentService,
+    geoResolver,
+    placesProvider,
+    rankingService,
+    suggestionService,
+    sessionService
+  );
+
+  console.log('[SearchController] ✅ SearchOrchestrator ready');
+
+  return orchestrator;
+}
+
+export default router;
+
