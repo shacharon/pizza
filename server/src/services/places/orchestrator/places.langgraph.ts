@@ -96,9 +96,10 @@ export class PlacesLangGraph {
                 input.browserLanguage
             );
 
-            // Use translated query and region language for intent resolution
+            // Use translated query for intent resolution
             queryForIntent = translation.translatedQuery;
-            languageForIntent = translation.regionLanguage as 'he' | 'en';
+            // USE USER'S INPUT LANGUAGE (not region language) - Google will return results in this language!
+            languageForIntent = translation.inputLanguage as 'he' | 'en';
 
             console.log('[PlacesLangGraph] translation result', {
                 inputLanguage: translation.inputLanguage,
@@ -374,21 +375,27 @@ export class PlacesLangGraph {
         let finalRestaurants = restaurants;
         let translationNote: string | undefined = translation?.note;
 
-        if (translation && !translation.skipTranslation && restaurants.length > 0) {
-            try {
-                finalRestaurants = await this.translationService.translateResults(
-                    restaurants,
-                    translation.regionLanguage,
-                    translation.inputLanguage
-                );
-                console.log('[PlacesLangGraph] translated results back to', translation.inputLanguage);
-            } catch (error) {
-                console.warn('[PlacesLangGraph] result translation failed', (error as Error)?.message);
-                translationNote = translationNote
-                    ? `${translationNote}; Result translation failed`
-                    : 'Result translation failed; showing original language';
-            }
-        }
+        // PHASE 2A: SKIP RESULT TRANSLATION
+        // Google Places already returned results in user's language (via languageCode parameter)
+        // No need for expensive LLM translation! (saves 14.7 seconds)
+        // 
+        // if (translation && !translation.skipTranslation && restaurants.length > 0) {
+        //     try {
+        //         finalRestaurants = await this.translationService.translateResults(
+        //             restaurants,
+        //             translation.regionLanguage,
+        //             translation.inputLanguage
+        //         );
+        //         console.log('[PlacesLangGraph] translated results back to', translation.inputLanguage);
+        //     } catch (error) {
+        //         console.warn('[PlacesLangGraph] result translation failed', (error as Error)?.message);
+        //         translationNote = translationNote
+        //             ? `${translationNote}; Result translation failed`
+        //             : 'Result translation failed; showing original language';
+        //     }
+        // }
+
+        console.log('[PlacesLangGraph] Using Google languageCode - no LLM translation needed!');
 
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         // STEP N+1: APPLY SMART DEFAULTS & GENERATE SUGGESTIONS (Phase 1 features)
