@@ -10,7 +10,8 @@
     "start": "node dist/server.js",
     "test": "node --test --import tsx tests/intent.test.ts tests/agent.reducer.test.ts tests/places/phase1-services.test.ts",
     "test:integration": "node --test --import tsx tests/places-search-integration.test.ts",
-    "test:all": "npm test && npm run test:integration"
+    "test:unified": "node --test --import tsx tests/unified-search-integration.test.ts",
+    "test:all": "npm test && npm run test:integration && npm run test:unified"
   },
   "keywords": [],
   "author": "",
