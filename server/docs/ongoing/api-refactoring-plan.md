@@ -70,7 +70,7 @@ PlacesService (main orchestrator)
 ---
 
 ### 🟡 Phase 2: Refactor PlacesLangGraph (Days 3-4)
-**Status:** 🟡 STARTING
+**Status:** 🟡 IN PROGRESS - Creating PlacesService orchestrator
 
 #### Tasks:
 - [ ] Create `PlacesService` main orchestrator
@@ -185,15 +185,26 @@ PlacesService (main orchestrator)
 - ✅ Documented current problems
 - ✅ Designed new architecture
 
-#### Afternoon: Phase 1 Implementation
+#### Phase 1 Implementation - COMPLETE ✅
 - ✅ Created `SessionManager` (context memory with TTL)
 - ✅ Created `GeocodeCache` (eliminate duplicate API calls)
 - ✅ Created `SmartDefaultsEngine` (auto-apply opennow, track filters)
 - ✅ Created `SuggestionGenerator` (contextual refinement chips)
-- ✅ Created unit tests for all Phase 1 services
-- ✅ **All 8 tests passing!**
-- ✅ **Phase 1 COMPLETE and TESTED!**
-- 🟡 **Ready for Phase 2: Refactor PlacesLangGraph**
+- ✅ Created unit tests for all Phase 1 services (8 tests passing)
+- ✅ Refactored PlacesLangGraph to singleton pattern (matches DialogueService)
+- ✅ Integrated all Phase 1 services into PlacesLangGraph.run()
+- ✅ Updated controller to use PlacesLangGraph singleton
+- ✅ Eliminated all service instantiation overhead (9 → 0 per request)
+- ✅ Enhanced response with filter metadata and suggestions
+- ✅ **Phase 1 COMPLETE! See [phase1-performance-fix-complete.md](./phase1-performance-fix-complete.md)**
+
+#### Phase 2: BFF Refactor - PLANNED 📋
+- 📋 See [Two-Phase API Strategy Plan](../../.cursor/plans/two-phase_api_strategy_d78afb03.plan.md)
+- 📋 Unified `/search` BFF endpoint
+- 📋 Capability-based microservices (Intent, Places Provider, Suggestions, Session, Ranking)
+- 📋 Micro-assist UI (inline cards, not chat bubbles)
+- 📋 Matches requirements document vision
+- 📋 **Scheduled for next sprint**
 
 ---
 

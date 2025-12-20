@@ -1,4 +1,4 @@
-// Minimal orchestrator stub for the new Places flow (LLM-first)
+// Orchestrator for Places search with singleton services (matches DialogueService pattern)
 import type { PlacesIntent } from '../intent/places-intent.schema.js';
 import type { PlacesResponseDto, QuerySummary } from '../models/types.js';
 import { QueryBuilderService } from '../query/query-builder.service.js';
@@ -9,6 +9,10 @@ import { ResponseNormalizerService } from '../normalize/response-normalizer.serv
 import { PlacesIntentService } from '../intent/places-intent.service.js';
 import { TranslationService } from '../translation/translation.service.js';
 import type { TranslationResult } from '../translation/translation.types.js';
+import { SessionManager } from '../session/session-manager.js';
+import { GeocodeCache } from '../cache/geocode-cache.js';
+import { SmartDefaultsEngine } from '../defaults/smart-defaults.js';
+import { SuggestionGenerator } from '../suggestions/suggestion-generator.js';
 
 export interface PlacesChainInput {
     text?: string;
@@ -19,11 +23,63 @@ export interface PlacesChainInput {
     browserLanguage?: string;
 }
 
-export interface PlacesChainOutput extends PlacesResponseDto { }
+export interface PlacesChainOutput extends PlacesResponseDto {
+    meta: PlacesResponseDto['meta'] & {
+        // Enhanced metadata for UI transparency
+        appliedFilters?: string[];
+        autoAppliedFilters?: string[];
+        userRequestedFilters?: string[];
+        suggestedRefinements?: Array<{
+            id: string;
+            emoji: string;
+            label: string;
+            action: string;
+            filter?: string;
+        }>;
+    };
+}
 
 export class PlacesLangGraph {
+    // Singleton services (created ONCE, reused forever)
+    // Matches DialogueService pattern for better performance
+    private readonly translationService: TranslationService;
+    private readonly intentService: PlacesIntentService;
+    private readonly queryBuilder: QueryBuilderService;
+    private readonly normalizer: ResponseNormalizerService;
+    private readonly sessionManager: SessionManager;
+    private readonly geocodeCache: GeocodeCache;
+    private readonly smartDefaults: SmartDefaultsEngine;
+    private readonly suggestionGenerator: SuggestionGenerator;
+
+    constructor() {
+        console.log('[PlacesLangGraph] Initializing singleton services...');
+
+        // Initialize all services ONCE
+        this.geocodeCache = new GeocodeCache();
+        this.sessionManager = new SessionManager();
+        this.translationService = new TranslationService();
+        this.intentService = new PlacesIntentService();
+        this.queryBuilder = new QueryBuilderService();
+        this.normalizer = new ResponseNormalizerService();
+        this.smartDefaults = new SmartDefaultsEngine();
+        this.suggestionGenerator = new SuggestionGenerator();
+
+        console.log('[PlacesLangGraph] ✅ All singleton services ready');
+    }
+
     async run(input: PlacesChainInput): Promise<PlacesChainOutput> {
         const t0 = Date.now();
+        const sessionId = input.sessionId || `places-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // STEP 0: CHECK SESSION CONTEXT (Phase 1 feature)
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        const sessionContext = this.sessionManager.get(sessionId);
+        console.log('[PlacesLangGraph] Session context', {
+            sessionId,
+            hasContext: !!sessionContext,
+            previousQuery: sessionContext?.baseQuery
+        });
 
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         // STEP 1: TRANSLATION - Analyze and translate query if needed
@@ -33,8 +89,7 @@ export class PlacesLangGraph {
         let languageForIntent: 'he' | 'en' | undefined = undefined;
 
         if (!input.schema && input.text) {
-            const translationService = new TranslationService();
-            translation = await translationService.analyzeAndTranslate(
+            translation = await this.translationService.analyzeAndTranslate(
                 input.text,
                 input.nearMe || false,
                 input.userLocation ?? undefined,
@@ -86,9 +141,8 @@ export class PlacesLangGraph {
         // STEP 3: LLM Intent Resolution (uses translated query)
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         if (!input.schema && queryForIntent) {
-            const intentService = new PlacesIntentService();
             try {
-                const llmIntent = await intentService.resolve(queryForIntent, languageForIntent);
+                const llmIntent = await this.intentService.resolve(queryForIntent, languageForIntent);
                 effectiveIntent.search.mode = llmIntent.search.mode;
                 effectiveIntent.search.query = llmIntent.search.query;
                 effectiveIntent.search.target = llmIntent.search.target;
@@ -193,36 +247,34 @@ export class PlacesLangGraph {
             target: effectiveIntent.search.target,
         });
 
-        const builder = new QueryBuilderService();
-        const normalizer = new ResponseNormalizerService();
-        console.log('[PlacesLangGraph] builder', builder);
-        console.log('[PlacesLangGraph] normalizer', normalizer);
+        // Use singleton services
+        console.log('[PlacesLangGraph] using singleton queryBuilder and normalizer');
 
         let nextPageToken: string | null = null;
         let restaurants: any[] = [];
 
         if (mode === 'textsearch') {
-            const params = await builder.buildTextSearchAsync(effectiveIntent);
+            const params = await this.queryBuilder.buildTextSearchAsync(effectiveIntent);
             console.log('[PlacesLangGraph] textsearch params', params);
             const raw = await new TextSearchStrategyImpl().execute(params);
-            const norm = normalizer.normalizeList(raw, effectiveIntent.output?.fields ?? []);
+            const norm = this.normalizer.normalizeList(raw, effectiveIntent.output?.fields ?? []);
             restaurants = norm.items;
             nextPageToken = norm.nextPageToken;
         } else if (mode === 'nearbysearch') {
             // Ensure coords are resolved for city/place before nearby; otherwise fall back to textsearch
-            const coords = (effectiveIntent.search.target as any)?.coords || await (new QueryBuilderService()).resolveTargetCoordsAsync(effectiveIntent);
+            const coords = (effectiveIntent.search.target as any)?.coords || await this.queryBuilder.resolveTargetCoordsAsync(effectiveIntent);
             if (coords) {
                 (effectiveIntent.search as any).target = { kind: 'coords', coords };
-                const params = builder.buildNearbySearch(effectiveIntent);
+                const params = this.queryBuilder.buildNearbySearch(effectiveIntent);
                 const raw = await new NearbySearchStrategyImpl().execute(params);
-                const norm = normalizer.normalizeList(raw, effectiveIntent.output?.fields ?? []);
+                const norm = this.normalizer.normalizeList(raw, effectiveIntent.output?.fields ?? []);
                 restaurants = norm.items;
                 nextPageToken = norm.nextPageToken;
             } else {
                 // Fallback: no coords for nearby, do textsearch instead and add a note
-                const tsParams = await builder.buildTextSearchAsync(effectiveIntent);
+                const tsParams = await this.queryBuilder.buildTextSearchAsync(effectiveIntent);
                 const tsRaw = await new TextSearchStrategyImpl().execute(tsParams);
-                const tsNorm = normalizer.normalizeList(tsRaw, effectiveIntent.output?.fields ?? []);
+                const tsNorm = this.normalizer.normalizeList(tsRaw, effectiveIntent.output?.fields ?? []);
                 restaurants = tsNorm.items;
                 nextPageToken = tsNorm.nextPageToken;
                 mode = 'textsearch';
@@ -234,14 +286,14 @@ export class PlacesLangGraph {
             // textsearch anchored to the candidate's coords and return those results, with a note.
             let norm;
             try {
-                const params = builder.buildFindPlace(effectiveIntent);
+                const params = this.queryBuilder.buildFindPlace(effectiveIntent);
                 const raw = await new FindPlaceStrategyImpl().execute(params);
-                norm = normalizer.normalizeList(raw, effectiveIntent.output?.fields ?? []);
+                norm = this.normalizer.normalizeList(raw, effectiveIntent.output?.fields ?? []);
             } catch (err) {
                 // Fallback: findplace failed; if target city exists, run city-anchored textsearch with a note
                 const city = (effectiveIntent.search.target as any)?.city;
                 if (city) {
-                    const coords = await (new QueryBuilderService()).resolveTargetCoordsAsync({ ...effectiveIntent, search: { ...effectiveIntent.search, target: { kind: 'city', city } } } as any);
+                    const coords = await this.queryBuilder.resolveTargetCoordsAsync({ ...effectiveIntent, search: { ...effectiveIntent.search, target: { kind: 'city', city } } } as any);
                     const aroundIntent: PlacesIntent = {
                         ...effectiveIntent,
                         search: {
@@ -250,9 +302,9 @@ export class PlacesLangGraph {
                             target: coords ? ({ kind: 'coords', coords } as any) : effectiveIntent.search.target
                         }
                     } as any;
-                    const tsParams = await builder.buildTextSearchAsync(aroundIntent);
+                    const tsParams = await this.queryBuilder.buildTextSearchAsync(aroundIntent);
                     const tsRaw = await new TextSearchStrategyImpl().execute(tsParams);
-                    const tsNorm = normalizer.normalizeList(tsRaw, effectiveIntent.output?.fields ?? []);
+                    const tsNorm = this.normalizer.normalizeList(tsRaw, effectiveIntent.output?.fields ?? []);
                     restaurants = tsNorm.items;
                     nextPageToken = tsNorm.nextPageToken;
                     mode = 'textsearch';
@@ -274,9 +326,9 @@ export class PlacesLangGraph {
                         filters: { ...(effectiveIntent.search.filters || {}), keyword: topic }
                     }
                 } as any;
-                const tsParams = await builder.buildTextSearchAsync(aroundIntent);
+                const tsParams = await this.queryBuilder.buildTextSearchAsync(aroundIntent);
                 const tsRaw = await new TextSearchStrategyImpl().execute(tsParams);
-                const tsNorm = normalizer.normalizeList(tsRaw, effectiveIntent.output?.fields ?? []);
+                const tsNorm = this.normalizer.normalizeList(tsRaw, effectiveIntent.output?.fields ?? []);
                 restaurants = tsNorm.items;
                 nextPageToken = tsNorm.nextPageToken;
                 mode = 'textsearch';
@@ -296,7 +348,7 @@ export class PlacesLangGraph {
         // City anchoring to reduce spillover: if intent is city and we have coords,
         // prefer nearbysearch with rankby=prominence and the same topic keyword.
         if (effectiveIntent.search.mode === 'textsearch' && (effectiveIntent.search.target as any)?.kind === 'city') {
-            const coords = await (new QueryBuilderService()).resolveTargetCoordsAsync(effectiveIntent);
+            const coords = await this.queryBuilder.resolveTargetCoordsAsync(effectiveIntent);
             if (coords) {
                 const nearbyIntent: PlacesIntent = {
                     ...effectiveIntent,
@@ -307,9 +359,9 @@ export class PlacesLangGraph {
                         filters: { ...(effectiveIntent.search.filters || {}), rankby: 'prominence' as any, keyword: (effectiveIntent.search.query || '').trim(), radius: (effectiveIntent.search.filters as any)?.radius ?? 5000 }
                     }
                 } as any;
-                const params = (new QueryBuilderService()).buildNearbySearch(nearbyIntent);
+                const params = this.queryBuilder.buildNearbySearch(nearbyIntent);
                 const raw = await new NearbySearchStrategyImpl().execute(params);
-                const norm = normalizer.normalizeList(raw, effectiveIntent.output?.fields ?? []);
+                const norm = this.normalizer.normalizeList(raw, effectiveIntent.output?.fields ?? []);
                 restaurants = norm.items;
                 nextPageToken = norm.nextPageToken;
                 mode = 'nearbysearch';
@@ -324,8 +376,7 @@ export class PlacesLangGraph {
 
         if (translation && !translation.skipTranslation && restaurants.length > 0) {
             try {
-                const translationService = new TranslationService();
-                finalRestaurants = await translationService.translateResults(
+                finalRestaurants = await this.translationService.translateResults(
                     restaurants,
                     translation.regionLanguage,
                     translation.inputLanguage
@@ -339,17 +390,74 @@ export class PlacesLangGraph {
             }
         }
 
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // STEP N+1: APPLY SMART DEFAULTS & GENERATE SUGGESTIONS (Phase 1 features)
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        // Extract parsed intent for smart defaults
+        const parsedIntent: any = {
+            foodType: effectiveIntent.search.query,
+            location: (effectiveIntent.search.target as any)?.city || (effectiveIntent.search.target as any)?.place,
+            dietary: [],
+            temporal: []
+        };
+
+        // Apply smart defaults (auto-apply opennow, radius, etc.)
+        const enhanced = this.smartDefaults.applyDefaults(
+            parsedIntent,
+            input.text || '',
+            sessionContext?.appliedFilters || []
+        );
+
+        // Generate contextual suggestions
+        const inputLang = translation?.inputLanguage === 'he' || translation?.inputLanguage === 'en'
+            ? translation.inputLanguage
+            : 'en';
+        const suggestions = this.suggestionGenerator.generate(
+            enhanced,
+            finalRestaurants as any[],
+            inputLang
+        );
+
+        // Update session context
+        this.sessionManager.update(
+            sessionId,
+            input.text || '',
+            enhanced,
+            enhanced.autoAppliedFilters.concat(enhanced.userRequestedFilters).map((f: string) => ({
+                id: f,
+                type: 'other' as const,
+                value: f,
+                label: f,
+                autoApplied: enhanced.autoAppliedFilters.includes(f)
+            }))
+        );
+
+        // Build enhanced metadata
         const meta: any = {
             source: 'google',
             mode,
             nextPageToken,
             cached: false,
-            tookMs: Date.now() - t0
+            tookMs: Date.now() - t0,
+            // Phase 1 enhancements
+            appliedFilters: enhanced.autoAppliedFilters.concat(enhanced.userRequestedFilters),
+            autoAppliedFilters: enhanced.autoAppliedFilters,
+            userRequestedFilters: enhanced.userRequestedFilters,
+            suggestedRefinements: suggestions
         };
 
         if (translationNote) {
             meta.note = translationNote;
         }
+
+        console.log('[PlacesLangGraph] Search complete', {
+            sessionId,
+            resultsCount: finalRestaurants.length,
+            suggestionsCount: suggestions.length,
+            autoFilters: enhanced.autoAppliedFilters.length,
+            tookMs: meta.tookMs
+        });
 
         return {
             query,

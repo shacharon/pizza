@@ -41,7 +41,7 @@ export interface SessionContext {
 export class SessionManager {
     private sessions = new Map<string, SessionContext>();
     private readonly TTL = 30 * 60 * 1000; // 30 minutes
-    private cleanupInterval?: NodeJS.Timeout;
+    private cleanupInterval: NodeJS.Timeout | undefined;
 
     constructor() {
         // Start automatic cleanup

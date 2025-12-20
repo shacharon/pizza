@@ -164,7 +164,7 @@ export class SmartDefaultsEngine {
 
         // Remove from parsed intent as well
         if (filterToRemove === 'opennow') {
-            enhanced.temporal = enhanced.temporal?.filter(t => t !== 'opennow');
+            enhanced.temporal = (enhanced.temporal || []).filter(t => t !== 'opennow');
         }
 
         console.log('[SmartDefaults] Removed auto-applied filter:', filterToRemove);

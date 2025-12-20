@@ -2,7 +2,14 @@ import type { Request, Response } from 'express';
 import { PlacesLangGraph } from '../../services/places/orchestrator/places.langgraph.js';
 import { PlacesIntentSchema, validateGoogleRules } from '../../services/places/intent/places-intent.schema.js';
 
-// Minimal stub handler: validates presence of text or schema and returns 501 for now
+// Singleton PlacesLangGraph instance (reused across requests)
+// Matches DialogueService pattern: create once, reuse forever
+const placesGraph = new PlacesLangGraph();
+
+/**
+ * Handle places search requests
+ * POST /api/places/search
+ */
 export async function placesSearchHandler(req: Request, res: Response) {
     try {
         const { text, schema, userLocation, nearMe, browserLanguage } = req.body || {};
@@ -27,19 +34,23 @@ export async function placesSearchHandler(req: Request, res: Response) {
             validated = parsed.data;
         }
 
-        const chain = new PlacesLangGraph();
-        const out = await chain.run({
+        // Use PlacesLangGraph directly (matches Dialogue pattern)
+        const result = await placesGraph.run({
             text,
             schema: validated,
             sessionId,
-            userLocation,
+            userLocation: userLocation ?? null,
             nearMe: Boolean(nearMe),
             browserLanguage: finalBrowserLanguage
         });
 
-        return res.json(out);
+        return res.json(result);
     } catch (e: any) {
-        return res.status(500).json({ error: 'Unexpected error' });
+        console.error('[PlacesController] Error:', e);
+        return res.status(500).json({
+            error: 'Unexpected error',
+            message: e?.message || 'Internal server error'
+        });
     }
 }
 
