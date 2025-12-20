@@ -124,39 +124,24 @@ export class SessionManager {
 
     /**
      * Detect if query is a refinement of existing search
-     * Heuristic: if query is short and context exists, likely a refinement
+     * Simple heuristic: short queries with existing context are likely refinements
+     * More complex intent analysis is handled by Intent LLM
      */
     isRefinement(query: string, context: SessionContext): boolean {
         const words = query.toLowerCase().trim().split(/\s+/);
         const baseWords = context.baseQuery.toLowerCase().trim().split(/\s+/);
-        
+
         // Short queries with context are likely refinements
         if (words.length <= 3 && context.searchHistory.length > 0) {
-            return true;
-        }
-
-        // Check for common refinement keywords
-        const refinementKeywords = [
-            'open', 'close', 'cheap', 'expensive', 'delivery', 'takeout',
-            'gluten', 'vegan', 'kosher', 'rating', 'top', 'best',
-            'פתוח', 'סגור', 'זול', 'יקר', 'משלוחים', 'גלוטן', 'טבעוני', 'כשר'
-        ];
-        
-        const hasRefinementKeyword = words.some(w => 
-            refinementKeywords.includes(w)
-        );
-        
-        if (hasRefinementKeyword && context.searchHistory.length > 0) {
             return true;
         }
 
         // Check word overlap with base query
         const overlap = words.filter(w => baseWords.includes(w)).length;
         const overlapRatio = overlap / Math.max(words.length, 1);
-        
+
         // If > 50% overlap, likely same search
         // If < 30% overlap, likely new search
-        // Between 30-50%, use context (if exists, treat as refinement)
         if (overlapRatio >= 0.5) {
             return true; // Same search with modifications
         } else if (overlapRatio < 0.3) {

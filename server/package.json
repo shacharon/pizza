@@ -8,7 +8,7 @@
     "dev": "nodemon",
     "build": "tsc -p .",
     "start": "node dist/server.js",
-    "test": "node --test --import tsx tests/agent.reducer.test.ts tests/places/phase1-services.test.ts"
+    "test": "node --test --import tsx tests/intent.test.ts tests/agent.reducer.test.ts tests/places/phase1-services.test.ts"
   },
   "keywords": [],
   "author": "",

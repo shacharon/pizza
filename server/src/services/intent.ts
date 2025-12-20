@@ -6,21 +6,8 @@ import { createLLMProvider } from "../llm/factory.js";
 const llm: LLMProvider | null = createLLMProvider();
 
 export type Intent = "find_food" | "order_food" | "greeting" | "not_food";
-const GREETINGS = ["hi", "hello", "hey", "שלום", "היי"];
-const HUNGER_SYNS = [
-    "hungry", "starving", "famished", "grab a bite", "something to eat",
-    "eat", "eating", "food", "meal",
-    "מה לאכול", "אני רעב", "רוצה לאכול", "איפה אוכלים", "יש משהו קרוב"
-];
-const FOOD_CONTEXT_SYNS = [
-    "near me", "close by", "delivery", "deliver", "takeout", "take away",
-    "restaurant", "menu", "order", "משלוח", "להזמין", "מסעדה", "תפריט",
-    "tel aviv", "תל אביב", "tlv"
-];
-const FOOD_TYPES = [
-    "pizza", "pizzeria", "piza", "pitza", "pitsa", "sushi", "burger", "shawarma", "falafel", "pasta", "salad",
-    "פיצה", "סושי", "המבורגר", "שווארמה", "פלאפל", "פסטה", "סלט"
-];
+
+// ✅ NO HARDCODED PATTERNS - Trust the LLM to understand intent in ANY language!
 
 const IntentSchema = z.object({
     intent: z.enum(["find_food", "order_food", "greeting", "not_food"]),
@@ -28,91 +15,28 @@ const IntentSchema = z.object({
     why: z.string().optional()
 });
 
-function tokenize(raw: string): Set<string> {
-    const text = raw.toLowerCase().normalize("NFKC");
-    const parts = text.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
-    return new Set(parts);
-}
-function hasAnyTokens(tokens: Set<string>, terms: string[]): boolean {
-    return terms.some(t => tokens.has(t.toLowerCase()));
-}
-function containsNumber(raw: string): boolean {
-    return /\b\d+\b/.test(raw);
-}
-
-function hasAny(s: string, arr: string[]) {
-    const m = s.toLowerCase();
-    return arr.some(k => m.includes(k));
-}
-
 export interface IntentResult {
     intent: Intent;
     confidence: number; // 0..1
-    source: "rules" | "llm" | "fallback";
+    source: "llm" | "fallback";
     rationale?: string;
-}
-function scoreByRules(message: string): { intent: Intent; confidence: number; rationale?: string } {
-    const tokens = tokenize(message);
-    const raw = message.toLowerCase();
-
-    const scores: Record<Intent, number> = { greeting: 0, find_food: 0, order_food: 0, not_food: 0 };
-
-    // Order (strongest cue): "order" + (food type | "this"/"number" | digit)
-    const ORDER_TERMS = ["order", "להזמין", "תזמין", "קנה", "buy", "place"];
-    const SELECTION_TERMS = ["this", "number"];
-    if (
-        hasAnyTokens(tokens, ORDER_TERMS) &&
-        (hasAnyTokens(tokens, FOOD_TYPES) || hasAnyTokens(tokens, SELECTION_TERMS) || containsNumber(raw))
-    ) {
-        scores.order_food = 0.75;
-    }
-
-    // Find-food cues: food types, hunger, or food context
-    if (
-        hasAnyTokens(tokens, FOOD_TYPES) ||
-        hasAnyTokens(tokens, HUNGER_SYNS) ||
-        hasAnyTokens(tokens, FOOD_CONTEXT_SYNS)
-    ) {
-        scores.find_food = Math.max(scores.find_food, 0.80);
-    }
-
-    // Greeting
-    if (hasAnyTokens(tokens, GREETINGS)) {
-        scores.greeting = 0.90;
-    }
-
-    // Pick top
-    let best: Intent = "not_food";
-    let conf = 0;
-    for (const [k, v] of Object.entries(scores) as [Intent, number][]) {
-        if (v > conf) { best = k; conf = v; }
-    }
-    return { intent: best, confidence: conf };
 }
 
 export async function detectIntent(message: string, signal?: AbortSignal): Promise<IntentResult> {
-    const m = message.trim().toLowerCase();
+    const m = message.trim();
 
-    // 1) Fast, forgiving rules (broad synonyms)
-    // Prefer food/order intents over greeting when both appear in the same message
-    if (hasAny(m, ["order", "להזמין"]) && (hasAny(m, FOOD_TYPES) || hasAny(m, ["this", "number"]))) {
-        return { intent: "order_food", confidence: 0.70, source: "rules" };
-    }
-    if (hasAny(m, FOOD_TYPES) || hasAny(m, HUNGER_SYNS) || hasAny(m, FOOD_CONTEXT_SYNS)) {
-        return { intent: "find_food", confidence: 0.62, source: "rules" };
-    }
-    if (hasAny(m, ["hi", "hello", "hey", "שלום", "היי"])) {
-        return { intent: "greeting", confidence: 0.95, source: "rules" };
-    }
-
-    // 2) LLM fallback (compact, cheap)
+    // Trust LLM for ALL intent detection (multilingual, context-aware)
     if (!llm) {
-        const smellsLikeFoodEarly = hasAny(m, HUNGER_SYNS) || hasAny(m, FOOD_CONTEXT_SYNS);
-        if (smellsLikeFoodEarly) {
-            return { intent: "find_food", confidence: 0.66, source: "fallback", rationale: "llm disabled; hunger/context detected" };
-        }
-        return { intent: "not_food", confidence: 0.5, source: "fallback", rationale: "llm disabled" };
+        // Minimal fallback when LLM is not configured
+        console.warn('[Intent] LLM not configured, defaulting to find_food');
+        return {
+            intent: "find_food",
+            confidence: 0.5,
+            source: "fallback",
+            rationale: "llm disabled"
+        };
     }
+
     function messagesForIntent(m: string): Message[] {
         const system =
             `You classify user messages for a BUY-FOOD assistant.\n` +
@@ -123,60 +47,19 @@ export async function detectIntent(message: string, signal?: AbortSignal): Promi
             `- "greeting": hello/thanks/small talk.\n` +
             `- "not_food": recipes, cooking at home, groceries, finance, code, weather, etc.\n` +
             `Ambiguous hunger like "I'm starving, any ideas?" => "find_food".\n` +
-            `Hebrew/English both. Output JSON ONLY.`;
+            `Works in ANY language (Hebrew, English, French, Arabic, etc.). Output JSON ONLY.`;
         return [
             { role: "system", content: system },
             { role: "user", content: m }
         ];
     }
+
     const parsed = await llm.completeJSON(messagesForIntent(message), IntentSchema, { temperature: 0.1, timeout: 30_000 });
 
-    let intent = parsed.intent as Intent;
-    let confidence = parsed.confidence;
-
-    // 3) Soft safety: if LLM says not_food with low confidence but message smells like food,
-    // nudge to find_food instead of blocking.
-    const smellsLikeFood = hasAny(m, HUNGER_SYNS) || hasAny(m, FOOD_CONTEXT_SYNS);
-    if (intent === "not_food" && confidence < 0.60 && smellsLikeFood) {
-        return {
-            intent: "find_food",
-            confidence: 0.60,
-            source: "fallback",
-            rationale: `low-confidence not_food but hunger/nearby phrasing detected`
-        };
-    }
-
-    return { intent, confidence, source: "llm", ...(parsed.why ? { rationale: parsed.why } : {}) };
+    return {
+        intent: parsed.intent as Intent,
+        confidence: parsed.confidence,
+        source: "llm",
+        ...(parsed.why ? { rationale: parsed.why } : {})
+    };
 }
-
-/*
-export async function detectIntent(message: string, signal?: AbortSignal): Promise<IntentResult> {
-    const m = message.trim();
-    const smellsLikeFood =
-        scoreByRules(m).confidence > 0 || // any rule hit
-        hasAnyTokens(tokenize(m), HUNGER_SYNS) ||
-        hasAnyTokens(tokenize(m), FOOD_CONTEXT_SYNS);
-
-    // 1) Rules first: if very confident, return immediately (cheap + fast)
-    const rule = scoreByRules(m);
-    if (rule.confidence >= 0.85) {
-        return { intent: rule.intent, confidence: clamp01(rule.confidence), source: "rules", rationale: "strong rule match" };
-    }
-
-    // (old direct OpenAI call removed in favor of LLM provider)
-
-    // 3) No LLM available → graceful fallback
-    if (smellsLikeFood) {
-        return { intent: "find_food", confidence: 0.66, source: "fallback", rationale: "llm disabled; hunger/context detected" };
-    }
-    // Use rules result if any signal exists, else default not_food
-    if (rule.confidence > 0) {
-        return { intent: rule.intent, confidence: clamp01(rule.confidence), source: "rules", rationale: "weak rule match" };
-    }
-    return { intent: "not_food", confidence: 0.50, source: "fallback", rationale: "llm disabled" };
-}
-
-function clamp01(n: number): number {
-    if (Number.isNaN(n)) return 0;
-    return Math.max(0, Math.min(1, n));
-}*/

@@ -82,25 +82,31 @@ export class PlacesLangGraph {
         });
 
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // STEP 1: TRANSLATION - Analyze and translate query if needed
+        // STEP 1: PARALLEL LLM CALLS - Translation + Intent (for speed!)
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         let translation: TranslationResult | null = null;
+        let llmIntent: any = null;
         let queryForIntent = input.text || '';
         let languageForIntent: 'he' | 'en' | undefined = undefined;
 
         if (!input.schema && input.text) {
-            translation = await this.translationService.analyzeAndTranslate(
-                input.text,
-                input.nearMe || false,
-                input.userLocation ?? undefined,
-                input.browserLanguage
-            );
+            // Run BOTH LLM calls in parallel (saves ~2s!)
+            const [translationResult, intentResult] = await Promise.all([
+                this.translationService.analyzeAndTranslate(
+                    input.text,
+                    input.nearMe || false,
+                    input.userLocation ?? undefined,
+                    input.browserLanguage
+                ),
+                this.intentService.resolve(input.text, undefined).catch(() => null)
+            ]);
 
-            // TEMP TEST: Skip translation - use original query to test "pizza" vs "פיצה"
-            queryForIntent = input.text;  // ← Using original instead of translatedQuery
-            // USE USER'S INPUT LANGUAGE (not region language) - Google will return results in this language!
+            translation = translationResult;
+            llmIntent = intentResult;
+            queryForIntent = input.text;  // Use original instead of translatedQuery
             languageForIntent = translation.inputLanguage as 'he' | 'en';
 
+            console.log('[PlacesLangGraph] ⚡ Parallel LLM calls complete');
             console.log('[PlacesLangGraph] translation result', {
                 inputLanguage: translation.inputLanguage,
                 targetRegion: translation.targetRegion,
@@ -126,7 +132,7 @@ export class PlacesLangGraph {
                 fields: [
                     'place_id', 'name', 'formatted_address', 'geometry', 'opening_hours', 'rating', 'user_ratings_total', 'price_level', 'website', 'photos'
                 ],
-                page_size: 20
+                page_size: 10
             },
         };
 
@@ -139,11 +145,10 @@ export class PlacesLangGraph {
         }
 
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // STEP 3: LLM Intent Resolution (uses translated query)
+        // STEP 3: Apply LLM Intent (already fetched in parallel)
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        if (!input.schema && queryForIntent) {
+        if (!input.schema && llmIntent) {
             try {
-                const llmIntent = await this.intentService.resolve(queryForIntent, languageForIntent);
                 effectiveIntent.search.mode = llmIntent.search.mode;
 
                 // HYBRID APPROACH: Translate only the category word if needed
@@ -275,7 +280,7 @@ export class PlacesLangGraph {
             const params = await this.queryBuilder.buildTextSearchAsync(effectiveIntent);
             console.log('[PlacesLangGraph] textsearch params', params);
             const raw = await new TextSearchStrategyImpl().execute(params);
-            const norm = this.normalizer.normalizeList(raw, effectiveIntent.output?.fields ?? []);
+            const norm = this.normalizer.normalizeList(raw, effectiveIntent.output?.fields ?? [], effectiveIntent.output?.page_size);
             restaurants = norm.items;
             nextPageToken = norm.nextPageToken;
         } else if (mode === 'nearbysearch') {
@@ -285,14 +290,14 @@ export class PlacesLangGraph {
                 (effectiveIntent.search as any).target = { kind: 'coords', coords };
                 const params = this.queryBuilder.buildNearbySearch(effectiveIntent);
                 const raw = await new NearbySearchStrategyImpl().execute(params);
-                const norm = this.normalizer.normalizeList(raw, effectiveIntent.output?.fields ?? []);
+                const norm = this.normalizer.normalizeList(raw, effectiveIntent.output?.fields ?? [], effectiveIntent.output?.page_size);
                 restaurants = norm.items;
                 nextPageToken = norm.nextPageToken;
             } else {
                 // Fallback: no coords for nearby, do textsearch instead and add a note
                 const tsParams = await this.queryBuilder.buildTextSearchAsync(effectiveIntent);
                 const tsRaw = await new TextSearchStrategyImpl().execute(tsParams);
-                const tsNorm = this.normalizer.normalizeList(tsRaw, effectiveIntent.output?.fields ?? []);
+                const tsNorm = this.normalizer.normalizeList(tsRaw, effectiveIntent.output?.fields ?? [], effectiveIntent.output?.page_size);
                 restaurants = tsNorm.items;
                 nextPageToken = tsNorm.nextPageToken;
                 mode = 'textsearch';
@@ -306,7 +311,7 @@ export class PlacesLangGraph {
             try {
                 const params = this.queryBuilder.buildFindPlace(effectiveIntent);
                 const raw = await new FindPlaceStrategyImpl().execute(params);
-                norm = this.normalizer.normalizeList(raw, effectiveIntent.output?.fields ?? []);
+                norm = this.normalizer.normalizeList(raw, effectiveIntent.output?.fields ?? [], effectiveIntent.output?.page_size);
             } catch (err) {
                 // Fallback: findplace failed; if target city exists, run city-anchored textsearch with a note
                 const city = (effectiveIntent.search.target as any)?.city;
@@ -322,7 +327,7 @@ export class PlacesLangGraph {
                     } as any;
                     const tsParams = await this.queryBuilder.buildTextSearchAsync(aroundIntent);
                     const tsRaw = await new TextSearchStrategyImpl().execute(tsParams);
-                    const tsNorm = this.normalizer.normalizeList(tsRaw, effectiveIntent.output?.fields ?? []);
+                    const tsNorm = this.normalizer.normalizeList(tsRaw, effectiveIntent.output?.fields ?? [], effectiveIntent.output?.page_size);
                     restaurants = tsNorm.items;
                     nextPageToken = tsNorm.nextPageToken;
                     mode = 'textsearch';
@@ -346,7 +351,7 @@ export class PlacesLangGraph {
                 } as any;
                 const tsParams = await this.queryBuilder.buildTextSearchAsync(aroundIntent);
                 const tsRaw = await new TextSearchStrategyImpl().execute(tsParams);
-                const tsNorm = this.normalizer.normalizeList(tsRaw, effectiveIntent.output?.fields ?? []);
+                const tsNorm = this.normalizer.normalizeList(tsRaw, effectiveIntent.output?.fields ?? [], effectiveIntent.output?.page_size);
                 restaurants = tsNorm.items;
                 nextPageToken = tsNorm.nextPageToken;
                 mode = 'textsearch';
@@ -379,7 +384,7 @@ export class PlacesLangGraph {
                 } as any;
                 const params = this.queryBuilder.buildNearbySearch(nearbyIntent);
                 const raw = await new NearbySearchStrategyImpl().execute(params);
-                const norm = this.normalizer.normalizeList(raw, effectiveIntent.output?.fields ?? []);
+                const norm = this.normalizer.normalizeList(raw, effectiveIntent.output?.fields ?? [], effectiveIntent.output?.page_size);
                 restaurants = norm.items;
                 nextPageToken = norm.nextPageToken;
                 mode = 'nearbysearch';

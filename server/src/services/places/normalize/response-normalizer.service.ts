@@ -2,10 +2,17 @@ import type { RestaurantItem } from '../models/types.js';
 import type { GoogleRawResponse } from '../client/google-places.client.js';
 
 export class ResponseNormalizerService {
-    // For now return empty normalized items; to be implemented with real mapping
-    normalizeList(raw: GoogleRawResponse<any>, projectionFields: string[]): { items: RestaurantItem[]; nextPageToken: string | null } {
+    // Normalize and optionally limit results to page_size
+    normalizeList(raw: GoogleRawResponse<any>, projectionFields: string[], pageSize?: number): { items: RestaurantItem[]; nextPageToken: string | null } {
         const sourceArray = raw.results ?? raw.candidates ?? [];
-        const items: RestaurantItem[] = sourceArray.map((r: any) => this.#mapItem(r, projectionFields));
+        let items: RestaurantItem[] = sourceArray.map((r: any) => this.#mapItem(r, projectionFields));
+        
+        // Enforce page_size limit if provided
+        if (pageSize && pageSize > 0 && items.length > pageSize) {
+            items = items.slice(0, pageSize);
+            console.log(`[ResponseNormalizer] Limited results from ${sourceArray.length} to ${pageSize}`);
+        }
+        
         const nextPageToken = raw.next_page_token ?? null;
         return { items, nextPageToken };
     }

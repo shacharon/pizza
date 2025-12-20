@@ -41,14 +41,15 @@ export class PlacesIntentService {
 
     /**
      * Normalize common place/city variants (simple heuristics, both en/he spellings).
+     * Minimal normalization - LLM should preserve original city names correctly now.
      */
     private normalizeLocationToken(raw: string): string {
         const s = raw.trim();
         const lower = s.toLowerCase();
-        // Minimal examples; extend as needed
+        // Minimal examples for common typos only
         const map: Record<string, string> = {
             'alenbi': 'Allenby',
-            'אלנבי': 'אלנבי',
+            'tel aviv': 'Tel Aviv',
         };
         return map[lower] ?? s;
     }
@@ -129,13 +130,13 @@ export class PlacesIntentService {
                     target,
                     filters: language ? { language } : undefined
                 },
-                output: { fields: ['place_id', 'name', 'formatted_address', 'geometry'], page_size: 20 }
+                output: { fields: ['place_id', 'name', 'formatted_address', 'geometry'], page_size: 10 }
             } as const;
             return PlacesIntentSchema.parse(intent);
         }
 
         const system = `You are an intent resolver for Google Places. Always output STRICT JSON for this schema:\n\n{\n  "intent": "find_food",\n  "provider": "google_places",\n  "search": {\n    "mode": "textsearch" | "nearbysearch" | "findplace",\n    "query": string,                     // food/topic only (NO locations)\n    "target": {\n      "kind": "me" | "city" | "place" | "coords",\n      "city"?: string,                   // e.g., "Tel Aviv"\n      "place"?: string,                  // e.g., "Azrieli Tel Aviv" | "Marina Tel Aviv" | "Allenby Tel Aviv"\n      "coords"?: { "lat": number, "lng": number }\n    },\n    "filters"?: {\n      "language"?: "he" | "en",\n      "opennow"?: boolean,              // use 'opennow' key (not openNow)\n      "price"?: { "min": number, "max": number }\n    }\n  },\n  "output": { "fields": string[], "page_size": number }\n}\n\nRules:\n- Extract ANY city/place from the text into target.* (never leave it inside "query").\n- If a street or landmark is present, set target.kind="place" and include the city (e.g., "Allenby Tel Aviv").\n- If user implies near-me/closest -> mode:"nearbysearch".\n- If the text is ONLY a venue (no food/topic) -> mode:"findplace".\n- Otherwise -> "textsearch".\n- If no location given -> target.kind:"me".\n- "query" MUST contain only the food/topic (e.g., "vegan pizza", "gluten-free burgers").\n- Prefer "city" for general city names (Tel Aviv, Ashkelon); prefer "place" for specific venues/streets.\n- Never hallucinate coords.\n- Do not include rankby for textsearch.\n- Keep language within allow-list.`;
-        const user = `User text: ${text}\nLanguage: ${language ?? 'he'}\nReturn only the JSON. Examples:\nUser: "vegan pizza in Tel Aviv"\n→ { "search": { "mode": "textsearch", "query": "vegan pizza", "target": { "kind": "city", "city": "Tel Aviv" } } }\n\nUser: "open burger places at the Marina Tel Aviv"\n→ { "search": { "mode": "findplace", "query": "burger", "target": { "kind": "place", "place": "Marina Tel Aviv" }, "filters": { "opennow": true } } }\n\nUser: "pizza near me"\n→ { "search": { "mode": "nearbysearch", "query": "pizza", "target": { "kind": "me" } } }`;
+        const user = `User text: ${text}\nLanguage: ${language ?? 'he'}\nReturn only the JSON. Examples:\nUser: "vegan pizza in Tel Aviv"\n→ { "search": { "mode": "textsearch", "query": "vegan pizza", "target": { "kind": "city", "city": "Tel Aviv" } } }\n\nUser: "פיצה באשקלון"\n→ { "search": { "mode": "textsearch", "query": "פיצה", "target": { "kind": "city", "city": "אשקלון" } } }\n\nUser: "פיצה في أشكلون" (Arabic city in mixed query)\n→ { "search": { "mode": "textsearch", "query": "פיצה", "target": { "kind": "city", "city": "أشكلون" } } }\n\nUser: "open burger places at the Marina Tel Aviv"\n→ { "search": { "mode": "findplace", "query": "burger", "target": { "kind": "place", "place": "Marina Tel Aviv" }, "filters": { "opennow": true } } }\n\nUser: "pizza near me"\n→ { "search": { "mode": "nearbysearch", "query": "pizza", "target": { "kind": "me" } } }`;
         const messages: Message[] = [
             { role: 'system', content: system },
             { role: 'user', content: user }
@@ -143,6 +144,8 @@ export class PlacesIntentService {
 
         const raw = await this.llm.completeJSON(messages, PromptSchema, { temperature: 0 });
         let intent = PlacesIntentSchema.parse(raw);
+
+        // LLM should now preserve original city names correctly (no normalization needed!)
 
         // Post-process: if LLM didn't extract city/place but user text contains it, move it from query
         // Enhance or fill target using heuristic extraction (prefer place > city)

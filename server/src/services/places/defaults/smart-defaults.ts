@@ -32,7 +32,7 @@ export class SmartDefaultsEngine {
     ): EnhancedIntent {
         const autoApplied: string[] = [];
         const userRequested: string[] = [];
-        
+
         // Track what user explicitly requested
         this.trackUserFilters(parsed, userRequested);
 
@@ -73,59 +73,30 @@ export class SmartDefaultsEngine {
 
     /**
      * Check if query specifies a time (future or specific time)
+     * Note: Intent LLM should detect time specification, but this is a simple heuristic fallback
      */
     private hasTimeSpecification(query: string): boolean {
-        const timeKeywords = [
-            'tomorrow', 'tonight', 'later', 'next week', 'weekend',
-            'morning', 'afternoon', 'evening', 'lunch', 'dinner',
-            'מחר', 'הערב', 'אחר כך', 'שבוע הבא', 'סופ"ש',
-            'בוקר', 'צהריים', 'ערב', 'ארוחת צהריים', 'ארוחת ערב'
-        ];
-
-        const queryLower = query.toLowerCase();
-        return timeKeywords.some(keyword => queryLower.includes(keyword));
+        // Simple heuristic: check if parsed intent already has temporal filters
+        // Intent LLM handles time detection in any language
+        return false; // Let Intent LLM handle this
     }
 
     /**
      * Check if query explicitly asks for nearby places
+     * Intent LLM detects this and sets target.kind = "me"
      */
     private hasNearMeIntent(query: string): boolean {
-        const nearMePatterns = [
-            /\bnear me\b/i,
-            /\bnearby\b/i,
-            /\bclose to me\b/i,
-            /\baround me\b/i,
-            /\bclosest\b/i,
-            /\bלידי\b/,
-            /\bקרוב אליי\b/,
-            /\bבסביבה\b/,
-            /\bהכי קרוב\b/
-        ];
-
-        return nearMePatterns.some(pattern => pattern.test(query));
+        // Intent LLM handles "near me" detection in any language
+        return false; // Let Intent LLM handle this
     }
 
     /**
      * Detect location type (city, place, or coords)
+     * Intent LLM already detects target.kind = "city" | "place" | "me"
      */
     private detectLocationType(location: string): 'city' | 'place' | 'coords' {
-        // Common city patterns
-        const cityPatterns = [
-            /^(tel aviv|jerusalem|haifa|ashkelon|ashdod|beer sheva)/i,
-            /^(תל אביב|ירושלים|חיפה|אשקלון|אשדוד|באר שבע)/,
-        ];
-
-        if (cityPatterns.some(pattern => pattern.test(location))) {
-            return 'city';
-        }
-
-        // If it contains specific place indicators (street, building, beach)
-        const placeIndicators = ['street', 'st', 'ave', 'road', 'beach', 'mall', 'center', 'רחוב', 'כביש', 'חוף', 'קניון'];
-        if (placeIndicators.some(indicator => location.toLowerCase().includes(indicator))) {
-            return 'place';
-        }
-
-        // Default to city for simple location names
+        // Intent LLM handles location type detection
+        // Default to city radius (5km) for general locations
         return 'city';
     }
 

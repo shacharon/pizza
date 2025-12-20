@@ -28,7 +28,7 @@ export const OutputSchema = z.object({
     fields: z.array(z.string()).default([
         'place_id', 'name', 'formatted_address', 'geometry', 'opening_hours', 'rating', 'user_ratings_total', 'price_level', 'website', 'photos'
     ]),
-    page_size: z.number().int().min(1).max(50).default(20),
+    page_size: z.number().int().min(1).max(50).default(10),
 });
 
 export const SearchSchema = z.object({

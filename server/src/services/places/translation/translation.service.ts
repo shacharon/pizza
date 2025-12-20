@@ -124,22 +124,25 @@ Return STRICT JSON matching this schema:
 Rules:
 - Extract city/country from text to determine targetRegion
 - If no location in text, assume user's current region
-- Translate the ENTIRE query to regionLanguage (including city names)
-- Keep food/topic terms accurate (e.g., "pizza" → "פיצה" in Hebrew)
+- Translate ONLY the food category and modifiers (e.g., "pizza" → "פיצה", "gluten free" → "ללא גלוטן")
+- Keep city/place names in their ORIGINAL language (proper nouns should NOT be translated!)
 - If inputLanguage === regionLanguage, still return translatedQuery (no translation needed)
 
 Examples:
 1. Input: "pizza gluten free in gedera"
-   → { "inputLanguage": "en", "targetRegion": "IL", "regionLanguage": "he", "translatedQuery": "פיצה ללא גלוטן בגדרה" }
+   → { "inputLanguage": "en", "targetRegion": "IL", "regionLanguage": "he", "translatedQuery": "פיצה ללא גלוטן in gedera" }
 
 2. Input: "פיצה בפריז"
-   → { "inputLanguage": "he", "targetRegion": "FR", "regionLanguage": "fr", "translatedQuery": "pizza à Paris" }
+   → { "inputLanguage": "he", "targetRegion": "FR", "regionLanguage": "fr", "translatedQuery": "pizza בפריז" }
 
 3. Input: "pizza in New York"
    → { "inputLanguage": "en", "targetRegion": "US", "regionLanguage": "en", "translatedQuery": "pizza in New York" }
 
 4. Input: "פיצה ללא גלוטן בתל אביב"
-   → { "inputLanguage": "he", "targetRegion": "IL", "regionLanguage": "he", "translatedQuery": "פיצה ללא גלוטן בתל אביב" }`;
+   → { "inputLanguage": "he", "targetRegion": "IL", "regionLanguage": "he", "translatedQuery": "פיצה ללא גלוטן בתל אביב" }
+
+5. Input: "بيتزا في أشكلون"
+   → { "inputLanguage": "ar", "targetRegion": "IL", "regionLanguage": "he", "translatedQuery": "פיצה في أشكلون" }`;
 
         const user = `Analyze and translate this search query:\n"${text}"\n\nReturn only the JSON.`;
 
