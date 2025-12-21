@@ -9,6 +9,7 @@ import type {
   RefinementChip,
   AssistPayload,
   SearchMode,
+  ProposedActions,
 } from './search.types.js';
 
 // ============================================================================
@@ -46,6 +47,9 @@ export interface SearchResponse {
   // Optional: Assist payload (future micro-assist UI)
   assist?: AssistPayload;
   
+  // Optional: Proposed actions (Human-in-the-Loop pattern)
+  proposedActions?: ProposedActions;
+  
   // Metadata
   meta: SearchResponseMeta;
 }
@@ -74,6 +78,7 @@ export function createSearchResponse(params: {
   results: RestaurantResult[];
   chips: RefinementChip[];
   assist?: AssistPayload;
+  proposedActions?: ProposedActions;
   meta: {
     tookMs: number;
     mode: SearchMode;
@@ -98,6 +103,11 @@ export function createSearchResponse(params: {
   // Only add assist if it exists
   if (params.assist) {
     response.assist = params.assist;
+  }
+
+  // Only add proposedActions if it exists
+  if (params.proposedActions) {
+    response.proposedActions = params.proposedActions;
   }
 
   return response;

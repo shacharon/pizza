@@ -533,6 +533,130 @@ describe('Unified Search API - Statistics', () => {
 });
 
 // ============================================================================
+// Test Suite: Human-in-the-Loop Action Proposals
+// ============================================================================
+
+describe('Unified Search API - Human-in-the-Loop Actions', () => {
+  
+  it('should include proposedActions in response', async () => {
+    const result = await search({
+      query: 'pizza in Paris',
+    });
+
+    // Validate proposedActions exists
+    assert.ok(result.proposedActions, 'Should include proposedActions');
+    assert.ok(result.proposedActions.perResult, 'Should include perResult actions');
+    assert.ok(result.proposedActions.selectedItem, 'Should include selectedItem actions');
+
+    console.log(`✅ Proposed actions included: ${result.proposedActions.perResult.length} quick, ${result.proposedActions.selectedItem.length} detailed`);
+  });
+
+  it('should include correct action structure for quick actions', async () => {
+    const result = await search({
+      query: 'sushi in London',
+    });
+
+    const { perResult } = result.proposedActions;
+    
+    // Validate array length
+    assert.ok(perResult.length > 0, 'Should have at least 1 quick action');
+    assert.ok(perResult.length <= 5, 'Should have at most 5 quick actions');
+
+    // Validate first action structure
+    const firstAction = perResult[0];
+    assert.ok(firstAction.id, 'Action should have id');
+    assert.ok(firstAction.type, 'Action should have type');
+    assert.ok(typeof firstAction.level === 'number', 'Action should have numeric level');
+    assert.ok([0, 1, 2].includes(firstAction.level), 'Level should be 0, 1, or 2');
+    assert.ok(firstAction.label, 'Action should have label');
+    assert.ok(firstAction.icon, 'Action should have icon');
+    assert.ok(typeof firstAction.enabled === 'boolean', 'Action should have enabled boolean');
+
+    console.log(`✅ Quick action structure valid: ${firstAction.id} (L${firstAction.level})`);
+  });
+
+  it('should include correct action structure for detailed actions', async () => {
+    const result = await search({
+      query: 'italian in Tel Aviv',
+    });
+
+    const { selectedItem } = result.proposedActions;
+    
+    // Validate array length
+    assert.ok(selectedItem.length > 0, 'Should have at least 1 detailed action');
+    assert.ok(selectedItem.length <= 10, 'Should have at most 10 detailed actions');
+
+    // Validate action types
+    const actionTypes = selectedItem.map((a: any) => a.type);
+    const expectedTypes = ['VIEW_DETAILS', 'GET_DIRECTIONS', 'CALL_RESTAURANT', 'VIEW_MENU', 'SAVE_FAVORITE', 'SHARE'];
+    const hasExpectedType = actionTypes.some((t: string) => expectedTypes.includes(t));
+    assert.ok(hasExpectedType, 'Should include at least one expected action type');
+
+    console.log(`✅ Detailed actions valid: ${actionTypes.join(', ')}`);
+  });
+
+  it('should only include L0 and L1 actions in Phase 1', async () => {
+    const result = await search({
+      query: 'burger in Paris',
+    });
+
+    const allActions = [
+      ...result.proposedActions.perResult,
+      ...result.proposedActions.selectedItem,
+    ];
+
+    // Validate no L2 actions (hard actions deferred to Phase 2)
+    const hasL2Action = allActions.some((a: any) => a.level === 2);
+    assert.ok(!hasL2Action, 'Should not include L2 actions in Phase 1');
+
+    // Count action levels
+    const l0Count = allActions.filter((a: any) => a.level === 0).length;
+    const l1Count = allActions.filter((a: any) => a.level === 1).length;
+
+    assert.ok(l0Count > 0, 'Should include at least one L0 (read-only) action');
+    assert.ok(l1Count > 0, 'Should include at least one L1 (soft) action');
+
+    console.log(`✅ Action levels correct: ${l0Count} L0, ${l1Count} L1, 0 L2`);
+  });
+
+  it('should include standard action types', async () => {
+    const result = await search({
+      query: 'pizza in London',
+    });
+
+    const allActions = [
+      ...result.proposedActions.perResult,
+      ...result.proposedActions.selectedItem,
+    ];
+
+    // Expected action types for Phase 1
+    const expectedActionTypes = [
+      'VIEW_DETAILS',
+      'GET_DIRECTIONS',
+      'CALL_RESTAURANT',
+      'SAVE_FAVORITE',
+      'SHARE',
+      'VIEW_MENU',
+    ];
+
+    // Check that all action types are valid
+    const invalidActions = allActions.filter((a: any) => !expectedActionTypes.includes(a.type));
+    assert.equal(invalidActions.length, 0, `Invalid action types found: ${invalidActions.map((a: any) => a.type).join(', ')}`);
+
+    // Check that key actions are present
+    const hasDirections = allActions.some((a: any) => a.type === 'GET_DIRECTIONS');
+    const hasCall = allActions.some((a: any) => a.type === 'CALL_RESTAURANT');
+    const hasSave = allActions.some((a: any) => a.type === 'SAVE_FAVORITE');
+
+    assert.ok(hasDirections, 'Should include GET_DIRECTIONS action');
+    assert.ok(hasCall, 'Should include CALL_RESTAURANT action');
+    assert.ok(hasSave, 'Should include SAVE_FAVORITE action');
+
+    console.log(`✅ Standard action types present: ${allActions.map((a: any) => a.type).join(', ')}`);
+  });
+});
+
+// ============================================================================
 // Summary
 // ============================================================================
 

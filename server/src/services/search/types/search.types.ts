@@ -144,6 +144,52 @@ export interface AssistPayload {
 }
 
 // ============================================================================
+// Action Types (Human-in-the-Loop Pattern)
+// ============================================================================
+
+/**
+ * Action levels define the approval requirements:
+ * - L0: Read-only, no side effects, execute immediately
+ * - L1: Soft actions, local side effects, approval UI recommended
+ * - L2: Hard actions, external side effects, explicit approval required
+ */
+export type ActionLevel = 0 | 1 | 2;
+
+/**
+ * Action types for restaurant interactions
+ */
+export type ActionType =
+  | 'VIEW_DETAILS'      // L0: View full restaurant details
+  | 'GET_DIRECTIONS'    // L0: Open maps for directions
+  | 'CALL_RESTAURANT'   // L0: Open phone dialer
+  | 'SAVE_FAVORITE'     // L1: Save to favorites (localStorage in Phase 1)
+  | 'SHARE'             // L0: Open share dialog
+  | 'VIEW_MENU';        // L0: Open restaurant website/menu
+
+/**
+ * Action definition returned in search response
+ */
+export interface ActionDefinition {
+  id: string;                // Unique action ID (e.g., 'directions', 'call')
+  type: ActionType;          // Action type enum
+  level: ActionLevel;        // Approval level (0, 1, 2)
+  label: string;             // Display label (localized)
+  icon: string;              // Icon/emoji to display
+  requiresSelection?: boolean;  // True if requires a restaurant to be selected
+  enabled?: boolean;         // False if action not available (e.g., no phone number)
+}
+
+/**
+ * Proposed actions for a search result
+ * - perResult: Quick actions shown on each restaurant card
+ * - selectedItem: Detailed actions shown when a restaurant is selected
+ */
+export interface ProposedActions {
+  perResult: ActionDefinition[];      // Quick actions (Directions, Call, Save)
+  selectedItem: ActionDefinition[];   // Detailed actions (View Details, Menu, Share)
+}
+
+// ============================================================================
 // Session Types
 // ============================================================================
 
