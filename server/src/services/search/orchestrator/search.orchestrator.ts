@@ -15,16 +15,24 @@ import type {
     AssistPayload,
     ProposedActions,
     ActionDefinition,
+    RestaurantResult,
 } from '../types/search.types.js';
 import type { SearchRequest } from '../types/search-request.dto.js';
 import type { SearchResponse } from '../types/search-response.dto.js';
 import { createSearchResponse } from '../types/search-response.dto.js';
+import { QueryComposer } from '../utils/query-composer.js';
+import { CityFilterService } from '../filters/city-filter.service.js';
+import { StreetDetectorService } from '../detectors/street-detector.service.js';
+import type { ResultGroup } from '../types/search.types.js';
 
 /**
  * SearchOrchestrator
  * Implements the Backend-for-Frontend pattern for unified search
  */
 export class SearchOrchestrator {
+    private cityFilter: CityFilterService;
+    private streetDetector: StreetDetectorService;
+
     constructor(
         private intentService: IIntentService,
         private geoResolver: IGeoResolverService,
@@ -32,7 +40,10 @@ export class SearchOrchestrator {
         private rankingService: IRankingService,
         private suggestionService: ISuggestionService,
         private sessionService: ISessionService
-    ) { }
+    ) {
+        this.cityFilter = new CityFilterService(5); // Min 5 results before fallback
+        this.streetDetector = new StreetDetectorService();
+    }
 
     /**
      * Main search orchestration method
@@ -75,8 +86,14 @@ export class SearchOrchestrator {
             const mustHave = request.filters?.mustHave ?? intent.filters.mustHave;
             if (mustHave !== undefined) filters.mustHave = mustHave;
 
+            // Compose city-aware query (adds city if not already present)
+            const composedQuery = QueryComposer.composeCityQuery(
+                intent.query,
+                intent.location?.city
+            );
+
             const searchParams: SearchParams = {
-                query: intent.query,
+                query: composedQuery,  // Use composed query instead of raw intent.query
                 location: location.coords,
                 language: intent.language,
                 filters,
@@ -89,11 +106,113 @@ export class SearchOrchestrator {
                 searchParams.radius = intent.location.radius;
             }
 
-            const rawResults = await this.placesProvider.search(searchParams);
-            console.log(`[SearchOrchestrator] Found ${rawResults.length} raw results`);
+            // Enhanced logging: query details
+            console.log(`[SearchOrchestrator] 📍 Target city: ${intent.location?.city || 'none'}`);
+            console.log(`[SearchOrchestrator] 📏 Radius: ${searchParams.radius || 'default'}m`);
+            console.log(`[SearchOrchestrator] 🔎 Query sent to Google: "${composedQuery}"`);
 
-            // Step 5: Rank results by relevance
-            const rankedResults = this.rankingService.rank(rawResults, intent);
+            // Step 4: Detect if this is a street-level query
+            const streetDetection = this.streetDetector.detect(intent, request.query);
+
+            let groups: ResultGroup[];
+            let allResults: RestaurantResult[];
+            let googleCallTime: number;
+
+            const googleCallStart = Date.now();
+
+            if (streetDetection.isStreet) {
+                console.log(`[SearchOrchestrator] 🛣️ Street query detected: "${streetDetection.streetName}" (${streetDetection.detectionMethod})`);
+
+                // Dual search: exact (200m) + nearby (400m)
+                const exactParams = { ...searchParams, radius: 200 };
+                const nearbyParams = { ...searchParams, radius: 400 };
+
+                const [exactResults, nearbyResults] = await Promise.all([
+                    this.placesProvider.search(exactParams),
+                    this.placesProvider.search(nearbyParams)
+                ]);
+
+                googleCallTime = Date.now() - googleCallStart;
+
+                console.log(`[SearchOrchestrator] 📊 Exact (200m): ${exactResults.length}, Nearby (400m): ${nearbyResults.length}`);
+
+                // Filter out duplicates (exact results already in nearby)
+                const exactIds = new Set(exactResults.map(r => r.placeId));
+                const uniqueNearby = nearbyResults.filter(r => !exactIds.has(r.placeId));
+
+                // Mark group kind and distance
+                exactResults.forEach(r => {
+                    r.groupKind = 'EXACT';
+                    r.distanceMeters = 200;
+                });
+                uniqueNearby.forEach(r => {
+                    r.groupKind = 'NEARBY';
+                    r.distanceMeters = 400;
+                });
+
+                // Create groups
+                groups = [
+                    {
+                        kind: 'EXACT',
+                        label: streetDetection.streetName || 'ברחוב',
+                        results: exactResults,
+                        radiusMeters: 200
+                    },
+                    {
+                        kind: 'NEARBY',
+                        label: 'באיזור',
+                        results: uniqueNearby,
+                        distanceLabel: '5 דקות הליכה',
+                        radiusMeters: 400
+                    }
+                ];
+
+                allResults = [...exactResults, ...uniqueNearby];
+                console.log(`[SearchOrchestrator] ✅ Grouped: ${exactResults.length} exact + ${uniqueNearby.length} nearby = ${allResults.length} total`);
+            } else {
+                // Single search (existing flow)
+                const rawResults = await this.placesProvider.search(searchParams);
+                googleCallTime = Date.now() - googleCallStart;
+
+                console.log(`[SearchOrchestrator] 🔍 Raw results: ${rawResults.length} (took ${googleCallTime}ms)`);
+
+                allResults = rawResults;
+
+                // Single group for non-street queries
+                groups = [{
+                    kind: 'EXACT',
+                    label: 'תוצאות',
+                    results: allResults,
+                    radiusMeters: searchParams.radius || 3000
+                }];
+            }
+
+            // Step 4.5: Apply city filter to all results
+            const filterStartTime = Date.now();
+            const filterResult = this.cityFilter.filter(allResults, intent.location?.city);
+            const filterTime = Date.now() - filterStartTime;
+
+            console.log(`[SearchOrchestrator] ✂️ City filter: ${filterResult.kept.length} kept, ${filterResult.dropped.length} dropped (took ${filterTime}ms)`);
+            if (Object.keys(filterResult.stats.dropReasons).length > 0) {
+                console.log(`[SearchOrchestrator] 📊 Drop reasons:`, filterResult.stats.dropReasons);
+            }
+
+            // Update groups with filtered results
+            if (streetDetection.isStreet) {
+                const keptIds = new Set(filterResult.kept.map(r => r.placeId));
+                groups = groups.map(group => ({
+                    ...group,
+                    results: group.results.filter(r => keptIds.has(r.placeId))
+                }));
+            } else {
+                const firstGroup = groups[0];
+                if (firstGroup) {
+                    firstGroup.results = filterResult.kept;
+                }
+            }
+
+            // Step 5: Rank filtered results by relevance
+            const rankedResults = this.rankingService.rank(filterResult.kept, intent);
             console.log(`[SearchOrchestrator] Results ranked`);
 
             // Step 6: Take top 10
@@ -129,6 +248,7 @@ export class SearchOrchestrator {
                 originalQuery: request.query,
                 intent,
                 results: topResults,
+                groups,  // NEW: Grouped results
                 chips,
                 proposedActions,
                 meta: {
@@ -137,6 +257,39 @@ export class SearchOrchestrator {
                     appliedFilters: this.getAppliedFiltersList(intent, request),
                     confidence,
                     source: this.placesProvider.getName(),
+                    // NEW: City filter stats
+                    cityFilter: intent.location?.city ? {
+                        enabled: true,
+                        targetCity: intent.location.city,
+                        resultsRaw: allResults.length,
+                        resultsFiltered: filterResult.kept.length,
+                        dropped: filterResult.dropped.length,
+                        dropReasons: filterResult.stats.dropReasons,
+                    } : {
+                        enabled: false,
+                        resultsRaw: allResults.length,
+                        resultsFiltered: filterResult.kept.length,
+                        dropped: filterResult.dropped.length,
+                        dropReasons: {},
+                    },
+                    // NEW: Performance breakdown
+                    performance: {
+                        total: tookMs,
+                        googleCall: googleCallTime,
+                        cityFilter: filterTime,
+                    },
+                    // NEW: Street grouping stats (only if street detected)
+                    ...(streetDetection.isStreet ? {
+                        streetGrouping: {
+                            enabled: true,
+                            ...(streetDetection.streetName ? { streetName: streetDetection.streetName } : {}),
+                            detectionMethod: streetDetection.detectionMethod,
+                            exactCount: groups[0]?.results.length || 0,
+                            nearbyCount: groups[1]?.results.length || 0,
+                            exactRadius: 200,
+                            nearbyRadius: 400,
+                        }
+                    } : {}),
                 },
             };
 

@@ -48,6 +48,13 @@ export interface GeoConfig {
   };
 }
 
+export interface StreetSearchConfig {
+  exactRadius: number;
+  nearbyRadius: number;
+  minExactResults: number;
+  minNearbyResults: number;
+}
+
 /**
  * Search Configuration
  * Can be overridden via environment variables or constructor injection
@@ -98,7 +105,7 @@ export const SearchConfig = {
    * Places provider configuration
    */
   places: {
-    defaultRadius: 5000,    // 5km default search radius
+    defaultRadius: 3000,    // 3km default search radius (tighter city searches)
     photoMaxWidth: 400,     // Photo width for thumbnails
     defaultLanguage: 'en',  // Fallback language
     pageSize: 10,           // Results per page
@@ -114,6 +121,17 @@ export const SearchConfig = {
       lng: 0,
     },
   } as GeoConfig,
+
+  /**
+   * Street-specific search configuration
+   * For queries targeting a specific street (e.g., "pizza on broadway")
+   */
+  streetSearch: {
+    exactRadius: 200,        // 200m for "on street" results
+    nearbyRadius: 400,       // 400m for "nearby" results
+    minExactResults: 3,      // Min exact results before showing nearby
+    minNearbyResults: 5,     // Min total results before expansion
+  } as StreetSearchConfig,
 };
 
 /**
@@ -126,6 +144,7 @@ export function createSearchConfig(overrides?: {
   session?: Partial<SessionConfig>;
   places?: Partial<PlacesConfig>;
   geo?: Partial<GeoConfig>;
+  streetSearch?: Partial<StreetSearchConfig>;
 }): typeof SearchConfig {
   return {
     confidence: { ...SearchConfig.confidence, ...overrides?.confidence },
@@ -136,6 +155,7 @@ export function createSearchConfig(overrides?: {
     session: { ...SearchConfig.session, ...overrides?.session },
     places: { ...SearchConfig.places, ...overrides?.places },
     geo: { ...SearchConfig.geo, ...overrides?.geo },
+    streetSearch: { ...SearchConfig.streetSearch, ...overrides?.streetSearch },
   };
 }
 

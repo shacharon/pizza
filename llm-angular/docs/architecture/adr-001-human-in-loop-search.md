@@ -290,3 +290,4 @@ interface ActionDefinition {
 **Status: ACCEPTED** ✅
 
 This decision guides Phase 1 implementation. Backend approval service (Phase 2) will require a separate ADR when ordering/booking features are added.
+

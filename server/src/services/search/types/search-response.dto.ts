@@ -10,6 +10,7 @@ import type {
   AssistPayload,
   SearchMode,
   ProposedActions,
+  ResultGroup,
 } from './search.types.js';
 
 // ============================================================================
@@ -29,6 +30,31 @@ export interface SearchResponseMeta {
   confidence: number;  // Intent parsing confidence (0-1)
   source: string;  // Provider source(s) used
   cached?: boolean;  // Whether results were cached
+  // City filter statistics (optional)
+  cityFilter?: {
+    enabled: boolean;
+    targetCity?: string;
+    resultsRaw: number;
+    resultsFiltered: number;
+    dropped: number;
+    dropReasons: Record<string, number>;
+  };
+  // Performance breakdown (optional)
+  performance?: {
+    total: number;
+    googleCall: number;
+    cityFilter: number;
+  };
+  // Street grouping statistics (optional)
+  streetGrouping?: {
+    enabled: boolean;
+    streetName?: string;
+    detectionMethod?: 'LLM' | 'PATTERN' | 'NONE';
+    exactCount: number;
+    nearbyCount: number;
+    exactRadius: number;
+    nearbyRadius: number;
+  };
 }
 
 export interface SearchResponse {
@@ -38,8 +64,11 @@ export interface SearchResponse {
   // Query info
   query: SearchResponseQuery;
   
-  // Results
+  // Results (flat list for backward compatibility)
   results: RestaurantResult[];
+  
+  // Grouped results (Answer-First UX)
+  groups?: ResultGroup[];
   
   // UI suggestions
   chips: RefinementChip[];
@@ -76,6 +105,7 @@ export function createSearchResponse(params: {
   originalQuery: string;
   intent: ParsedIntent;
   results: RestaurantResult[];
+  groups?: ResultGroup[];
   chips: RefinementChip[];
   assist?: AssistPayload;
   proposedActions?: ProposedActions;
@@ -86,6 +116,28 @@ export function createSearchResponse(params: {
     confidence: number;
     source: string;
     cached?: boolean;
+    cityFilter?: {
+      enabled: boolean;
+      targetCity?: string;
+      resultsRaw: number;
+      resultsFiltered: number;
+      dropped: number;
+      dropReasons: Record<string, number>;
+    };
+    performance?: {
+      total: number;
+      googleCall: number;
+      cityFilter: number;
+    };
+    streetGrouping?: {
+      enabled: boolean;
+      streetName?: string;
+      detectionMethod?: 'LLM' | 'PATTERN' | 'NONE';
+      exactCount: number;
+      nearbyCount: number;
+      exactRadius: number;
+      nearbyRadius: number;
+    };
   };
 }): SearchResponse {
   const response: SearchResponse = {
@@ -99,6 +151,11 @@ export function createSearchResponse(params: {
     chips: params.chips,
     meta: params.meta,
   };
+
+  // Only add groups if they exist
+  if (params.groups) {
+    response.groups = params.groups;
+  }
 
   // Only add assist if it exists
   if (params.assist) {

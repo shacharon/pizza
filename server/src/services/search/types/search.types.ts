@@ -109,11 +109,40 @@ export interface RestaurantResult {
   // Scoring (added by RankingService)
   score?: number;  // 0-100
   
+  // City matching (added by CityFilterService)
+  cityMatch?: boolean;  // Does this result match the target city?
+  cityMatchReason?: 'LOCALITY' | 'FORMATTED_ADDRESS' | 'UNKNOWN';
+  isNearbyFallback?: boolean;  // Was this added as a fallback result?
+  
+  // Grouping metadata (added by SearchOrchestrator)
+  groupKind?: 'EXACT' | 'NEARBY';  // Which group this result belongs to
+  distanceMeters?: number;  // Distance from search point
+  
   // Metadata
   metadata?: {
     lastUpdated?: Date;
     cacheAge?: number;
   };
+}
+
+// ============================================================================
+// Result Grouping Types (Answer-First UX)
+// ============================================================================
+
+export type GroupKind = 'EXACT' | 'NEARBY';
+
+export interface ResultGroup {
+  kind: GroupKind;
+  label: string;  // e.g., "ברחוב אלנבי" or "באיזור"
+  results: RestaurantResult[];
+  distanceLabel?: string;  // e.g., "5 דקות הליכה"
+  radiusMeters?: number;  // Actual radius used for this group
+}
+
+export interface StreetDetectionResult {
+  isStreet: boolean;
+  streetName?: string;
+  detectionMethod: 'LLM' | 'PATTERN' | 'NONE';
 }
 
 // ============================================================================
