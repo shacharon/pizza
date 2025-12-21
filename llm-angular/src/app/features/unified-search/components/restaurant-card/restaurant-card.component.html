@@ -1,0 +1,95 @@
+<article 
+  class="restaurant-card"
+  [class.selected]="selected()"
+  (click)="onCardClick()"
+  role="button"
+  tabindex="0"
+  [attr.aria-label]="'View details for ' + restaurant().name"
+>
+  @if (restaurant().photoUrl) {
+    <img 
+      class="restaurant-photo" 
+      [src]="restaurant().photoUrl" 
+      [alt]="restaurant().name"
+      loading="lazy"
+    />
+  } @else {
+    <div class="restaurant-photo-placeholder">
+      🍽️
+    </div>
+  }
+
+  <div class="restaurant-info">
+    <h3 class="restaurant-name">{{ restaurant().name }}</h3>
+    
+    <div class="restaurant-meta">
+      @if (restaurant().rating) {
+        <span class="rating" [attr.aria-label]="'Rating: ' + restaurant().rating">
+          {{ getRatingStars(restaurant().rating) }}
+          <span class="rating-value">{{ restaurant().rating }}</span>
+          @if (restaurant().userRatingsTotal) {
+            <span class="rating-count">({{ restaurant().userRatingsTotal }})</span>
+          }
+        </span>
+      }
+      
+      @if (restaurant().priceLevel) {
+        <span class="price-level" [attr.aria-label]="'Price level: ' + restaurant().priceLevel">
+          {{ getPriceLevel(restaurant().priceLevel) }}
+        </span>
+      }
+      
+      @if (restaurant().openNow !== undefined) {
+        <span 
+          class="open-status"
+          [class.open]="restaurant().openNow"
+          [class.closed]="!restaurant().openNow"
+        >
+          {{ restaurant().openNow ? 'Open' : 'Closed' }}
+        </span>
+      }
+    </div>
+
+    <p class="restaurant-address">{{ restaurant().address }}</p>
+
+    @if (restaurant().tags && restaurant().tags!.length > 0) {
+      <div class="restaurant-tags">
+        @for (tag of restaurant().tags; track tag) {
+          <span class="tag">{{ tag }}</span>
+        }
+      </div>
+    }
+  </div>
+
+  <div class="quick-actions">
+    <button
+      type="button"
+      class="action-button"
+      (click)="onAction($event, 'GET_DIRECTIONS')"
+      title="Get directions"
+      aria-label="Get directions to restaurant"
+    >
+      📍
+    </button>
+    <button
+      type="button"
+      class="action-button"
+      (click)="onAction($event, 'CALL_RESTAURANT')"
+      title="Call restaurant"
+      aria-label="Call restaurant"
+      [disabled]="!restaurant().phoneNumber"
+    >
+      📞
+    </button>
+    <button
+      type="button"
+      class="action-button favorite"
+      (click)="onAction($event, 'SAVE_FAVORITE')"
+      title="Save to favorites"
+      aria-label="Save to favorites"
+    >
+      ❤️
+    </button>
+  </div>
+</article>
+

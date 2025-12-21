@@ -1,0 +1,38 @@
+<div class="search-bar">
+  <div class="search-input-wrapper">
+    <span class="search-icon">🔍</span>
+    <input
+      type="search"
+      class="search-input"
+      [(ngModel)]="query"
+      (keydown)="onKeydown($event)"
+      [disabled]="disabled()"
+      [placeholder]="placeholder()"
+      aria-label="Search for restaurants"
+    />
+    @if (query()) {
+      <button
+        type="button"
+        class="clear-button"
+        (click)="onClear()"
+        [disabled]="disabled()"
+        aria-label="Clear search"
+      >
+        ✕
+      </button>
+    }
+    @if (loading()) {
+      <span class="loading-spinner" aria-label="Loading">⏳</span>
+    }
+  </div>
+  <button
+    type="button"
+    class="search-button"
+    (click)="onSearch()"
+    [disabled]="disabled() || !query()"
+    aria-label="Search"
+  >
+    Search
+  </button>
+</div>
+

@@ -1,0 +1,333 @@
+.search-page {
+  min-height: 100vh;
+  background: #f5f5f5;
+}
+
+.search-header {
+  background: #fff;
+  padding: 2rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.page-title {
+  text-align: center;
+  margin: 0 0 1.5rem 0;
+  font-size: 2rem;
+  color: #333;
+}
+
+.search-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+// Popular Searches
+.popular-searches {
+  text-align: center;
+  padding: 2rem 0;
+
+  h2 {
+    margin-bottom: 2rem;
+    color: #333;
+  }
+}
+
+.search-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1rem;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.popular-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1.5rem;
+  background: #fff;
+  border: 2px solid #e0e0e0;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    border-color: #4285f4;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  }
+}
+
+.popular-emoji {
+  font-size: 2.5rem;
+}
+
+.popular-label {
+  font-size: 1rem;
+  font-weight: 500;
+  color: #333;
+}
+
+// Loading State
+.loading-state {
+  text-align: center;
+  padding: 4rem 2rem;
+}
+
+.loading-spinner {
+  font-size: 4rem;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.1);
+  }
+}
+
+// Error State
+.error-state {
+  text-align: center;
+  padding: 4rem 2rem;
+  background: #fff;
+  border-radius: 12px;
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+.error-icon {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+}
+
+.retry-button {
+  margin-top: 1.5rem;
+  padding: 0.75rem 2rem;
+  background: #4285f4;
+  color: white;
+  border: none;
+  border-radius: 24px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+
+  &:hover {
+    background: #357ae8;
+  }
+}
+
+// Micro-Assist Card
+.micro-assist-card {
+  background: #fff3e0;
+  border: 2px solid #ffb74d;
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.assist-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.assist-icon {
+  font-size: 1.5rem;
+}
+
+.assist-message {
+  flex: 1;
+  margin: 0;
+  color: #333;
+  line-height: 1.5;
+}
+
+.assist-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.assist-action-button {
+  padding: 0.5rem 1rem;
+  background: #fff;
+  border: 1px solid #ffb74d;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.875rem;
+
+  &:hover {
+    background: #ffb74d;
+    color: #fff;
+  }
+}
+
+// Refinement Chips
+.refinement-chips {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+
+.chip {
+  padding: 0.5rem 1rem;
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+
+  &:hover {
+    background: #f5f5f5;
+    border-color: #4285f4;
+  }
+}
+
+// Results Section
+.results-section {
+  margin-top: 1.5rem;
+}
+
+.results-header {
+  margin-bottom: 1.5rem;
+
+  h2 {
+    margin: 0 0 0.5rem 0;
+    color: #333;
+  }
+}
+
+.search-time {
+  margin: 0;
+  color: #757575;
+  font-size: 0.875rem;
+}
+
+.results-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+// Pending Actions Panel
+.pending-actions-panel {
+  position: fixed;
+  bottom: 1rem;
+  right: 1rem;
+  background: #fff;
+  border: 2px solid #ff9800;
+  border-radius: 12px;
+  padding: 1rem;
+  max-width: 350px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+
+  h3 {
+    margin: 0 0 1rem 0;
+    color: #ff9800;
+    font-size: 1rem;
+  }
+}
+
+.pending-action {
+  padding: 0.75rem;
+  background: #fff3e0;
+  border-radius: 8px;
+  margin-bottom: 0.75rem;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.action-info {
+  margin-bottom: 0.75rem;
+
+  p {
+    margin: 0;
+  }
+}
+
+.action-restaurant {
+  font-weight: 600;
+  color: #333;
+}
+
+.action-type {
+  font-size: 0.75rem;
+  color: #757575;
+  text-transform: uppercase;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.approve-button,
+.reject-button {
+  flex: 1;
+  padding: 0.5rem;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.approve-button {
+  background: #4caf50;
+  color: white;
+
+  &:hover {
+    background: #43a047;
+  }
+}
+
+.reject-button {
+  background: #f44336;
+  color: white;
+
+  &:hover {
+    background: #e53935;
+  }
+}
+
+@media (max-width: 768px) {
+  .search-header {
+    padding: 1rem;
+  }
+
+  .page-title {
+    font-size: 1.5rem;
+  }
+
+  .search-content {
+    padding: 1rem;
+  }
+
+  .pending-actions-panel {
+    left: 1rem;
+    right: 1rem;
+    max-width: none;
+  }
+}
+

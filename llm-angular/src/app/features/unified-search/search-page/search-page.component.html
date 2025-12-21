@@ -1,0 +1,147 @@
+<div class="search-page">
+  <header class="search-header">
+    <h1 class="page-title">Find Your Perfect Restaurant</h1>
+    <app-search-bar
+      [loading]="facade.loading()"
+      (search)="onSearch($event)"
+      (clear)="onClear()"
+    />
+  </header>
+
+  <main class="search-content">
+    <!-- Popular Searches (shown when no results) -->
+    @if (!facade.hasResults() && !facade.loading() && !facade.error()) {
+      <section class="popular-searches">
+        <h2>Popular Searches</h2>
+        <div class="search-grid">
+          @for (item of popularSearches; track item.query) {
+            <button
+              class="popular-item"
+              (click)="onPopularSearchClick(item.query)"
+            >
+              <span class="popular-emoji">{{ item.emoji }}</span>
+              <span class="popular-label">{{ item.label }}</span>
+            </button>
+          }
+        </div>
+      </section>
+    }
+
+    <!-- Loading State -->
+    @if (facade.loading()) {
+      <div class="loading-state">
+        <div class="loading-spinner">🔍</div>
+        <p>Searching for restaurants...</p>
+      </div>
+    }
+
+    <!-- Error State -->
+    @if (facade.error() && !facade.loading()) {
+      <div class="error-state">
+        <div class="error-icon">⚠️</div>
+        <h2>Oops! Something went wrong</h2>
+        <p>{{ facade.error() }}</p>
+        <button class="retry-button" (click)="retry()">
+          Try Again
+        </button>
+      </div>
+    }
+
+    <!-- Micro-Assist Card (low confidence) -->
+    @if (facade.assist() && facade.hasResults()) {
+      <div class="micro-assist-card">
+        <div class="assist-content">
+          <span class="assist-icon">💡</span>
+          <p class="assist-message">{{ facade.assist()!.message }}</p>
+        </div>
+        @if (facade.assist()!.suggestedActions.length > 0) {
+          <div class="assist-actions">
+            @for (action of facade.assist()!.suggestedActions; track action.label) {
+              <button
+                class="assist-action-button"
+                (click)="onAssistActionClick(action.query)"
+              >
+                {{ action.label }}
+              </button>
+            }
+          </div>
+        }
+      </div>
+    }
+
+    <!-- Refinement Chips -->
+    @if (facade.chips().length > 0 && facade.hasResults()) {
+      <div class="refinement-chips">
+        @for (chip of facade.chips(); track trackByChip($index, chip)) {
+          <button
+            class="chip"
+            (click)="onChipClick(chip.id)"
+          >
+            <span>{{ chip.emoji }}</span>
+            {{ chip.label }}
+          </button>
+        }
+      </div>
+    }
+
+    <!-- Results Grid -->
+    @if (facade.hasResults() && !facade.loading()) {
+      <section class="results-section">
+        <div class="results-header">
+          <h2>
+            Found {{ facade.results().length }} restaurant{{ facade.results().length !== 1 ? 's' : '' }}
+          </h2>
+          @if (facade.meta()) {
+            <p class="search-time">
+              Searched in {{ facade.meta()!.tookMs }}ms
+              @if (facade.meta()!.confidence) {
+                · Confidence: {{ (facade.meta()!.confidence * 100).toFixed(0) }}%
+              }
+            </p>
+          }
+        </div>
+
+        <div class="results-grid">
+          @for (restaurant of facade.results(); track trackByRestaurant($index, restaurant)) {
+            <app-restaurant-card
+              [restaurant]="restaurant"
+              [selected]="facade.selectedRestaurant()?.id === restaurant.id"
+              (cardClick)="onCardClick($event)"
+              (actionClick)="onActionClick($event, restaurant)"
+            />
+          }
+        </div>
+      </section>
+    }
+
+    <!-- Pending Actions Panel -->
+    @if (facade.pendingActions().length > 0) {
+      <aside class="pending-actions-panel">
+        <h3>Pending Approvals</h3>
+        @for (action of facade.pendingActions(); track trackByAction($index, action)) {
+          <div class="pending-action">
+            <div class="action-info">
+              <p class="action-restaurant">{{ action.restaurant.name }}</p>
+              <p class="action-type">{{ action.type }}</p>
+            </div>
+            <div class="action-buttons">
+              <button
+                class="approve-button"
+                (click)="onApproveAction(action.id)"
+              >
+                ✓ Approve
+              </button>
+              <button
+                class="reject-button"
+                (click)="onRejectAction(action.id)"
+              >
+                ✗ Reject
+              </button>
+            </div>
+          </div>
+        }
+      </aside>
+    }
+  </main>
+</div>
+
