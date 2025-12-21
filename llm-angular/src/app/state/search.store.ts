@@ -4,7 +4,7 @@
  */
 
 import { Injectable, signal, computed } from '@angular/core';
-import type { SearchResponse } from '../domain/types/search.types';
+import type { SearchResponse, ResultGroup } from '../domain/types/search.types';
 
 @Injectable({ providedIn: 'root' })
 export class SearchStore {
@@ -27,6 +27,21 @@ export class SearchStore {
   readonly proposedActions = computed(() => this._response()?.proposedActions);
   readonly hasResults = computed(() => this.results().length > 0);
   readonly assist = computed(() => this._response()?.assist);
+  
+  // NEW: Groups support (Phase B)
+  readonly groups = computed(() => this._response()?.groups);
+  readonly hasGroups = computed(() => {
+    const groups = this.groups();
+    return groups !== undefined && groups.length > 0;
+  });
+  readonly exactResults = computed(() => 
+    this.groups()?.find((g: ResultGroup) => g.kind === 'EXACT')?.results || []
+  );
+  readonly nearbyResults = computed(() => 
+    this.groups()?.find((g: ResultGroup) => g.kind === 'NEARBY')?.results || []
+  );
+  readonly exactCount = computed(() => this.exactResults().length);
+  readonly nearbyCount = computed(() => this.nearbyResults().length);
 
   // Mutations
   setQuery(query: string): void {

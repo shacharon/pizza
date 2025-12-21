@@ -6,6 +6,8 @@
 import { Injectable, inject } from '@angular/core';
 import { UnifiedSearchService } from '../services/unified-search.service';
 import { ActionService } from '../services/action.service';
+import { InputStateMachine } from '../services/input-state-machine.service';
+import { RecentSearchesService } from '../services/recent-searches.service';
 import { SearchStore } from '../state/search.store';
 import { SessionStore } from '../state/session.store';
 import { ActionsStore } from '../state/actions.store';
@@ -19,6 +21,8 @@ import type { ActionType, ActionLevel } from '../domain/types/action.types';
 export class SearchFacade {
   private readonly searchService = inject(UnifiedSearchService);
   private readonly actionService = inject(ActionService);
+  private readonly inputStateMachine = inject(InputStateMachine);
+  private readonly recentSearchesService = inject(RecentSearchesService);
   private readonly searchStore = inject(SearchStore);
   private readonly sessionStore = inject(SessionStore);
   private readonly actionsStore = inject(ActionsStore);
@@ -40,11 +44,37 @@ export class SearchFacade {
   readonly locale = this.sessionStore.locale;
   readonly recentSearches = this.sessionStore.preferences;
 
+  // NEW: Phase B - Groups support
+  readonly groups = this.searchStore.groups;
+  readonly hasGroups = this.searchStore.hasGroups;
+  readonly exactResults = this.searchStore.exactResults;
+  readonly nearbyResults = this.searchStore.nearbyResults;
+  readonly exactCount = this.searchStore.exactCount;
+  readonly nearbyCount = this.searchStore.nearbyCount;
+
+  // NEW: Phase B - Input state machine
+  readonly inputState = this.inputStateMachine.state;
+  readonly currentQuery = this.inputStateMachine.query;
+  readonly showRecentSearches = this.inputStateMachine.showRecentSearches;
+  readonly showClearButton = this.inputStateMachine.showClearButton;
+  readonly canSubmit = this.inputStateMachine.canSubmit;
+
+  // NEW: Phase B - Recent searches
+  readonly recentSearchesList = this.recentSearchesService.searches;
+  readonly hasRecentSearches = this.recentSearchesService.hasSearches;
+
   // Public actions
   search(query: string, filters?: SearchFilters): void {
+    // NEW: Phase B - Add to recent searches and update state machine
+    this.recentSearchesService.add(query);
+    this.inputStateMachine.submit();
+
     this.searchService.search(query, filters).subscribe({
+      next: () => {
+        this.inputStateMachine.searchComplete();
+      },
       error: (error) => {
-        // Error already handled in service, just log for component awareness
+        this.inputStateMachine.searchFailed();
         console.error('[SearchFacade] Search error:', error);
       }
     });
@@ -126,6 +156,30 @@ export class SearchFacade {
 
   cleanupExpiredActions(): void {
     this.actionService.cleanupExpired();
+  }
+
+  // NEW: Phase B - Input state management
+  onInput(text: string): void {
+    this.inputStateMachine.input(text);
+  }
+
+  onClear(): void {
+    this.inputStateMachine.clear();
+    this.searchStore.reset();
+  }
+
+  onSelectRecent(query: string): void {
+    this.inputStateMachine.selectRecent(query);
+    this.search(query);
+  }
+
+  onSelectChip(newQuery: string): void {
+    this.inputStateMachine.selectChip(newQuery);
+    this.search(newQuery);
+  }
+
+  clearRecentSearches(): void {
+    this.recentSearchesService.clear();
   }
 }
 

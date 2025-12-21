@@ -23,6 +23,7 @@ export class SearchBarComponent {
   // Outputs
   readonly search = output<string>();
   readonly clear = output<void>();
+  readonly inputChange = output<string>(); // NEW: Phase B
 
   // Local state
   readonly query = signal('');
@@ -43,6 +44,14 @@ export class SearchBarComponent {
     if (event.key === 'Enter') {
       this.onSearch();
     }
+  }
+
+  /**
+   * NEW: Phase B - Emit input changes for state machine
+   */
+  onInput(value: string): void {
+    this.query.set(value);
+    this.inputChange.emit(value);
   }
 }
 

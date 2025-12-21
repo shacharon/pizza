@@ -16,6 +16,7 @@ export interface SearchResponse {
   sessionId: string;
   query: ParsedQuery;
   results: Restaurant[];
+  groups?: ResultGroup[];  // NEW: Phase B - Street grouping
   chips: RefinementChip[];
   assist?: MicroAssist;
   proposedActions?: ProposedActions;
@@ -36,7 +37,13 @@ export interface Restaurant {
   phoneNumber?: string;
   website?: string;
   tags?: string[];
+  source?: string;  // NEW: Phase B
+  groupKind?: 'EXACT' | 'NEARBY';  // NEW: Phase B
+  distanceMeters?: number;  // NEW: Phase B
 }
+
+// Alias for backward compatibility
+export type RestaurantResult = Restaurant;
 
 export interface Coordinates {
   lat: number;
@@ -103,5 +110,16 @@ export type ActionType =
   | 'VIEW_MENU';
 
 export type ActionLevel = 0 | 1 | 2;
+
+// NEW: Phase B - Result Grouping Types
+export type GroupKind = 'EXACT' | 'NEARBY';
+
+export interface ResultGroup {
+  kind: GroupKind;
+  label: string;
+  results: Restaurant[];
+  distanceLabel?: string;
+  radiusMeters?: number;
+}
 
 

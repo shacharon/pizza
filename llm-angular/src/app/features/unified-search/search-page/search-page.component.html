@@ -4,13 +4,34 @@
     <app-search-bar
       [loading]="facade.loading()"
       (search)="onSearch($event)"
+      (inputChange)="onInputChange($event)"
       (clear)="onClear()"
     />
   </header>
 
   <main class="search-content">
-    <!-- Popular Searches (shown when no results) -->
-    @if (!facade.hasResults() && !facade.loading() && !facade.error()) {
+    <!-- Recent Searches (shown when input is empty) -->
+    @if (facade.showRecentSearches() && facade.hasRecentSearches()) {
+      <section class="recent-searches">
+        <div class="section-header">
+          <h2>Recent Searches</h2>
+          <button class="clear-link" (click)="onClearRecentSearches()">
+            Clear all
+          </button>
+        </div>
+        <ul class="recent-list">
+          @for (query of facade.recentSearchesList(); track query) {
+            <li class="recent-item" (click)="onRecentSearchClick(query)">
+              <span class="recent-icon">🕐</span>
+              <span class="recent-query">{{ query }}</span>
+            </li>
+          }
+        </ul>
+      </section>
+    }
+
+    <!-- Popular Searches (shown when no results and no recent searches) -->
+    @if (!facade.hasResults() && !facade.loading() && !facade.error() && !facade.showRecentSearches()) {
       <section class="popular-searches">
         <h2>Popular Searches</h2>
         <div class="search-grid">
@@ -84,8 +105,33 @@
       </div>
     }
 
-    <!-- Results Grid -->
-    @if (facade.hasResults() && !facade.loading()) {
+    <!-- NEW: Grouped Results (Phase B) -->
+    @if (facade.hasGroups() && !facade.loading()) {
+      <section class="results-section">
+        <div class="results-header">
+          <h2>
+            Found {{ facade.exactCount() + facade.nearbyCount() }} restaurant{{ (facade.exactCount() + facade.nearbyCount()) !== 1 ? 's' : '' }}
+          </h2>
+          @if (facade.meta()) {
+            <p class="search-time">
+              Searched in {{ facade.meta()!.tookMs }}ms
+              @if (facade.meta()!.confidence) {
+                · Confidence: {{ (facade.meta()!.confidence * 100).toFixed(0) }}%
+              }
+            </p>
+          }
+        </div>
+
+        <app-grouped-results
+          [groups]="facade.groups()!"
+          [loading]="facade.loading()"
+          (restaurantClick)="onCardClick($event)"
+        />
+      </section>
+    }
+
+    <!-- Fallback: Flat Results Grid (backward compatibility) -->
+    @if (facade.hasResults() && !facade.hasGroups() && !facade.loading()) {
       <section class="results-section">
         <div class="results-header">
           <h2>
@@ -144,5 +190,3 @@
     }
   </main>
 </div>
-
-

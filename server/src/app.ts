@@ -6,6 +6,7 @@ import { chatRouter } from './routes/chat.routes.js';
 import { placesRouter } from './routes/places.routes.js';
 import { dialogueRouter } from './routes/dialogue.routes.js';
 import searchRouter from './controllers/search/search.controller.js';
+import analyticsRouter from './controllers/analytics/analytics.controller.js';
 
 export function createApp() {
     const app = express();
@@ -16,6 +17,9 @@ export function createApp() {
 
     // NEW: Unified search endpoint (Phase 3)
     app.use('/api', searchRouter);
+
+    // Analytics endpoint (in-memory storage)
+    app.use('/api/analytics', analyticsRouter);
 
     // Legacy endpoints (will be deprecated)
     app.use('/api', chatRouter);

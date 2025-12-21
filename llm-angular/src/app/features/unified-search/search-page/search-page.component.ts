@@ -8,6 +8,7 @@ import { CommonModule } from '@angular/common';
 import { SearchFacade } from '../../../facades/search.facade';
 import { SearchBarComponent } from '../components/search-bar/search-bar.component';
 import { RestaurantCardComponent } from '../components/restaurant-card/restaurant-card.component';
+import { GroupedResultsComponent } from '../components/grouped-results/grouped-results.component';
 import type { Restaurant } from '../../../domain/types/search.types';
 import type { ActionType, ActionLevel } from '../../../domain/types/action.types';
 
@@ -17,7 +18,8 @@ import type { ActionType, ActionLevel } from '../../../domain/types/action.types
   imports: [
     CommonModule,
     SearchBarComponent,
-    RestaurantCardComponent
+    RestaurantCardComponent,
+    GroupedResultsComponent
   ],
   providers: [SearchFacade],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -56,7 +58,22 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   }
 
   onClear(): void {
-    this.facade.reset();
+    this.facade.onClear();
+  }
+
+  // NEW: Phase B - Input change handler
+  onInputChange(text: string): void {
+    this.facade.onInput(text);
+  }
+
+  // NEW: Phase B - Recent search selection
+  onRecentSearchClick(query: string): void {
+    this.facade.onSelectRecent(query);
+  }
+
+  // NEW: Phase B - Clear recent searches
+  onClearRecentSearches(): void {
+    this.facade.clearRecentSearches();
   }
 
   onCardClick(restaurant: Restaurant): void {
