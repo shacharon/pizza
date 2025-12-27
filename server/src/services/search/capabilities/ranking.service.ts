@@ -23,6 +23,7 @@ export class RankingService implements IRankingService {
     this.config = {
       weights: { ...SearchConfig.ranking.weights, ...config?.weights },
       thresholds: { ...SearchConfig.ranking.thresholds, ...config?.thresholds },
+      scoring: { ...SearchConfig.ranking.scoring, ...config?.scoring },
     };
     
     this.weights = {
@@ -31,26 +32,45 @@ export class RankingService implements IRankingService {
   }
 
   /**
-   * Rank restaurants based on relevance to the intent
+   * Phase 3: Rank restaurants based on relevance to the intent
+   * Now includes distance scoring, normalization, and weak match detection
    */
-  rank(results: RestaurantResult[], intent: ParsedIntent): RestaurantResult[] {
-    // Calculate score for each result
-    const scored = results.map(restaurant => ({
-      ...restaurant,
-      score: this.calculateScore(restaurant, intent),
-      matchReasons: this.getMatchReasons(restaurant, intent),
-    }));
+  rank(
+    results: RestaurantResult[],
+    intent: ParsedIntent,
+    centerCoords?: { lat: number; lng: number }
+  ): RestaurantResult[] {
+    // Calculate raw scores with distance
+    const scored = results.map(restaurant => {
+      const rawScore = this.calculateScore(restaurant, intent, centerCoords);
+      const normalizedScore = this.normalizeScore(rawScore);
+      
+      return {
+        ...restaurant,
+        score: normalizedScore,
+        matchReasons: this.getMatchReasons(restaurant, intent),
+        isWeakMatch: normalizedScore < this.config.thresholds.weakMatch,
+      };
+    });
 
     // Sort by score (descending)
-    scored.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+    scored.sort((a, b) => b.score - a.score);
 
-    return scored;
+    // Filter out results below minimum viable score
+    const viable = scored.filter(r => r.score >= this.config.thresholds.minViableScore);
+
+    return viable;
   }
 
   /**
-   * Calculate relevance score for a restaurant
+   * Phase 3: Calculate relevance score for a restaurant
+   * Now includes distance-based scoring
    */
-  private calculateScore(restaurant: RestaurantResult, intent: ParsedIntent): number {
+  private calculateScore(
+    restaurant: RestaurantResult,
+    intent: ParsedIntent,
+    centerCoords?: { lat: number; lng: number }
+  ): number {
     let score = 0;
 
     // Base: rating × weight
@@ -94,32 +114,68 @@ export class RankingService implements IRankingService {
       score += cuisineMatches.length * 3;
     }
 
+    // Phase 3: Add distance-based scoring
+    if (centerCoords) {
+      const distScore = this.calculateDistanceScore(restaurant, centerCoords);
+      score += distScore * (this.weights.distance || 0);
+    }
+
     // Highly rated boost
     if (restaurant.rating && restaurant.rating >= this.config.thresholds.highlyRated) {
       score += this.config.thresholds.highlyRatedBonus;
     }
 
+    // Return raw score (will be normalized later)
     return Math.max(0, score);
   }
 
   /**
-   * Get reasons why this restaurant matches the query
+   * Phase 3: Get detailed reasons why this restaurant matches the query
+   * Expanded to 10+ reason types with distance and rating detail
    */
   private getMatchReasons(restaurant: RestaurantResult, intent: ParsedIntent): string[] {
     const reasons: string[] = [];
 
-    if (restaurant.rating && restaurant.rating >= this.config.thresholds.highlyRated) {
-      reasons.push('highly_rated');
+    // Rating-based reasons (tiered)
+    if (restaurant.rating) {
+      if (restaurant.rating >= 4.8) {
+        reasons.push('exceptional_rating');
+      } else if (restaurant.rating >= this.config.thresholds.highlyRated) {
+        reasons.push('highly_rated');
+      } else if (restaurant.rating >= 4.0) {
+        reasons.push('good_rating');
+      }
     }
 
+    // Review count reasons (popularity tiers)
+    if (restaurant.userRatingsTotal) {
+      if (restaurant.userRatingsTotal >= 500) {
+        reasons.push('very_popular');
+      } else if (restaurant.userRatingsTotal >= this.config.thresholds.popularReviews) {
+        reasons.push('popular');
+      }
+    }
+
+    // Price match
     if (intent.filters.priceLevel && restaurant.priceLevel === intent.filters.priceLevel) {
       reasons.push('price_match');
     }
 
-    if (intent.filters.openNow && restaurant.openNow) {
+    // Open now
+    if (intent.filters.openNow && restaurant.openNow === true) {
       reasons.push('open_now');
     }
 
+    // Distance reasons (proximity tiers)
+    if (restaurant.distanceMeters !== undefined) {
+      if (restaurant.distanceMeters < 500) {
+        reasons.push('very_close');
+      } else if (restaurant.distanceMeters < 1000) {
+        reasons.push('nearby');
+      }
+    }
+
+    // Dietary matches
     if (intent.filters.dietary && restaurant.tags) {
       intent.filters.dietary.forEach(diet => {
         if (restaurant.tags?.some(tag => tag.toLowerCase().includes(diet.toLowerCase()))) {
@@ -128,19 +184,78 @@ export class RankingService implements IRankingService {
       });
     }
 
+    // Cuisine matches
     if (intent.cuisine && restaurant.tags) {
-      intent.cuisine.forEach(cuisine => {
-        if (restaurant.tags?.some(tag => tag.toLowerCase().includes(cuisine.toLowerCase()))) {
-          reasons.push(`cuisine_${cuisine}`);
-        }
-      });
+      const cuisineMatches = intent.cuisine.filter(cuisine =>
+        restaurant.tags?.some(tag => tag.toLowerCase().includes(cuisine.toLowerCase()))
+      );
+      if (cuisineMatches.length > 0) {
+        reasons.push('cuisine_match');
+      }
     }
 
-    if (restaurant.userRatingsTotal && restaurant.userRatingsTotal > this.config.thresholds.popularReviews) {
-      reasons.push('popular');
+    // Fallback if no reasons
+    if (reasons.length === 0) {
+      reasons.push('general_match');
     }
 
     return reasons;
+  }
+
+  /**
+   * Phase 3: Normalize score to 0-100 range
+   * Clamps and rounds to 1 decimal place
+   */
+  private normalizeScore(rawScore: number): number {
+    // Normalize to 0-100 range
+    const maxRaw = this.config.scoring.maxRawScore;
+    const normalized = Math.min(100, (rawScore / maxRaw) * 100);
+    return Math.round(normalized * 10) / 10;  // Round to 1 decimal
+  }
+
+  /**
+   * Phase 3: Calculate distance score using Haversine formula
+   * Returns 0-100 score based on proximity to center
+   */
+  private calculateDistanceScore(
+    result: RestaurantResult,
+    centerCoords?: { lat: number; lng: number }
+  ): number {
+    if (!centerCoords || !result.location) return 0;
+    
+    const distance = this.haversineDistance(
+      centerCoords.lat, centerCoords.lng,
+      result.location.lat, result.location.lng
+    );
+    
+    // Linear decay: 100 at 0km, 0 at distanceMaxKm
+    const maxDist = this.config.scoring.distanceMaxKm * 1000; // Convert to meters
+    const score = Math.max(0, 100 - (distance / maxDist) * 100);
+    
+    // Mutate result to add distance metadata
+    (result as any).distanceScore = score;
+    (result as any).distanceMeters = distance;
+    
+    return score;
+  }
+
+  /**
+   * Phase 3: Haversine distance formula
+   * Calculates distance between two coordinates in meters
+   */
+  private haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371e3; // Earth radius in meters
+    const φ1 = lat1 * Math.PI / 180;
+    const φ2 = lat2 * Math.PI / 180;
+    const Δφ = (lat2 - lat1) * Math.PI / 180;
+    const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+              Math.cos(φ1) * Math.cos(φ2) *
+              Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return R * c;
   }
 
   /**

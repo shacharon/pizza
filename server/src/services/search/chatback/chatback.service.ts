@@ -2,6 +2,7 @@
  * ChatBack Service
  * LLM-powered messaging layer that turns ResponsePlan into natural language
  * Follows "Always Help, Never Stop" behavior contract
+ * Phase 4: Fully i18n compliant
  */
 
 import { z } from 'zod';
@@ -10,6 +11,9 @@ import type { LLMProvider, Message } from '../../../llm/types.js';
 import type { ResponsePlan, SuggestedAction } from '../types/response-plan.types.js';
 import type { ParsedIntent } from '../types/search.types.js';
 import { createHash } from 'crypto';
+import { getI18n } from '../../i18n/index.js';
+import type { Lang } from '../../i18n/i18n.types.js';
+import { normalizeLang } from '../../i18n/index.js';
 
 const CHATBACK_POLICY = `You are a helpful food search assistant. Follow these rules:
 
@@ -27,16 +31,7 @@ Response format:
 - Explain tradeoffs gently ("if we extend 5 minutes...")
 `;
 
-const FORBIDDEN_PHRASES = [
-  'no results',
-  'nothing found',
-  'try again',
-  'confidence',
-  'API',
-  'data unavailable',
-  'לא נמצאו תוצאות',  // Hebrew: no results found
-  'אין תוצאות'       // Hebrew: no results
-];
+// Phase 4: Forbidden phrases moved to i18n - see hasForbiddenPhrases() method
 
 const ChatBackSchema = z.object({
   message: z.string().max(200),
@@ -62,6 +57,7 @@ export interface ChatBackOutput {
 
 export class ChatBackService {
   private llm: LLMProvider | null;
+  private i18n = getI18n();  // Phase 4: i18n support
   
   constructor() {
     this.llm = createLLMProvider();
@@ -196,82 +192,83 @@ Try again, being even more helpful and positive.
   }
   
   /**
-   * Check if message contains forbidden phrases
+   * Phase 4: Check if message contains forbidden phrases (i18n-driven)
    */
-  private hasForbiddenPhrases(message: string): boolean {
+  private hasForbiddenPhrases(message: string, lang: Lang): boolean {
     const lower = message.toLowerCase();
-    return FORBIDDEN_PHRASES.some(phrase => lower.includes(phrase.toLowerCase()));
+    const forbidden = [
+      this.i18n.t('chatback.forbidden.noResults', lang),
+      this.i18n.t('chatback.forbidden.nothingFound', lang),
+      this.i18n.t('chatback.forbidden.tryAgain', lang),
+      this.i18n.t('chatback.forbidden.confidence', lang),
+      this.i18n.t('chatback.forbidden.api', lang),
+      this.i18n.t('chatback.forbidden.dataUnavailable', lang),
+    ];
+    return forbidden.some(phrase => lower.includes(phrase.toLowerCase()));
   }
   
   /**
-   * Non-LLM fallback when LLM is unavailable
-   * Uses simple templates based on scenario
+   * Phase 4: Non-LLM fallback using i18n (language-agnostic)
+   * Uses i18n templates based on scenario
    */
   private fallbackMessage(input: ChatBackInput): ChatBackOutput {
     const { responsePlan, intent } = input;
-    const isHebrew = intent.language === 'he';
+    const lang = normalizeLang(intent.language);
     const { scenario, results, filters, fallback } = responsePlan;
     
     let message = '';
     let mode: 'NORMAL' | 'RECOVERY' = 'NORMAL';
     
-    // Simple template-based messages
+    // i18n-driven template-based messages
     switch (scenario) {
       case 'zero_nearby_exists':
         mode = 'RECOVERY';
         if (results.nearby > 0) {
-          message = isHebrew
-            ? `אין משהו מדויק כאן, אבל יש ${results.nearby} מקומות במרחק הליכה קצר.`
-            : `Nothing exact here, but ${results.nearby} places within walking distance.`;
+          message = this.i18n.t('chatback.fallback.zeroNearbyExists', lang, {
+            count: results.nearby
+          });
         } else {
-          message = isHebrew
-            ? 'בואו ננסה להרחיב את החיפוש.'
-            : "Let's try expanding the search.";
+          message = this.i18n.t('chatback.fallback.tryExpanding', lang);
         }
         break;
         
       case 'zero_different_city':
         mode = 'RECOVERY';
         if (filters.nearbyCity) {
-          message = isHebrew
-            ? `לא מצאתי כאן, אבל יש ${filters.droppedCount} אופציות ב${filters.nearbyCity}.`
-            : `Nothing here, but ${filters.droppedCount} options in ${filters.nearbyCity}.`;
+          message = this.i18n.t('chatback.fallback.zeroDifferentCity', lang, {
+            count: filters.droppedCount,
+            city: filters.nearbyCity
+          });
         } else {
-          message = isHebrew
-            ? 'בואו ננסה עיר אחרת.'
-            : "Let's try another city.";
+          message = this.i18n.t('chatback.fallback.zeroDifferentCityNoName', lang);
         }
         break;
         
       case 'few_closing_soon':
         mode = 'RECOVERY';
-        message = isHebrew
-          ? `מצאתי ${results.total} מקומות, אבל הם נסגרים בקרוב.`
-          : `Found ${results.total} places, but they're closing soon.`;
+        message = this.i18n.t('chatback.fallback.fewClosingSoon', lang, {
+          count: results.total
+        });
         break;
         
       case 'missing_location':
-        message = isHebrew
-          ? 'איפה תרצה לחפש?'
-          : 'Where would you like to search?';
+        message = this.i18n.t('chatback.fallback.missingLocation', lang);
         break;
         
       case 'missing_query':
-        message = isHebrew
-          ? 'מה בא לך לאכול?'
-          : 'What would you like to eat?';
+        message = this.i18n.t('chatback.fallback.missingQuery', lang);
         break;
         
       case 'low_confidence':
-        message = isHebrew
-          ? 'הנה כמה אופציות. רוצה לחדד את החיפוש?'
-          : 'Here are some options. Want to refine the search?';
+        message = this.i18n.t('chatback.fallback.normalWithFilter', lang, {
+          count: results.total
+        });
         break;
         
       default:
-        message = isHebrew
-          ? `מצאתי ${results.total} מסעדות עבורך.`
-          : `Found ${results.total} restaurants for you.`;
+        message = this.i18n.t('chatback.fallback.normal', lang, {
+          count: results.total
+        });
     }
     
     return {

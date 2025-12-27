@@ -36,6 +36,9 @@ export const searchRequestSchema = z.object({
   
   // Optional: clear session context (intent reset)
   clearContext: z.boolean().optional(),
+  
+  // Optional: enable debug mode (include diagnostics in response)
+  debug: z.boolean().optional(),
 });
 
 // ============================================================================

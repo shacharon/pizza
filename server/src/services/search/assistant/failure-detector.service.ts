@@ -46,8 +46,23 @@ export class FailureDetectorService {
     }
 
     // Rule 5: Check if live data was requested but not verified
-    if (intent.requiresLiveData && meta.liveData?.openingHoursVerified === false) {
-      return 'LIVE_DATA_UNAVAILABLE';
+    // Phase 2: Enhanced check - verify top results don't have UNKNOWN status
+    if (intent.requiresLiveData) {
+      // Check if live data verification failed
+      if (meta.liveData?.openingHoursVerified === false) {
+        // Additional check: if we have results, ensure they have verified status
+        if (results.length > 0) {
+          const topResults = results.slice(0, 3);
+          const hasUnknownStatus = topResults.some(r => r.openNow === 'UNKNOWN');
+          
+          if (hasUnknownStatus) {
+            return 'LIVE_DATA_UNAVAILABLE';
+          }
+        } else {
+          // No results, so we can't verify live data
+          return 'LIVE_DATA_UNAVAILABLE';
+        }
+      }
     }
 
     // Rule 6: Check for weak matches (low quality results)

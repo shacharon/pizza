@@ -12,6 +12,7 @@ import type {
   ProposedActions,
   ResultGroup,
 } from './search.types.js';
+import type { Diagnostics } from './diagnostics.types.js';
 
 // ============================================================================
 // Response Types
@@ -32,7 +33,7 @@ export interface SearchResponseMeta {
   cached?: boolean;  // Whether results were cached
   // NEW: For AI assistant context
   originalQuery?: string;
-  failureReason?: import('./search.types.js').FailureReason;
+  failureReason: import('./search.types.js').FailureReason;  // REQUIRED: Always computed
   liveData?: import('./search.types.js').LiveDataVerification;
   // City filter statistics (optional)
   cityFilter?: {
@@ -77,15 +78,18 @@ export interface SearchResponse {
   // UI suggestions
   chips: RefinementChip[];
   
-  // Optional: Assist payload (future micro-assist UI)
-  assist?: AssistPayload;
+  // REQUIRED: Assist payload (AI assistant)
+  assist: AssistPayload;
   
   // Optional: Proposed actions (Human-in-the-Loop pattern)
   proposedActions?: ProposedActions;
   
-  // NEW: Clarification (Answer-First UX)
+  // Optional: Clarification (Answer-First UX)
   clarification?: import('./search.types.js').Clarification;
   requiresClarification?: boolean;  // Shorthand flag for easier UI logic
+  
+  // Optional: Diagnostics (dev/debug only)
+  diagnostics?: Diagnostics;
   
   // Metadata
   meta: SearchResponseMeta;
@@ -115,17 +119,21 @@ export function createSearchResponse(params: {
   results: RestaurantResult[];
   groups?: ResultGroup[];
   chips: RefinementChip[];
-  assist?: AssistPayload;
+  assist: AssistPayload;  // REQUIRED: Always included
   proposedActions?: ProposedActions;
   clarification?: import('./search.types.js').Clarification;
   requiresClarification?: boolean;
+  diagnostics?: Diagnostics;  // NEW: Optional diagnostics
   meta: {
     tookMs: number;
     mode: SearchMode;
     appliedFilters: string[];
     confidence: number;
     source: string;
+    failureReason: import('./search.types.js').FailureReason;  // REQUIRED
     cached?: boolean;
+    originalQuery?: string;
+    liveData?: import('./search.types.js').LiveDataVerification;
     cityFilter?: {
       enabled: boolean;
       targetCity?: string;
@@ -159,6 +167,7 @@ export function createSearchResponse(params: {
     },
     results: params.results,
     chips: params.chips,
+    assist: params.assist,  // Always included
     meta: params.meta,
   };
 
@@ -167,20 +176,20 @@ export function createSearchResponse(params: {
     response.groups = params.groups;
   }
 
-  // Only add assist if it exists
-  if (params.assist) {
-    response.assist = params.assist;
-  }
-
   // Only add proposedActions if it exists
   if (params.proposedActions) {
     response.proposedActions = params.proposedActions;
   }
 
-  // NEW: Add clarification if it exists
+  // Add clarification if it exists
   if (params.clarification) {
     response.clarification = params.clarification;
     response.requiresClarification = params.requiresClarification ?? true;
+  }
+
+  // Add diagnostics if provided
+  if (params.diagnostics) {
+    response.diagnostics = params.diagnostics;
   }
 
   return response;

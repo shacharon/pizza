@@ -1,6 +1,19 @@
 /**
  * Response Plan Types
  * Full context for RSE → ChatBack communication
+ * 
+ * ⚠️ DEPRECATED: This interface is legacy and will be removed in Milestone B.
+ * 
+ * Current usage:
+ * - ResultStateEngine.analyze() generates ResponsePlan
+ * - ChatBackService consumes ResponsePlan
+ * 
+ * Migration plan:
+ * - Milestone A: Mark as deprecated, no new usages
+ * - Milestone B: Refactor RSE to use FailureReason directly
+ * - Milestone C: Remove completely
+ * 
+ * Use SearchResponse + AssistPayload + FailureReason instead.
  */
 
 export type ResponseScenario = 

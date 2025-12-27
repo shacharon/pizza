@@ -10,7 +10,9 @@
     "romantic": "Romantic",
     "family": "Family friendly",
     "nearby": "Nearby",
-    "expandSearch": "Expand search"
+    "expandSearch": "Expand search",
+    "removeFilters": "Remove filters",
+    "tryNearby": "Try nearby"
   },
   "fallback": {
     "noResults": "No results found",
@@ -33,6 +35,81 @@
     "filterCheap": "Cheap eats",
     "filterExpensive": "Premium dining",
     "showOnMap": "Show on map"
+  },
+  "chatback": {
+    "forbidden": {
+      "noResults": "no results",
+      "nothingFound": "nothing found",
+      "tryAgain": "try again",
+      "confidence": "confidence",
+      "api": "API",
+      "dataUnavailable": "data unavailable"
+    },
+    "fallback": {
+      "zeroNearbyExists": "Nothing exact here, but {{count}} places within walking distance.",
+      "zeroDifferentCity": "Nothing here, but {{count}} options in {{city}}.",
+      "zeroDifferentCityNoName": "Let's try another city.",
+      "fewClosingSoon": "Found {{count}} places, but they're closing soon.",
+      "missingLocation": "Where would you like to search?",
+      "missingQuery": "What are you looking for?",
+      "normal": "Found {{count}} places",
+      "normalWithFilter": "Found {{count}} places. You can refine further.",
+      "tryExpanding": "Let's try expanding the search."
+    }
+  },
+  "clarification": {
+    "whichCity": "Which \"{{city}}\" did you mean?",
+    "whatLookingFor": "What are you looking for with {{constraint}}?",
+    "inCity": "in {{city}}",
+    "token": {
+      "parking": {
+        "question": "Did you mean parking as a requirement or as a place name?",
+        "constraintLabel": "Restaurants with parking",
+        "nameLabel": "Places called \"parking\""
+      },
+      "kosher": {
+        "question": "Looking for kosher restaurants or a place called \"kosher\"?",
+        "constraintLabel": "Kosher restaurants",
+        "nameLabel": "Places called \"kosher\""
+      },
+      "openNow": {
+        "question": "Want to filter by open now or search for \"open now\"?",
+        "constraintLabel": "Currently open",
+        "nameLabel": "Search for \"open now\""
+      },
+      "glutenFree": {
+        "question": "Need gluten-free options or searching for \"gluten free\"?",
+        "constraintLabel": "Gluten-free restaurants",
+        "nameLabel": "Places called \"gluten free\""
+      },
+      "vegan": {
+        "question": "Looking for vegan food or a place called \"vegan\"?",
+        "constraintLabel": "Vegan restaurants",
+        "nameLabel": "Places called \"vegan\""
+      },
+      "delivery": {
+        "question": "Want delivery options or searching for \"delivery\"?",
+        "constraintLabel": "Restaurants with delivery",
+        "nameLabel": "Places called \"delivery\""
+      }
+    }
+  },
+  "validation": {
+    "languageMismatch": "Response language mismatch detected",
+    "usingFallback": "Using deterministic fallback"
+  },
+  "rse": {
+    "inCity": "in {{city}}",
+    "cuisine": {
+      "pizza": "pizza",
+      "sushi": "sushi",
+      "italian": "italian"
+    }
+  },
+  "mode": {
+    "recovery": "Recovery mode",
+    "clarify": "Clarification needed",
+    "refining": "Refining search"
   }
 }
 

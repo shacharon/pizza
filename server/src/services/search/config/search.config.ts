@@ -19,11 +19,18 @@ export interface RankingConfig {
     reviewCount: number;
     priceMatch: number;
     openNow: number;
+    distance: number;  // Phase 3: Weight for distance-based scoring
   };
   thresholds: {
     highlyRated: number;
     highlyRatedBonus: number;
     popularReviews: number;
+    weakMatch: number;  // Phase 3: Score below this = weak match
+    minViableScore: number;  // Phase 3: Minimum score to show
+  };
+  scoring: {
+    maxRawScore: number;  // Phase 3: Expected max before normalization
+    distanceMaxKm: number;  // Phase 3: Distance beyond which score = 0
   };
 }
 
@@ -77,6 +84,7 @@ export const SearchConfig = {
   /**
    * Ranking algorithm configuration
    * Weights determine importance of each factor
+   * Phase 3: Enhanced with distance scoring and weak match detection
    */
   ranking: {
     weights: {
@@ -84,11 +92,18 @@ export const SearchConfig = {
       reviewCount: 5,       // Weight for number of reviews (logarithmic)
       priceMatch: 3,        // Penalty per price level difference
       openNow: 20,          // Boost/penalty for open status
+      distance: 8,          // Phase 3: Weight for distance-based scoring
     },
     thresholds: {
       highlyRated: 4.5,     // Minimum rating for "highly rated" badge
       highlyRatedBonus: 5,  // Extra score for highly rated restaurants
       popularReviews: 100,  // Minimum reviews for "popular" badge
+      weakMatch: 30,        // Phase 3: Score < 30 = weak match
+      minViableScore: 10,   // Phase 3: Score < 10 = filter out
+    },
+    scoring: {
+      maxRawScore: 100,     // Phase 3: Expected max before normalization
+      distanceMaxKm: 5,     // Phase 3: Distance beyond which score = 0 (5km)
     },
   } as RankingConfig,
 

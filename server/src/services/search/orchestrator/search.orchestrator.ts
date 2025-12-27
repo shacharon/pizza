@@ -1,6 +1,9 @@
 /**
  * SearchOrchestrator: The heart of the BFF
  * Coordinates all capability services to provide unified search functionality
+ * 
+ * Phase 2: Builds TruthState to lock deterministic decisions
+ * before passing minimal context to LLM Pass B
  */
 
 import type {
@@ -19,6 +22,9 @@ import type {
 } from '../types/search.types.js';
 import type { SearchRequest } from '../types/search-request.dto.js';
 import type { SearchResponse } from '../types/search-response.dto.js';
+import type { Diagnostics } from '../types/diagnostics.types.js';
+import type { TruthState } from '../types/truth-state.types.js';
+import { computeResponseMode, buildAssistantContext } from '../types/truth-state.types.js';
 import { createSearchResponse } from '../types/search-response.dto.js';
 import { QueryComposer } from '../utils/query-composer.js';
 import { CityFilterService } from '../filters/city-filter.service.js';
@@ -77,6 +83,22 @@ export class SearchOrchestrator {
     async search(request: SearchRequest): Promise<SearchResponse> {
         const startTime = Date.now();
 
+        // Diagnostics tracking
+        const timings = {
+            intentMs: 0,
+            geocodeMs: 0,
+            providerMs: 0,
+            rankingMs: 0,
+            assistantMs: 0,
+            totalMs: 0,
+        };
+        const flags = {
+            usedLLMIntent: false,
+            usedLLMAssistant: false,
+            usedTranslation: false,
+            liveDataRequested: false,
+        };
+
         console.log(`[SearchOrchestrator] Starting search: "${request.query}"`);
 
         try {
@@ -97,20 +119,61 @@ export class SearchOrchestrator {
                 ...session.context,
                 sessionId: session.id,
             };
+            const intentStart = Date.now();
             const { intent, confidence } = await this.intentService.parse(
                 request.query,
                 contextWithSession
             );
-            console.log(`[SearchOrchestrator] Intent parsed (confidence: ${confidence.toFixed(2)})`);
+            timings.intentMs = Date.now() - intentStart;
+            flags.usedLLMIntent = true;
+            flags.liveDataRequested = intent.requiresLiveData || false;
+            
+            /**
+             * Phase 4: Language Resolution Policy (Single Source of Truth)
+             * Priority: request.language > session.language > intent.language > default ('en')
+             * Once resolved, ParsedIntent.language is AUTHORITATIVE for entire request.
+             */
+            if (!intent.language || intent.language.length === 0) {
+                intent.language = this.resolveLanguage(request, session);
+                console.warn(`[SearchOrchestrator] Language not set by intent, using fallback: ${intent.language}`);
+            }
+            
+            console.log(`[SearchOrchestrator] Intent parsed (confidence: ${confidence.toFixed(2)}, language: ${intent.language}, ${timings.intentMs}ms)`);
 
             // Step 2.5: Check for ambiguous city (requires clarification)
             if (intent.location?.cityValidation === 'AMBIGUOUS') {
                 console.log(`[SearchOrchestrator] ⚠️ Ambiguous city - returning clarification`);
-                // We'd need geocoding candidates here - for now, return a generic clarification
                 const clarification = this.clarificationService.generateConstraintClarification(
                     intent.location.city || 'location',
                     intent.language
                 );
+
+                // Phase 2: Build TruthState for early exit
+                const failureReason = 'GEOCODING_FAILED' as const;
+                const mode = computeResponseMode(failureReason, false); // No weak matches in early exit
+                const truthState: TruthState = {
+                    intent,
+                    results: [],
+                    chips: [],
+                    failureReason,
+                    mode,
+                    assistantContext: buildAssistantContext({
+                        intent,
+                        results: [],
+                        chips: [],
+                        failureReason,
+                        mode,
+                        liveDataVerified: false,
+                    }),
+                };
+
+                // Generate assist with minimal context
+                const assistStart = Date.now();
+                const assist = await this.assistantNarration.generate({
+                    context: truthState.assistantContext,
+                });
+                timings.assistantMs = Date.now() - assistStart;
+                flags.usedLLMAssistant = !assist.reasoning?.includes('fallback');
 
                 return createSearchResponse({
                     sessionId,
@@ -118,6 +181,7 @@ export class SearchOrchestrator {
                     intent,
                     results: [],
                     chips: [],
+                    assist,
                     clarification,
                     requiresClarification: true,
                     meta: {
@@ -125,7 +189,8 @@ export class SearchOrchestrator {
                         mode: intent.searchMode,
                         appliedFilters: [],
                         confidence,
-                        source: 'clarification'
+                        source: 'clarification',
+                        failureReason,
                     }
                 });
             }
@@ -141,12 +206,40 @@ export class SearchOrchestrator {
                     intent.language
                 );
 
+                // Phase 2: Build TruthState for early exit
+                const failureReason = 'GEOCODING_FAILED' as const;
+                const mode = computeResponseMode(failureReason, false); // No weak matches in early exit
+                const truthState: TruthState = {
+                    intent,
+                    results: [],
+                    chips: [],
+                    failureReason,
+                    mode,
+                    assistantContext: buildAssistantContext({
+                        intent,
+                        results: [],
+                        chips: [],
+                        failureReason,
+                        mode,
+                        liveDataVerified: false,
+                    }),
+                };
+
+                // Generate assist with minimal context
+                const assistStart = Date.now();
+                const assist = await this.assistantNarration.generate({
+                    context: truthState.assistantContext,
+                });
+                timings.assistantMs = Date.now() - assistStart;
+                flags.usedLLMAssistant = !assist.reasoning?.includes('fallback');
+
                 return createSearchResponse({
                     sessionId,
                     originalQuery: request.query,
                     intent,
                     results: [],
                     chips: [],
+                    assist,
                     clarification,
                     requiresClarification: true,
                     meta: {
@@ -154,7 +247,8 @@ export class SearchOrchestrator {
                         mode: intent.searchMode,
                         appliedFilters: [],
                         confidence,
-                        source: 'clarification'
+                        source: 'clarification',
+                        failureReason,
                     }
                 });
             } else if (intent.location?.city && !intent.location?.cityValidation) {
@@ -172,12 +266,40 @@ export class SearchOrchestrator {
                     intent.language
                 );
 
+                // Phase 2: Build TruthState for early exit
+                const failureReason = 'LOW_CONFIDENCE' as const;
+                const mode = computeResponseMode(failureReason, false); // No weak matches in early exit
+                const truthState: TruthState = {
+                    intent,
+                    results: [],
+                    chips: [],
+                    failureReason,
+                    mode,
+                    assistantContext: buildAssistantContext({
+                        intent,
+                        results: [],
+                        chips: [],
+                        failureReason,
+                        mode,
+                        liveDataVerified: false,
+                    }),
+                };
+
+                // Generate assist with minimal context
+                const assistStart = Date.now();
+                const assist = await this.assistantNarration.generate({
+                    context: truthState.assistantContext,
+                });
+                timings.assistantMs = Date.now() - assistStart;
+                flags.usedLLMAssistant = !assist.reasoning?.includes('fallback');
+
                 return createSearchResponse({
                     sessionId,
                     originalQuery: request.query,
                     intent,
                     results: [],
                     chips: [],
+                    assist,
                     clarification,
                     requiresClarification: true,
                     meta: {
@@ -185,14 +307,17 @@ export class SearchOrchestrator {
                         mode: intent.searchMode,
                         appliedFilters: [],
                         confidence: tokenDetection.confidence,
-                        source: 'clarification'
+                        source: 'clarification',
+                        failureReason,
                     }
                 });
             }
 
             // Step 3: Resolve location to coordinates
+            const geocodeStart = Date.now();
             const location = await this.resolveLocation(intent, request);
-            console.log(`[SearchOrchestrator] Location resolved: ${location.displayName}`);
+            timings.geocodeMs = Date.now() - geocodeStart;
+            console.log(`[SearchOrchestrator] Location resolved: ${location.displayName} (${timings.geocodeMs}ms)`);
 
             // Step 4: Search for places
             const filters: SearchParams['filters'] = {};
@@ -257,6 +382,7 @@ export class SearchOrchestrator {
                 ]);
 
                 googleCallTime = Date.now() - googleCallStart;
+                timings.providerMs = googleCallTime;
 
                 console.log(`[SearchOrchestrator] 📊 Exact (200m): ${exactResults.length}, Nearby (400m): ${nearbyResults.length}`);
 
@@ -297,6 +423,7 @@ export class SearchOrchestrator {
                 // Single search (existing flow)
                 const rawResults = await this.placesProvider.search(searchParams);
                 googleCallTime = Date.now() - googleCallStart;
+                timings.providerMs = googleCallTime;
 
                 console.log(`[SearchOrchestrator] 🔍 Raw results: ${rawResults.length} (took ${googleCallTime}ms)`);
 
@@ -312,6 +439,7 @@ export class SearchOrchestrator {
             }
 
             // Step 4.5: Apply city filter to all results (coordinate-based)
+            const rankingStart = Date.now();
             const filterStartTime = Date.now();
             const filterResult = this.cityFilter.filter(
                 allResults,
@@ -339,28 +467,54 @@ export class SearchOrchestrator {
                 }
             }
 
-            // Step 5: Rank filtered results by relevance
-            const rankedResults = this.rankingService.rank(filterResult.kept, intent);
-            console.log(`[SearchOrchestrator] Results ranked`);
-
-            // Step 6: Take top 10
-            const topResults = rankedResults.slice(0, 10);
-
-            // Step 7: Generate suggestion chips
-            const chips = this.suggestionService.generate(intent, topResults);
-            console.log(`[SearchOrchestrator] Generated ${chips.length} suggestion chips`);
-
-            // Step 7.5: RSE analyzes results and creates ResponsePlan
-            const responsePlan = this.rse.analyze(
-                topResults,
+            // Step 5: Rank filtered results by relevance (Phase 3: with distance scoring)
+            const rankedResults = this.rankingService.rank(
+                filterResult.kept,
                 intent,
-                filterResult,
-                confidence,
-                groups
+                location.coords  // Phase 3: Pass center coords for distance scoring
             );
+            timings.rankingMs = Date.now() - rankingStart;
+            console.log(`[SearchOrchestrator] Results ranked (${timings.rankingMs}ms)`);
 
-            // Step 8: Generate AI assistant guidance (LLM Pass B)
-            // Compute failure reason deterministically
+            // Phase 3: Detect weak matches
+            const { strong, weak } = this.detectWeakMatches(rankedResults);
+            
+            if (weak.length > 0) {
+                console.log(`[SearchOrchestrator] ⚠️ Detected ${weak.length} weak matches (score < ${SearchConfig.ranking.thresholds.weakMatch})`);
+            }
+
+            // Step 6: Use strong results (or all if no weak matches)
+            const topResults = strong.length > 0 ? strong.slice(0, 10) : rankedResults.slice(0, 10);
+
+            // Phase 3: Group results by distance (consistent for all searches)
+            if (location.coords) {
+                if (streetDetection.isStreet) {
+                    // Street search: use street-specific radii
+                    groups = this.groupResultsByDistance(
+                        topResults,
+                        location.coords,
+                        SearchConfig.streetSearch.exactRadius,
+                        SearchConfig.streetSearch.nearbyRadius
+                    );
+                } else {
+                    // Regular search: use default radii
+                    groups = this.groupResultsByDistance(
+                        topResults,
+                        location.coords,
+                        500,   // 500m for "exact"
+                        2000   // 2km for "nearby"
+                    );
+                }
+            } else {
+                // No coords: single EXACT group
+                groups = [{
+                    kind: 'EXACT',
+                    label: 'Results',
+                    results: topResults,
+                }];
+            }
+
+            // Step 7: Compute failure reason deterministically (BEFORE chip generation for Phase 5)
             const meta = {
                 source: this.placesProvider.getName(),
                 cached: false,
@@ -379,18 +533,43 @@ export class SearchOrchestrator {
             
             console.log(`[SearchOrchestrator] Failure reason: ${failureReason}`);
             
-            // Generate assistant message and action recommendations
-            const assist = await this.assistantNarration.generate({
-                originalQuery: request.query,
+            // Step 7.5: Compute mode (Phase 5: before chip generation)
+            // Phase 5: Pass weak match flag to mode computation
+            const mode = computeResponseMode(failureReason, weak.length > 0);
+            console.log(`[SearchOrchestrator] Response mode: ${mode}`);
+
+            // Step 8: Generate mode-aware suggestion chips (Phase 5: pass mode)
+            const chips = this.suggestionService.generate(intent, topResults, mode);
+            console.log(`[SearchOrchestrator] Generated ${chips.length} ${mode}-mode suggestion chips`);
+
+            // Step 8.5: Build TruthState (Phase 2: Lock all deterministic decisions)
+            const truthState: TruthState = {
                 intent,
                 results: topResults,
                 chips,
                 failureReason,
-                liveData: meta.liveData,
-                language: intent.language
-            });
+                mode,
+                assistantContext: buildAssistantContext({
+                    intent,
+                    results: topResults,
+                    chips,
+                    failureReason,
+                    mode,
+                    liveDataVerified: meta.liveData.openingHoursVerified,
+                }),
+            };
             
-            console.log(`[SearchOrchestrator] Assistant generated ${assist.mode} message with ${assist.secondaryActionIds.length} actions`);
+            console.log(`[SearchOrchestrator] TruthState built: mode=${mode}, failureReason=${failureReason}`);
+            
+            // Step 9: Generate assistant message (LLM Pass B with minimal context)
+            const assistStart = Date.now();
+            const assist = await this.assistantNarration.generate({
+                context: truthState.assistantContext,  // Phase 2: Minimal allowlist only
+            });
+            timings.assistantMs = Date.now() - assistStart;
+            flags.usedLLMAssistant = !assist.reasoning?.includes('fallback');
+            
+            console.log(`[SearchOrchestrator] Assistant generated ${assist.mode} message (${timings.assistantMs}ms)`);
 
             // Step 8.5: Generate proposed actions (Human-in-the-Loop pattern)
             const proposedActions = this.generateProposedActions();
@@ -404,6 +583,38 @@ export class SearchOrchestrator {
 
             // Step 10: Build and return response
             const tookMs = Date.now() - startTime;
+            timings.totalMs = tookMs;
+
+            // Build diagnostics (only in dev/debug mode)
+            const shouldIncludeDiagnostics = process.env.NODE_ENV !== 'production' || request.debug;
+            const diagnostics: Diagnostics | undefined = shouldIncludeDiagnostics ? {
+                timings,
+                counts: {
+                    results: topResults.length,
+                    chips: chips.length,
+                    weakMatches: weak.length,  // Phase 3: Weak matches count
+                    ...(streetDetection.isStreet ? {
+                        exact: groups[0]?.results.length || 0,
+                        nearby: groups[1]?.results.length || 0,
+                    } : {}),
+                },
+                top: {
+                    placeIds: topResults.slice(0, 3).map(r => r.placeId),
+                    scores: topResults.slice(0, 3).map(r => r.score ?? 0),  // Phase 3: Top scores
+                    reasons: topResults.slice(0, 3).map(r => r.matchReasons ?? []),  // Phase 3: Top reasons
+                },
+                flags: {
+                    ...flags,
+                    hasWeakMatches: weak.length > 0,  // Phase 3: Weak matches flag
+                },
+                // Phase 4: Language diagnostics
+                language: {
+                    input: request.language || 'none',
+                    resolved: intent.language,
+                    mismatchDetected: false,  // Would be set if assistant validation failed
+                },
+            } : undefined;
+
             const responseParams: Parameters<typeof createSearchResponse>[0] = {
                 sessionId: session.id,
                 originalQuery: request.query,
@@ -411,19 +622,20 @@ export class SearchOrchestrator {
                 results: topResults,
                 groups,  // NEW: Grouped results
                 chips,
-                assist,  // NEW: AI Assistant payload
+                assist,  // REQUIRED: Always included
                 proposedActions,
+                diagnostics,  // NEW: Diagnostics
                 meta: {
                     tookMs,
                     mode: intent.searchMode,
                     appliedFilters: this.getAppliedFiltersList(intent, request),
                     confidence,
                     source: this.placesProvider.getName(),
-                    // NEW: AI Assistant context
+                    failureReason,  // REQUIRED: Always set
+                    // Additional context
                     originalQuery: request.query,
-                    failureReason,
                     liveData: meta.liveData,
-                    // NEW: City filter stats
+                    // City filter stats
                     cityFilter: intent.location?.city ? {
                         enabled: true,
                         targetCity: intent.location.city,
@@ -438,13 +650,13 @@ export class SearchOrchestrator {
                         dropped: filterResult.dropped.length,
                         dropReasons: {},
                     },
-                    // NEW: Performance breakdown
+                    // Performance breakdown
                     performance: {
                         total: tookMs,
                         googleCall: googleCallTime,
                         cityFilter: filterTime,
                     },
-                    // NEW: Street grouping stats (only if street detected)
+                    // Street grouping stats (only if street detected)
                     ...(streetDetection.isStreet ? {
                         streetGrouping: {
                             enabled: true,
@@ -459,14 +671,12 @@ export class SearchOrchestrator {
                 },
             };
 
-            // Only add assist if it exists
-            if (assist) {
-                responseParams.assist = assist;
-            }
-
             const response = createSearchResponse(responseParams);
 
             console.log(`[SearchOrchestrator] ✅ Search complete in ${tookMs}ms`);
+            if (diagnostics) {
+                console.log(`[SearchOrchestrator] 📊 Diagnostics: Intent(${timings.intentMs}ms) + Geocode(${timings.geocodeMs}ms) + Provider(${timings.providerMs}ms) + Ranking(${timings.rankingMs}ms) + Assistant(${timings.assistantMs}ms)`);
+            }
             return response;
 
         } catch (error) {
@@ -601,6 +811,94 @@ export class SearchOrchestrator {
         ];
 
         return { perResult, selectedItem };
+    }
+
+    /**
+     * Phase 4: Resolve language for request
+     * Priority: request.language > session.language > default ('en')
+     */
+    private resolveLanguage(request: SearchRequest, session: { context?: { language?: string } }): string {
+        // 1. Explicit request language (user override)
+        if (request.language && request.language.length > 0) {
+            return request.language;
+        }
+        
+        // 2. Session language (preserved from previous turn)
+        if (session.context?.language && session.context.language.length > 0) {
+            return session.context.language;
+        }
+        
+        // 3. Default to English
+        return 'en';
+    }
+
+    /**
+     * Phase 3: Detect weak matches based on score threshold
+     */
+    private detectWeakMatches(results: RestaurantResult[]): {
+        strong: RestaurantResult[];
+        weak: RestaurantResult[];
+    } {
+        const weakThreshold = SearchConfig.ranking.thresholds.weakMatch;
+        
+        const strong = results.filter(r => (r.score ?? 0) >= weakThreshold);
+        const weak = results.filter(r => (r.score ?? 0) < weakThreshold);
+        
+        return { strong, weak };
+    }
+
+    /**
+     * Phase 3: Group results by distance from center
+     * Makes EXACT/NEARBY grouping consistent for all searches
+     */
+    private groupResultsByDistance(
+        results: RestaurantResult[],
+        centerCoords: { lat: number; lng: number },
+        exactRadiusM: number = 500,
+        nearbyRadiusM: number = 2000
+    ): ResultGroup[] {
+        const exact: RestaurantResult[] = [];
+        const nearby: RestaurantResult[] = [];
+        
+        results.forEach(result => {
+            if (result.distanceMeters !== undefined) {
+                if (result.distanceMeters <= exactRadiusM) {
+                    (result as any).groupKind = 'EXACT';
+                    exact.push(result);
+                } else if (result.distanceMeters <= nearbyRadiusM) {
+                    (result as any).groupKind = 'NEARBY';
+                    nearby.push(result);
+                } else {
+                    (result as any).groupKind = 'NEARBY';  // Far results still in NEARBY
+                    nearby.push(result);
+                }
+            } else {
+                (result as any).groupKind = 'EXACT';  // Default to EXACT if no distance
+                exact.push(result);
+            }
+        });
+        
+        const groups: ResultGroup[] = [];
+        
+        if (exact.length > 0) {
+            groups.push({
+                kind: 'EXACT',
+                label: 'Closest Results',
+                results: exact,
+                radiusMeters: exactRadiusM,
+            });
+        }
+        
+        if (nearby.length > 0) {
+            groups.push({
+                kind: 'NEARBY',
+                label: 'Nearby Options',
+                results: nearby,
+                radiusMeters: nearbyRadiusM,
+            });
+        }
+        
+        return groups;
     }
 
     /**

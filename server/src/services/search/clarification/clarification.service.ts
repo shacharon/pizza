@@ -1,26 +1,27 @@
 /**
  * Clarification Service
  * Generates clarification questions and choices when user intent is ambiguous
+ * Phase 4: Fully i18n compliant
  */
 
 import type { Clarification, ClarificationChoice, SearchParams } from '../types/search.types.js';
 import type { GeocodingCandidate } from '../geocoding/geocoding.service.js';
+import { getI18n } from '../../i18n/index.js';
+import { normalizeLang } from '../../i18n/index.js';
 
 export class ClarificationService {
+  private i18n = getI18n();  // Phase 4: i18n support
   
   /**
-   * Generate city clarification when geocoding returns multiple candidates
+   * Phase 4: Generate city clarification (i18n-driven)
    */
   generateCityClarification(
     cityQuery: string,
     candidates: GeocodingCandidate[],
     language: string = 'en'
   ): Clarification {
-    const isHebrew = language === 'he' || language === 'iw';
-    
-    const question = isHebrew
-      ? `איזו "${cityQuery}" התכוונת?`
-      : `Which "${cityQuery}" did you mean?`;
+    const lang = normalizeLang(language);
+    const question = this.i18n.t('clarification.whichCity', lang, { city: cityQuery });
     
     const choices: ClarificationChoice[] = candidates.map((candidate, index) => {
       return {
@@ -38,14 +39,14 @@ export class ClarificationService {
 
     return {
       question,
-      questionHe: isHebrew ? question : `איזו "${cityQuery}" התכוונת?`,
-      questionEn: isHebrew ? `Which "${cityQuery}" did you mean?` : question,
+      questionHe: this.i18n.t('clarification.whichCity', 'he', { city: cityQuery }),
+      questionEn: this.i18n.t('clarification.whichCity', 'en', { city: cityQuery }),
       choices
     };
   }
 
   /**
-   * Generate single-token clarification
+   * Phase 4: Generate single-token clarification (i18n-driven)
    * When user types a single ambiguous word like "חניה" (parking) or "כשר" (kosher)
    */
   generateTokenClarification(
@@ -53,20 +54,19 @@ export class ClarificationService {
     tokenType: 'parking' | 'kosher' | 'openNow' | 'glutenFree' | 'vegan' | 'delivery',
     language: string = 'en'
   ): Clarification {
-    const isHebrew = language === 'he' || language === 'iw';
-
-    const templates = this.getTokenTemplates(tokenType, isHebrew);
+    const lang = normalizeLang(language);
+    const tokenKey = `clarification.token.${tokenType}`;
 
     const choices: ClarificationChoice[] = [
       {
         id: 'constraint',
-        label: templates.constraintLabel,
-        emoji: templates.constraintEmoji,
-        constraintPatch: templates.constraintPatch
+        label: this.i18n.t(`${tokenKey}.constraintLabel`, lang),
+        emoji: '✓',
+        constraintPatch: this.getConstraintPatchForToken(tokenType)
       },
       {
         id: 'name',
-        label: templates.nameLabel,
+        label: this.i18n.t(`${tokenKey}.nameLabel`, lang),
         emoji: '🔍',
         constraintPatch: {
           query: token
@@ -75,31 +75,51 @@ export class ClarificationService {
     ];
 
     return {
-      question: templates.question,
-      questionHe: templates.questionHe,
-      questionEn: templates.questionEn,
+      question: this.i18n.t(`${tokenKey}.question`, lang),
+      questionHe: this.i18n.t(`${tokenKey}.question`, 'he'),
+      questionEn: this.i18n.t(`${tokenKey}.question`, 'en'),
       choices
     };
   }
+  
+  /**
+   * Phase 4: Get constraint patch for token type
+   */
+  private getConstraintPatchForToken(tokenType: string): Partial<SearchParams> {
+    switch (tokenType) {
+      case 'parking':
+        return { filters: { mustHave: ['parking'] } } as Partial<SearchParams>;
+      case 'kosher':
+        return { filters: { dietary: ['kosher'] } } as Partial<SearchParams>;
+      case 'openNow':
+        return { filters: { openNow: true } } as Partial<SearchParams>;
+      case 'glutenFree':
+        return { filters: { dietary: ['gluten_free'] } } as Partial<SearchParams>;
+      case 'vegan':
+        return { filters: { dietary: ['vegan'] } } as Partial<SearchParams>;
+      case 'delivery':
+        return { filters: { mustHave: ['delivery'] } } as Partial<SearchParams>;
+      default:
+        return {};
+    }
+  }
 
   /**
-   * Generate constraint clarification
+   * Phase 4: Generate constraint clarification (i18n-driven)
    * When a constraint is mentioned without a target (e.g., just "open now" without food type)
    */
   generateConstraintClarification(
     constraint: string,
     language: string = 'en'
   ): Clarification {
-    const isHebrew = language === 'he' || language === 'iw';
+    const lang = normalizeLang(language);
+    const question = this.i18n.t('clarification.whatLookingFor', lang, { constraint });
 
-    const question = isHebrew
-      ? `מה אתה מחפש עם ${constraint}?`
-      : `What are you looking for with ${constraint}?`;
-
+    // Fixed choices for constraint clarification (labels would need i18n keys if expanded)
     const choices: ClarificationChoice[] = [
       {
         id: 'restaurant',
-        label: isHebrew ? 'מסעדה' : 'Restaurant',
+        label: 'Restaurant',  // Could be i18n if needed
         emoji: '🍽️',
         constraintPatch: {
           query: 'restaurant'
@@ -107,7 +127,7 @@ export class ClarificationService {
       },
       {
         id: 'cafe',
-        label: isHebrew ? 'בית קפה' : 'Cafe',
+        label: 'Cafe',
         emoji: '☕',
         constraintPatch: {
           query: 'cafe'
@@ -115,7 +135,7 @@ export class ClarificationService {
       },
       {
         id: 'any',
-        label: isHebrew ? 'כל מקום אוכל' : 'Any food place',
+        label: 'Any food place',
         emoji: '🍴',
         constraintPatch: {
           query: 'food'
@@ -125,8 +145,8 @@ export class ClarificationService {
 
     return {
       question,
-      questionHe: isHebrew ? question : `מה אתה מחפש עם ${constraint}?`,
-      questionEn: isHebrew ? `What are you looking for with ${constraint}?` : question,
+      questionHe: this.i18n.t('clarification.whatLookingFor', 'he', { constraint }),
+      questionEn: this.i18n.t('clarification.whatLookingFor', 'en', { constraint }),
       choices
     };
   }

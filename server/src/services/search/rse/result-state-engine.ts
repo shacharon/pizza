@@ -2,6 +2,24 @@
  * Result State Engine (RSE)
  * Deterministic analyzer that examines search results and creates a ResponsePlan
  * RSE decides WHAT to do; ChatBack decides HOW to say it
+ * 
+ * ⚠️ DEPRECATED (Phase 2): This service is being phased out.
+ * ⚠️ Phase 4: Language strings updated for i18n compliance but service remains deprecated.
+ * 
+ * Current usage:
+ * - SearchOrchestrator no longer calls RSE.analyze()
+ * - ChatBackService may still reference ResponsePlan (legacy)
+ * 
+ * Migration:
+ * - Failure detection → FailureDetectorService (deterministic)
+ * - Assistant narration → AssistantNarrationService (LLM Pass B)
+ * 
+ * Plan:
+ * - Phase 2: Mark deprecated, remove from orchestrator ✅
+ * - Phase 4: i18n compliance (minimal changes) ✅
+ * - Phase 5+: Complete removal
+ * 
+ * Use TruthState + AssistantContext instead of ResponsePlan.
  */
 
 import type {
@@ -15,8 +33,11 @@ import type {
 } from '../types/response-plan.types.js';
 import type { RestaurantResult, ParsedIntent, ResultGroup } from '../types/search.types.js';
 import type { CityFilterResult } from '../filters/city-filter.service.js';
+import { getI18n } from '../../i18n/index.js';
+import { normalizeLang } from '../../i18n/index.js';
 
 export class ResultStateEngine {
+  private i18n = getI18n();  // Phase 4: i18n support (deprecated service)
   
   /**
    * Main analysis method
@@ -290,7 +311,7 @@ export class ResultStateEngine {
   }
   
   /**
-   * Generate suggested actions (ordered by priority)
+   * Phase 4: Generate suggested actions (i18n-driven, deprecated service)
    */
   private generateSuggestedActions(
     scenario: ResponseScenario,
@@ -299,7 +320,7 @@ export class ResultStateEngine {
     summary: ResultsSummary
   ): SuggestedAction[] {
     const actions: SuggestedAction[] = [];
-    const isHebrew = intent.language === 'he';
+    const lang = normalizeLang(intent.language);
     
     // Convert fallbacks to actions (high priority)
     fallbacks.forEach((fallback, index) => {
@@ -311,24 +332,24 @@ export class ResultStateEngine {
       });
     });
     
-    // Add scenario-specific suggestions
+    // Add scenario-specific suggestions (using i18n for "in city" pattern)
     if (scenario === 'missing_location') {
-      const cities = isHebrew 
-        ? ['תל אביב', 'ירושלים', 'חיפה']
-        : ['tel aviv', 'jerusalem', 'haifa'];
+      const cities = ['tel aviv', 'jerusalem', 'haifa'];  // City names stay in English
       
       cities.forEach((city, index) => {
+        const inCity = this.i18n.t('rse.inCity', lang, { city });
         actions.push({
           id: `suggest_city_${index}`,
-          label: `${intent.query} ${isHebrew ? 'ב' : 'in '}${city}`,
-          query: `${intent.query} ${isHebrew ? 'ב' : 'in '}${city}`,
+          label: `${intent.query} ${inCity}`,
+          query: `${intent.query} ${inCity}`,
           priority: 2
         });
       });
     } else if (scenario === 'missing_query') {
-      const cuisines = isHebrew 
-        ? ['פיצה', 'סושי', 'איטלקי']
-        : ['pizza', 'sushi', 'italian'];
+      // Cuisine names from i18n
+      const cuisines = ['pizza', 'sushi', 'italian'].map(c => 
+        this.i18n.t(`rse.cuisine.${c}`, lang)
+      );
       
       cuisines.forEach((cuisine, index) => {
         actions.push({

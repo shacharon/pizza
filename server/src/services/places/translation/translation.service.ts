@@ -7,7 +7,21 @@ import { GooglePlacesClient } from '../client/google-places.client.js';
  * TranslationService
  * Handles multi-language translation for Places search
  * 
- * Flow:
+ * ⚠️ DEPRECATED (Phase 4): NOT part of default search flow.
+ * 
+ * This service performs implicit LLM translation, which violates
+ * the multilingual correctness principle (output language must equal input).
+ * 
+ * Policy:
+ * - User's language = response language (no silent translation)
+ * - SearchOrchestrator does NOT call this service
+ * - Kept for backward compatibility and explicit fallback scenarios only
+ * 
+ * Migration:
+ * - Default flow: Use user's language directly, no translation
+ * - Future: May be used for explicit user-requested translation only
+ * 
+ * Flow (when explicitly used):
  * 1. Detect input language and target region
  * 2. Translate query to region's native language for better Google results
  * 3. Translate results back to user's input language
@@ -69,7 +83,7 @@ export class TranslationService {
         if (this.llm) {
             try {
                 const analysis = await this.llmAnalyzeAndTranslate(text);
-                
+
                 // Check if translation can be skipped (same language)
                 if (analysis.inputLanguage === analysis.regionLanguage) {
                     return {
@@ -183,7 +197,10 @@ Examples:
             if (cityMatch) {
                 try {
                     // Use existing geocoding
-                    const coords = await this.geocodingClient.geocodeAddress(cityMatch, inputLanguage);
+                    const coords = await this.geocodingClient.geocodeAddress(
+                        cityMatch,
+                        inputLanguage === 'he' || inputLanguage === 'en' ? inputLanguage : undefined
+                    );
                     if (coords) {
                         targetRegion = this.getRegionFromCoords(coords);
                         regionSource = 'textCity';
@@ -196,7 +213,7 @@ Examples:
             // If still no region, try browserLanguage
             if (targetRegion === 'IL' && browserLanguage) {
                 const parts = browserLanguage.split('-');
-                if (parts.length > 1) {
+                if (parts.length > 1 && parts[1]) {
                     targetRegion = parts[1].toUpperCase();
                     regionSource = 'browserLanguage';
                 }
@@ -257,7 +274,7 @@ Examples:
 
             const user = `Translate: "${category}"`;
 
-            const response = await this.llm.completeText([
+            const response = await this.llm.complete([
                 { role: 'system', content: system },
                 { role: 'user', content: user }
             ]);
@@ -305,7 +322,7 @@ Examples:
             // Batch size limit to avoid timeouts (10 places per batch)
             const BATCH_SIZE = 10;
             const batches: PlaceItem[][] = [];
-            
+
             for (let i = 0; i < places.length; i += BATCH_SIZE) {
                 batches.push(places.slice(i, i + BATCH_SIZE));
             }
@@ -316,10 +333,10 @@ Examples:
             const translatedBatches = await Promise.all(
                 batches.map(batch => this.batchTranslateFields(batch, fromLang, toLang))
             );
-            
+
             // Flatten results
             const allTranslations = translatedBatches.flat();
-            
+
             // Map translations back to places
             return places.map((place, index) => ({
                 ...place,
@@ -371,19 +388,18 @@ Return a JSON array of objects with "name" and "address" fields.`;
 
         try {
             // Use completeJSON with schema for structured output
-            const result = await this.llm.completeJSON(messages, BatchTranslationSchema, { 
-                temperature: 0,
-                maxTokens: 4000  // Increase for larger batches
+            const result = await this.llm.completeJSON(messages, BatchTranslationSchema, {
+                temperature: 0
             });
-            
+
             const parsed = BatchTranslationSchema.parse(result);
-            
+
             // Validate we got the same number of items
             if (parsed.length !== items.length) {
                 console.warn(`[TranslationService] Expected ${items.length} translations, got ${parsed.length}`);
                 return items; // Return originals if count mismatch
             }
-            
+
             return parsed;
         } catch (error) {
             console.warn('[TranslationService] Batch translation failed:', (error as Error)?.message);

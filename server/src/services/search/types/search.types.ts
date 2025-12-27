@@ -129,10 +129,12 @@ export interface RestaurantResult {
   
   // Enrichment
   tags?: string[];  // ['pizza', 'romantic', 'fast-food']
-  matchReasons?: string[];  // Why this matches the query
+  matchReasons?: string[];  // Why this matches the query (REQUIRED after ranking)
   
   // Scoring (added by RankingService)
-  score?: number;  // 0-100
+  score?: number;  // 0-100 (REQUIRED after ranking)
+  isWeakMatch?: boolean;  // Phase 3: True if score < weakMatchThreshold
+  distanceScore?: number;  // Phase 3: 0-100 based on distance from center
   
   // City matching (added by CityFilterService)
   cityMatch?: boolean;  // Does this result match the target city?

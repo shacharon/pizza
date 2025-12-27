@@ -10,7 +10,9 @@
     "romantic": "רומנטי",
     "family": "משפחתי",
     "nearby": "באיזור",
-    "expandSearch": "הרחב חיפוש"
+    "expandSearch": "הרחב חיפוש",
+    "removeFilters": "הסר מסננים",
+    "tryNearby": "נסה בסביבה"
   },
   "fallback": {
     "noResults": "לא מצאתי תוצאות",
@@ -33,6 +35,80 @@
     "filterCheap": "אוכל זול",
     "filterExpensive": "מסעדות יוקרה",
     "showOnMap": "הצג במפה"
+  },
+  "chatback": {
+    "forbidden": {
+      "noResults": "לא נמצאו תוצאות",
+      "nothingFound": "אין תוצאות",
+      "tryAgain": "נסה שוב",
+      "confidence": "בטחון",
+      "api": "API",
+      "dataUnavailable": "נתונים לא זמינים"
+    },
+    "fallback": {
+      "zeroNearbyExists": "אין משהו מדויק כאן, אבל יש {{count}} מקומות במרחק הליכה קצר.",
+      "zeroDifferentCity": "לא מצאתי כאן, אבל יש {{count}} אופציות ב{{city}}.",
+      "zeroDifferentCityNoName": "בואו ננסה עיר אחרת.",
+      "fewClosingSoon": "מצאתי {{count}} מקומות, אבל הם נסגרים בקרוב.",
+      "missingLocation": "איפה תרצה לחפש?",
+      "missingQuery": "מה אתה מחפש?",
+      "normal": "מצאתי {{count}} מקומות",
+      "normalWithFilter": "מצאתי {{count}} מקומות. אפשר לסנן עוד.",
+      "tryExpanding": "בואו ננסה להרחיב את החיפוש."
+    }
+  },
+  "clarification": {
+    "whichCity": "איזו \"{{city}}\" התכוונת?",
+    "whatLookingFor": "מה אתה מחפש עם {{constraint}}?",
+    "inCity": "ב{{city}}",
+    "token": {
+      "parking": {
+        "question": "התכוונת לחניה כדרישה או כשם מקום?",
+        "constraintLabel": "מסעדות עם חניה",
+        "nameLabel": "מקומות בשם \"חניה\""
+      },
+      "kosher": {
+        "question": "מחפש מסעדות כשרות או מקום בשם \"כשר\"?",
+        "constraintLabel": "מסעדות כשרות",
+        "nameLabel": "מקומות בשם \"כשר\""
+      },
+      "openNow": {
+        "question": "רוצה לסנן לפי פתוח עכשיו או לחפש \"פתוח עכשיו\"?",
+        "constraintLabel": "פתוח כרגע",
+        "nameLabel": "חפש \"פתוח עכשיו\""
+      },
+      "glutenFree": {
+        "question": "צריך אופציות ללא גלוטן או מחפש \"ללא גלוטן\"?",
+        "constraintLabel": "מסעדות ללא גלוטן",
+        "nameLabel": "מקומות בשם \"ללא גלוטן\""
+      },
+      "vegan": {
+        "question": "מחפש אוכל טבעוני או מקום בשם \"טבעוני\"?",
+        "constraintLabel": "מסעדות טבעוניות",
+        "nameLabel": "מקומות בשם \"טבעוני\""
+      },
+      "delivery": {
+        "question": "רוצה אופציות משלוח או מחפש \"משלוח\"?",
+        "constraintLabel": "מסעדות עם משלוח",
+        "nameLabel": "מקומות בשם \"משלוח\""
+      }
+    }
+  },
+  "validation": {
+    "languageMismatch": "זוהתה אי התאמה בשפת התגובה",
+    "usingFallback": "משתמש בגיבוי דטרמיניסטי"
+  },
+  "rse": {
+    "inCity": "ב{{city}}",
+    "cuisine": {
+      "pizza": "פיצה",
+      "sushi": "סושי",
+      "italian": "איטלקי"
+    }
+  },
+  "mode": {
+    "recovery": "מצב שחזור",
+    "clarify": "נדרש הבהרה",
+    "refining": "משפר חיפוש"
   }
 }
-
