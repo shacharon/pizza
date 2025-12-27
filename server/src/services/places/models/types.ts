@@ -1,5 +1,13 @@
 export type AllowedLanguage = 'he' | 'en';
 
+/**
+ * Verifiable Boolean - Tri-state type for data quality
+ * - true: Verified and confirmed
+ * - false: Verified and confirmed false
+ * - 'UNKNOWN': Not verified or data not available
+ */
+export type VerifiableBoolean = true | false | 'UNKNOWN';
+
 export interface LatLng {
     lat: number;
     lng: number;
@@ -24,7 +32,7 @@ export interface RestaurantItem {
     photoUrl?: string;
     location?: RestaurantItemLocation;
     website?: string;
-    openNow?: boolean;
+    openNow?: VerifiableBoolean;  // true | false | 'UNKNOWN'
 }
 
 export interface MetaInfo {

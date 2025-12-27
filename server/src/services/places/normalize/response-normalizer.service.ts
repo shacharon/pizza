@@ -26,7 +26,11 @@ export class ResponseNormalizerService {
         const userRatingsTotal: number | undefined = typeof r.user_ratings_total === 'number' ? r.user_ratings_total : undefined;
         const priceLevel: number | undefined = typeof r.price_level === 'number' ? r.price_level : undefined;
         const location = r.geometry?.location ? { lat: r.geometry.location.lat, lng: r.geometry.location.lng } : undefined;
-        const openNow: boolean | undefined = r.opening_hours?.open_now;
+        
+        // Use VerifiableBoolean: return 'UNKNOWN' if data is not available
+        const openNow = typeof r.opening_hours?.open_now === 'boolean' 
+            ? r.opening_hours.open_now 
+            : 'UNKNOWN' as const;
 
         // Photo URL construction requires key; omitted for now
         return { placeId, name, address, rating, userRatingsTotal, priceLevel, location, openNow };

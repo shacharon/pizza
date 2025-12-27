@@ -93,10 +93,10 @@ export class PlacesLangGraph {
             // Run BOTH LLM calls in parallel (saves ~2s!)
             const [translationResult, intentResult] = await Promise.all([
                 this.translationService.analyzeAndTranslate(
-                    input.text,
-                    input.nearMe || false,
-                    input.userLocation ?? undefined,
-                    input.browserLanguage
+                input.text,
+                input.nearMe || false,
+                input.userLocation ?? undefined,
+                input.browserLanguage
                 ),
                 this.intentService.resolve(input.text, undefined).catch(() => null)
             ]);

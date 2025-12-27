@@ -11,6 +11,7 @@ import { PlacesProviderService } from '../../services/search/capabilities/places
 import { RankingService } from '../../services/search/capabilities/ranking.service.js';
 import { SuggestionService } from '../../services/search/capabilities/suggestion.service.js';
 import { SessionService } from '../../services/search/capabilities/session.service.js';
+import { GeocodingService } from '../../services/search/geocoding/geocoding.service.js';
 import { safeParseSearchRequest } from '../../services/search/types/search-request.dto.js';
 import { createSearchError } from '../../services/search/types/search-response.dto.js';
 
@@ -73,8 +74,24 @@ router.get('/search/stats', (req: Request, res: Response) => {
 function createSearchOrchestrator(): SearchOrchestrator {
   console.log('[SearchController] Initializing SearchOrchestrator...');
 
+  // Initialize GeocodingService if API key is available
+  // Provides canonicalization and verification of LLM-extracted cities
+  // Falls back gracefully to LLM coordinates if API is unavailable
+  const googleApiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_API_KEY;
+  let geocodingService: GeocodingService | undefined;
+  
+  if (googleApiKey && googleApiKey !== 'test-key') {
+    geocodingService = new GeocodingService(googleApiKey);
+    console.log('[SearchController] 🌍 Geocoding validation enabled (canonical coordinates)');
+    console.log('[SearchController] ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization');
+  } else {
+    console.log('[SearchController] ⚠️  Geocoding API key not found');
+    console.log('[SearchController] ℹ️  Using LLM-only mode (set GOOGLE_API_KEY to enable validation)');
+    geocodingService = undefined;
+  }
+
   // Instantiate all capability services
-  const intentService = new IntentService();
+  const intentService = new IntentService(undefined, geocodingService);
   const geoResolver = new GeoResolverService();
   const placesProvider = new PlacesProviderService();
   const rankingService = new RankingService();

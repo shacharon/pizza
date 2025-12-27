@@ -64,6 +64,31 @@ export class RestaurantCardComponent {
     if (!level) return '';
     return '$'.repeat(level);
   }
+
+  /**
+   * Get open/closed status with UNKNOWN handling
+   */
+  getOpenStatus(): 'open' | 'closed' | 'unknown' | null {
+    const openNow = this.restaurant().openNow;
+    if (openNow === undefined) return null;
+    if (openNow === 'UNKNOWN') return 'unknown';
+    return openNow ? 'open' : 'closed';
+  }
+
+  /**
+   * Get label for open status
+   */
+  getOpenStatusLabel(): string {
+    const status = this.getOpenStatus();
+    switch (status) {
+      case 'open': return 'Open now';
+      case 'closed': return 'Closed';
+      case 'unknown': return 'Hours unverified';
+      default: return '';
+    }
+  }
 }
+
+
 
 

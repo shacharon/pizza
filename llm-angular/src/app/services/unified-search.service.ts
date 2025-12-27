@@ -19,7 +19,7 @@ export class UnifiedSearchService {
   private readonly sessionStore = inject(SessionStore);
   private readonly analyticsService = inject(AnalyticsService);
 
-  search(query: string, filters?: SearchFilters): Observable<SearchResponse> {
+  search(query: string, filters?: SearchFilters, clearContext?: boolean): Observable<SearchResponse> {
     const startTime = Date.now();
 
     // Update store state
@@ -27,7 +27,7 @@ export class UnifiedSearchService {
     this.searchStore.setLoading(true);
 
     // Track search submission
-    this.analyticsService.track('search_submitted', { query, filters });
+    this.analyticsService.track('search_submitted', { query, filters, clearContext });
 
     // Add to recent searches
     this.sessionStore.addToRecentSearches(query);
@@ -38,7 +38,8 @@ export class UnifiedSearchService {
       sessionId: this.sessionStore.conversationId(),
       filters,
       locale: this.sessionStore.locale(),
-      region: this.sessionStore.region()
+      region: this.sessionStore.region(),
+      clearContext  // Pass intent reset flag to backend
     };
 
     return this.apiClient.search(request).pipe(
@@ -91,5 +92,7 @@ export class UnifiedSearchService {
     return null;
   }
 }
+
+
 
 

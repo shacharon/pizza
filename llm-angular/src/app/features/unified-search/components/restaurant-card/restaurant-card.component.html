@@ -39,13 +39,15 @@
         </span>
       }
       
-      @if (restaurant().openNow !== undefined) {
+      @if (getOpenStatus()) {
         <span 
           class="open-status"
-          [class.open]="restaurant().openNow"
-          [class.closed]="!restaurant().openNow"
+          [class.open]="getOpenStatus() === 'open'"
+          [class.closed]="getOpenStatus() === 'closed'"
+          [class.unknown]="getOpenStatus() === 'unknown'"
+          [attr.aria-label]="getOpenStatusLabel()"
         >
-          {{ restaurant().openNow ? 'Open' : 'Closed' }}
+          {{ getOpenStatusLabel() }}
         </span>
       }
     </div>
@@ -92,5 +94,7 @@
     </button>
   </div>
 </article>
+
+
 
 

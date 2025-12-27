@@ -1,0 +1,295 @@
+/**
+ * ChatBack Service
+ * LLM-powered messaging layer that turns ResponsePlan into natural language
+ * Follows "Always Help, Never Stop" behavior contract
+ */
+
+import { z } from 'zod';
+import { createLLMProvider } from '../../../llm/factory.js';
+import type { LLMProvider, Message } from '../../../llm/types.js';
+import type { ResponsePlan, SuggestedAction } from '../types/response-plan.types.js';
+import type { ParsedIntent } from '../types/search.types.js';
+import { createHash } from 'crypto';
+
+const CHATBACK_POLICY = `You are a helpful food search assistant. Follow these rules:
+
+1. NEVER say "no results" or "nothing found"
+2. ALWAYS provide an actionable next step
+3. Suggest, don't interrogate (max 1 question)
+4. Don't fabricate facts about restaurants (hours, kosher, parking)
+5. Vary your phrasing - never say the same thing twice
+6. Avoid technical terms (confidence, API, data gaps)
+7. Be light and supportive, not robotic
+
+Response format:
+- One short message (1-2 sentences)
+- Reference specific numbers when available
+- Explain tradeoffs gently ("if we extend 5 minutes...")
+`;
+
+const FORBIDDEN_PHRASES = [
+  'no results',
+  'nothing found',
+  'try again',
+  'confidence',
+  'API',
+  'data unavailable',
+  'לא נמצאו תוצאות',  // Hebrew: no results found
+  'אין תוצאות'       // Hebrew: no results
+];
+
+const ChatBackSchema = z.object({
+  message: z.string().max(200),
+  mode: z.enum(['NORMAL', 'RECOVERY'])
+});
+
+export interface ChatBackInput {
+  userText: string;
+  intent: ParsedIntent;
+  responsePlan: ResponsePlan;
+  memory?: {
+    turnIndex: number;
+    lastMessages: string[];
+    scenarioCount: number;
+  };
+}
+
+export interface ChatBackOutput {
+  message: string;
+  actions: SuggestedAction[];
+  mode: 'NORMAL' | 'RECOVERY';
+}
+
+export class ChatBackService {
+  private llm: LLMProvider | null;
+  
+  constructor() {
+    this.llm = createLLMProvider();
+  }
+  
+  /**
+   * Generate a helpful message from ResponsePlan
+   */
+  async generate(input: ChatBackInput): Promise<ChatBackOutput> {
+    if (!this.llm) {
+      console.warn('[ChatBack] LLM unavailable, using fallback');
+      return this.fallbackMessage(input);
+    }
+    
+    try {
+      const prompt = this.buildPrompt(input);
+      const result = await this.llm.completeJSON(prompt, ChatBackSchema, { 
+        temperature: 0.7,
+        timeout: 10000 
+      });
+      
+      // Validate against forbidden phrases
+      if (this.hasForbiddenPhrases(result.message)) {
+        console.warn('[ChatBack] Forbidden phrase detected, retrying...');
+        return this.retryWithStricterPrompt(input);
+      }
+      
+      return {
+        message: result.message,
+        actions: input.responsePlan.suggestedActions,
+        mode: result.mode
+      };
+    } catch (error) {
+      console.error('[ChatBack] LLM error:', error);
+      return this.fallbackMessage(input);
+    }
+  }
+  
+  /**
+   * Build the LLM prompt from input context
+   */
+  private buildPrompt(input: ChatBackInput): Message[] {
+    const { userText, intent, responsePlan, memory } = input;
+    const isHebrew = intent.language === 'he';
+    
+    const system = CHATBACK_POLICY + `
+
+Language: Respond in ${isHebrew ? 'HEBREW' : 'ENGLISH'}.
+
+Context:
+- User searched: "${userText}"
+- Scenario: ${responsePlan.scenario}
+- Results: ${responsePlan.results.total} total (${responsePlan.results.exact} exact, ${responsePlan.results.nearby} nearby)
+- Open now: ${responsePlan.results.openNow}
+- Closing soon: ${responsePlan.results.closingSoon}
+${responsePlan.filters.nearbyCity ? `- Found ${responsePlan.filters.droppedCount} in ${responsePlan.filters.nearbyCity}` : ''}
+${memory ? `- This is turn ${memory.turnIndex}${memory.scenarioCount > 1 ? `, scenario repeated ${memory.scenarioCount} times` : ''}` : ''}
+
+Fallback options available:
+${responsePlan.fallback.map(f => `- ${f.type}: ${f.explanation}`).join('\n')}
+
+Suggested actions (you should reference these):
+${responsePlan.suggestedActions.map(a => `- ${a.label}`).join('\n')}
+
+Constraints:
+${responsePlan.constraints.mustMentionCount ? '- MUST reference result count' : ''}
+${responsePlan.constraints.mustSuggestAction ? '- MUST offer next step' : ''}
+${responsePlan.constraints.canMentionTiming ? '- CAN reference timing' : '- DO NOT mention timing'}
+${responsePlan.constraints.canMentionLocation ? '- CAN reference location' : '- DO NOT mention location'}
+
+${memory?.lastMessages && memory.lastMessages.length > 0 ? `Previous messages (avoid repeating):\n${memory.lastMessages.join('\n')}` : ''}
+
+Remember: This is not a dead end. There's always a way forward.
+`;
+
+    const user = `Generate a helpful, light message for this situation.`;
+    
+    return [
+      { role: 'system', content: system },
+      { role: 'user', content: user }
+    ];
+  }
+  
+  /**
+   * Retry with stricter instructions to avoid forbidden phrases
+   */
+  private async retryWithStricterPrompt(input: ChatBackInput): Promise<ChatBackOutput> {
+    if (!this.llm) {
+      return this.fallbackMessage(input);
+    }
+    
+    const originalPrompt = this.buildPrompt(input);
+    const stricterSystem = originalPrompt[0].content + `
+
+CRITICAL: Your response was rejected because it contained forbidden phrases.
+ABSOLUTELY FORBIDDEN phrases: "no results", "nothing found", "try again", "לא נמצאו תוצאות", "אין תוצאות"
+
+Instead of saying "no results", you MUST:
+- Mention what IS available nearby
+- Suggest expanding the search
+- Offer alternative options
+- Reference specific numbers
+
+Try again, being even more helpful and positive.
+`;
+
+    try {
+      const result = await this.llm.completeJSON(
+        [
+          { role: 'system', content: stricterSystem },
+          { role: 'user', content: originalPrompt[1].content }
+        ],
+        ChatBackSchema,
+        { temperature: 0.6, timeout: 10000 }
+      );
+      
+      // If still has forbidden phrases, use fallback
+      if (this.hasForbiddenPhrases(result.message)) {
+        console.error('[ChatBack] Still has forbidden phrases after retry, using fallback');
+        return this.fallbackMessage(input);
+      }
+      
+      return {
+        message: result.message,
+        actions: input.responsePlan.suggestedActions,
+        mode: result.mode
+      };
+    } catch (error) {
+      console.error('[ChatBack] Retry failed:', error);
+      return this.fallbackMessage(input);
+    }
+  }
+  
+  /**
+   * Check if message contains forbidden phrases
+   */
+  private hasForbiddenPhrases(message: string): boolean {
+    const lower = message.toLowerCase();
+    return FORBIDDEN_PHRASES.some(phrase => lower.includes(phrase.toLowerCase()));
+  }
+  
+  /**
+   * Non-LLM fallback when LLM is unavailable
+   * Uses simple templates based on scenario
+   */
+  private fallbackMessage(input: ChatBackInput): ChatBackOutput {
+    const { responsePlan, intent } = input;
+    const isHebrew = intent.language === 'he';
+    const { scenario, results, filters, fallback } = responsePlan;
+    
+    let message = '';
+    let mode: 'NORMAL' | 'RECOVERY' = 'NORMAL';
+    
+    // Simple template-based messages
+    switch (scenario) {
+      case 'zero_nearby_exists':
+        mode = 'RECOVERY';
+        if (results.nearby > 0) {
+          message = isHebrew
+            ? `אין משהו מדויק כאן, אבל יש ${results.nearby} מקומות במרחק הליכה קצר.`
+            : `Nothing exact here, but ${results.nearby} places within walking distance.`;
+        } else {
+          message = isHebrew
+            ? 'בואו ננסה להרחיב את החיפוש.'
+            : "Let's try expanding the search.";
+        }
+        break;
+        
+      case 'zero_different_city':
+        mode = 'RECOVERY';
+        if (filters.nearbyCity) {
+          message = isHebrew
+            ? `לא מצאתי כאן, אבל יש ${filters.droppedCount} אופציות ב${filters.nearbyCity}.`
+            : `Nothing here, but ${filters.droppedCount} options in ${filters.nearbyCity}.`;
+        } else {
+          message = isHebrew
+            ? 'בואו ננסה עיר אחרת.'
+            : "Let's try another city.";
+        }
+        break;
+        
+      case 'few_closing_soon':
+        mode = 'RECOVERY';
+        message = isHebrew
+          ? `מצאתי ${results.total} מקומות, אבל הם נסגרים בקרוב.`
+          : `Found ${results.total} places, but they're closing soon.`;
+        break;
+        
+      case 'missing_location':
+        message = isHebrew
+          ? 'איפה תרצה לחפש?'
+          : 'Where would you like to search?';
+        break;
+        
+      case 'missing_query':
+        message = isHebrew
+          ? 'מה בא לך לאכול?'
+          : 'What would you like to eat?';
+        break;
+        
+      case 'low_confidence':
+        message = isHebrew
+          ? 'הנה כמה אופציות. רוצה לחדד את החיפוש?'
+          : 'Here are some options. Want to refine the search?';
+        break;
+        
+      default:
+        message = isHebrew
+          ? `מצאתי ${results.total} מסעדות עבורך.`
+          : `Found ${results.total} restaurants for you.`;
+    }
+    
+    return {
+      message,
+      actions: responsePlan.suggestedActions,
+      mode
+    };
+  }
+  
+  /**
+   * Create a hash of a message for variation tracking
+   */
+  hashMessage(message: string): string {
+    return createHash('md5').update(message).digest('hex').slice(0, 8);
+  }
+}
+
+
+
+
+

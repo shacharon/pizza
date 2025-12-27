@@ -68,9 +68,17 @@
       </div>
     }
 
+    <!-- NEW: Clarification Block (Answer-First UX) -->
+    @if (facade.requiresClarification() && facade.clarification() && !facade.loading()) {
+      <app-clarification-block
+        [clarification]="facade.clarification()!"
+        (choiceSelected)="onClarificationChoice($event)"
+      />
+    }
+
     <!-- Micro-Assist Card (low confidence) -->
-    @if (facade.assist() && facade.hasResults()) {
-      <div class="micro-assist-card">
+    @if (facade.assist()) {
+      <div class="micro-assist-card" [class.recovery-mode]="facade.assist()?.mode === 'RECOVERY'">
         <div class="assist-content">
           <span class="assist-icon">💡</span>
           <p class="assist-message">{{ facade.assist()!.message }}</p>

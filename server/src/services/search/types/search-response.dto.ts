@@ -79,6 +79,10 @@ export interface SearchResponse {
   // Optional: Proposed actions (Human-in-the-Loop pattern)
   proposedActions?: ProposedActions;
   
+  // NEW: Clarification (Answer-First UX)
+  clarification?: import('./search.types.js').Clarification;
+  requiresClarification?: boolean;  // Shorthand flag for easier UI logic
+  
   // Metadata
   meta: SearchResponseMeta;
 }
@@ -109,6 +113,8 @@ export function createSearchResponse(params: {
   chips: RefinementChip[];
   assist?: AssistPayload;
   proposedActions?: ProposedActions;
+  clarification?: import('./search.types.js').Clarification;
+  requiresClarification?: boolean;
   meta: {
     tookMs: number;
     mode: SearchMode;
@@ -165,6 +171,12 @@ export function createSearchResponse(params: {
   // Only add proposedActions if it exists
   if (params.proposedActions) {
     response.proposedActions = params.proposedActions;
+  }
+
+  // NEW: Add clarification if it exists
+  if (params.clarification) {
+    response.clarification = params.clarification;
+    response.requiresClarification = params.requiresClarification ?? true;
   }
 
   return response;

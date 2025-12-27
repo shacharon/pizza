@@ -62,14 +62,21 @@ export class SearchFacade {
   // NEW: Phase B - Recent searches
   readonly recentSearchesList = this.recentSearchesService.searches;
   readonly hasRecentSearches = this.recentSearchesService.hasSearches;
+  
+  // NEW: Answer-First UX - Clarification
+  readonly clarification = this.searchStore.clarification;
+  readonly requiresClarification = this.searchStore.requiresClarification;
 
   // Public actions
   search(query: string, filters?: SearchFilters): void {
+    // Check if this is a fresh search after intent reset
+    const shouldClearContext = this.inputStateMachine.intentReset();
+    
     // NEW: Phase B - Add to recent searches and update state machine
     this.recentSearchesService.add(query);
     this.inputStateMachine.submit();
 
-    this.searchService.search(query, filters).subscribe({
+    this.searchService.search(query, filters, shouldClearContext).subscribe({
       next: () => {
         this.inputStateMachine.searchComplete();
       },
@@ -89,6 +96,13 @@ export class SearchFacade {
         }
       });
     }
+  }
+  
+  // NEW: Handle clarification choice
+  onClarificationChoice(choice: import('../domain/types/search.types').ClarificationChoice): void {
+    // Re-run search with the patched constraints
+    const currentQuery = this.query();
+    this.search(currentQuery, choice.constraintPatch);
   }
 
   selectRestaurant(restaurant: Restaurant | null): void {

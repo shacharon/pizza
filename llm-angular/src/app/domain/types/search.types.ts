@@ -3,6 +3,9 @@
  * Mirror backend response contracts
  */
 
+// Tri-state boolean for verifiable attributes
+export type VerifiableBoolean = boolean | 'UNKNOWN';
+
 export interface SearchRequest {
   query: string;
   sessionId?: string;
@@ -10,6 +13,7 @@ export interface SearchRequest {
   filters?: SearchFilters;
   locale?: string;
   region?: string;
+  clearContext?: boolean;  // Intent reset flag
 }
 
 export interface SearchResponse {
@@ -20,6 +24,8 @@ export interface SearchResponse {
   chips: RefinementChip[];
   assist?: MicroAssist;
   proposedActions?: ProposedActions;
+  clarification?: Clarification;  // NEW: Answer-First UX
+  requiresClarification?: boolean;  // NEW: Shorthand flag
   meta: SearchMeta;
 }
 
@@ -32,7 +38,7 @@ export interface Restaurant {
   rating?: number;
   userRatingsTotal?: number;
   priceLevel?: number;
-  openNow?: boolean;
+  openNow?: VerifiableBoolean;  // Tri-state: true | false | 'UNKNOWN'
   photoUrl?: string;
   phoneNumber?: string;
   website?: string;
@@ -66,7 +72,8 @@ export interface RefinementChip {
 }
 
 export interface MicroAssist {
-  type: 'clarify' | 'suggest' | 'guide';
+  type: 'clarify' | 'suggest' | 'guide' | 'recovery';
+  mode?: 'NORMAL' | 'RECOVERY';  // Recovery mode for 0 results or weak results
   message: string;
   suggestedActions: { label: string; query: string }[];
 }
@@ -120,6 +127,21 @@ export interface ResultGroup {
   results: Restaurant[];
   distanceLabel?: string;
   radiusMeters?: number;
+}
+
+// NEW: Answer-First UX - Clarification Types
+export interface Clarification {
+  question: string;
+  questionHe?: string;
+  questionEn?: string;
+  choices: ClarificationChoice[];
+}
+
+export interface ClarificationChoice {
+  id: string;
+  label: string;
+  emoji?: string;
+  constraintPatch: Partial<SearchFilters>;  // Constraints to apply if chosen
 }
 
 

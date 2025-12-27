@@ -9,7 +9,8 @@ import { SearchFacade } from '../../../facades/search.facade';
 import { SearchBarComponent } from '../components/search-bar/search-bar.component';
 import { RestaurantCardComponent } from '../components/restaurant-card/restaurant-card.component';
 import { GroupedResultsComponent } from '../components/grouped-results/grouped-results.component';
-import type { Restaurant } from '../../../domain/types/search.types';
+import { ClarificationBlockComponent } from '../components/clarification-block/clarification-block.component';
+import type { Restaurant, ClarificationChoice } from '../../../domain/types/search.types';
 import type { ActionType, ActionLevel } from '../../../domain/types/action.types';
 
 @Component({
@@ -19,7 +20,8 @@ import type { ActionType, ActionLevel } from '../../../domain/types/action.types
     CommonModule,
     SearchBarComponent,
     RestaurantCardComponent,
-    GroupedResultsComponent
+    GroupedResultsComponent,
+    ClarificationBlockComponent
   ],
   providers: [SearchFacade],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -106,6 +108,11 @@ export class SearchPageComponent implements OnInit, OnDestroy {
 
   retry(): void {
     this.facade.retry();
+  }
+  
+  // NEW: Handle clarification choice
+  onClarificationChoice(choice: ClarificationChoice): void {
+    this.facade.onClarificationChoice(choice);
   }
 
   trackByRestaurant(_index: number, restaurant: Restaurant): string {

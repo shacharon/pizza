@@ -42,6 +42,10 @@ export class SearchStore {
   );
   readonly exactCount = computed(() => this.exactResults().length);
   readonly nearbyCount = computed(() => this.nearbyResults().length);
+  
+  // NEW: Clarification support (Answer-First UX)
+  readonly clarification = computed(() => this._response()?.clarification);
+  readonly requiresClarification = computed(() => this._response()?.requiresClarification ?? false);
 
   // Mutations
   setQuery(query: string): void {

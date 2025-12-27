@@ -101,7 +101,7 @@ export interface PlaceItem {
     priceLevel?: number;
     photoUrl?: string;
     website?: string;
-    openNow?: boolean;
+    openNow?: true | false | 'UNKNOWN';  // VerifiableBoolean
     location?: { lat: number; lng: number };
 }
 

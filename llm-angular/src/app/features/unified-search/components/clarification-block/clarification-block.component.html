@@ -1,0 +1,28 @@
+<div class="clarification-block">
+  <div class="clarification-content">
+    <div class="clarification-icon">🤔</div>
+    <p class="clarification-question">{{ clarification().question }}</p>
+  </div>
+  
+  <div class="clarification-choices">
+    @for (choice of clarification().choices; track trackByChoiceId($index, choice)) {
+      <button 
+        class="choice-button"
+        (click)="onChoiceClick(choice)"
+        [attr.aria-label]="choice.label"
+      >
+        @if (choice.emoji) {
+          <span class="choice-emoji">{{ choice.emoji }}</span>
+        }
+        <span class="choice-label">{{ choice.label }}</span>
+      </button>
+    }
+  </div>
+</div>
+
+
+
+
+
+
+

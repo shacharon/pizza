@@ -13,18 +13,34 @@ import type {
 import { PlacesIntentService } from '../../places/intent/places-intent.service.js';
 import type { PlacesIntent } from '../../places/intent/places-intent.schema.js';
 import { SearchConfig, type ConfidenceWeights } from '../config/search.config.js';
+import { GeocodingService } from '../geocoding/geocoding.service.js';
 
 export class IntentService implements IIntentService {
   private placesIntentService: PlacesIntentService;
+  private geocodingService?: GeocodingService;
   private confidenceWeights: ConfidenceWeights;
 
-  constructor(confidenceWeights?: Partial<ConfidenceWeights>) {
+  constructor(
+    confidenceWeights?: Partial<ConfidenceWeights>,
+    geocodingService?: GeocodingService
+  ) {
     this.placesIntentService = new PlacesIntentService();
+    this.geocodingService = geocodingService;
     this.confidenceWeights = {
       ...SearchConfig.confidence,
       ...confidenceWeights,
     };
   }
+
+  /**
+   * Set session service for city caching
+   * Called by orchestrator to enable session-level deduplication
+   */
+  setSessionService(sessionService: any): void {
+    this.sessionService = sessionService;
+  }
+
+  private sessionService?: any;
 
   /**
    * Parse a natural language query into a structured intent with confidence score
@@ -35,6 +51,60 @@ export class IntentService implements IIntentService {
 
     // Convert to ParsedIntent format
     const intent = this.convertToParseIntent(placesIntent, text);
+
+    // Validate city with geocoding if service is available
+    // Strategy: Trust but verify - always canonicalize LLM-extracted cities
+    if (this.geocodingService && intent.location?.city) {
+      const cityCandidate = intent.location.city;
+      const sessionId = context?.sessionId;
+      
+      // Check session cache first (avoid redundant API calls)
+      let validationResult = null;
+      if (sessionId && this.sessionService) {
+        validationResult = await this.sessionService.getValidatedCity(sessionId, cityCandidate);
+        if (validationResult) {
+          console.log(`[IntentService] 📦 City cache hit: "${cityCandidate}"`);
+          intent.location.cityValidation = validationResult.status;
+          if (validationResult.status === 'VERIFIED') {
+            intent.location.coords = validationResult.coordinates;
+          }
+        }
+      }
+      
+      // If not in cache, call geocoding API
+      if (!validationResult) {
+        console.log(`[IntentService] 🌍 Validating city via geocoding: "${cityCandidate}"`);
+        
+        try {
+          const validation = await this.geocodingService.validateCity(cityCandidate);
+          intent.location.cityValidation = validation.status;
+          
+          // Store in session cache for future queries
+          if (sessionId && this.sessionService && validation.displayName) {
+            await this.sessionService.storeValidatedCity(sessionId, cityCandidate, {
+              displayName: validation.displayName,
+              coordinates: validation.coordinates || { lat: 0, lng: 0 },
+              status: validation.status,
+            });
+          }
+          
+          // If verified, update coordinates (ALWAYS use canonical coords, not LLM)
+          if (validation.status === 'VERIFIED' && validation.coordinates) {
+            intent.location.coords = validation.coordinates;
+            console.log(`[IntentService] ✅ City verified: ${validation.displayName}`);
+          } else if (validation.status === 'FAILED') {
+            console.log(`[IntentService] ❌ City validation failed: "${cityCandidate}"`);
+          } else if (validation.status === 'AMBIGUOUS') {
+            console.log(`[IntentService] ⚠️ City ambiguous: "${cityCandidate}" (${validation.candidates?.length} candidates)`);
+          }
+        } catch (error: any) {
+          console.error(`[IntentService] Geocoding error:`, error.message);
+          // Graceful degradation: proceed without validation
+          // This allows search to work even if API is down
+          console.log(`[IntentService] ⚠️ Geocoding API unavailable, proceeding with LLM coordinates`);
+        }
+      }
+    }
 
     // Calculate confidence score
     const confidence = this.calculateConfidence(intent, context);

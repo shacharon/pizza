@@ -27,7 +27,7 @@ interface PlaceItem {
     name: string;
     rating?: number;
     priceLevel?: number;
-    openNow?: boolean;
+    openNow?: true | false | 'UNKNOWN';  // VerifiableBoolean
     delivery?: boolean;
     takeout?: boolean;
 }

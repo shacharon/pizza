@@ -277,3 +277,9 @@ Try to make LLM detect "near me" in 6 languages.
 **Status:** ✅ **DECISION READY** - textsearch-only is the clear winner!
 
 
+
+
+
+
+
+

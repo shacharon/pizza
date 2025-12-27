@@ -13,6 +13,17 @@ export type Occasion = 'date' | 'friends' | 'family' | 'business' | 'casual' | '
 
 export type RestaurantSource = 'google_places' | 'tripadvisor' | 'internal';
 
+/**
+ * Verifiable Boolean - Tri-state type for data quality
+ * - true: Verified and confirmed
+ * - false: Verified and confirmed false
+ * - 'UNKNOWN': Not verified or data not available
+ * 
+ * This enables the assistant to explicitly communicate uncertainty
+ * instead of making assumptions about missing data.
+ */
+export type VerifiableBoolean = true | false | 'UNKNOWN';
+
 // ============================================================================
 // Location Types
 // ============================================================================
@@ -39,7 +50,9 @@ export interface ParsedIntent {
   // Where to search
   location?: {
     city?: string;
+    cityValidation?: 'VERIFIED' | 'FAILED' | 'AMBIGUOUS';  // NEW: Geocoding validation status
     place?: string;
+    placeType?: 'street' | 'neighborhood' | 'landmark';
     coords?: Coordinates;
     radius?: number;
   };
@@ -90,8 +103,8 @@ export interface RestaurantResult {
   userRatingsTotal?: number;
   priceLevel?: number;  // 1-4
   
-  // Status
-  openNow?: boolean;
+  // Status (using VerifiableBoolean for data quality)
+  openNow?: VerifiableBoolean;  // true | false | 'UNKNOWN'
   
   // Contact
   phoneNumber?: string;
@@ -161,15 +174,41 @@ export interface RefinementChip {
 // Assist Types (Future: micro-assist UI)
 // ============================================================================
 
-export type AssistType = 'clarify' | 'suggest' | 'guide';
+export type AssistType = 'clarify' | 'suggest' | 'guide' | 'recovery';
 
 export interface AssistPayload {
   type: AssistType;
+  mode?: 'NORMAL' | 'RECOVERY';  // Recovery mode for 0 results or weak results
   message: string;
   suggestedActions: {
     label: string;
     query: string;
   }[];
+}
+
+// ============================================================================
+// Clarification Types (Answer-First UX)
+// ============================================================================
+
+/**
+ * Clarification - Used when user intent is ambiguous
+ * Backend returns this instead of results, frontend displays as choice buttons
+ */
+export interface Clarification {
+  question: string;        // Question in detected language (e.g., "Which city did you mean?")
+  questionHe?: string;     // Hebrew translation (fallback)
+  questionEn?: string;     // English translation (fallback)
+  choices: ClarificationChoice[];
+}
+
+/**
+ * ClarificationChoice - A single choice in a clarification
+ */
+export interface ClarificationChoice {
+  id: string;                             // Choice ID (e.g., 'tel-aviv', 'parking-constraint')
+  label: string;                          // Display label (e.g., "Tel Aviv, Israel")
+  emoji?: string;                         // Optional emoji/icon
+  constraintPatch: Partial<SearchParams>; // Constraints to apply if chosen
 }
 
 // ============================================================================
@@ -223,12 +262,21 @@ export interface ProposedActions {
 // ============================================================================
 
 export interface SessionContext {
+  sessionId?: string;  // For session-level caching
   previousIntent?: ParsedIntent;
   conversationHistory: {
     query: string;
     intent: ParsedIntent;
     timestamp: Date;
   }[];
+  
+  // Session-level city cache (avoid redundant geocoding calls)
+  validatedCities?: Map<string, {
+    displayName: string;
+    coordinates: Coordinates;
+    status: 'VERIFIED' | 'FAILED' | 'AMBIGUOUS';
+    timestamp: number;
+  }>;
 }
 
 export interface SearchSession {
@@ -244,6 +292,15 @@ export interface SearchSession {
   // User preferences (future)
   userLanguage?: string;
   userLocation?: Coordinates;
+  
+  // ChatBack memory (RSE + ChatBack Layer)
+  chatBackHistory?: {
+    turnIndex: number;
+    lastShownPlaceIds: string[];
+    lastSuggestedActions: string[];    // Action IDs
+    messageVariations: string[];        // Hashes of messages shown
+    scenarioCount: Record<string, number>;  // Track scenario repetition
+  };
 }
 
 // ============================================================================
@@ -319,3 +376,8 @@ export interface ISessionService {
   getStats?(): { totalSessions: number; activeSessions: number };
 }
 
+// ============================================================================
+// Response Plan Types (RSE → ChatBack Communication)
+// ============================================================================
+
+export * from './response-plan.types.js';

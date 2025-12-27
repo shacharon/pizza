@@ -22,11 +22,13 @@ export class InputStateMachine {
   private stateSignal = signal<InputState>('EMPTY');
   private querySignal = signal<string>('');
   private previousQuerySignal = signal<string>('');
+  private intentResetSignal = signal<boolean>(false);
 
   // Public readonly signals
   readonly state = this.stateSignal.asReadonly();
   readonly query = this.querySignal.asReadonly();
   readonly previousQuery = this.previousQuerySignal.asReadonly();
+  readonly intentReset = this.intentResetSignal.asReadonly();
 
   // Computed signals
   readonly showRecentSearches = computed(() => {
@@ -53,6 +55,7 @@ export class InputStateMachine {
   /**
    * Handle input change
    * Transitions: EMPTY → TYPING, RESULTS → EDITING
+   * Detects full clear (intent reset) when going from RESULTS to EMPTY
    */
   input(text: string): void {
     const trimmedText = text.trim();
@@ -61,19 +64,36 @@ export class InputStateMachine {
     this.querySignal.set(text);
 
     if (trimmedText.length === 0) {
+      // Detect full clear = intent reset (RESULTS → EMPTY or EDITING → EMPTY)
+      if (currentState === 'RESULTS' || currentState === 'EDITING') {
+        this.intentResetSignal.set(true);
+      }
       this.stateSignal.set('EMPTY');
-    } else if (currentState === 'EMPTY' || currentState === 'TYPING') {
-      this.stateSignal.set('TYPING');
-    } else if (currentState === 'RESULTS') {
-      this.stateSignal.set('EDITING');
+    } else {
+      // User typing = NOT a reset
+      this.intentResetSignal.set(false);
+      
+      if (currentState === 'EMPTY' || currentState === 'TYPING') {
+        this.stateSignal.set('TYPING');
+      } else if (currentState === 'RESULTS') {
+        this.stateSignal.set('EDITING');
+      }
     }
   }
 
   /**
    * Clear input and reset to EMPTY
    * Transitions: * → EMPTY
+   * Sets intentReset if clearing from RESULTS/EDITING
    */
   clear(): void {
+    const currentState = this.stateSignal();
+    
+    // Detect full clear = intent reset
+    if (currentState === 'RESULTS' || currentState === 'EDITING') {
+      this.intentResetSignal.set(true);
+    }
+    
     this.querySignal.set('');
     this.stateSignal.set('EMPTY');
   }
@@ -81,6 +101,7 @@ export class InputStateMachine {
   /**
    * Submit search
    * Transitions: TYPING|EDITING → SEARCHING
+   * Clears intentReset flag (search is happening)
    */
   submit(): void {
     const query = this.querySignal();
@@ -89,6 +110,9 @@ export class InputStateMachine {
     if (query.trim().length > 0 && currentState !== 'SEARCHING') {
       this.previousQuerySignal.set(query);
       this.stateSignal.set('SEARCHING');
+      // Clear intentReset flag after search starts
+      // (will be set again on next full clear)
+      this.intentResetSignal.set(false);
     }
   }
 
@@ -152,4 +176,6 @@ export class InputStateMachine {
     };
   }
 }
+
+
 

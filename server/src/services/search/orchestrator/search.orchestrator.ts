@@ -23,6 +23,10 @@ import { createSearchResponse } from '../types/search-response.dto.js';
 import { QueryComposer } from '../utils/query-composer.js';
 import { CityFilterService } from '../filters/city-filter.service.js';
 import { StreetDetectorService } from '../detectors/street-detector.service.js';
+import { TokenDetectorService } from '../detectors/token-detector.service.js';
+import { ClarificationService } from '../clarification/clarification.service.js';
+import { ResultStateEngine } from '../rse/result-state-engine.js';
+import { ChatBackService } from '../chatback/chatback.service.js';
 import type { ResultGroup } from '../types/search.types.js';
 
 /**
@@ -32,6 +36,10 @@ import type { ResultGroup } from '../types/search.types.js';
 export class SearchOrchestrator {
     private cityFilter: CityFilterService;
     private streetDetector: StreetDetectorService;
+    private tokenDetector: TokenDetectorService;
+    private clarificationService: ClarificationService;
+    private rse: ResultStateEngine;
+    private chatBackService: ChatBackService;
 
     constructor(
         private intentService: IIntentService,
@@ -43,6 +51,15 @@ export class SearchOrchestrator {
     ) {
         this.cityFilter = new CityFilterService(5); // Min 5 results before fallback
         this.streetDetector = new StreetDetectorService();
+        this.tokenDetector = new TokenDetectorService();
+        this.clarificationService = new ClarificationService();
+        this.rse = new ResultStateEngine();
+        this.chatBackService = new ChatBackService();
+        
+        // Wire up session service to intent service for city caching
+        if ('setSessionService' in this.intentService) {
+            (this.intentService as any).setSessionService(this.sessionService);
+        }
     }
 
     /**
@@ -55,16 +72,115 @@ export class SearchOrchestrator {
         console.log(`[SearchOrchestrator] Starting search: "${request.query}"`);
 
         try {
-            // Step 1: Get or create session
-            const session = await this.sessionService.getOrCreate(request.sessionId);
+            // Step 1: Get or create session (generate ID if not provided)
+            const sessionId = request.sessionId || `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            const session = await this.sessionService.getOrCreate(sessionId);
             console.log(`[SearchOrchestrator] Session: ${session.id}`);
 
+            // Step 1.5: Clear context if requested (intent reset)
+            if (request.clearContext) {
+                await this.sessionService.clearContext(session.id);
+                console.log(`[SearchOrchestrator] 🔄 Context cleared (intent reset)`);
+            }
+
             // Step 2: Parse intent with confidence scoring
+            // Add sessionId to context for city caching
+            const contextWithSession = {
+                ...session.context,
+                sessionId: session.id,
+            };
             const { intent, confidence } = await this.intentService.parse(
                 request.query,
-                session.context
+                contextWithSession
             );
             console.log(`[SearchOrchestrator] Intent parsed (confidence: ${confidence.toFixed(2)})`);
+
+            // Step 2.5: Check for ambiguous city (requires clarification)
+            if (intent.location?.cityValidation === 'AMBIGUOUS') {
+                console.log(`[SearchOrchestrator] ⚠️ Ambiguous city - returning clarification`);
+                // We'd need geocoding candidates here - for now, return a generic clarification
+                const clarification = this.clarificationService.generateConstraintClarification(
+                    intent.location.city || 'location',
+                    intent.language
+                );
+
+                return createSearchResponse({
+                    sessionId,
+                    originalQuery: request.query,
+                    intent,
+                    results: [],
+                    chips: [],
+                    clarification,
+                    requiresClarification: true,
+                    meta: {
+                        tookMs: Date.now() - startTime,
+                        mode: intent.searchMode,
+                        appliedFilters: [],
+                        confidence,
+                        source: 'clarification'
+                    }
+                });
+            }
+
+            // Step 2.6: Check for failed city validation
+            // Note: Only block if city validation explicitly failed (city doesn't exist)
+            // If cityValidation is undefined, it means validation was skipped (API unavailable)
+            // In that case, proceed with search using LLM-extracted coordinates
+            if (intent.location?.cityValidation === 'FAILED' && intent.location?.city) {
+                console.log(`[SearchOrchestrator] ❌ City not found: "${intent.location.city}" - showing clarification`);
+                const clarification = this.clarificationService.generateConstraintClarification(
+                    intent.location.city!,  // Safe: we checked it exists above
+                    intent.language
+                );
+
+                return createSearchResponse({
+                    sessionId,
+                    originalQuery: request.query,
+                    intent,
+                    results: [],
+                    chips: [],
+                    clarification,
+                    requiresClarification: true,
+                    meta: {
+                        tookMs: Date.now() - startTime,
+                        mode: intent.searchMode,
+                        appliedFilters: [],
+                        confidence,
+                        source: 'clarification'
+                    }
+                });
+            } else if (intent.location?.city && !intent.location?.cityValidation) {
+                console.log(`[SearchOrchestrator] ⚠️ City validation skipped (API unavailable), proceeding with LLM coordinates`);
+            }
+
+            // Step 2.7: Check for single-token ambiguous queries
+            const tokenDetection = this.tokenDetector.detect(request.query, session.context);
+            if (tokenDetection.requiresClarification && tokenDetection.constraintType) {
+                console.log(`[SearchOrchestrator] 🤔 Single-token query detected: "${request.query}" (${tokenDetection.tokenType})`);
+
+                const clarification = this.clarificationService.generateTokenClarification(
+                    request.query,
+                    tokenDetection.constraintType,
+                    intent.language
+                );
+
+                return createSearchResponse({
+                    sessionId,
+                    originalQuery: request.query,
+                    intent,
+                    results: [],
+                    chips: [],
+                    clarification,
+                    requiresClarification: true,
+                    meta: {
+                        tookMs: Date.now() - startTime,
+                        mode: intent.searchMode,
+                        appliedFilters: [],
+                        confidence: tokenDetection.confidence,
+                        source: 'clarification'
+                    }
+                });
+            }
 
             // Step 3: Resolve location to coordinates
             const location = await this.resolveLocation(intent, request);
@@ -187,9 +303,13 @@ export class SearchOrchestrator {
                 }];
             }
 
-            // Step 4.5: Apply city filter to all results
+            // Step 4.5: Apply city filter to all results (coordinate-based)
             const filterStartTime = Date.now();
-            const filterResult = this.cityFilter.filter(allResults, intent.location?.city);
+            const filterResult = this.cityFilter.filter(
+                allResults,
+                intent.location?.city,
+                location.coords  // Pass city center coordinates for distance calculation
+            );
             const filterTime = Date.now() - filterStartTime;
 
             console.log(`[SearchOrchestrator] ✂️ City filter: ${filterResult.kept.length} kept, ${filterResult.dropped.length} dropped (took ${filterTime}ms)`);
@@ -222,13 +342,55 @@ export class SearchOrchestrator {
             const chips = this.suggestionService.generate(intent, topResults);
             console.log(`[SearchOrchestrator] Generated ${chips.length} suggestion chips`);
 
-            // Step 8: Create assist payload if confidence is low
-            const assist = this.shouldShowAssist(confidence)
-                ? this.createAssistPayload(intent, confidence)
-                : undefined;
+            // Step 7.5: RSE analyzes results and creates ResponsePlan
+            const responsePlan = this.rse.analyze(
+                topResults,
+                intent,
+                filterResult,
+                confidence,
+                groups
+            );
 
-            if (assist) {
-                console.log(`[SearchOrchestrator] Low confidence (${confidence.toFixed(2)}) - attaching assist`);
+            // Step 8: ChatBack generates natural language message if needed
+            let assist: AssistPayload | undefined;
+            if (responsePlan.scenario !== 'exact_match' || confidence < 0.8) {
+                const memory = this.sessionService.getChatBackMemory(request.sessionId);
+                const recentMessages = this.sessionService.getRecentMessages(request.sessionId, 3);
+                
+                const chatBackInput = {
+                    userText: request.query,
+                    intent,
+                    responsePlan,
+                    memory: memory ? {
+                        turnIndex: memory.turnIndex,
+                        lastMessages: recentMessages,
+                        scenarioCount: memory.scenarioCount[responsePlan.scenario] || 0
+                    } : undefined
+                };
+                
+                const chatBackOutput = await this.chatBackService.generate(chatBackInput);
+                
+                assist = {
+                    type: chatBackOutput.mode === 'RECOVERY' ? 'recovery' : 'clarify',
+                    mode: chatBackOutput.mode,
+                    message: chatBackOutput.message,
+                    suggestedActions: chatBackOutput.actions.map(a => ({ 
+                        label: a.label, 
+                        query: a.query 
+                    }))
+                };
+                
+                // Save to session memory
+                const messageHash = this.chatBackService.hashMessage(chatBackOutput.message);
+                this.sessionService.addChatBackTurn(
+                    request.sessionId,
+                    topResults.map(r => r.placeId),
+                    chatBackOutput.actions.map(a => a.id),
+                    messageHash,
+                    responsePlan.scenario
+                );
+                
+                console.log(`[SearchOrchestrator] ChatBack generated ${chatBackOutput.mode} message for scenario: ${responsePlan.scenario}`);
             }
 
             // Step 8.5: Generate proposed actions (Human-in-the-Loop pattern)
@@ -341,64 +503,6 @@ export class SearchOrchestrator {
         return await this.geoResolver.resolve({ lat: 0, lng: 0 });
     }
 
-    /**
-     * Determine if we should show assist UI
-     * Based on confidence threshold
-     */
-    private shouldShowAssist(confidence: number): boolean {
-        const CONFIDENCE_THRESHOLD = 0.7;
-        return confidence < CONFIDENCE_THRESHOLD;
-    }
-
-    /**
-     * Create assist payload for micro-assist UI
-     * Provides clarification or suggestions when confidence is low
-     */
-    private createAssistPayload(intent: ParsedIntent, confidence: number): AssistPayload {
-        // Determine what's missing
-        const missingLocation = !intent.location?.city && !intent.location?.place;
-        const missingQuery = !intent.query || intent.query.length < 3;
-
-        let message = '';
-        const suggestedActions: AssistPayload['suggestedActions'] = [];
-
-        if (missingQuery && missingLocation) {
-            message = 'What are you looking for, and where?';
-            suggestedActions.push(
-                { label: 'Pizza in Paris', query: 'pizza in Paris' },
-                { label: 'Sushi near me', query: 'sushi near me' },
-                { label: 'Italian restaurant', query: 'italian restaurant' }
-            );
-        } else if (missingLocation) {
-            message = `Where would you like to find ${intent.query}?`;
-            suggestedActions.push(
-                { label: `${intent.query} in Paris`, query: `${intent.query} in Paris` },
-                { label: `${intent.query} near me`, query: `${intent.query} near me` },
-                { label: `${intent.query} in London`, query: `${intent.query} in London` }
-            );
-        } else if (missingQuery) {
-            message = `What type of food are you looking for?`;
-            suggestedActions.push(
-                { label: 'Pizza', query: 'pizza' },
-                { label: 'Sushi', query: 'sushi' },
-                { label: 'Italian', query: 'italian' }
-            );
-        } else {
-            // Low confidence but complete query - offer refinements
-            message = 'Here are some results. Want to refine your search?';
-            suggestedActions.push(
-                { label: 'Open now', query: `${intent.query} open now` },
-                { label: 'Top rated', query: `${intent.query} top rated` },
-                { label: 'Budget friendly', query: `${intent.query} budget` }
-            );
-        }
-
-        return {
-            type: 'clarify',
-            message,
-            suggestedActions,
-        };
-    }
 
     /**
      * Generate proposed actions for Human-in-the-Loop pattern

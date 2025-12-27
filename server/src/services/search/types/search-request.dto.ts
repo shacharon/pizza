@@ -33,6 +33,9 @@ export const searchRequestSchema = z.object({
   
   // Optional: explicit filters
   filters: filtersSchema,
+  
+  // Optional: clear session context (intent reset)
+  clearContext: z.boolean().optional(),
 });
 
 // ============================================================================
