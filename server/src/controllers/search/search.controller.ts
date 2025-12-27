@@ -14,6 +14,7 @@ import { SessionService } from '../../services/search/capabilities/session.servi
 import { GeocodingService } from '../../services/search/geocoding/geocoding.service.js';
 import { safeParseSearchRequest } from '../../services/search/types/search-request.dto.js';
 import { createSearchError } from '../../services/search/types/search-response.dto.js';
+import { createLLMProvider } from '../../llm/factory.js';
 
 const router = Router();
 
@@ -90,6 +91,14 @@ function createSearchOrchestrator(): SearchOrchestrator {
     geocodingService = undefined;
   }
 
+  // Initialize LLM provider (for assistant narration)
+  const llm = createLLMProvider();
+  if (llm) {
+    console.log('[SearchController] 🤖 AI Assistant enabled (LLM Pass B)');
+  } else {
+    console.log('[SearchController] ⚠️  LLM not configured - using fallback messages');
+  }
+
   // Instantiate all capability services
   const intentService = new IntentService(undefined, geocodingService);
   const geoResolver = new GeoResolverService();
@@ -108,7 +117,8 @@ function createSearchOrchestrator(): SearchOrchestrator {
     placesProvider,
     rankingService,
     suggestionService,
-    sessionService
+    sessionService,
+    llm
   );
 
   console.log('[SearchController] ✅ SearchOrchestrator ready');

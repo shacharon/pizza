@@ -1,8 +1,7 @@
 <div class="search-bar">
-  <div class="search-input-wrapper">
-    <span class="search-icon">🔍</span>
+  <div class="search-input-container">
     <input
-      type="search"
+      type="text"
       class="search-input"
       [ngModel]="query()"
       (ngModelChange)="onInput($event)"
@@ -11,7 +10,10 @@
       [placeholder]="placeholder()"
       aria-label="Search for restaurants"
     />
-    @if (query()) {
+    @if (loading()) {
+      <span class="loading-indicator" aria-label="Loading"></span>
+    }
+    @if (query() && !loading()) {
       <button
         type="button"
         class="clear-button"
@@ -22,19 +24,5 @@
         ✕
       </button>
     }
-    @if (loading()) {
-      <span class="loading-spinner" aria-label="Loading">⏳</span>
-    }
   </div>
-  <button
-    type="button"
-    class="search-button"
-    (click)="onSearch()"
-    [disabled]="disabled() || !query()"
-    aria-label="Search"
-  >
-    Search
-  </button>
 </div>
-
-

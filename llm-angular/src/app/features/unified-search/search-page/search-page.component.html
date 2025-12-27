@@ -76,26 +76,13 @@
       />
     }
 
-    <!-- Micro-Assist Card (low confidence) -->
-    @if (facade.assist()) {
-      <div class="micro-assist-card" [class.recovery-mode]="facade.assist()?.mode === 'RECOVERY'">
-        <div class="assist-content">
-          <span class="assist-icon">💡</span>
-          <p class="assist-message">{{ facade.assist()!.message }}</p>
-        </div>
-        @if (facade.assist()!.suggestedActions.length > 0) {
-          <div class="assist-actions">
-            @for (action of facade.assist()!.suggestedActions; track action.label) {
-              <button
-                class="assist-action-button"
-                (click)="onAssistActionClick(action.query)"
-              >
-                {{ action.label }}
-              </button>
-            }
-          </div>
-        }
-      </div>
+    <!-- NEW: AI Assistant Strip (contextual guidance) -->
+    @if (facade.assist() && facade.chips().length > 0 && !facade.loading()) {
+      <app-assistant-strip
+        [assist]="facade.assist()!"
+        [chips]="facade.chips()"
+        (actionClick)="onChipClick($event)"
+      />
     }
 
     <!-- Refinement Chips -->

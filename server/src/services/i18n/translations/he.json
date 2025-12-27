@@ -1,0 +1,38 @@
+{
+  "chip": {
+    "delivery": "משלוחים",
+    "budget": "זול",
+    "topRated": "מדורג גבוה",
+    "openNow": "פתוח עכשיו",
+    "map": "מפה",
+    "closest": "הכי קרוב",
+    "takeout": "איסוף עצמי",
+    "romantic": "רומנטי",
+    "family": "משפחתי",
+    "nearby": "באיזור",
+    "expandSearch": "הרחב חיפוש"
+  },
+  "fallback": {
+    "noResults": "לא מצאתי תוצאות",
+    "noResultsTryExpand": "לא מצאתי תוצאות. נסה להרחיב את החיפוש.",
+    "geocodingFailed": "לא הצלחתי לאתר את המיקום",
+    "geocodingFailedTryCity": "לא הצלחתי לאתר את המיקום הזה. נסה עיר אחרת.",
+    "foundPlaces": "מצאתי {{count}} מקומות",
+    "foundPlacesCanFilter": "מצאתי {{count}} מקומות. אפשר לסנן או למיין.",
+    "whatToDo": "מה תרצה לעשות?",
+    "lowConfidence": "לא בטוח שהבנתי. אפשר לנסח אחרת?",
+    "apiError": "לא הצלחתי להתחבר לשירות החיפוש כרגע. נסה שוב עוד רגע.",
+    "timeout": "החיפוש לקח יותר מדי זמן. נסה שוב.",
+    "quotaExceeded": "יותר מדי בקשות. חכה רגע ונסה שוב.",
+    "liveDataUnavailable": "לא יכול לאמת שעות פתיחה כרגע. לבדוק?"
+  },
+  "action": {
+    "sortByRating": "מיין לפי דירוג",
+    "sortByPrice": "מיין לפי מחיר",
+    "sortByDistance": "מיין לפי מרחק",
+    "filterCheap": "אוכל זול",
+    "filterExpensive": "מסעדות יוקרה",
+    "showOnMap": "הצג במפה"
+  }
+}
+

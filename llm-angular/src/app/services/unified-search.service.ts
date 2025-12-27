@@ -10,6 +10,7 @@ import { SearchApiClient } from '../api/search.api';
 import { SearchStore } from '../state/search.store';
 import { SessionStore } from '../state/session.store';
 import { AnalyticsService } from './analytics.service';
+import { LanguageService } from '../core/services/language.service';
 import type { SearchRequest, SearchResponse, SearchFilters } from '../domain/types/search.types';
 
 @Injectable({ providedIn: 'root' })
@@ -18,6 +19,7 @@ export class UnifiedSearchService {
   private readonly searchStore = inject(SearchStore);
   private readonly sessionStore = inject(SessionStore);
   private readonly analyticsService = inject(AnalyticsService);
+  private readonly languageService = inject(LanguageService);
 
   search(query: string, filters?: SearchFilters, clearContext?: boolean): Observable<SearchResponse> {
     const startTime = Date.now();
@@ -45,6 +47,9 @@ export class UnifiedSearchService {
     return this.apiClient.search(request).pipe(
       tap(response => {
         const duration = Date.now() - startTime;
+
+        // Update language/direction from response
+        this.languageService.updateFromResponse(response.meta?.language);
 
         // Update store
         this.searchStore.setResponse(response);

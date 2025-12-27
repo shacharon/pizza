@@ -71,12 +71,44 @@ export interface RefinementChip {
   filter?: string;
 }
 
-export interface MicroAssist {
-  type: 'clarify' | 'suggest' | 'guide' | 'recovery';
-  mode?: 'NORMAL' | 'RECOVERY';  // Recovery mode for 0 results or weak results
-  message: string;
-  suggestedActions: { label: string; query: string }[];
+// NEW: Failure reasons (deterministic, computed by backend)
+export type FailureReason = 
+  | 'NONE'
+  | 'NO_RESULTS'
+  | 'LOW_CONFIDENCE'
+  | 'GEOCODING_FAILED'
+  | 'GOOGLE_API_ERROR'
+  | 'TIMEOUT'
+  | 'QUOTA_EXCEEDED'
+  | 'LIVE_DATA_UNAVAILABLE'
+  | 'WEAK_MATCHES';
+
+// NEW: Live data verification
+export interface LiveDataVerification {
+  openingHoursVerified: boolean;
+  source?: 'places_details' | 'places_search' | 'unknown';
 }
+
+// Updated: AI Assistant Payload (was MicroAssist)
+export interface AssistPayload {
+  type: 'clarify' | 'suggest' | 'guide' | 'recovery';
+  mode?: 'NORMAL' | 'RECOVERY';
+  message: string;  // LLM-generated, multilingual
+  
+  // NEW: Reference chip IDs instead of inline actions
+  primaryActionId?: string;     // Highlighted chip
+  secondaryActionIds?: string[]; // Up to 4 additional chips (optional for backward compat)
+  
+  // NEW: Debug metadata
+  reasoning?: string;
+  failureReason?: FailureReason;
+  
+  // DEPRECATED: For backward compatibility only
+  suggestedActions?: { label: string; query: string }[];
+}
+
+// Alias for backward compatibility
+export type MicroAssist = AssistPayload;
 
 export interface ParsedQuery {
   original: string;
@@ -90,6 +122,10 @@ export interface SearchMeta {
   appliedFilters: string[];
   confidence: number;
   source: string;
+  // NEW: AI Assistant context
+  originalQuery?: string;
+  failureReason?: FailureReason;
+  liveData?: LiveDataVerification;
 }
 
 export interface ProposedActions {

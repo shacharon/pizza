@@ -10,6 +10,7 @@ import { SearchBarComponent } from '../components/search-bar/search-bar.componen
 import { RestaurantCardComponent } from '../components/restaurant-card/restaurant-card.component';
 import { GroupedResultsComponent } from '../components/grouped-results/grouped-results.component';
 import { ClarificationBlockComponent } from '../components/clarification-block/clarification-block.component';
+import { AssistantStripComponent } from '../components/assistant-strip/assistant-strip.component';
 import type { Restaurant, ClarificationChoice } from '../../../domain/types/search.types';
 import type { ActionType, ActionLevel } from '../../../domain/types/action.types';
 
@@ -21,7 +22,8 @@ import type { ActionType, ActionLevel } from '../../../domain/types/action.types
     SearchBarComponent,
     RestaurantCardComponent,
     GroupedResultsComponent,
-    ClarificationBlockComponent
+    ClarificationBlockComponent,
+    AssistantStripComponent
   ],
   providers: [SearchFacade],
   changeDetection: ChangeDetectionStrategy.OnPush,

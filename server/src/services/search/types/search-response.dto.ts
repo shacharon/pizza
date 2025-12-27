@@ -30,6 +30,10 @@ export interface SearchResponseMeta {
   confidence: number;  // Intent parsing confidence (0-1)
   source: string;  // Provider source(s) used
   cached?: boolean;  // Whether results were cached
+  // NEW: For AI assistant context
+  originalQuery?: string;
+  failureReason?: import('./search.types.js').FailureReason;
+  liveData?: import('./search.types.js').LiveDataVerification;
   // City filter statistics (optional)
   cityFilter?: {
     enabled: boolean;

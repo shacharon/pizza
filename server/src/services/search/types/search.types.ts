@@ -76,6 +76,18 @@ export interface ParsedIntent {
   // Language
   language: string;  // ISO code: 'en', 'he', 'ar', etc.
   regionLanguage?: string;  // Region's primary language
+  
+  // NEW: Semantic header for AI assistant (non-breaking additions)
+  intent?: 'search_food' | 'refine' | 'check_opening_status';
+  confidenceLevel?: 'high' | 'medium' | 'low';  // Derived from numeric confidence
+  requiresLiveData?: boolean;  // True if user asked about open/close/hours
+  originalQuery?: string;  // Immutable, for assistant context
+  
+  // NEW: Optional canonical extraction (for assistant narration)
+  canonical?: {
+    category?: string;      // "pizza"
+    locationText?: string;  // "Tel Aviv"
+  };
 }
 
 export interface IntentParseResult {
@@ -171,16 +183,44 @@ export interface RefinementChip {
 }
 
 // ============================================================================
-// Assist Types (Future: micro-assist UI)
+// Assist Types (AI Assistant "Next Step" UI)
 // ============================================================================
+
+// Deterministic failure reasons (computed by code, not LLM)
+export type FailureReason = 
+  | 'NONE'
+  | 'NO_RESULTS'
+  | 'LOW_CONFIDENCE'
+  | 'GEOCODING_FAILED'
+  | 'GOOGLE_API_ERROR'
+  | 'TIMEOUT'
+  | 'QUOTA_EXCEEDED'
+  | 'LIVE_DATA_UNAVAILABLE'
+  | 'WEAK_MATCHES';
+
+// Live data verification metadata (for safety rules)
+export interface LiveDataVerification {
+  openingHoursVerified: boolean;  // True only if we fetched detailed hours
+  source?: 'places_details' | 'places_search' | 'unknown';
+}
 
 export type AssistType = 'clarify' | 'suggest' | 'guide' | 'recovery';
 
 export interface AssistPayload {
   type: AssistType;
   mode?: 'NORMAL' | 'RECOVERY';  // Recovery mode for 0 results or weak results
-  message: string;
-  suggestedActions: {
+  message: string;  // LLM-generated, multilingual
+  
+  // NEW: Reference chip IDs instead of inline actions
+  primaryActionId?: string;     // Highlighted chip
+  secondaryActionIds?: string[]; // Up to 4 additional chips (optional for backward compat)
+  
+  // NEW: Debug metadata
+  reasoning?: string;            // Why these actions were chosen (debug only)
+  failureReason?: FailureReason; // If something went wrong
+  
+  // DEPRECATED: Use chip IDs instead
+  suggestedActions?: {
     label: string;
     query: string;
   }[];

@@ -57,7 +57,7 @@ export class SuggestionService implements ISuggestionService {
     const suggestions = this.suggestionGenerator.generate(
       legacyIntent as any,
       places,
-      intent.language as 'he' | 'en'
+      intent.language // Now accepts any string, will normalize inside
     );
 
     // Convert Suggestion[] to RefinementChip[]
@@ -104,27 +104,30 @@ export class SuggestionService implements ISuggestionService {
   /**
    * Get default suggestions (when no results or context)
    */
-  getDefaultSuggestions(language?: 'he' | 'en'): RefinementChip[] {
-    const lang = language ?? (SearchConfig.places.defaultLanguage as 'he' | 'en');
+  getDefaultSuggestions(language?: string): RefinementChip[] {
+    const lang = language ?? SearchConfig.places.defaultLanguage;
+    
+    // Use suggestion generator to get i18n labels
+    const generator = this.suggestionGenerator;
     
     return [
       {
         id: 'map',
         emoji: '🗺️',
-        label: lang === 'he' ? 'מפה' : 'Map',
+        label: generator.getSuggestionById('map', lang)?.label || 'Map',
         action: 'map',
       },
       {
         id: 'closest',
         emoji: '📍',
-        label: lang === 'he' ? 'הכי קרוב' : 'Closest',
+        label: generator.getSuggestionById('closest', lang)?.label || 'Closest',
         action: 'sort',
         filter: 'distance',
       },
       {
         id: 'toprated',
         emoji: '⭐',
-        label: lang === 'he' ? 'מדורג גבוה' : 'Top rated',
+        label: generator.getSuggestionById('toprated', lang)?.label || 'Top rated',
         action: 'filter',
         filter: `rating>=${SearchConfig.ranking.thresholds.highlyRated}`,
       },

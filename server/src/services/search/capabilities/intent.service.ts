@@ -108,6 +108,18 @@ export class IntentService implements IIntentService {
 
     // Calculate confidence score
     const confidence = this.calculateConfidence(intent, context);
+    
+    // NEW: Populate semantic header for AI assistant
+    intent.originalQuery = text;
+    intent.confidenceLevel = this.mapConfidenceLevel(confidence);
+    intent.intent = this.determineIntentType(text, intent);
+    intent.requiresLiveData = this.checkRequiresLiveData(text, intent);
+    
+    // NEW: Extract canonical category and location for assistant context
+    intent.canonical = {
+      category: intent.query || undefined,
+      locationText: intent.location?.city || intent.location?.place || undefined,
+    };
 
     return { intent, confidence };
   }
@@ -216,6 +228,58 @@ export class IntentService implements IIntentService {
       intent.occasion ||
       (intent.vibe && intent.vibe.length > 0)
     );
+  }
+
+  // ============================================================================
+  // NEW: AI Assistant Helper Methods
+  // ============================================================================
+
+  /**
+   * Map numeric confidence to semantic level
+   */
+  private mapConfidenceLevel(confidence: number): 'high' | 'medium' | 'low' {
+    if (confidence >= 0.7) return 'high';
+    if (confidence >= 0.5) return 'medium';
+    return 'low';
+  }
+
+  /**
+   * Determine intent type from text and parsed intent
+   */
+  private determineIntentType(
+    text: string,
+    intent: ParsedIntent
+  ): 'search_food' | 'refine' | 'check_opening_status' {
+    const lowerText = text.toLowerCase();
+    
+    // Check for opening status queries
+    const openingKeywords = ['open', 'closed', 'hours', 'now', 'פתוח', 'סגור', 'שעות'];
+    if (openingKeywords.some(kw => lowerText.includes(kw)) && intent.filters.openNow) {
+      return 'check_opening_status';
+    }
+    
+    // Check for refinement queries (short, filter-heavy, no new category)
+    if (this.hasAnyFilters(intent) && text.length < 15) {
+      return 'refine';
+    }
+    
+    // Default: search_food
+    return 'search_food';
+  }
+
+  /**
+   * Check if query requires live data verification
+   */
+  private checkRequiresLiveData(text: string, intent: ParsedIntent): boolean {
+    const lowerText = text.toLowerCase();
+    
+    // Keywords that indicate user wants live opening hours
+    const liveDataKeywords = [
+      'open', 'closed', 'hours', 'now', 'tonight', 'today',
+      'פתוח', 'סגור', 'שעות', 'עכשיו', 'הלילה', 'היום'
+    ];
+    
+    return liveDataKeywords.some(kw => lowerText.includes(kw)) || intent.filters.openNow === true;
   }
 }
 

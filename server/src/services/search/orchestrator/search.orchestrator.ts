@@ -27,7 +27,8 @@ import { TokenDetectorService } from '../detectors/token-detector.service.js';
 import { ClarificationService } from '../clarification/clarification.service.js';
 import { ResultStateEngine } from '../rse/result-state-engine.js';
 import { ChatBackService } from '../chatback/chatback.service.js';
-import type { ResultGroup } from '../types/search.types.js';
+import { FailureDetectorService, AssistantNarrationService } from '../assistant/index.js';
+import type { ResultGroup, LiveDataVerification } from '../types/search.types.js';
 
 /**
  * SearchOrchestrator
@@ -40,6 +41,9 @@ export class SearchOrchestrator {
     private clarificationService: ClarificationService;
     private rse: ResultStateEngine;
     private chatBackService: ChatBackService;
+    // NEW: AI Assistant services
+    private failureDetector: FailureDetectorService;
+    private assistantNarration: AssistantNarrationService;
 
     constructor(
         private intentService: IIntentService,
@@ -47,7 +51,8 @@ export class SearchOrchestrator {
         private placesProvider: IPlacesProviderService,
         private rankingService: IRankingService,
         private suggestionService: ISuggestionService,
-        private sessionService: ISessionService
+        private sessionService: ISessionService,
+        private llm?: import('../../../types/llm.types.js').LLMProvider | null
     ) {
         this.cityFilter = new CityFilterService(5); // Min 5 results before fallback
         this.streetDetector = new StreetDetectorService();
@@ -55,6 +60,9 @@ export class SearchOrchestrator {
         this.clarificationService = new ClarificationService();
         this.rse = new ResultStateEngine();
         this.chatBackService = new ChatBackService();
+        // NEW: AI Assistant services
+        this.failureDetector = new FailureDetectorService();
+        this.assistantNarration = new AssistantNarrationService(llm || null);
         
         // Wire up session service to intent service for city caching
         if ('setSessionService' in this.intentService) {
@@ -351,47 +359,38 @@ export class SearchOrchestrator {
                 groups
             );
 
-            // Step 8: ChatBack generates natural language message if needed
-            let assist: AssistPayload | undefined;
-            if (responsePlan.scenario !== 'exact_match' || confidence < 0.8) {
-                const memory = this.sessionService.getChatBackMemory(request.sessionId);
-                const recentMessages = this.sessionService.getRecentMessages(request.sessionId, 3);
-                
-                const chatBackInput = {
-                    userText: request.query,
-                    intent,
-                    responsePlan,
-                    memory: memory ? {
-                        turnIndex: memory.turnIndex,
-                        lastMessages: recentMessages,
-                        scenarioCount: memory.scenarioCount[responsePlan.scenario] || 0
-                    } : undefined
-                };
-                
-                const chatBackOutput = await this.chatBackService.generate(chatBackInput);
-                
-                assist = {
-                    type: chatBackOutput.mode === 'RECOVERY' ? 'recovery' : 'clarify',
-                    mode: chatBackOutput.mode,
-                    message: chatBackOutput.message,
-                    suggestedActions: chatBackOutput.actions.map(a => ({ 
-                        label: a.label, 
-                        query: a.query 
-                    }))
-                };
-                
-                // Save to session memory
-                const messageHash = this.chatBackService.hashMessage(chatBackOutput.message);
-                this.sessionService.addChatBackTurn(
-                    request.sessionId,
-                    topResults.map(r => r.placeId),
-                    chatBackOutput.actions.map(a => a.id),
-                    messageHash,
-                    responsePlan.scenario
-                );
-                
-                console.log(`[SearchOrchestrator] ChatBack generated ${chatBackOutput.mode} message for scenario: ${responsePlan.scenario}`);
-            }
+            // Step 8: Generate AI assistant guidance (LLM Pass B)
+            // Compute failure reason deterministically
+            const meta = {
+                source: this.placesProvider.getName(),
+                cached: false,
+                liveData: {
+                    openingHoursVerified: false, // TODO: Set true when we fetch Places Details with hours
+                    source: 'places_search' as const
+                } as LiveDataVerification
+            };
+            
+            const failureReason = this.failureDetector.computeFailureReason(
+                topResults,
+                confidence,
+                meta,
+                intent
+            );
+            
+            console.log(`[SearchOrchestrator] Failure reason: ${failureReason}`);
+            
+            // Generate assistant message and action recommendations
+            const assist = await this.assistantNarration.generate({
+                originalQuery: request.query,
+                intent,
+                results: topResults,
+                chips,
+                failureReason,
+                liveData: meta.liveData,
+                language: intent.language
+            });
+            
+            console.log(`[SearchOrchestrator] Assistant generated ${assist.mode} message with ${assist.secondaryActionIds.length} actions`);
 
             // Step 8.5: Generate proposed actions (Human-in-the-Loop pattern)
             const proposedActions = this.generateProposedActions();
@@ -412,6 +411,7 @@ export class SearchOrchestrator {
                 results: topResults,
                 groups,  // NEW: Grouped results
                 chips,
+                assist,  // NEW: AI Assistant payload
                 proposedActions,
                 meta: {
                     tookMs,
@@ -419,6 +419,10 @@ export class SearchOrchestrator {
                     appliedFilters: this.getAppliedFiltersList(intent, request),
                     confidence,
                     source: this.placesProvider.getName(),
+                    // NEW: AI Assistant context
+                    originalQuery: request.query,
+                    failureReason,
+                    liveData: meta.liveData,
                     // NEW: City filter stats
                     cityFilter: intent.location?.city ? {
                         enabled: true,

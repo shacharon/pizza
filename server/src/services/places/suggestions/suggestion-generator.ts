@@ -13,6 +13,9 @@
  */
 
 import type { ParsedIntent } from '../session/session-manager.js';
+import { getI18n, type Lang, normalizeLang } from '../../i18n/index.js';
+
+const i18n = getI18n();
 
 export interface Suggestion {
     id: string;
@@ -40,13 +43,14 @@ export class SuggestionGenerator {
     generate(
         intent: ParsedIntent,
         results: PlaceItem[],
-        language: 'he' | 'en' = 'en'
+        language: string = 'en'
     ): Suggestion[] {
         const suggestions: Suggestion[] = [];
+        const lang = normalizeLang(language);
 
         if (results.length === 0) {
             // No results - suggest broadening search
-            return this.getBroadeningSuggestions(intent, language);
+            return this.getBroadeningSuggestions(intent, lang);
         }
 
         // Analyze results to suggest relevant filters
@@ -57,7 +61,7 @@ export class SuggestionGenerator {
             suggestions.push({
                 id: 'delivery',
                 emoji: '🚗',
-                label: language === 'he' ? 'משלוחים' : 'Delivery',
+                label: i18n.t('chip.delivery', lang),
                 action: 'filter',
                 filter: 'delivery'
             });
@@ -68,7 +72,7 @@ export class SuggestionGenerator {
             suggestions.push({
                 id: 'budget',
                 emoji: '💰',
-                label: language === 'he' ? 'זול' : 'Budget',
+                label: i18n.t('chip.budget', lang),
                 action: 'filter',
                 filter: 'price<=2'
             });
@@ -79,7 +83,7 @@ export class SuggestionGenerator {
             suggestions.push({
                 id: 'toprated',
                 emoji: '⭐',
-                label: language === 'he' ? 'מדורג גבוה' : 'Top rated',
+                label: i18n.t('chip.topRated', lang),
                 action: 'filter',
                 filter: 'rating>=4.5'
             });
@@ -90,7 +94,7 @@ export class SuggestionGenerator {
             suggestions.push({
                 id: 'opennow',
                 emoji: '🟢',
-                label: language === 'he' ? 'פתוח עכשיו' : 'Open now',
+                label: i18n.t('chip.openNow', lang),
                 action: 'filter',
                 filter: 'opennow'
             });
@@ -100,7 +104,7 @@ export class SuggestionGenerator {
         suggestions.push({
             id: 'map',
             emoji: '🗺️',
-            label: language === 'he' ? 'מפה' : 'Map',
+            label: i18n.t('chip.map', lang),
             action: 'map'
         });
 
@@ -109,7 +113,7 @@ export class SuggestionGenerator {
             suggestions.push({
                 id: 'closest',
                 emoji: '📍',
-                label: language === 'he' ? 'הכי קרוב' : 'Closest',
+                label: i18n.t('chip.closest', lang),
                 action: 'sort',
                 filter: 'distance'
             });
@@ -145,7 +149,7 @@ export class SuggestionGenerator {
      */
     private getBroadeningSuggestions(
         intent: ParsedIntent,
-        language: 'he' | 'en'
+        lang: Lang
     ): Suggestion[] {
         const suggestions: Suggestion[] = [];
 
@@ -154,7 +158,7 @@ export class SuggestionGenerator {
             suggestions.push({
                 id: 'anytime',
                 emoji: '🕒',
-                label: language === 'he' ? 'בכל שעה' : 'Any time',
+                label: i18n.t('chip.openNow', lang), // Reuse "Open now" for temporal
                 action: 'filter',
                 filter: 'remove:temporal'
             });
@@ -165,7 +169,7 @@ export class SuggestionGenerator {
             suggestions.push({
                 id: 'any_dietary',
                 emoji: '🍽️',
-                label: language === 'he' ? 'ללא הגבלות תזונה' : 'Any dietary',
+                label: i18n.t('chip.expandSearch', lang),
                 action: 'filter',
                 filter: 'remove:dietary'
             });
@@ -175,7 +179,7 @@ export class SuggestionGenerator {
         suggestions.push({
             id: 'expand',
             emoji: '🔍',
-            label: language === 'he' ? 'הרחב חיפוש' : 'Expand area',
+            label: i18n.t('chip.expandSearch', lang),
             action: 'filter',
             filter: 'radius:10000'
         });
@@ -184,7 +188,7 @@ export class SuggestionGenerator {
         suggestions.push({
             id: 'map',
             emoji: '🗺️',
-            label: language === 'he' ? 'מפה' : 'Map',
+            label: i18n.t('chip.map', lang),
             action: 'map'
         });
 
@@ -203,46 +207,48 @@ export class SuggestionGenerator {
     /**
      * Get suggestion by ID (for applying it)
      */
-    getSuggestionById(id: string, language: 'he' | 'en' = 'en'): Suggestion | null {
+    getSuggestionById(id: string, language: string = 'en'): Suggestion | null {
+        const lang = normalizeLang(language);
+        
         const suggestions: Record<string, Suggestion> = {
             'delivery': {
                 id: 'delivery',
                 emoji: '🚗',
-                label: language === 'he' ? 'משלוחים' : 'Delivery',
+                label: i18n.t('chip.delivery', lang),
                 action: 'filter',
                 filter: 'delivery'
             },
             'budget': {
                 id: 'budget',
                 emoji: '💰',
-                label: language === 'he' ? 'זול' : 'Budget',
+                label: i18n.t('chip.budget', lang),
                 action: 'filter',
                 filter: 'price<=2'
             },
             'toprated': {
                 id: 'toprated',
                 emoji: '⭐',
-                label: language === 'he' ? 'מדורג גבוה' : 'Top rated',
+                label: i18n.t('chip.topRated', lang),
                 action: 'filter',
                 filter: 'rating>=4.5'
             },
             'opennow': {
                 id: 'opennow',
                 emoji: '🟢',
-                label: language === 'he' ? 'פתוח עכשיו' : 'Open now',
+                label: i18n.t('chip.openNow', lang),
                 action: 'filter',
                 filter: 'opennow'
             },
             'map': {
                 id: 'map',
                 emoji: '🗺️',
-                label: language === 'he' ? 'מפה' : 'Map',
+                label: i18n.t('chip.map', lang),
                 action: 'map'
             },
             'closest': {
                 id: 'closest',
                 emoji: '📍',
-                label: language === 'he' ? 'הכי קרוב' : 'Closest',
+                label: i18n.t('chip.closest', lang),
                 action: 'sort',
                 filter: 'distance'
             }

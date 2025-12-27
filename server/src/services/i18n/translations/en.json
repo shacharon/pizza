@@ -1,0 +1,38 @@
+{
+  "chip": {
+    "delivery": "Delivery",
+    "budget": "Budget",
+    "topRated": "Top rated",
+    "openNow": "Open now",
+    "map": "Map",
+    "closest": "Closest",
+    "takeout": "Takeout",
+    "romantic": "Romantic",
+    "family": "Family friendly",
+    "nearby": "Nearby",
+    "expandSearch": "Expand search"
+  },
+  "fallback": {
+    "noResults": "No results found",
+    "noResultsTryExpand": "No results found. Try expanding your search.",
+    "geocodingFailed": "Couldn't locate that place",
+    "geocodingFailedTryCity": "Couldn't locate that place. Try a different city.",
+    "foundPlaces": "Found {{count}} places",
+    "foundPlacesCanFilter": "Found {{count}} places. You can filter or sort.",
+    "whatToDo": "What would you like to do?",
+    "lowConfidence": "I'm not sure I understood. Can you try rephrasing?",
+    "apiError": "Couldn't reach the search service right now. Try again in a moment.",
+    "timeout": "Search took too long. Please try again.",
+    "quotaExceeded": "Too many requests. Please wait a moment and try again.",
+    "liveDataUnavailable": "Can't verify opening hours right now. Want me to check?"
+  },
+  "action": {
+    "sortByRating": "Sort by rating",
+    "sortByPrice": "Sort by price",
+    "sortByDistance": "Sort by distance",
+    "filterCheap": "Cheap eats",
+    "filterExpensive": "Premium dining",
+    "showOnMap": "Show on map"
+  }
+}
+

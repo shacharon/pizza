@@ -1,0 +1,38 @@
+{
+  "chip": {
+    "delivery": "توصيل",
+    "budget": "رخيص",
+    "topRated": "الأعلى تقييماً",
+    "openNow": "مفتوح الآن",
+    "map": "خريطة",
+    "closest": "الأقرب",
+    "takeout": "استلام ذاتي",
+    "romantic": "رومانسي",
+    "family": "عائلي",
+    "nearby": "قريب",
+    "expandSearch": "توسيع البحث"
+  },
+  "fallback": {
+    "noResults": "لم أجد نتائج",
+    "noResultsTryExpand": "لم أجد نتائج. حاول توسيع البحث.",
+    "geocodingFailed": "لم أتمكن من تحديد الموقع",
+    "geocodingFailedTryCity": "لم أتمكن من تحديد هذا الموقع. جرب مدينة أخرى.",
+    "foundPlaces": "وجدت {{count}} مكان",
+    "foundPlacesCanFilter": "وجدت {{count}} مكان. يمكنك التصفية أو الترتيب.",
+    "whatToDo": "ماذا تريد أن تفعل؟",
+    "lowConfidence": "لست متأكداً من فهمي. هل يمكنك إعادة الصياغة؟",
+    "apiError": "لا يمكن الوصول إلى خدمة البحث الآن. حاول مرة أخرى بعد قليل.",
+    "timeout": "استغرق البحث وقتاً طويلاً. يرجى المحاولة مرة أخرى.",
+    "quotaExceeded": "طلبات كثيرة جداً. يرجى الانتظار قليلاً والمحاولة مرة أخرى.",
+    "liveDataUnavailable": "لا يمكن التحقق من ساعات العمل الآن. هل تريد التحقق؟"
+  },
+  "action": {
+    "sortByRating": "ترتيب حسب التقييم",
+    "sortByPrice": "ترتيب حسب السعر",
+    "sortByDistance": "ترتيب حسب المسافة",
+    "filterCheap": "طعام رخيص",
+    "filterExpensive": "مطاعم فاخرة",
+    "showOnMap": "عرض على الخريطة"
+  }
+}
+
