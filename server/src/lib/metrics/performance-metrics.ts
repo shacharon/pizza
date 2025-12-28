@@ -31,6 +31,15 @@ export interface MetricsSnapshot {
     passB: number;
     total: number;
   };
+  assistant: {
+    template: number;
+    cache: number;
+    llm: number;
+    total: number;
+    avgTemplateMs: number;
+    avgCacheMs: number;
+    avgLLMMs: number;
+  };
   timestamp: string;
 }
 
@@ -41,9 +50,11 @@ export class PerformanceMetrics {
     cacheHits: 0,
     cacheMisses: 0,
     llmCalls: { passA: 0, passB: 0 },
+    assistantCalls: [] as { strategy: 'TEMPLATE' | 'CACHE' | 'LLM'; durationMs: number }[],
   };
   
   private readonly maxLatencyHistory = 1000;
+  private readonly maxAssistantHistory = 500;
   
   /**
    * Record a request completion
@@ -91,6 +102,42 @@ export class PerformanceMetrics {
   }
   
   /**
+   * Record assistant call strategy (Performance Policy tracking)
+   */
+  trackAssistant(strategy: 'TEMPLATE' | 'CACHE' | 'LLM', durationMs: number) {
+    this.metrics.assistantCalls.push({ strategy, durationMs });
+    
+    // Keep only last N calls (memory efficient)
+    if (this.metrics.assistantCalls.length > this.maxAssistantHistory) {
+      this.metrics.assistantCalls.shift();
+    }
+  }
+  
+  /**
+   * Get assistant performance stats
+   */
+  getAssistantStats() {
+    const calls = this.metrics.assistantCalls;
+    
+    const templateCalls = calls.filter(c => c.strategy === 'TEMPLATE');
+    const cacheCalls = calls.filter(c => c.strategy === 'CACHE');
+    const llmCalls = calls.filter(c => c.strategy === 'LLM');
+    
+    const avg = (arr: { durationMs: number }[]) => 
+      arr.length > 0 ? arr.reduce((sum, c) => sum + c.durationMs, 0) / arr.length : 0;
+    
+    return {
+      template: templateCalls.length,
+      cache: cacheCalls.length,
+      llm: llmCalls.length,
+      total: calls.length,
+      avgTemplateMs: avg(templateCalls),
+      avgCacheMs: avg(cacheCalls),
+      avgLLMMs: avg(llmCalls)
+    };
+  }
+  
+  /**
    * Get current metrics snapshot
    */
   getSnapshot(): MetricsSnapshot {
@@ -115,6 +162,7 @@ export class PerformanceMetrics {
     
     const totalCache = this.metrics.cacheHits + this.metrics.cacheMisses;
     const totalLLM = this.metrics.llmCalls.passA + this.metrics.llmCalls.passB;
+    const assistantStats = this.getAssistantStats();
     
     return {
       requests: {
@@ -134,6 +182,7 @@ export class PerformanceMetrics {
         passB: this.metrics.llmCalls.passB,
         total: totalLLM,
       },
+      assistant: assistantStats,
       timestamp: new Date().toISOString(),
     };
   }
@@ -148,6 +197,7 @@ export class PerformanceMetrics {
       cacheHits: 0,
       cacheMisses: 0,
       llmCalls: { passA: 0, passB: 0 },
+      assistantCalls: [],
     };
   }
 }

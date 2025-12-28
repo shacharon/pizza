@@ -15,7 +15,14 @@ import type {
   FailureReason,
 } from '../types/search.types.js';
 import type { AssistantContext, ChipReference } from '../types/truth-state.types.js';
+import type { TruthState } from '../types/truth-state.types.js';
 import { getI18n, normalizeLang, type Lang } from '../../i18n/index.js';
+import { AssistantPolicy } from './assistant-policy.js';
+import { generateNormalTemplate, type TemplateContext } from './assistant-templates.js';
+import { caches } from '../../../lib/cache/cache-manager.js';
+import { CacheConfig } from '../config/cache.config.js';
+import { LLM_ASSISTANT_TIMEOUT_MS } from '../../../config/index.js';
+import * as crypto from 'crypto';
 
 const i18n = getI18n();
 
@@ -83,7 +90,7 @@ export class AssistantNarrationService {
         AssistantResponseSchema,
         {
           temperature: 0.3, // Allow variety but stay grounded
-          timeout: 5000, // 5s timeout
+          timeout: LLM_ASSISTANT_TIMEOUT_MS, // 8s timeout (increased for reliability)
         }
       );
 
@@ -114,6 +121,111 @@ export class AssistantNarrationService {
       console.error('[AssistantNarration] LLM failed, using fallback:', error);
       return this.createFallbackPayload(ctx);
     }
+  }
+
+  /**
+   * Assistant Narration Performance Policy: Fast generation with template/cache/LLM strategy
+   * 
+   * @param context - Minimal assistant context
+   * @param truthState - Full truth state for policy decision
+   * @returns AssistPayload with strategy metadata
+   */
+  async generateFast(
+    context: AssistantContext,
+    truthState: TruthState
+  ): Promise<AssistPayload & { usedTemplate?: boolean; fromCache?: boolean }> {
+    const decision = AssistantPolicy.decide(truthState);
+    const startTime = Date.now();
+    
+    // Strategy 1: Template (0ms, no LLM)
+    if (decision.strategy === 'TEMPLATE') {
+      const templateCtx: TemplateContext = {
+        resultCount: truthState.results.length,
+        category: truthState.intent.canonical?.category,
+        city: truthState.intent.canonical?.locationText,
+        language: truthState.language as 'he' | 'en' | 'ar' | 'ru',
+        hasActiveFilters: Object.keys(truthState.intent.filters || {}).length > 0,
+        topResultName: truthState.results[0]?.name
+      };
+      
+      const message = generateNormalTemplate(templateCtx);
+      const duration = Date.now() - startTime;
+      
+      console.log(`[Assistant] ✨ TEMPLATE (${duration}ms, reason: ${decision.reason})`);
+      
+      return {
+        type: 'guide',
+        mode: 'NORMAL',
+        message,
+        primaryActionId: undefined,
+        secondaryActionIds: [],
+        failureReason: 'NONE',
+        usedTemplate: true,
+        fromCache: false
+      };
+    }
+    
+    // Strategy 2: Check cache
+    if (decision.strategy === 'CACHE' && CacheConfig.assistantNarration.enabled) {
+      const cacheKey = this.buildAssistCacheKey(truthState);
+      const cached = caches.assistantNarration.get(cacheKey);
+      
+      if (cached) {
+        const duration = Date.now() - startTime;
+        console.log(`[Assistant] ✅ CACHE HIT (${duration}ms)`);
+        return { ...cached, fromCache: true, usedTemplate: false };
+      }
+    }
+    
+    // Strategy 3: LLM fallback
+    console.log(`[Assistant] 🤖 LLM (reason: ${decision.reason})`);
+    const result = await this.generate({ context });
+    
+    // Cache LLM result for future requests
+    if (decision.strategy === 'CACHE' && CacheConfig.assistantNarration.enabled) {
+      const cacheKey = this.buildAssistCacheKey(truthState);
+      const ttl = AssistantPolicy.getCacheTTL(truthState.mode);
+      caches.assistantNarration.set(cacheKey, result, ttl);
+      console.log(`[Assistant] 💾 Cached result (TTL: ${ttl / 1000}s)`);
+    }
+    
+    return { ...result, usedTemplate: false, fromCache: false };
+  }
+
+  /**
+   * Build stable cache key for assistant narration
+   * 
+   * Key components:
+   * - Mode (NORMAL/RECOVERY/CLARIFY)
+   * - Language
+   * - Canonical intent (category + city + filters)
+   * - Top result IDs (for result stability)
+   */
+  private buildAssistCacheKey(truthState: TruthState): string {
+    const { mode, intent, results, language } = truthState;
+    
+    // Canonical intent key
+    const intentParts = [
+      intent.canonical?.category,
+      intent.canonical?.locationText,
+      intent.filters?.openNow ? 'open' : '',
+      intent.filters?.dietary?.sort().join(',')
+    ].filter(Boolean);
+    const intentKey = intentParts.join(':');
+    
+    // Top K place IDs (for result stability)
+    const topPlaces = results.slice(0, 5).map(r => r.placeId).join(',');
+    const placesHash = this.hashString(topPlaces);
+    
+    return `assist:v1:${mode}:${language}:${intentKey}:${placesHash}`;
+  }
+
+  /**
+   * Simple hash function for cache key stability
+   */
+  private hashString(str: string): string {
+    if (!str) return 'empty';
+    return crypto.createHash('md5').update(str).digest('hex').substring(0, 8);
   }
 
   /**

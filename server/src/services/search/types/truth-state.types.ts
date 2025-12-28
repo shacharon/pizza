@@ -34,6 +34,12 @@ export interface TruthState {
   // Response mode (deterministic)
   mode: ResponseMode;
 
+  // Intent confidence (for assistant strategy decision)
+  confidence?: number;
+  
+  // Response language (for assistant template selection)
+  language: string;
+
   // Minimal context for LLM Pass B (ALLOWLIST ONLY)
   assistantContext: AssistantContext;
 

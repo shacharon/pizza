@@ -116,6 +116,14 @@
   "disclosure": {
     "closedNowDerived": "Showing only closed places ({{count}} of {{total}} results)",
     "closedNowExplanation": "Google Places doesn't support closed filter - we filter results on our side"
+  },
+  "assistant": {
+    "noResults": "No results found",
+    "foundResults": "Found {{count}} {{category}} restaurants in {{city}}",
+    "foundWithCategory": "Found {{count}} {{category}} restaurants",
+    "foundInCity": "Found {{count}} restaurants in {{city}}",
+    "foundGeneric": "Found {{count}} results",
+    "withFilters": "with your selected filters"
   }
 }
 

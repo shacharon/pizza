@@ -181,6 +181,7 @@ export const caches = {
   placesSearch: new CacheManager<any>(1000, 'placesSearch'),
   ranking: new CacheManager<any>(500, 'ranking'),
   intentParsing: new CacheManager<any>(200, 'intentParsing'),
+  assistantNarration: new CacheManager<any>(200, 'assistantNarration'),
 };
 
 /**

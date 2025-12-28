@@ -49,6 +49,12 @@ export interface CacheConfigType {
     maxSize: number;
     fastPathEnabled: boolean;
   };
+  assistantNarration: {
+    enabled: boolean;
+    ttlNormal: number;
+    ttlRecovery: number;
+    maxSize: number;
+  };
 }
 
 export const CacheConfig: CacheConfigType = {
@@ -73,6 +79,12 @@ export const CacheConfig: CacheConfigType = {
     ttl: getIntentTTL(),
     maxSize: parseInt(process.env.CACHE_INTENT_SIZE || '200'),
     fastPathEnabled: INTENT_FAST_PATH_ENABLED,
+  },
+  assistantNarration: {
+    enabled: process.env.CACHE_ASSISTANT !== 'false',
+    ttlNormal: parseInt(process.env.CACHE_ASSISTANT_TTL_NORMAL || '1800000'), // 30 min
+    ttlRecovery: parseInt(process.env.CACHE_ASSISTANT_TTL_RECOVERY || '600000'), // 10 min
+    maxSize: parseInt(process.env.CACHE_ASSISTANT_SIZE || '200'),
   },
 };
 

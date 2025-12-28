@@ -116,5 +116,13 @@
   "disclosure": {
     "closedNowDerived": "מציג רק מקומות סגורים ({{count}} מתוך {{total}} תוצאות)",
     "closedNowExplanation": "Google Places לא תומך בסינון סגור - מסננים תוצאות בצד שלנו"
+  },
+  "assistant": {
+    "noResults": "לא מצאתי תוצאות",
+    "foundResults": "מצאתי {{count}} מסעדות {{category}} ב{{city}}",
+    "foundWithCategory": "מצאתי {{count}} מסעדות {{category}}",
+    "foundInCity": "מצאתי {{count}} מסעדות ב{{city}}",
+    "foundGeneric": "מצאתי {{count}} תוצאות",
+    "withFilters": "עם הסינון שבחרת"
   }
 }

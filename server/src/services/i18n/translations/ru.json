@@ -116,6 +116,14 @@
   "disclosure": {
     "closedNowDerived": "Показаны только закрытые места ({{count}} из {{total}} результатов)",
     "closedNowExplanation": "Google Places не поддерживает фильтр закрытых - мы фильтруем результаты на нашей стороне"
+  },
+  "assistant": {
+    "noResults": "Результаты не найдены",
+    "foundResults": "Найдено {{count}} ресторанов {{category}} в {{city}}",
+    "foundWithCategory": "Найдено {{count}} ресторанов {{category}}",
+    "foundInCity": "Найдено {{count}} ресторанов в {{city}}",
+    "foundGeneric": "Найдено {{count}} результатов",
+    "withFilters": "с выбранными фильтрами"
   }
 }
 

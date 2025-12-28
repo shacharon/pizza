@@ -34,6 +34,11 @@ export const LLM_COMPLETION_TIMEOUT_MS = 10_000;
 /** The timeout (in ms) for the very quick "is this a food?" check. */
 export const LLM_FOOD_CHECK_TIMEOUT_MS = 5_000;
 
+/** The timeout (in ms) for assistant narration LLM calls (increased for reliability). */
+export const LLM_ASSISTANT_TIMEOUT_MS = parseInt(
+  process.env.LLM_ASSISTANT_TIMEOUT || '8000'
+); // 8 seconds (was timing out at ~5s)
+
 // === NLU Fallback Settings ===
 
 /** A list of common Hebrew city names for the fallback NLU extractor. */
@@ -79,6 +84,7 @@ const config = {
     LLM_JSON_TIMEOUT_MS,
     LLM_COMPLETION_TIMEOUT_MS,
     LLM_FOOD_CHECK_TIMEOUT_MS,
+    LLM_ASSISTANT_TIMEOUT_MS,
     FALLBACK_HEBREW_CITIES,
     FALLBACK_ENGLISH_CITIES,
     CONVERSATION_SIMPLE_MODE,

@@ -190,6 +190,8 @@ export class SearchOrchestrator {
                     chips: [],
                     failureReason,
                     mode,
+                    confidence,
+                    language: intent.language,
                     assistantContext: buildAssistantContext({
                         intent,
                         results: [],
@@ -200,13 +202,20 @@ export class SearchOrchestrator {
                     }),
                 };
 
-                // Generate assist with minimal context
+                // Generate assist with minimal context (Performance Policy: Template/Cache/LLM)
                 const assistStart = Date.now();
-                const assist = await this.assistantNarration.generate({
-                    context: truthState.assistantContext,
-                });
+                const assist = await this.assistantNarration.generateFast(
+                    truthState.assistantContext,
+                    truthState
+                );
                 timings.assistantMs = Date.now() - assistStart;
-                flags.usedLLMAssistant = !assist.reasoning?.includes('fallback');
+                flags.usedTemplateAssistant = assist.usedTemplate || false;
+                flags.usedCachedAssistant = assist.fromCache || false;
+                flags.usedLLMAssistant = !assist.usedTemplate && !assist.fromCache;
+                
+                // Log strategy
+                const strategy = assist.usedTemplate ? 'TEMPLATE' : (assist.fromCache ? 'CACHE' : 'LLM');
+                console.log(`[SearchOrchestrator] Assistant: strategy=${strategy} duration=${timings.assistantMs}ms`);
 
                 return createSearchResponse({
                     sessionId,
@@ -248,6 +257,8 @@ export class SearchOrchestrator {
                     chips: [],
                     failureReason,
                     mode,
+                    confidence,
+                    language: intent.language,
                     assistantContext: buildAssistantContext({
                         intent,
                         results: [],
@@ -258,13 +269,20 @@ export class SearchOrchestrator {
                     }),
                 };
 
-                // Generate assist with minimal context
+                // Generate assist with minimal context (Performance Policy: Template/Cache/LLM)
                 const assistStart = Date.now();
-                const assist = await this.assistantNarration.generate({
-                    context: truthState.assistantContext,
-                });
+                const assist = await this.assistantNarration.generateFast(
+                    truthState.assistantContext,
+                    truthState
+                );
                 timings.assistantMs = Date.now() - assistStart;
-                flags.usedLLMAssistant = !assist.reasoning?.includes('fallback');
+                flags.usedTemplateAssistant = assist.usedTemplate || false;
+                flags.usedCachedAssistant = assist.fromCache || false;
+                flags.usedLLMAssistant = !assist.usedTemplate && !assist.fromCache;
+                
+                // Log strategy
+                const strategy = assist.usedTemplate ? 'TEMPLATE' : (assist.fromCache ? 'CACHE' : 'LLM');
+                console.log(`[SearchOrchestrator] Assistant: strategy=${strategy} duration=${timings.assistantMs}ms`);
 
                 return createSearchResponse({
                     sessionId,
@@ -318,6 +336,8 @@ export class SearchOrchestrator {
                     chips: [],
                     failureReason,
                     mode,
+                    confidence,
+                    language: intent.language,
                     assistantContext: buildAssistantContext({
                         intent,
                         results: [],
@@ -328,13 +348,20 @@ export class SearchOrchestrator {
                     }),
                 };
 
-                // Generate assist with minimal context
+                // Generate assist with minimal context (Performance Policy: Template/Cache/LLM)
                 const assistStart = Date.now();
-                const assist = await this.assistantNarration.generate({
-                    context: truthState.assistantContext,
-                });
+                const assist = await this.assistantNarration.generateFast(
+                    truthState.assistantContext,
+                    truthState
+                );
                 timings.assistantMs = Date.now() - assistStart;
-                flags.usedLLMAssistant = !assist.reasoning?.includes('fallback');
+                flags.usedTemplateAssistant = assist.usedTemplate || false;
+                flags.usedCachedAssistant = assist.fromCache || false;
+                flags.usedLLMAssistant = !assist.usedTemplate && !assist.fromCache;
+                
+                // Log strategy
+                const strategy = assist.usedTemplate ? 'TEMPLATE' : (assist.fromCache ? 'CACHE' : 'LLM');
+                console.log(`[SearchOrchestrator] Assistant: strategy=${strategy} duration=${timings.assistantMs}ms`);
 
                 return createSearchResponse({
                     sessionId,
@@ -622,6 +649,8 @@ export class SearchOrchestrator {
                 chips,
                 failureReason,
                 mode,
+                confidence,
+                language: intent.language,
                 assistantContext: buildAssistantContext({
                     intent,
                     results: topResults,
@@ -634,15 +663,20 @@ export class SearchOrchestrator {
             
             console.log(`[SearchOrchestrator] TruthState built: mode=${mode}, failureReason=${failureReason}`);
             
-            // Step 9: Generate assistant message (LLM Pass B with minimal context)
+            // Step 9: Generate assistant message (Performance Policy: Template/Cache/LLM)
             const assistStart = Date.now();
-            const assist = await this.assistantNarration.generate({
-                context: truthState.assistantContext,  // Phase 2: Minimal allowlist only
-            });
+            const assist = await this.assistantNarration.generateFast(
+                truthState.assistantContext,
+                truthState
+            );
             timings.assistantMs = Date.now() - assistStart;
-            flags.usedLLMAssistant = !assist.reasoning?.includes('fallback');
+            flags.usedTemplateAssistant = assist.usedTemplate || false;
+            flags.usedCachedAssistant = assist.fromCache || false;
+            flags.usedLLMAssistant = !assist.usedTemplate && !assist.fromCache;
             
-            console.log(`[SearchOrchestrator] Assistant generated ${assist.mode} message (${timings.assistantMs}ms)`);
+            // Log strategy
+            const strategy = assist.usedTemplate ? 'TEMPLATE' : (assist.fromCache ? 'CACHE' : 'LLM');
+            console.log(`[SearchOrchestrator] Assistant: strategy=${strategy} duration=${timings.assistantMs}ms`);
 
             // Step 8.5: Generate proposed actions (Human-in-the-Loop pattern)
             const proposedActions = this.generateProposedActions();

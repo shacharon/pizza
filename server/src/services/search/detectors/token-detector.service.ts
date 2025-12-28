@@ -36,13 +36,29 @@ export class TokenDetectorService {
   ];
 
   /**
-   * Detect if query is a single ambiguous token
+   * Detect if query is a single ambiguous token OR contains constraint keywords
    */
   detect(query: string, context?: SessionContext): TokenDetectionResult {
     const normalizedQuery = this.normalizeQuery(query);
     
     // Check if it's a single token
     const tokens = normalizedQuery.split(/\s+/).filter(t => t.length > 0);
+    
+    // IMPORTANT: Check for constraint keywords (open/closed/etc) in ALL queries
+    // This must happen BEFORE single-token check to support queries like:
+    // "closed italian food in gedera" or "open pizza places"
+    for (const token of tokens) {
+      const constraintType = this.detectConstraintToken(token);
+      if (constraintType) {
+        return {
+          isSingleToken: tokens.length === 1,
+          tokenType: 'CONSTRAINT',
+          constraintType,
+          requiresClarification: false,  // No clarification needed for multi-token queries with constraints
+          confidence: 0.9
+        };
+      }
+    }
     
     if (tokens.length !== 1) {
       // Multi-token queries don't need clarification
@@ -56,7 +72,7 @@ export class TokenDetectorService {
 
     const token = tokens[0];
 
-    // Check if it's a constraint token
+    // Single token - check if it's a constraint token (redundant after loop above, but kept for clarity)
     const constraintType = this.detectConstraintToken(token);
     if (constraintType) {
       // Constraint tokens ALWAYS need clarification if no context exists
@@ -137,7 +153,9 @@ export class TokenDetectorService {
       case 'kosher':
         return Boolean(prev.filters?.dietary?.includes('kosher'));
       case 'openNow':
-        return Boolean(prev.filters?.openNow);
+        return Boolean(prev.filters?.openNow === true);
+      case 'closedNow':
+        return Boolean(prev.filters?.openNow === false);
       case 'glutenFree':
         return Boolean(prev.filters?.dietary?.includes('gluten_free'));
       case 'vegan':

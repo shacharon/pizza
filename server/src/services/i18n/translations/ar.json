@@ -116,6 +116,14 @@
   "disclosure": {
     "closedNowDerived": "عرض الأماكن المغلقة فقط ({{count}} من {{total}} نتيجة)",
     "closedNowExplanation": "Google Places لا يدعم تصفية المغلق - نقوم بتصفية النتائج من جانبنا"
+  },
+  "assistant": {
+    "noResults": "لم يتم العثور على نتائج",
+    "foundResults": "وجدت {{count}} مطاعم {{category}} في {{city}}",
+    "foundWithCategory": "وجدت {{count}} مطاعم {{category}}",
+    "foundInCity": "وجدت {{count}} مطاعم في {{city}}",
+    "foundGeneric": "وجدت {{count}} نتائج",
+    "withFilters": "مع المرشحات المحددة"
   }
 }
 
