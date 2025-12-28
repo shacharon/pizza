@@ -46,6 +46,10 @@ import { withRetry } from '../../../lib/reliability/retry-policy.js';
 import { ReliabilityConfig } from '../config/reliability.config.js';
 import { SearchConfig } from '../config/search.config.js';
 
+// Phase 1: Candidate pool ranking imports
+import { ConfidenceService } from '../capabilities/confidence.service.js';
+import { getRankingPoolConfig } from '../config/ranking.config.js';
+
 /**
  * SearchOrchestrator
  * Implements the Backend-for-Frontend pattern for unified search
@@ -61,6 +65,9 @@ export class SearchOrchestrator {
     // NEW: AI Assistant services
     private failureDetector: FailureDetectorService;
     private assistantNarration: AssistantNarrationService;
+    // Phase 1: Candidate pool ranking
+    private confidenceService = new ConfidenceService();
+    private poolConfig = getRankingPoolConfig();
 
     constructor(
         private intentService: IIntentService,
@@ -93,8 +100,9 @@ export class SearchOrchestrator {
      * Coordinates all services to provide unified search results
      * 
      * Phase 7: Enhanced with structured logging
+     * Phase 1: Added traceId for request tracking
      */
-    async search(request: SearchRequest): Promise<SearchResponse> {
+    async search(request: SearchRequest, traceId?: string): Promise<SearchResponse> {
         const startTime = Date.now();
         const requestId = request.sessionId || `req-${Date.now()}`;
 
@@ -149,10 +157,11 @@ export class SearchOrchestrator {
                 sessionId: session.id,
             };
             const intentStart = Date.now();
-            const { intent, confidence } = await this.intentService.parse(
+            const { intent, confidence: intentConfidence } = await this.intentService.parse(
                 request.query,
                 contextWithSession
             );
+            let confidence = intentConfidence; // Phase 1: Allow reassignment for combined confidence
             timings.intentMs = Date.now() - intentStart;
             flags.usedLLMIntent = true;
             flags.liveDataRequested = intent.requiresLiveData || false;
@@ -412,16 +421,33 @@ export class SearchOrchestrator {
             const mustHave = request.filters?.mustHave ?? intent.filters.mustHave;
             if (mustHave !== undefined) filters.mustHave = mustHave;
 
-            // Compose city-aware query (adds city if not already present)
-            const composedQuery = QueryComposer.composeCityQuery(
-                intent.query,
-                intent.location?.city
-            );
+            // Query composition strategy: Original language vs English canonical
+            // Language-aware: Use original query when language matches region (for authentic local results)
+            let queryForGoogle: string;
+            const useOriginalLanguage = (intent as any).useOriginalLanguage;
+            
+            if (useOriginalLanguage && intent.originalQuery) {
+                // Use original query for language-matched searches (e.g., French in France)
+                queryForGoogle = intent.originalQuery;
+                console.log(`[SearchOrchestrator] 🌍 Using original language query: "${queryForGoogle}"`);
+            } else if (intent.canonical?.category) {
+                // Canonical category is always English - ensures consistent cross-language results
+                queryForGoogle = intent.canonical.category;
+                console.log(`[SearchOrchestrator] 🔎 Using canonical category: "${queryForGoogle}"`);
+            } else {
+                // Fallback to composed query (legacy path)
+                queryForGoogle = QueryComposer.composeCityQuery(
+                    intent.query,
+                    intent.location?.city
+                );
+                console.log(`[SearchOrchestrator] ⚠️ Fallback to composed query: "${queryForGoogle}"`);
+            }
 
             const searchParams: SearchParams = {
-                query: composedQuery,  // Use composed query instead of raw intent.query
+                query: queryForGoogle,  // English canonical or fallback
                 location: location.coords,
-                language: intent.language,
+                language: intent.languageContext.googleLanguage,  // NEW: Use googleLanguage (he or en)
+                region: intent.location?.region,  // NEW: Country code from geocoding (e.g., 'fr', 'il', 'us')
                 filters,
                 mode: intent.searchMode,
                 pageSize: 10,
@@ -432,10 +458,28 @@ export class SearchOrchestrator {
                 searchParams.radius = intent.location.radius;
             }
 
-            // Enhanced logging: query details
+            // Structured logging: Google Places API parameters
+            logger.info({
+                traceId,
+                query: queryForGoogle,
+                language: intent.languageContext.googleLanguage,
+                region: searchParams.region || null,
+                radius: searchParams.radius,
+                requestLanguage: intent.languageContext.requestLanguage,
+                useOriginalLanguage: useOriginalLanguage || false,
+                canonicalCategory: intent.canonical?.category,
+                canonicalLocation: intent.canonical?.locationText
+            }, 'Google Places API parameters');
+
+            // Enhanced logging: query details with language context
             console.log(`[SearchOrchestrator] 📍 Target city: ${intent.location?.city || 'none'}`);
             console.log(`[SearchOrchestrator] 📏 Radius: ${searchParams.radius || 'default'}m`);
-            console.log(`[SearchOrchestrator] 🔎 Query sent to Google: "${composedQuery}"`);
+            console.log(
+                `[SearchOrchestrator] 🌐 Google API params: ` +
+                `query="${queryForGoogle}", ` +
+                `language=${intent.languageContext.googleLanguage}, ` +
+                `region=${searchParams.region || 'none'}`
+            );
 
             // Step 4: Detect if this is a street-level query
             const streetDetection = this.streetDetector.detect(intent, request.query);
@@ -501,6 +545,13 @@ export class SearchOrchestrator {
 
                 allResults = [...exactResults, ...uniqueNearby];
                 console.log(`[SearchOrchestrator] ✅ Grouped: ${exactResults.length} exact + ${uniqueNearby.length} nearby = ${allResults.length} total`);
+                
+                // Phase 1: Log candidate pool metrics
+                logger.info({ 
+                    traceId,
+                    candidatePoolSize: this.poolConfig.candidatePoolSize,
+                    googleResultsCount: allResults.length 
+                }, 'Fetched candidate pool (street query)');
             } else {
                 // Single search (existing flow)
                 const rawResults = await this.placesProvider.search(searchParams);
@@ -508,6 +559,13 @@ export class SearchOrchestrator {
                 timings.providerMs = googleCallTime;
 
                 console.log(`[SearchOrchestrator] 🔍 Raw results: ${rawResults.length} (took ${googleCallTime}ms)`);
+                
+                // Phase 1: Log candidate pool metrics
+                logger.info({ 
+                    traceId,
+                    candidatePoolSize: this.poolConfig.candidatePoolSize,
+                    googleResultsCount: rawResults.length 
+                }, 'Fetched candidate pool');
 
                 allResults = rawResults;
 
@@ -580,6 +638,15 @@ export class SearchOrchestrator {
             );
             timings.rankingMs = Date.now() - rankingStart;
             console.log(`[SearchOrchestrator] Results ranked (${timings.rankingMs}ms)`);
+            
+            // Phase 1: Log ranking metrics
+            logger.info({ 
+                traceId,
+                scoredCandidatesCount: rankedResults.length,
+                displaySize: rankedResults.length,
+                top1Score: rankedResults[0]?.score,
+                top1PlaceId: rankedResults[0]?.placeId,
+            }, 'Ranked and filtered candidates');
 
             // Phase 3: Detect weak matches
             const { strong, weak } = this.detectWeakMatches(rankedResults);
@@ -596,6 +663,23 @@ export class SearchOrchestrator {
             // Step 6: Use strong results (or all if no weak matches)
             const topResults = strong.length > 0 ? strong.slice(0, 10) : rankedResults.slice(0, 10);
             console.log(`[SearchOrchestrator] 📊 Final result count: ${topResults.length} (${strong.length} strong, ${weak.length} weak from ${rankedResults.length} ranked)`);
+            
+            // Phase 1: Calculate combined confidence (intent + results quality)
+            const confidenceFactors = this.confidenceService.calculateConfidence(
+                intent.confidence || 0.7,
+                rankedResults
+            );
+            
+            logger.info({ 
+                traceId,
+                intentConf: confidenceFactors.intentConfidence,
+                resultsQuality: confidenceFactors.resultsQuality,
+                combinedConf: confidenceFactors.combined,
+                level: confidenceFactors.level,
+            }, 'Calculated combined confidence');
+            
+            // Update confidence with combined value
+            confidence = confidenceFactors.combined;
 
             // Phase 3: Group results by search granularity
             if (location.coords) {
@@ -714,14 +798,29 @@ export class SearchOrchestrator {
                     ...flags,
                     hasWeakMatches: weak.length > 0,  // Phase 3: Weak matches flag
                 },
-                // Phase 4: Language diagnostics
+                // Phase 4: Language diagnostics (NEW: Language Normalization)
                 language: {
-                    input: request.language || 'none',
-                    resolved: intent.language,
-                    mismatchDetected: false,  // Would be set if assistant validation failed
+                    requestLanguage: intent.languageContext.requestLanguage,
+                    uiLanguage: intent.languageContext.uiLanguage,
+                    googleLanguage: intent.languageContext.googleLanguage,
+                    region: intent.location?.region,
+                    canonicalCategory: intent.canonical?.category,
+                    originalQuery: intent.originalQuery,
                 },
                 // Phase 7: Search granularity
                 granularity: intent.granularity,
+                // Phase 1: Candidate pool debug info
+                candidatePoolSize: this.poolConfig.candidatePoolSize,
+                googleResultsCount: allResults.length,
+                scoredCandidatesCount: rankedResults.length,
+                // Include top scores in DEV only
+                ...(this.poolConfig.debugIncludeScore && {
+                    topScores: rankedResults.slice(0, 5).map(r => ({
+                        placeId: r.placeId,
+                        score: r.score,
+                        rank: r.rank,
+                    })),
+                }),
             } : undefined;
 
             const responseParams: Parameters<typeof createSearchResponse>[0] = {
@@ -739,6 +838,7 @@ export class SearchOrchestrator {
                     mode: intent.searchMode,
                     appliedFilters: this.getAppliedFiltersList(intent, request),
                     confidence,
+                    confidenceLevel: confidenceFactors.level,  // Phase 1: Combined confidence level
                     source: this.placesProvider.getName(),
                     failureReason,  // REQUIRED: Always set
                     // Additional context

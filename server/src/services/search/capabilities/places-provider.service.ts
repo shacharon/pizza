@@ -20,11 +20,13 @@ import type {
 import { SearchConfig, type PlacesConfig } from '../config/search.config.js';
 import { caches } from '../../../lib/cache/cache-manager.js';
 import { CacheConfig, buildPlacesSearchCacheKey, getPlacesSearchTTL } from '../config/cache.config.js';
+import { getRankingPoolConfig } from '../config/ranking.config.js';
 
 export class PlacesProviderService implements IPlacesProviderService {
   private googlePlacesClient: GooglePlacesClient;
   private source: RestaurantSource = 'google_places';
   private config: PlacesConfig;
+  private poolConfig = getRankingPoolConfig();
 
   constructor(config?: Partial<PlacesConfig>, googlePlacesClient?: GooglePlacesClient) {
     this.googlePlacesClient = googlePlacesClient ?? new GooglePlacesClient();
@@ -84,7 +86,8 @@ export class PlacesProviderService implements IPlacesProviderService {
     }
 
     // Normalize results
-    const results = this.normalizeResults(response, params.pageSize ?? 10);
+    // Phase 1: Use candidatePoolSize instead of default page size
+    const results = this.normalizeResults(response, params.pageSize ?? this.poolConfig.candidatePoolSize);
     
     const totalTime = Date.now() - searchStart;
     console.log(`[PlacesProviderService] Found ${results.length} results (${totalTime}ms total)`);

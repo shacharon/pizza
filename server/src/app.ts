@@ -7,6 +7,8 @@ import { placesRouter } from './routes/places.routes.js';
 import { dialogueRouter } from './routes/dialogue.routes.js';
 import searchRouter from './controllers/search/search.controller.js';
 import analyticsRouter from './controllers/analytics/analytics.controller.js';
+import { requestContextMiddleware } from './middleware/requestContext.middleware.js';
+import { httpLoggingMiddleware } from './middleware/httpLogging.middleware.js';
 
 export function createApp() {
     const app = express();
@@ -14,6 +16,10 @@ export function createApp() {
     app.use(compression());
     app.use(express.json({ limit: '1mb' }));
     app.use(cors()); // keep permissive for dev; restrict via env in server.ts if needed
+
+    // Phase 1: Request context & logging (BEFORE routes)
+    app.use(requestContextMiddleware);
+    app.use(httpLoggingMiddleware);
 
     // NEW: Unified search endpoint (Phase 3)
     app.use('/api', searchRouter);

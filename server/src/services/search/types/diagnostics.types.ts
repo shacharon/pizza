@@ -37,14 +37,27 @@ export interface Diagnostics {
   };
   
   // Phase 4: Language diagnostics (optional, dev/debug only)
+  // NEW: Updated for Language Normalization
   language?: {
-    input: string;              // Request language (from request.language)
-    resolved: string;           // ParsedIntent.language (authoritative)
-    assistantOutput?: string;   // Detected assistant message language
-    mismatchDetected: boolean;  // True if assistant validation failed
+    requestLanguage: string;     // Detected from query text (he|en|fr|ar|ru|etc.)
+    uiLanguage: string;          // UI display language (he|en)
+    googleLanguage: string;      // Sent to Google Places API (he|en)
+    region?: string;             // Country code from geocoding (e.g., 'fr', 'il', 'us')
+    canonicalCategory?: string;  // English canonical category
+    originalQuery: string;       // Original user query text
   };
   
   // Phase 7: Search granularity (for debugging grouping behavior)
   granularity?: import('./search.types.js').SearchGranularity;
+  
+  // Phase 1: Candidate pool ranking debug info
+  candidatePoolSize?: number;        // How many candidates we fetched from Google
+  googleResultsCount?: number;       // Actual number of results from Google
+  scoredCandidatesCount?: number;    // How many candidates we scored
+  topScores?: Array<{                // Top 5 scores (DEV only)
+    placeId: string;
+    score?: number;
+    rank?: number;
+  }>;
 }
 

@@ -38,10 +38,11 @@ const KNOWN_CUISINES = new Set([
 
 /**
  * Complex intent markers that require LLM
+ * NOTE: "open" and "closed" are handled as simple filters, not complex queries
  */
 const COMPLEX_MARKERS = [
-  // Time/status
-  'פתוח', 'סגור', 'עכשיו', 'עד מאוחר', 'אחרי חצות', 'open', 'closed', 'now', 'late',
+  // Time/status (complex only)
+  'עד מאוחר', 'אחרי חצות', 'late',
   // Vibe/occasion
   'רומנטי', 'דייט', 'משפחתי', 'romantic', 'date', 'family',
   // Constraints
@@ -50,6 +51,24 @@ const COMPLEX_MARKERS = [
   // Proximity (except basic 'in')
   'ליד', 'בקרבת', 'קרוב', 'near', 'close to', 'nearby'
 ];
+
+/**
+ * Detect open/closed status in query
+ * Returns 'open' or 'closed' if detected, undefined otherwise
+ */
+function detectOpenStatus(text: string): 'open' | 'closed' | undefined {
+  const normalized = text.trim().toLowerCase();
+  
+  const openKeywords = ['open', 'פתוח', 'now', 'עכשיו'];
+  const closedKeywords = ['closed', 'סגור'];
+  
+  const hasOpen = openKeywords.some(k => normalized.includes(k));
+  const hasClosed = closedKeywords.some(k => normalized.includes(k));
+  
+  if (hasOpen) return 'open';
+  if (hasClosed) return 'closed';
+  return undefined;
+}
 
 /**
  * Try to parse simple queries without LLM
@@ -62,7 +81,10 @@ export function tryFastIntent(
 ): FastIntentResult {
   const normalized = text.trim().toLowerCase();
   
-  // Reject if has complex markers
+  // Check for open/closed status BEFORE rejecting complex markers
+  const openStatus = detectOpenStatus(normalized);
+  
+  // Reject if has complex markers (open/closed are now simple filters)
   if (COMPLEX_MARKERS.some(marker => normalized.includes(marker.toLowerCase()))) {
     return { ok: false, reason: 'complex_markers_detected' };
   }
@@ -93,6 +115,18 @@ export function tryFastIntent(
     return { ok: false, reason: 'no_known_cuisine' };
   }
   
+  // Build filters with optional openNow
+  const filters: any = {
+    language: language
+  };
+  
+  // Add openNow filter if detected
+  if (openStatus === 'open') {
+    filters.opennow = true;
+  } else if (openStatus === 'closed') {
+    filters.opennow = false;
+  }
+  
   // Success: simple pattern matched
   const intent: PlacesIntent = {
     intent: 'find_food',
@@ -104,9 +138,7 @@ export function tryFastIntent(
         kind: 'city',
         city: city
       },
-      filters: {
-        language: language
-      }
+      filters
     },
     output: {
       fields: ['place_id', 'name', 'formatted_address', 'geometry', 
@@ -115,11 +147,14 @@ export function tryFastIntent(
     }
   };
   
+  // Reason string includes open/closed status
+  const reasonSuffix = openStatus ? `_${openStatus}` : '';
+  
   return {
     ok: true,
     intent,
     confidence: 0.85, // High confidence for pattern match
-    reason: 'fast_path_cuisine_city'
+    reason: `fast_path_cuisine_city${reasonSuffix}`
   };
 }
 

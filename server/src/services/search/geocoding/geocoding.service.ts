@@ -148,7 +148,7 @@ export class GeocodingService {
           lng: location.lng
         },
         displayName: results[0].formatted_address,
-        countryCode: countryComponent?.short_name,
+        countryCode: countryComponent?.short_name?.toLowerCase(),  // Normalize to lowercase (e.g., 'IL' → 'il')
         confidence: 1.0
       };
     }
@@ -209,6 +209,12 @@ export class GeocodingService {
       }
 
       const location = data.results[0].geometry.location;
+      const addressComponents = data.results[0].address_components || [];
+      
+      // Extract country code for region parameter (e.g., 'IL' → 'il', 'FR' → 'fr')
+      const countryComponent = addressComponents.find((c: any) => c.types.includes('country'));
+      const countryCode = countryComponent?.short_name?.toLowerCase();  // 'IL' → 'il'
+      
       const result: GeocodingResult = {
         status: 'VERIFIED',
         coordinates: {
@@ -216,6 +222,7 @@ export class GeocodingService {
           lng: location.lng
         },
         displayName: data.results[0].formatted_address,
+        countryCode,  // NEW: Region for Google Places API biasing
         confidence: 1.0
       };
 

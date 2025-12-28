@@ -29,6 +29,7 @@ export interface SearchResponseMeta {
   mode: SearchMode;  // Search mode used
   appliedFilters: string[];  // Filters that were applied
   confidence: number;  // Intent parsing confidence (0-1)
+  confidenceLevel?: 'high' | 'medium' | 'low';  // Phase 1: Combined confidence level
   source: string;  // Provider source(s) used
   cached?: boolean;  // Whether results were cached
   // NEW: For AI assistant context

@@ -5,6 +5,7 @@
 
 import type { IRankingService, RestaurantResult, ParsedIntent } from '../types/search.types.js';
 import { SearchConfig, type RankingConfig } from '../config/search.config.js';
+import { getRankingPoolConfig } from '../config/ranking.config.js';
 
 export interface RankingWeights {
   rating: number;
@@ -18,6 +19,7 @@ export interface RankingWeights {
 export class RankingService implements IRankingService {
   private weights: RankingWeights;
   private config: RankingConfig;
+  private poolConfig = getRankingPoolConfig();
 
   constructor(config?: Partial<RankingConfig>) {
     this.config = {
@@ -33,14 +35,14 @@ export class RankingService implements IRankingService {
 
   /**
    * Phase 3: Rank restaurants based on relevance to the intent
-   * Now includes distance scoring, normalization, and weak match detection
+   * Phase 1: Enhanced to rank all candidates and return top N
    */
   rank(
     results: RestaurantResult[],
     intent: ParsedIntent,
     centerCoords?: { lat: number; lng: number }
   ): RestaurantResult[] {
-    // Calculate raw scores with distance
+    // Calculate raw scores with distance for ALL candidates
     const scored = results.map(restaurant => {
       const rawScore = this.calculateScore(restaurant, intent, centerCoords);
       const normalizedScore = this.normalizeScore(rawScore);
@@ -56,10 +58,17 @@ export class RankingService implements IRankingService {
     // Sort by score (descending)
     scored.sort((a, b) => b.score - a.score);
 
-    // Filter out results below minimum viable score
-    const viable = scored.filter(r => r.score >= this.config.thresholds.minViableScore);
+    // Phase 1: Add rank numbers (1-based) to ALL results
+    const ranked = scored.map((result, index) => ({
+      ...result,
+      rank: index + 1,
+    }));
 
-    return viable;
+    // Filter out results below minimum viable score
+    const viable = ranked.filter(r => r.score >= this.config.thresholds.minViableScore);
+
+    // Phase 1: Return only top N for display
+    return viable.slice(0, this.poolConfig.displayResultsSize);
   }
 
   /**

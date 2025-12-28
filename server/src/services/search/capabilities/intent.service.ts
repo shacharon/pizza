@@ -3,6 +3,7 @@
  * Wraps PlacesIntentService and adds confidence calculation
  * 
  * Phase 8: Enhanced with intent caching
+ * Language Normalization: Separates requestLanguage, uiLanguage, and googleLanguage
  */
 
 import type {
@@ -11,6 +12,7 @@ import type {
   IntentParseResult,
   SessionContext,
   SearchMode,
+  LanguageContext,
 } from '../types/search.types.js';
 import { PlacesIntentService } from '../../places/intent/places-intent.service.js';
 import type { PlacesIntent } from '../../places/intent/places-intent.schema.js';
@@ -19,6 +21,8 @@ import { GeocodingService } from '../geocoding/geocoding.service.js';
 import { caches } from '../../../lib/cache/cache-manager.js';
 import { CacheConfig, buildIntentCacheKey } from '../config/cache.config.js';
 import { tryFastIntent } from './fast-intent.js';
+import { LanguageDetector } from '../utils/language-detector.js';
+import { logger } from '../../../lib/logger/structured-logger.js';
 
 export class IntentService implements IIntentService {
   private placesIntentService: PlacesIntentService;
@@ -50,27 +54,53 @@ export class IntentService implements IIntentService {
   /**
    * Parse a natural language query into a structured intent with confidence score
    * Intent Performance Policy: Fast Path → Cache → LLM fallback
+   * Language Normalization: Detects requestLanguage and creates LanguageContext
    */
   async parse(text: string, context?: SessionContext): Promise<IntentParseResult> {
     const parseStart = Date.now();
-    const language = context?.language || 'en';
+    
+    // Step 1: Detect request language and create LanguageContext
+    const requestLanguage = LanguageDetector.detect(text);
+    const googleLanguage = LanguageDetector.toGoogleLanguage(requestLanguage);
+    const uiLanguage = LanguageDetector.toUILanguage(requestLanguage);
+    
+    const languageContext: LanguageContext = {
+      requestLanguage,
+      googleLanguage,
+      uiLanguage
+    };
+    
+    // Structured logging for language detection
+    logger.info({
+      requestLanguage,
+      googleLanguage,
+      uiLanguage
+    }, 'Language detected');
+    
+    console.log(`[IntentService] 🌐 Language: request=${requestLanguage}, ui=${uiLanguage}, google=${googleLanguage}`);
     
     // PHASE 1: Try Fast Path (no LLM)
     if (CacheConfig.intentParsing.fastPathEnabled) {
-      const fastResult = tryFastIntent(text, language, context);
+      const fastResult = tryFastIntent(text, googleLanguage, context);
       if (fastResult.ok) {
         const fastTime = Date.now() - parseStart;
         console.log(`[IntentService] ⚡ FAST PATH HIT for "${text}" (${fastTime}ms, ${fastResult.reason})`);
         
         // Convert PlacesIntent to ParsedIntent
-        const intent = this.convertToParseIntent(fastResult.intent, text);
+        const intent = this.convertToParseIntent(fastResult.intent, text, languageContext);
         intent.originalQuery = text;
         intent.confidenceLevel = 'high';
         intent.intent = 'search_food';
-        intent.canonical = {
-          category: intent.query,
-          locationText: intent.location?.city
-        };
+        
+        // Extract canonical from PlacesIntent if available
+        if ((fastResult.intent as any).canonical) {
+          intent.canonical = (fastResult.intent as any).canonical;
+        } else {
+          intent.canonical = {
+            category: intent.query,
+            locationText: intent.location?.city
+          };
+        }
         
         return { intent, confidence: fastResult.confidence };
       }
@@ -79,12 +109,16 @@ export class IntentService implements IIntentService {
     
     // PHASE 2: Check intent cache
     if (CacheConfig.intentParsing.enabled) {
-      const cacheKey = buildIntentCacheKey(text, language, context);
+      const cacheKey = buildIntentCacheKey(text, googleLanguage, context);
       const cached = caches.intentParsing.get(cacheKey);
       
       if (cached) {
         const cacheTime = Date.now() - parseStart;
         console.log(`[IntentService] ✅ INTENT CACHE HIT for "${text}" (${cacheTime}ms)`);
+        
+        // Update language context (might have changed)
+        cached.intent.languageContext = languageContext;
+        
         return cached;
       }
       console.log(`[IntentService] ❌ Intent cache MISS for "${text}"`);
@@ -92,64 +126,156 @@ export class IntentService implements IIntentService {
     
     // PHASE 3: LLM fallback
     const llmStart = Date.now();
-    const placesIntent = await this.placesIntentService.resolve(text);
+    const placesIntent = await this.placesIntentService.resolve(text, googleLanguage);
     const llmTime = Date.now() - llmStart;
     console.log(`[IntentService] 🤖 LLM call completed (${llmTime}ms)`);
 
     // Convert to ParsedIntent format
-    const intent = this.convertToParseIntent(placesIntent, text);
+    const intent = this.convertToParseIntent(placesIntent, text, languageContext);
 
-    // Validate city with geocoding if service is available
-    // Strategy: Trust but verify - always canonicalize LLM-extracted cities
-    if (this.geocodingService && intent.location?.city) {
-      const cityCandidate = intent.location.city;
-      const sessionId = context?.sessionId;
+    // Location Canonicalization: Geocode city, place, or locationText to extract region
+    // Strategy: Trust but verify - canonicalize locations to get coordinates and country code
+    if (this.geocodingService && intent.location) {
+      const loc = intent.location;
       
-      // Check session cache first (avoid redundant API calls)
-      let validationResult = null;
-      if (sessionId && this.sessionService) {
-        validationResult = await this.sessionService.getValidatedCity(sessionId, cityCandidate);
-        if (validationResult) {
-          console.log(`[IntentService] 📦 City cache hit: "${cityCandidate}"`);
-          intent.location.cityValidation = validationResult.status;
-          if (validationResult.status === 'VERIFIED') {
-            intent.location.coords = validationResult.coordinates;
+      // Skip if region already set (avoid redundant geocoding)
+      if (!loc.region) {
+        // Priority order: city > place > locationText (canonical or raw)
+        const geocodeQuery = 
+          loc.city?.trim() ||
+          loc.place?.trim() ||
+          intent.canonical?.locationText?.trim() ||
+          null;
+        
+        if (geocodeQuery) {
+          const sessionId = context?.sessionId;
+          
+          // Check session cache first (avoid redundant API calls)
+          let validationResult = null;
+          if (sessionId && this.sessionService) {
+            validationResult = await this.sessionService.getValidatedCity(sessionId, geocodeQuery);
+            if (validationResult) {
+              console.log(`[IntentService] 📦 Location cache hit: "${geocodeQuery}"`);
+              
+              // Apply cached data
+              if (validationResult.status === 'VERIFIED') {
+                if (validationResult.coordinates) {
+                  loc.coords = validationResult.coordinates;
+                }
+                if ((validationResult as any).region) {
+                  loc.region = (validationResult as any).region;
+                }
+              }
+              
+              // Legacy: set cityValidation for cities
+              if (loc.city) {
+                loc.cityValidation = validationResult.status;
+              }
+            }
           }
+          
+          // If not in cache, call geocoding API
+          if (!validationResult) {
+            console.log(`[IntentService] 🌍 Geocoding location for region: "${geocodeQuery}"`);
+            
+            try {
+              // Use general geocode() for broader coverage (handles cities, places, streets)
+              const geocodeResult = await this.geocodingService.geocode(geocodeQuery);
+              
+              if (geocodeResult.status === 'VERIFIED') {
+                // Extract region (country code)
+                if (geocodeResult.countryCode) {
+                  loc.region = geocodeResult.countryCode.toLowerCase();
+                  
+                  // Structured logging
+                  logger.info({
+                    query: geocodeQuery,
+                    region: loc.region,
+                    displayName: geocodeResult.displayName
+                  }, 'Location canonicalized with region');
+                  
+                  console.log(`[IntentService] 🌍 Region set: ${loc.region}`);
+                }
+                
+                // Update coordinates (ALWAYS use canonical coords from geocoding)
+                if (geocodeResult.coordinates) {
+                  loc.coords = geocodeResult.coordinates;
+                }
+                
+                // Legacy: set cityValidation for cities
+                if (loc.city) {
+                  loc.cityValidation = 'VERIFIED';
+                }
+                
+                console.log(`[IntentService] ✅ Location verified: ${geocodeResult.displayName}`);
+                
+                // Store in session cache for future queries
+                if (sessionId && this.sessionService && geocodeResult.displayName) {
+                  await this.sessionService.storeValidatedCity(sessionId, geocodeQuery, {
+                    displayName: geocodeResult.displayName,
+                    coordinates: geocodeResult.coordinates || { lat: 0, lng: 0 },
+                    status: 'VERIFIED',
+                    region: loc.region, // Store region in cache
+                  } as any);
+                }
+              } else {
+                console.log(`[IntentService] ⚠️ Location geocoding failed: "${geocodeQuery}"`);
+                
+                // Legacy: set cityValidation for cities
+                if (loc.city) {
+                  loc.cityValidation = 'FAILED';
+                }
+              }
+            } catch (error: any) {
+              console.error(`[IntentService] Geocoding error:`, error.message);
+              // Graceful degradation: proceed without region
+              console.log(`[IntentService] ⚠️ Geocoding API unavailable, proceeding without region`);
+            }
+          }
+        } else {
+          console.log(`[IntentService] ℹ️ No location to geocode for region extraction`);
         }
+      } else {
+        console.log(`[IntentService] ℹ️ Region already set: ${loc.region}, skipping geocoding`);
+      }
+    }
+
+    // Language-Aware Strategy: Use original language when it matches region
+    // This gives more authentic local results (matching Google Maps behavior)
+    if (intent.location?.region && requestLanguage !== 'en') {
+      const region = intent.location.region;
+      let useOriginalLanguage = false;
+      
+      // French query in France → use French
+      if (requestLanguage === 'fr' && region === 'fr') {
+        useOriginalLanguage = true;
+        intent.languageContext.googleLanguage = 'fr';
+        
+        logger.info({
+          requestLanguage,
+          region,
+          strategy: 'use_original_language'
+        }, 'Using French language for French query in France');
+        
+        console.log(`[IntentService] 🇫🇷 Using French language for French query in France`);
+      }
+      // Hebrew query in Israel → use Hebrew
+      else if (requestLanguage === 'he' && region === 'il') {
+        useOriginalLanguage = true;
+        intent.languageContext.googleLanguage = 'he';
+        
+        logger.info({
+          requestLanguage,
+          region,
+          strategy: 'use_original_language'
+        }, 'Using Hebrew language for Hebrew query in Israel');
+        
+        console.log(`[IntentService] 🇮🇱 Using Hebrew language for Hebrew query in Israel`);
       }
       
-      // If not in cache, call geocoding API
-      if (!validationResult) {
-        console.log(`[IntentService] 🌍 Validating city via geocoding: "${cityCandidate}"`);
-        
-        try {
-          const validation = await this.geocodingService.validateCity(cityCandidate);
-          intent.location.cityValidation = validation.status;
-          
-          // Store in session cache for future queries
-          if (sessionId && this.sessionService && validation.displayName) {
-            await this.sessionService.storeValidatedCity(sessionId, cityCandidate, {
-              displayName: validation.displayName,
-              coordinates: validation.coordinates || { lat: 0, lng: 0 },
-              status: validation.status,
-            });
-          }
-          
-          // If verified, update coordinates (ALWAYS use canonical coords, not LLM)
-          if (validation.status === 'VERIFIED' && validation.coordinates) {
-            intent.location.coords = validation.coordinates;
-            console.log(`[IntentService] ✅ City verified: ${validation.displayName}`);
-          } else if (validation.status === 'FAILED') {
-            console.log(`[IntentService] ❌ City validation failed: "${cityCandidate}"`);
-          } else if (validation.status === 'AMBIGUOUS') {
-            console.log(`[IntentService] ⚠️ City ambiguous: "${cityCandidate}" (${validation.candidates?.length} candidates)`);
-          }
-        } catch (error: any) {
-          console.error(`[IntentService] Geocoding error:`, error.message);
-          // Graceful degradation: proceed without validation
-          // This allows search to work even if API is down
-          console.log(`[IntentService] ⚠️ Geocoding API unavailable, proceeding with LLM coordinates`);
-        }
+      // If using original language, flag it so orchestrator can use original query
+      if (useOriginalLanguage) {
+        (intent as any).useOriginalLanguage = true;
       }
     }
 
@@ -162,17 +288,21 @@ export class IntentService implements IIntentService {
     intent.intent = this.determineIntentType(text, intent);
     intent.requiresLiveData = this.checkRequiresLiveData(text, intent);
     
-    // NEW: Extract canonical category and location for assistant context
-    intent.canonical = {
-      category: intent.query || undefined,
-      locationText: intent.location?.city || intent.location?.place || undefined,
-    };
+    // NEW: Extract canonical from LLM response (or fallback to query fields)
+    if ((placesIntent as any).canonical) {
+      intent.canonical = (placesIntent as any).canonical;
+    } else {
+      intent.canonical = {
+        category: intent.query || undefined,
+        locationText: intent.location?.city || intent.location?.place || undefined,
+      };
+    }
 
     const result = { intent, confidence };
     
     // Phase 8: Cache the result
     if (CacheConfig.intentParsing.enabled) {
-      const cacheKey = buildIntentCacheKey(text, language, context);
+      const cacheKey = buildIntentCacheKey(text, googleLanguage, context);
       caches.intentParsing.set(cacheKey, result, CacheConfig.intentParsing.ttl);
     }
 
@@ -192,8 +322,13 @@ export class IntentService implements IIntentService {
 
   /**
    * Convert PlacesIntent to ParsedIntent format
+   * NEW: Uses LanguageContext instead of individual language fields
    */
-  private convertToParseIntent(placesIntent: PlacesIntent, originalText: string): ParsedIntent {
+  private convertToParseIntent(
+    placesIntent: PlacesIntent, 
+    originalText: string,
+    languageContext: LanguageContext
+  ): ParsedIntent {
     const search = placesIntent.search;
     const target = search.target;
     const filters = search.filters ?? {};
@@ -204,7 +339,12 @@ export class IntentService implements IIntentService {
       filters: {
         openNow: filters.opennow,  // Don't default to false - undefined means no filter
       },
-      language: filters.language ?? SearchConfig.places.defaultLanguage,
+      languageContext,  // NEW: Use LanguageContext
+      originalQuery: originalText,  // REQUIRED field
+      
+      // DEPRECATED (kept for backward compatibility):
+      language: languageContext.googleLanguage,
+      regionLanguage: languageContext.requestLanguage,
     };
 
     // Only add optional location properties if they exist
@@ -224,11 +364,6 @@ export class IntentService implements IIntentService {
     // Only add cuisine if it exists
     if (filters.type) {
       intent.cuisine = [filters.type];
-    }
-
-    // Only add regionLanguage if it exists
-    if (filters.language) {
-      intent.regionLanguage = filters.language;
     }
 
     return intent;

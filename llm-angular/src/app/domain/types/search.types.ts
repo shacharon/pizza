@@ -50,6 +50,10 @@ export interface Restaurant {
   // NEW: Mobile-first UX - Match reason for top result
   matchReason?: string;  // Single reason text from backend
   matchReasons?: string[];  // Array of reason tags (e.g., ['highly_rated', 'open_now', 'nearby'])
+  
+  // Phase 1: Candidate pool ranking
+  rank?: number;  // 1-based ranking position (1 = best)
+  score?: number;  // 0-100 internal score (debug only)
 }
 
 // Alias for backward compatibility
@@ -125,6 +129,7 @@ export interface SearchMeta {
   mode: string;
   appliedFilters: string[];
   confidence: number;
+  confidenceLevel?: 'high' | 'medium' | 'low';  // Phase 1: Combined confidence level
   source: string;
   // NEW: AI Assistant context
   originalQuery?: string;

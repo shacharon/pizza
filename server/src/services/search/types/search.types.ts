@@ -4,6 +4,38 @@
  */
 
 // ============================================================================
+// Language Types (Language Normalization)
+// ============================================================================
+
+/**
+ * UI display language (chips, assistant, errors)
+ * This determines the language of the app UI elements
+ */
+export type UILanguage = 'he' | 'en';
+
+/**
+ * Detected language of user's raw query (informational only)
+ * Can be any language - used for logging and language-aware processing
+ */
+export type RequestLanguage = 'he' | 'en' | 'fr' | 'ar' | 'ru' | 'es' | 'de' | 'other';
+
+/**
+ * Language parameter sent to Google Places API
+ * Rule: Hebrew → 'he', everything else → 'en' (universal fallback)
+ */
+export type GoogleLanguage = 'he' | 'en';
+
+/**
+ * Language context for a search request
+ * Separates three distinct language concepts for consistent behavior
+ */
+export interface LanguageContext {
+  uiLanguage: UILanguage;           // App display language (he|en only)
+  requestLanguage: RequestLanguage; // Detected from query (any language)
+  googleLanguage: GoogleLanguage;   // Sent to Google API (he if Hebrew, else en)
+}
+
+// ============================================================================
 // Core Domain Types
 // ============================================================================
 
@@ -39,6 +71,7 @@ export interface ResolvedLocation {
   coords: Coordinates;
   displayName: string;
   source: 'user' | 'geocode' | 'city';
+  region?: string;  // NEW: Country code from geocoding (e.g., 'fr', 'il', 'us')
 }
 
 // ============================================================================
@@ -57,6 +90,7 @@ export interface ParsedIntent {
     placeType?: 'street' | 'neighborhood' | 'landmark';
     coords?: Coordinates;
     radius?: number;
+    region?: string;  // NEW: Country code from geocoding (e.g., 'fr', 'il', 'us')
   };
   
   // Search mode
@@ -75,20 +109,23 @@ export interface ParsedIntent {
   vibe?: string[];  // ['romantic', 'quiet', 'casual', 'local']
   cuisine?: string[];  // ['pizza', 'sushi', 'italian']
   
-  // Language
-  language: string;  // ISO code: 'en', 'he', 'ar', etc.
-  regionLanguage?: string;  // Region's primary language
+  // Language (NEW: Separated into three distinct concepts)
+  languageContext: LanguageContext;
+  
+  // DEPRECATED (kept for backward compatibility):
+  language?: string;  // Use languageContext.googleLanguage instead
+  regionLanguage?: string;  // Use languageContext.requestLanguage instead
   
   // NEW: Semantic header for AI assistant (non-breaking additions)
   intent?: 'search_food' | 'refine' | 'check_opening_status';
   confidenceLevel?: 'high' | 'medium' | 'low';  // Derived from numeric confidence
   requiresLiveData?: boolean;  // True if user asked about open/close/hours
-  originalQuery?: string;  // Immutable, for assistant context
+  originalQuery: string;  // Immutable, for assistant context (REQUIRED)
   
-  // NEW: Optional canonical extraction (for assistant narration)
+  // NEW: Canonical extraction for consistent query building across languages
   canonical?: {
-    category?: string;      // "pizza"
-    locationText?: string;  // "Tel Aviv"
+    category?: string;      // English: "italian restaurant", "sushi", "pizza"
+    locationText?: string;  // Original: "Paris", "תל אביב", "Champs-Élysées"
   };
   
   // NEW: Search granularity (determines grouping behavior)
@@ -138,6 +175,7 @@ export interface RestaurantResult {
   
   // Scoring (added by RankingService)
   score?: number;  // 0-100 (REQUIRED after ranking)
+  rank?: number;  // Phase 1: 1-based ranking position (1 = best)
   isWeakMatch?: boolean;  // Phase 3: True if score < weakMatchThreshold
   distanceScore?: number;  // Phase 3: 0-100 based on distance from center
   
@@ -395,7 +433,8 @@ export interface SearchParams {
   query: string;
   location: Coordinates;
   radius?: number;
-  language: string;
+  language: string;  // Google Places API language (he or en)
+  region?: string;    // Country code for biasing results (e.g., 'fr', 'il', 'us')
   
   filters: {
     openNow?: boolean;

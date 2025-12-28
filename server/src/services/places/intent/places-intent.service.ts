@@ -8,7 +8,7 @@ const PromptSchema = z.object({
     provider: z.literal('google_places'),
     search: z.object({
         mode: z.enum(['textsearch', 'nearbysearch', 'findplace']),
-        query: z.string().optional(),
+        query: z.string().optional(),  // English canonical category
         target: z.object({
             kind: z.enum(['city', 'place', 'coords', 'me']),
             city: z.string().optional(),
@@ -21,11 +21,15 @@ const PromptSchema = z.object({
             price: z.object({ min: z.number(), max: z.number() }).optional(),
             opennow: z.boolean().optional(),
             radius: z.number().optional(),
-            rankby: z.enum(['prominence', 'distance']).optional(),
-            language: z.enum(['he', 'en']).optional(),
-            region: z.string().optional()
+            rankby: z.enum(['prominence', 'distance']).optional()
+            // NOTE: language and region removed - will be set by orchestrator based on LanguageContext
         }).optional()
     }),
+    // NEW: Canonical fields for consistent query building across languages
+    canonical: z.object({
+        category: z.string().optional(),     // English: "italian restaurant", "sushi", "pizza"
+        locationText: z.string().optional()  // Original: "Paris", "תל אביב", "Champs-Élysées"
+    }).optional(),
     output: z.object({
         fields: z.array(z.string()).optional(),
         page_size: z.number().optional()
@@ -135,8 +139,136 @@ export class PlacesIntentService {
             return PlacesIntentSchema.parse(intent);
         }
 
-        const system = `You are an intent resolver for Google Places. Always output STRICT JSON for this schema:\n\n{\n  "intent": "find_food",\n  "provider": "google_places",\n  "search": {\n    "mode": "textsearch" | "nearbysearch" | "findplace",\n    "query": string,                     // food/topic only (NO locations, NO open/closed)\n    "target": {\n      "kind": "me" | "city" | "place" | "coords",\n      "city"?: string,                   // e.g., "Tel Aviv"\n      "place"?: string,                  // e.g., "Azrieli Tel Aviv" | "Marina Tel Aviv" | "Allenby Tel Aviv"\n      "coords"?: { "lat": number, "lng": number }\n    },\n    "filters"?: {\n      "language"?: "he" | "en",\n      "opennow"?: true,                 // ONLY true for "open now" queries, NEVER false\n      "price"?: { "min": number, "max": number }\n    }\n  },\n  "output": { "fields": string[], "page_size": number }\n}\n\nRules:\n- Extract ANY city/place from the text into target.* (never leave it inside "query").\n- If user says "open"/"פתוח", set opennow: true\n- If user says "closed"/"סגור", DO NOT set opennow (omit it entirely - closed filtering is not supported by API)\n- Remove "open"/"closed"/"פתוח"/"סגור" from query text.\n- If a street or landmark is present, set target.kind="place" and include the city (e.g., "Allenby Tel Aviv").\n- If user implies near-me/closest -> mode:"nearbysearch".\n- If the text is ONLY a venue (no food/topic) -> mode:"findplace".\n- Otherwise -> "textsearch".\n- If no location given -> target.kind:"me".\n- "query" MUST contain only the food/topic (e.g., "vegan pizza", "gluten-free burgers").\n- Prefer "city" for general city names (Tel Aviv, Ashkelon); prefer "place" for specific venues/streets.\n- Never hallucinate coords.\n- Do not include rankby for textsearch.\n- Keep language within allow-list.`;
-        const user = `User text: ${text}\nLanguage: ${language ?? 'he'}\nReturn only the JSON. Examples:\nUser: "vegan pizza in Tel Aviv"\n→ { "search": { "mode": "textsearch", "query": "vegan pizza", "target": { "kind": "city", "city": "Tel Aviv" } } }\n\nUser: "פיצה באשקלון"\n→ { "search": { "mode": "textsearch", "query": "פיצה", "target": { "kind": "city", "city": "אשקלון" } } }\n\nUser: "פיצה في أشكلون" (Arabic city in mixed query)\n→ { "search": { "mode": "textsearch", "query": "פיצה", "target": { "kind": "city", "city": "أشكلون" } } }\n\nUser: "open burger places at the Marina Tel Aviv"\n→ { "search": { "mode": "findplace", "query": "burger", "target": { "kind": "place", "place": "Marina Tel Aviv" }, "filters": { "opennow": true } } }\n\nUser: "pizza near me"\n→ { "search": { "mode": "nearbysearch", "query": "pizza", "target": { "kind": "me" } } }`;
+        const system = `You are an intent resolver for Google Places. Always output STRICT JSON for this schema:
+
+{
+  "intent": "find_food",
+  "provider": "google_places",
+  "search": {
+    "mode": "textsearch" | "nearbysearch" | "findplace",
+    "query": string,  // ⚠️ MUST BE ENGLISH! food/topic only (NO locations, NO open/closed)
+    "target": {
+      "kind": "me" | "city" | "place" | "coords",
+      "city"?: string,   // Keep ORIGINAL language (Tel Aviv / תל אביב / Paris)
+      "place"?: string   // Keep ORIGINAL language (Allenby Tel Aviv / Champs-Élysées Paris)
+    },
+    "filters"?: {
+      "opennow"?: true,  // ONLY true for "open now" queries, NEVER false
+      "price"?: { "min": number, "max": number }
+    }
+  },
+  "canonical": {
+    "category": string,      // ⚠️ MUST BE ENGLISH! (e.g., "italian restaurant", "sushi", "pizza")
+    "locationText": string   // ORIGINAL language (e.g., "Paris", "תל אביב", "Champs-Élysées Paris")
+  },
+  "output": { "fields": string[], "page_size": number }
+}
+
+CRITICAL RULES (MUST FOLLOW):
+
+1. ⚠️ "query" and "canonical.category" MUST ALWAYS BE IN ENGLISH
+   - This ensures consistent Google Places results across ALL input languages
+   - Examples: "italian restaurant", "sushi", "vegan pizza", "burger"
+   - Translate from ANY language: French→English, Russian→English, Hebrew→English
+
+2. ⚠️ "target" fields (city, place) and "canonical.locationText" MUST KEEP ORIGINAL LANGUAGE
+   - This ensures accurate geocoding
+   - Examples: "Paris", "תל אביב", "Гедере", "Champs-Élysées"
+
+3. Extract ALL locations into target/canonical (never leave in query)
+   - If street mentioned: target.kind="place", place="{street} {city}", canonical.locationText="{street} {city}"
+   - If only city: target.kind="city", city="{city}", canonical.locationText="{city}"
+
+4. Filters:
+   - "open"/"פתוח"/"ouvert" → opennow: true
+   - "closed"/"סגור"/"fermé" → omit opennow (closed filtering not supported by API)
+   - Remove open/closed keywords from query
+
+5. Mode selection:
+   - Near-me/closest → mode:"nearbysearch"
+   - Venue only (no food) → mode:"findplace"
+   - Otherwise → mode:"textsearch"
+
+6. Never hallucinate coords. Never include rankby for textsearch.`;
+        const user = `User text: ${text}
+Return only the JSON. Examples:
+
+User: "Restaurants italiens sur les Champs-Élysées à Paris" (French)
+→ { 
+  "search": { 
+    "mode": "textsearch", 
+    "query": "italian restaurant",
+    "target": { "kind": "place", "place": "Champs-Élysées Paris" }
+  },
+  "canonical": {
+    "category": "italian restaurant",
+    "locationText": "Champs-Élysées Paris"
+  }
+}
+
+User: "Italian restaurants on the Champs-Élysées in Paris" (English)
+→ { 
+  "search": { 
+    "mode": "textsearch", 
+    "query": "italian restaurant",
+    "target": { "kind": "place", "place": "Champs-Élysées Paris" }
+  },
+  "canonical": {
+    "category": "italian restaurant",
+    "locationText": "Champs-Élysées Paris"
+  }
+}
+
+User: "מסעדות איטלקיות בתל אביב" (Hebrew)
+→ { 
+  "search": { 
+    "mode": "textsearch", 
+    "query": "italian restaurant",
+    "target": { "kind": "city", "city": "תל אביב" }
+  },
+  "canonical": {
+    "category": "italian restaurant",
+    "locationText": "תל אביב"
+  }
+}
+
+User: "Итальянские рестораны в Гедере" (Russian)
+→ { 
+  "search": { 
+    "mode": "textsearch", 
+    "query": "italian restaurant",
+    "target": { "kind": "city", "city": "Гедере" }
+  },
+  "canonical": {
+    "category": "italian restaurant",
+    "locationText": "Гедере"
+  }
+}
+
+User: "סושי בתל אביב" (Hebrew: sushi in Tel Aviv)
+→ { 
+  "search": { 
+    "mode": "textsearch", 
+    "query": "sushi",
+    "target": { "kind": "city", "city": "תל אביב" }
+  },
+  "canonical": {
+    "category": "sushi",
+    "locationText": "תל אביב"
+  }
+}
+
+User: "pizza near me"
+→ { 
+  "search": { 
+    "mode": "nearbysearch", 
+    "query": "pizza",
+    "target": { "kind": "me" }
+  },
+  "canonical": {
+    "category": "pizza"
+  }
+}`;
         const messages: Message[] = [
             { role: 'system', content: system },
             { role: 'user', content: user }
