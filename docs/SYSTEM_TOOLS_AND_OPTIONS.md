@@ -18,27 +18,36 @@ This document defines **ALL** available tools, options, chips, actions, and UI c
 
 Refinement chips are the **ONLY** control surface for sorting and filtering results. They appear in a single horizontal row below the search results header.
 
-### 1.1 Filter Chips (Context-Aware)
+### 1.1 Filter Chips (Context-Aware, Multi-Select)
 
-These chips appear based on search results and intent. They filter the current result set.
+These chips appear based on search results and intent. They filter the current result set. **Multiple filter chips can be active simultaneously.**
 
 | Chip ID | Emoji | Label (EN) | Action | Filter | When Shown |
 |---------|-------|------------|--------|--------|------------|
 | `delivery` | 🚗 | Delivery | `filter` | `delivery` | When results include delivery options |
 | `budget` | 💰 | Budget | `filter` | `price<=2` | When cheap options exist (price ≤ 2) |
-| `toprated` | ⭐ | Top rated | `filter` | `rating>=4.5` | When highly-rated options exist (rating ≥ 4.5) |
 | `opennow` | 🟢 | Open now | `filter` | `opennow` | Always (unless already filtered) |
 | `takeout` | 🥡 | Takeout | `filter` | `takeout` | When results include takeout options |
 | `romantic` | 💕 | Romantic | `filter` | `romantic` | Context-specific |
 | `family` | 👨‍👩‍👧‍👦 | Family friendly | `filter` | `family` | Context-specific |
 
-### 1.2 Sort Chips (Ranking Controls)
+### 1.2 Sort Chips (Ranking Controls, Single-Select)
+
+Sort chips change result ordering. **Only ONE sort chip can be active at a time** (single-select).
+
+**Context-Aware Visibility:** Sort chips appear when:
+- Results count ≥ 5 (enough to benefit from sorting)
+- Confidence ≥ 70% (user knows what they want)
+- Mode is NORMAL (not in RECOVERY or CLARIFY)
 
 | Chip ID | Emoji | Label (EN) | Action | Filter | Purpose |
 |---------|-------|------------|--------|--------|---------|
-| `closest` | 📍 | Closest | `sort` | `distance` | Sort by distance (nearest first) |
-| `sort_rating` | ⭐ | Sort by rating | `sort` | `rating` | Sort by rating (highest first) |
-| `sort_price` | 💰 | Sort by price | `sort` | `price` | Sort by price level |
+| `sort_best_match` | ✨ | Best match | `sort` | `best_match` | Backend ranking (default, always first) |
+| `sort_closest` | 📍 | Closest | `sort` | `distance` | Sort by distance (nearest first) |
+| `sort_rating` | ⭐ | Rating | `sort` | `rating` | Sort by rating (highest first) |
+| `sort_price` | 💰 | Price | `sort` | `price` | Sort by price (cheapest first) |
+
+**Note:** `sort_best_match` is the default sort and always appears first when sort chips are shown.
 
 ### 1.3 View Chips (Display Mode)
 
@@ -51,9 +60,27 @@ These chips appear based on search results and intent. They filter the current r
 - **Visibility:** Chips visible on ALL breakpoints (mobile + desktop)
 - **Layout:** Horizontal scroll on mobile; wraps on desktop
 - **Limit:** Max 5 chips in NORMAL mode
-- **State:** Active chip has `.active` class (blue background)
+- **State:** Active chip has `.active` class (blue background, white text)
 - **Click:** Triggers `facade.onChipClick(chipId)` → actual filtering/sorting
 - **No Duplication:** ONLY one chips row exists in the entire UI
+
+### 1.5 State Management (Critical)
+
+**SORT Chips (Single-Select):**
+- Exactly ONE sort chip active at a time
+- Clicking a new sort chip deactivates the previous one
+- Default: `sort_best_match` (when sort chips shown)
+- State tracked in `facade.currentSort()`
+
+**FILTER Chips (Multi-Select):**
+- Multiple filter chips can be active simultaneously
+- Clicking a filter chip toggles it on/off
+- State tracked in `facade.activeFilters()`
+
+**VIEW Chips (Single-Select):**
+- One view mode active at a time (LIST or MAP)
+- Default: LIST
+- State tracked in `facade.currentView()`
 
 ---
 
@@ -84,16 +111,29 @@ Chips: [⭐ Top rated] [💰 Budget] [🟢 Open now] [🗺️ Map] [📍 Closest
 | `expand_radius` | 🔍 | Expand search | `filter` | `radius:10000` | Increase search radius to 10km |
 | `remove_filters` | 🔄 | Remove filters | `filter` | `clear_filters` | Clear all applied filters |
 | `try_nearby` | 📍 | Try nearby | `filter` | `nearby_fallback` | Search in nearby areas |
-| `sort_rating` | ⭐ | Top rated | `sort` | `rating>=4.5` | Sort by rating (recovery default) |
+| `sort_rating` | ⭐ | Rating | `sort` | `rating` | Sort by rating (recovery default) |
 | `map` | 🗺️ | Map | `map` | - | Open map view to explore |
+| `closednow` | 🔴 | Closed now | `filter` | `closed` | Show closed places (RECOVERY ONLY, when user searched for "open" but got 0 results) |
 
 **Chip Limit:** Max 5 recovery chips
+
+**Closed Now Chip (Special Case):**
+- Appears ONLY in RECOVERY mode
+- ONLY when: User searched for "open now" but got 0 results
+- Purpose: Offer closed places as alternative
+- Works as derived filter (backend filters after fetching all results)
 
 **Example:**
 ```
 Query: "sushi in the middle of nowhere"
 Result: No results
-Chips: [🔍 Expand search] [🔄 Remove filters] [📍 Try nearby] [⭐ Top rated] [🗺️ Map]
+Chips: [🔍 Expand search] [🔄 Remove filters] [📍 Try nearby] [⭐ Rating] [🗺️ Map]
+```
+
+```
+Query: "pizza open now in gedera"
+Result: 0 open results
+Chips: [🔍 Expand search] [🔄 Remove filters] [🔴 Closed now] [⭐ Rating] [🗺️ Map]
 ```
 
 ### 2.3 CLARIFY Mode Chips

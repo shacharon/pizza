@@ -3,7 +3,7 @@
  * Component orchestration layer - simplifies component interaction with stores and services
  */
 
-import { Injectable, inject, computed } from '@angular/core';
+import { Injectable, inject, computed, signal } from '@angular/core';
 import { UnifiedSearchService } from '../services/unified-search.service';
 import { ActionService } from '../services/action.service';
 import { InputStateMachine } from '../services/input-state-machine.service';
@@ -14,7 +14,8 @@ import { ActionsStore } from '../state/actions.store';
 import type { 
   SearchFilters, 
   Restaurant,
-  SearchResponse 
+  SearchResponse,
+  RefinementChip
 } from '../domain/types/search.types';
 import type { ActionType, ActionLevel } from '../domain/types/action.types';
 
@@ -92,6 +93,19 @@ export class SearchFacade {
   readonly clarification = this.searchStore.clarification;
   readonly requiresClarification = this.searchStore.requiresClarification;
 
+  // Phase 7: UI/UX Contract - State Management
+  // Sort state (single-select)
+  private sortState = signal<'BEST_MATCH' | 'CLOSEST' | 'RATING_DESC' | 'PRICE_ASC'>('BEST_MATCH');
+  readonly currentSort = this.sortState.asReadonly();
+
+  // Filter state (multi-select)
+  private filterState = signal<Set<string>>(new Set());
+  readonly activeFilters = computed(() => Array.from(this.filterState()));
+
+  // View state (single-select)
+  private viewState = signal<'LIST' | 'MAP'>('LIST');
+  readonly currentView = this.viewState.asReadonly();
+
   // Public actions
   search(query: string, filters?: SearchFilters): void {
     // Check if this is a fresh search after intent reset
@@ -154,26 +168,66 @@ export class SearchFacade {
     this.actionService.rejectAction(actionId);
   }
 
+  /**
+   * Handle chip click - implements UI/UX Contract state management
+   * - SORT: Single-select (deactivate all others, activate this one)
+   * - FILTER: Multi-select (toggle on/off)
+   * - VIEW: Single-select (switch view mode)
+   */
   onChipClick(chipId: string): void {
     const chip = this.chips().find(c => c.id === chipId);
     if (!chip) return;
 
     switch (chip.action) {
-      case 'filter':
-        // Apply filter - would need to parse chip.filter and re-search
-        console.log('[SearchFacade] Apply filter:', chip.filter);
-        // TODO: Implement filter parsing and application
-        break;
       case 'sort':
-        // Sort results - would need to implement sorting
-        console.log('[SearchFacade] Sort by:', chip.filter);
-        // TODO: Implement client-side sorting
+        // Single-select: deactivate all other sorts, activate this one
+        const sortKey = this.mapChipToSortKey(chipId);
+        this.sortState.set(sortKey);
+        console.log('[SearchFacade] Sort activated:', sortKey);
+        // TODO: Re-sort results locally or re-fetch
         break;
+        
+      case 'filter':
+        // Multi-select: toggle filter
+        const filters = new Set(this.filterState());
+        if (filters.has(chipId)) {
+          filters.delete(chipId);
+          console.log('[SearchFacade] Filter removed:', chipId);
+        } else {
+          filters.add(chipId);
+          console.log('[SearchFacade] Filter added:', chipId);
+        }
+        this.filterState.set(filters);
+        // TODO: Apply filters and re-search
+        break;
+        
       case 'map':
-        // Open map view
-        console.log('[SearchFacade] Show map view');
+        // Single-select: switch to map view
+        this.viewState.set('MAP');
+        console.log('[SearchFacade] View changed to: MAP');
         // TODO: Implement map view
         break;
+    }
+  }
+
+  /**
+   * Map chip ID to sort key enum
+   */
+  private mapChipToSortKey(chipId: string): 'BEST_MATCH' | 'CLOSEST' | 'RATING_DESC' | 'PRICE_ASC' {
+    switch (chipId) {
+      case 'sort_best_match':
+      case 'best_match':
+        return 'BEST_MATCH';
+      case 'sort_closest':
+      case 'closest':
+        return 'CLOSEST';
+      case 'sort_rating':
+      case 'toprated':
+        return 'RATING_DESC';
+      case 'sort_price':
+        return 'PRICE_ASC';
+      default:
+        return 'BEST_MATCH';
     }
   }
 

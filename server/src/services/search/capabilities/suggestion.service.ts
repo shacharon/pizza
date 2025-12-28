@@ -26,24 +26,49 @@ export class SuggestionService implements ISuggestionService {
     const lang = normalizeLang(intent.language);
 
     // Phase 5: Route based on mode
+    let chips: RefinementChip[];
     switch (mode) {
       case 'RECOVERY':
-        return this.generateRecoveryChips(intent, results, lang);
+        chips = this.generateRecoveryChips(intent, results, lang);
+        break;
       
       case 'CLARIFY':
-        return this.generateClarifyChips(intent, lang);
+        chips = this.generateClarifyChips(intent, lang);
+        break;
       
       case 'NORMAL':
       default:
-        return this.generateNormalChips(intent, results);
+        chips = this.generateNormalChips(intent, results);
+        break;
     }
+
+    // Phase 7: Validation logging (UI/UX Contract compliance)
+    console.log(`[SuggestionService] Mode: ${mode}, Generated ${chips.length} chips:`, 
+      chips.map(c => `${c.emoji} ${c.label} (${c.action})`));
+    
+    return chips;
+  }
+
+  /**
+   * Determine if sort chips should be shown (context-aware)
+   * Per UI/UX Contract: Show sorts when user has enough results to benefit
+   */
+  private shouldShowSortChips(intent: ParsedIntent, results: RestaurantResult[]): boolean {
+    // Show sort chips when:
+    // 1. Have 5+ results (enough to benefit from sorting)
+    // 2. Confidence >= 70% (user knows what they want)
+    // 3. Not in recovery mode (already handled by mode separation)
+    return results.length >= 5 && intent.confidenceLevel === 'high';
   }
 
   /**
    * Phase 5: Generate NORMAL mode chips
    * Original generate() logic renamed
+   * Enhanced with context-aware sort chips
    */
   private generateNormalChips(intent: ParsedIntent, results: RestaurantResult[]): RefinementChip[] {
+    const lang = intent.language;
+    
     // Convert to format expected by SuggestionGenerator
     const places = results.map(r => {
       const place: any = {
@@ -79,7 +104,7 @@ export class SuggestionService implements ISuggestionService {
       language: intent.language as 'he' | 'en',
     };
 
-    // Generate suggestions using existing logic
+    // Generate filter suggestions using existing logic
     const suggestions = this.suggestionGenerator.generate(
       legacyIntent as any,
       places,
@@ -87,7 +112,61 @@ export class SuggestionService implements ISuggestionService {
     );
 
     // Convert Suggestion[] to RefinementChip[]
-    return suggestions.map(s => this.convertToChip(s));
+    let chips = suggestions.map(s => this.convertToChip(s));
+
+    // Context-aware: Add sort chips when appropriate
+    if (this.shouldShowSortChips(intent, results)) {
+      const sortChips: RefinementChip[] = [];
+
+      // Best Match (always first, default active)
+      sortChips.push({
+        id: 'sort_best_match',
+        emoji: '✨',
+        label: this.i18n.t('chip.bestMatch', lang) || 'Best match',
+        action: 'sort',
+        filter: 'best_match'
+      });
+
+      // Closest (when location available)
+      if (intent.location?.coords || intent.location?.city) {
+        sortChips.push({
+          id: 'sort_closest',
+          emoji: '📍',
+          label: this.i18n.t('chip.closest', lang),
+          action: 'sort',
+          filter: 'distance'
+        });
+      }
+
+      // Rating (when high-rated options exist)
+      const hasHighRated = results.some(r => r.rating && r.rating >= 4.5);
+      if (hasHighRated) {
+        sortChips.push({
+          id: 'sort_rating',
+          emoji: '⭐',
+          label: this.i18n.t('chip.topRated', lang),
+          action: 'sort',
+          filter: 'rating'
+        });
+      }
+
+      // Price (when price data available)
+      const hasPriceData = results.some(r => r.priceLevel !== undefined);
+      if (hasPriceData) {
+        sortChips.push({
+          id: 'sort_price',
+          emoji: '💰',
+          label: this.i18n.t('chip.sortByPrice', lang) || 'Price',
+          action: 'sort',
+          filter: 'price'
+        });
+      }
+
+      // Add sort chips to the beginning (but keep max 5 total)
+      chips = [...sortChips, ...chips].slice(0, 5);
+    }
+
+    return chips;
   }
 
   /**
@@ -136,7 +215,7 @@ export class SuggestionService implements ISuggestionService {
       emoji: '⭐',
       label: this.i18n.t('chip.topRated', lang),
       action: 'sort',
-      filter: `rating>=${SearchConfig.ranking.thresholds.highlyRated}`
+      filter: 'rating'  // Sort key, not filter condition
     });
 
     // 5. Map view (helps user explore)
@@ -146,6 +225,18 @@ export class SuggestionService implements ISuggestionService {
       label: this.i18n.t('chip.map', lang),
       action: 'map'
     });
+
+    // 6. Suggest "Closed Now" when user searched for "open" but got 0 results
+    // Per UI/UX Contract: Closed Now only in RECOVERY mode as alternative
+    if (intent.filters.openNow === true && results.length === 0) {
+      chips.push({
+        id: 'closednow',
+        emoji: '🔴',
+        label: this.i18n.t('chip.closedNow', lang),
+        action: 'filter',
+        filter: 'closed'
+      });
+    }
 
     return chips.slice(0, 5); // Max 5 recovery chips
   }

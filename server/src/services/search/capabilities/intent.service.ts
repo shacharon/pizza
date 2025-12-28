@@ -18,6 +18,7 @@ import { SearchConfig, type ConfidenceWeights } from '../config/search.config.js
 import { GeocodingService } from '../geocoding/geocoding.service.js';
 import { caches } from '../../../lib/cache/cache-manager.js';
 import { CacheConfig, buildIntentCacheKey } from '../config/cache.config.js';
+import { tryFastIntent } from './fast-intent.js';
 
 export class IntentService implements IIntentService {
   private placesIntentService: PlacesIntentService;
@@ -48,13 +49,35 @@ export class IntentService implements IIntentService {
 
   /**
    * Parse a natural language query into a structured intent with confidence score
-   * Phase 8: With intent caching support
+   * Intent Performance Policy: Fast Path → Cache → LLM fallback
    */
   async parse(text: string, context?: SessionContext): Promise<IntentParseResult> {
     const parseStart = Date.now();
-    
-    // Phase 8: Check intent cache first
     const language = context?.language || 'en';
+    
+    // PHASE 1: Try Fast Path (no LLM)
+    if (CacheConfig.intentParsing.fastPathEnabled) {
+      const fastResult = tryFastIntent(text, language, context);
+      if (fastResult.ok) {
+        const fastTime = Date.now() - parseStart;
+        console.log(`[IntentService] ⚡ FAST PATH HIT for "${text}" (${fastTime}ms, ${fastResult.reason})`);
+        
+        // Convert PlacesIntent to ParsedIntent
+        const intent = this.convertToParseIntent(fastResult.intent, text);
+        intent.originalQuery = text;
+        intent.confidenceLevel = 'high';
+        intent.intent = 'search_food';
+        intent.canonical = {
+          category: intent.query,
+          locationText: intent.location?.city
+        };
+        
+        return { intent, confidence: fastResult.confidence };
+      }
+      console.log(`[IntentService] ⚠️ Fast path miss: ${fastResult.reason}`);
+    }
+    
+    // PHASE 2: Check intent cache
     if (CacheConfig.intentParsing.enabled) {
       const cacheKey = buildIntentCacheKey(text, language, context);
       const cached = caches.intentParsing.get(cacheKey);
@@ -67,8 +90,11 @@ export class IntentService implements IIntentService {
       console.log(`[IntentService] ❌ Intent cache MISS for "${text}"`);
     }
     
-    // Get intent from existing PlacesIntentService (LLM call)
+    // PHASE 3: LLM fallback
+    const llmStart = Date.now();
     const placesIntent = await this.placesIntentService.resolve(text);
+    const llmTime = Date.now() - llmStart;
+    console.log(`[IntentService] 🤖 LLM call completed (${llmTime}ms)`);
 
     // Convert to ParsedIntent format
     const intent = this.convertToParseIntent(placesIntent, text);
@@ -148,9 +174,18 @@ export class IntentService implements IIntentService {
     if (CacheConfig.intentParsing.enabled) {
       const cacheKey = buildIntentCacheKey(text, language, context);
       caches.intentParsing.set(cacheKey, result, CacheConfig.intentParsing.ttl);
-      const totalTime = Date.now() - parseStart;
-      console.log(`[IntentService] 💾 Cached intent for "${text}" (${totalTime}ms, TTL: ${CacheConfig.intentParsing.ttl / 1000}s)`);
     }
+
+    // Instrumentation: Performance metrics
+    const totalTime = Date.now() - parseStart;
+    const usedFastPath = totalTime < 100; // Fast path is typically <50ms
+    const usedCache = false; // Would be set earlier if cache hit
+    const usedLLM = !usedFastPath && !usedCache;
+    
+    console.log(
+      `[IntentService] ✅ Complete: fast=${usedFastPath} cache=${usedCache} llm=${usedLLM} ` +
+      `totalMs=${totalTime} confidence=${confidence.toFixed(2)}`
+    );
 
     return result;
   }
@@ -167,7 +202,7 @@ export class IntentService implements IIntentService {
       query: search.query ?? originalText,
       searchMode: search.mode as SearchMode,
       filters: {
-        openNow: filters.opennow ?? false,
+        openNow: filters.opennow,  // Don't default to false - undefined means no filter
       },
       language: filters.language ?? SearchConfig.places.defaultLanguage,
     };

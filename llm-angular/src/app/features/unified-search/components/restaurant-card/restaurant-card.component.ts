@@ -33,25 +33,69 @@ export class RestaurantCardComponent {
     this.cardClick.emit(this.restaurant());
   }
 
+  /**
+   * Handle action click with level-based behavior (Phase 7: UI/UX Contract)
+   * 
+   * Action Levels:
+   * - Level 0: Immediate execution (no confirmation)
+   * - Level 1: Confirmation required
+   * - Level 2: High-impact confirmation + explicit explanation
+   */
   onAction(event: Event, type: ActionType): void {
     event.stopPropagation(); // Prevent card click
     const level = this.getActionLevel(type);
+    
+    // Check if action is available (e.g., phone number required for call)
+    if (!this.isActionAvailable(type)) {
+      console.warn(`[RestaurantCard] Action ${type} not available for ${this.restaurant().name}`);
+      return;
+    }
+    
     this.actionClick.emit({ type, level });
   }
 
+  /**
+   * Get action level per UI/UX Contract
+   */
   private getActionLevel(type: ActionType): ActionLevel {
-    // Define action levels according to Human-in-the-Loop pattern
     switch (type) {
+      // Level 0: Immediate - no confirmation needed
       case 'GET_DIRECTIONS':
-      case 'CALL_RESTAURANT':
+      case 'CALL_RESTAURANT':  // When phone available
       case 'VIEW_DETAILS':
       case 'VIEW_MENU':
-      case 'SHARE':
-        return 0; // L0: Read-only, safe actions
+        return 0;
+      
+      // Level 1: Confirm first
       case 'SAVE_FAVORITE':
-        return 1; // L1: Soft actions, require approval
+      case 'SHARE':
+        return 1;
+      
+      // Level 2: High-impact - explicit confirm + explanation
+      case 'DELETE_FAVORITE':
+      case 'REPORT_ISSUE':
+        return 2;
+      
       default:
         return 0;
+    }
+  }
+
+  /**
+   * Check if action is available (Phase 7: Disable unavailable actions)
+   */
+  isActionAvailable(type: ActionType): boolean {
+    const restaurant = this.restaurant();
+    
+    switch (type) {
+      case 'CALL_RESTAURANT':
+        return !!restaurant.phoneNumber;
+      case 'VIEW_MENU':
+        return !!restaurant.website;
+      case 'GET_DIRECTIONS':
+        return !!restaurant.location;
+      default:
+        return true; // Most actions always available
     }
   }
 

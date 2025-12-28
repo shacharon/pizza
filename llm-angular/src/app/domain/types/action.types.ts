@@ -12,8 +12,10 @@ export type ActionType =
   | 'GET_DIRECTIONS'
   | 'CALL_RESTAURANT'
   | 'SAVE_FAVORITE'
+  | 'DELETE_FAVORITE'
   | 'SHARE'
-  | 'VIEW_MENU';
+  | 'VIEW_MENU'
+  | 'REPORT_ISSUE';
 
 export type ActionStatus =
   | 'PENDING'

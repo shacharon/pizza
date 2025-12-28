@@ -13,7 +13,8 @@
     "nearby": "באיזור",
     "expandSearch": "הרחב חיפוש",
     "removeFilters": "הסר מסננים",
-    "tryNearby": "נסה בסביבה"
+    "tryNearby": "נסה בסביבה",
+    "bestMatch": "התאמה הטובה ביותר"
   },
   "fallback": {
     "noResults": "לא מצאתי תוצאות",

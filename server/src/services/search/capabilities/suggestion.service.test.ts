@@ -52,7 +52,7 @@ describe('SuggestionService - Complete Chip Coverage', () => {
       expect(budgetChip?.filter).toBe('price<=2');
     });
 
-    it('should generate top rated chip when highly-rated options exist', () => {
+    it('should NOT generate sort chips when results < 5 (context-aware)', () => {
       const results: RestaurantResult[] = [
         { id: '1', placeId: 'p1', name: 'Great Pizza', address: 'Addr1',
           location: { lat: 32, lng: 34 }, rating: 4.8 }
@@ -60,10 +60,79 @@ describe('SuggestionService - Complete Chip Coverage', () => {
 
       const chips = service.generate(intent, results, 'NORMAL');
       
-      const topRatedChip = chips.find(c => c.id === 'toprated');
-      expect(topRatedChip).toBeDefined();
-      expect(topRatedChip?.emoji).toBe('⭐');
-      expect(topRatedChip?.filter).toBe('rating>=4.5');
+      // No sort chips when results.length < 5
+      const sortChips = chips.filter(c => c.action === 'sort');
+      expect(sortChips.length).toBe(0);
+    });
+
+    it('should generate sort chips when results >= 5 and confidence high', () => {
+      const highConfidenceIntent: ParsedIntent = {
+        ...intent,
+        confidenceLevel: 'high'
+      };
+
+      const results: RestaurantResult[] = [
+        { id: '1', placeId: 'p1', name: 'Pizza 1', address: 'Addr1', location: { lat: 32, lng: 34 }, rating: 4.8 },
+        { id: '2', placeId: 'p2', name: 'Pizza 2', address: 'Addr2', location: { lat: 32, lng: 34 }, rating: 4.5 },
+        { id: '3', placeId: 'p3', name: 'Pizza 3', address: 'Addr3', location: { lat: 32, lng: 34 }, rating: 4.3 },
+        { id: '4', placeId: 'p4', name: 'Pizza 4', address: 'Addr4', location: { lat: 32, lng: 34 }, rating: 4.0 },
+        { id: '5', placeId: 'p5', name: 'Pizza 5', address: 'Addr5', location: { lat: 32, lng: 34 }, rating: 3.8 }
+      ];
+
+      const chips = service.generate(highConfidenceIntent, results, 'NORMAL');
+      
+      // Should have sort chips
+      const sortBestMatch = chips.find(c => c.id === 'sort_best_match');
+      expect(sortBestMatch).toBeDefined();
+      expect(sortBestMatch?.emoji).toBe('✨');
+      expect(sortBestMatch?.action).toBe('sort');
+      expect(sortBestMatch?.filter).toBe('best_match');
+
+      const sortRating = chips.find(c => c.id === 'sort_rating');
+      expect(sortRating).toBeDefined();
+      expect(sortRating?.emoji).toBe('⭐');
+      expect(sortRating?.action).toBe('sort');
+      expect(sortRating?.filter).toBe('rating');
+    });
+
+    it('should generate sort_closest when location available', () => {
+      const highConfidenceIntent: ParsedIntent = {
+        ...intent,
+        confidenceLevel: 'high'
+      };
+
+      const results: RestaurantResult[] = Array(5).fill(null).map((_, i) => ({
+        id: `${i}`, placeId: `p${i}`, name: `Pizza ${i}`, address: `Addr${i}`,
+        location: { lat: 32, lng: 34 }
+      }));
+
+      const chips = service.generate(highConfidenceIntent, results, 'NORMAL');
+      
+      const sortClosest = chips.find(c => c.id === 'sort_closest');
+      expect(sortClosest).toBeDefined();
+      expect(sortClosest?.emoji).toBe('📍');
+      expect(sortClosest?.action).toBe('sort');
+      expect(sortClosest?.filter).toBe('distance');
+    });
+
+    it('should generate sort_price when price data available', () => {
+      const highConfidenceIntent: ParsedIntent = {
+        ...intent,
+        confidenceLevel: 'high'
+      };
+
+      const results: RestaurantResult[] = Array(5).fill(null).map((_, i) => ({
+        id: `${i}`, placeId: `p${i}`, name: `Pizza ${i}`, address: `Addr${i}`,
+        location: { lat: 32, lng: 34 }, priceLevel: 2
+      }));
+
+      const chips = service.generate(highConfidenceIntent, results, 'NORMAL');
+      
+      const sortPrice = chips.find(c => c.id === 'sort_price');
+      expect(sortPrice).toBeDefined();
+      expect(sortPrice?.emoji).toBe('💰');
+      expect(sortPrice?.action).toBe('sort');
+      expect(sortPrice?.filter).toBe('price');
     });
 
     it('should generate open now chip by default', () => {
@@ -188,13 +257,58 @@ describe('SuggestionService - Complete Chip Coverage', () => {
       expect(tryNearbyChip?.filter).toBe('nearby_fallback');
     });
 
-    it('should generate sort by rating chip', () => {
+    it('should generate sort by rating chip as SORT not FILTER', () => {
       const chips = service.generate(intent, [], 'RECOVERY');
       
       const sortRatingChip = chips.find(c => c.id === 'sort_rating');
       expect(sortRatingChip).toBeDefined();
       expect(sortRatingChip?.emoji).toBe('⭐');
       expect(sortRatingChip?.action).toBe('sort');
+      expect(sortRatingChip?.filter).toBe('rating'); // Sort key, not filter condition
+    });
+
+    it('should generate closednow chip ONLY when user searched for open but got 0 results', () => {
+      const intentOpenFilter: ParsedIntent = {
+        ...intent,
+        filters: { openNow: true, dietary: [] }
+      };
+
+      const chips = service.generate(intentOpenFilter, [], 'RECOVERY');
+      
+      const closedNowChip = chips.find(c => c.id === 'closednow');
+      expect(closedNowChip).toBeDefined();
+      expect(closedNowChip?.emoji).toBe('🔴');
+      expect(closedNowChip?.action).toBe('filter');
+      expect(closedNowChip?.filter).toBe('closed');
+    });
+
+    it('should NOT generate closednow chip when openNow filter not active', () => {
+      const intentNoOpenFilter: ParsedIntent = {
+        ...intent,
+        filters: { openNow: false, dietary: [] }
+      };
+
+      const chips = service.generate(intentNoOpenFilter, [], 'RECOVERY');
+      
+      const closedNowChip = chips.find(c => c.id === 'closednow');
+      expect(closedNowChip).toBeUndefined();
+    });
+
+    it('should NOT generate closednow chip when openNow=true but results exist', () => {
+      const intentOpenFilter: ParsedIntent = {
+        ...intent,
+        filters: { openNow: true, dietary: [] }
+      };
+
+      const results: RestaurantResult[] = [
+        { id: '1', placeId: 'p1', name: 'Open Pizza', address: 'Addr1',
+          location: { lat: 32, lng: 34 }, openNow: true }
+      ];
+
+      const chips = service.generate(intentOpenFilter, results, 'RECOVERY');
+      
+      const closedNowChip = chips.find(c => c.id === 'closednow');
+      expect(closedNowChip).toBeUndefined();
     });
 
     it('should generate map chip', () => {

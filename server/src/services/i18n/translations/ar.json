@@ -13,7 +13,8 @@
     "nearby": "قريب",
     "expandSearch": "توسيع البحث",
     "removeFilters": "إزالة المرشحات",
-    "tryNearby": "جرب قريباً"
+    "tryNearby": "جرب قريباً",
+    "bestMatch": "أفضل تطابق"
   },
   "fallback": {
     "noResults": "لم أجد نتائج",

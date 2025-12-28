@@ -13,7 +13,8 @@
     "nearby": "Nearby",
     "expandSearch": "Expand search",
     "removeFilters": "Remove filters",
-    "tryNearby": "Try nearby"
+    "tryNearby": "Try nearby",
+    "bestMatch": "Best match"
   },
   "fallback": {
     "noResults": "No results found",

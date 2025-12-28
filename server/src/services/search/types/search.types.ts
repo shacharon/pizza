@@ -192,12 +192,30 @@ export interface StreetDetectionResult {
  * All chips are deterministic and i18n-translated.
  * Assistant can only select from allowlist (cannot invent new chips).
  */
+/**
+ * Refinement Chip - Single control surface for user actions
+ * 
+ * Chip Taxonomy (UI/UX Contract):
+ * - FILTER: Multi-select, changes which results are included (e.g., "Budget", "Open now")
+ * - SORT: Single-select, changes ordering only (exactly one active at a time)
+ * - VIEW: Single-select, changes presentation mode (list vs map)
+ * 
+ * Action Types:
+ * - action='filter' + filter='price<=2' → Include/exclude results
+ * - action='sort' + filter='rating' → Sort results by field (filter field is sort key)
+ * - action='map' → Switch to map view
+ * 
+ * State Management:
+ * - SORT chips: Single-select (clicking new sort deactivates previous)
+ * - FILTER chips: Multi-select (can activate multiple simultaneously)
+ * - VIEW chips: Single-select (list or map)
+ */
 export interface RefinementChip {
   id: string;
   emoji: string;
   label: string;
-  action: 'filter' | 'sort' | 'map';
-  filter?: string;  // Filter to apply (e.g., "price<=2", "radius:10000", "clear_filters")
+  action: 'filter' | 'sort' | 'map';  // Taxonomy: FILTER=include/exclude, SORT=order, VIEW=presentation
+  filter?: string;  // For action='filter': condition (e.g., "price<=2") | For action='sort': sort key (e.g., "rating")
 }
 
 // ============================================================================

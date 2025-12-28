@@ -424,6 +424,19 @@
   &:active {
     transform: translateY(0);
   }
+
+  // Phase 7: Active state (UI/UX Contract)
+  &.active {
+    background-color: #3b82f6;
+    color: white;
+    border-color: #3b82f6;
+    font-weight: 600;
+    
+    // Subtle indicator for single-select (sort)
+    &[data-action="sort"] {
+      font-weight: 700;
+    }
+  }
 }
 
 // Results Section

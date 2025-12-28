@@ -1,9 +1,30 @@
 /**
  * Cache Configuration
  * Phase 8: TTL policies for different cache types
+ * Intent Performance Policy: Fast path + cache + LLM fallback
  * 
  * All values in milliseconds
  */
+
+// Intent parsing mode flags
+const DEV_INTENT_MODE = process.env.DEV_INTENT_MODE === 'true';
+const INTENT_FAST_PATH_ENABLED = process.env.INTENT_FAST_PATH !== 'false'; // Enabled by default
+
+// TTL based on mode
+const getIntentTTL = () => {
+  if (DEV_INTENT_MODE) {
+    return parseInt(process.env.CACHE_INTENT_TTL_DEV_MS || '30000'); // 30s in dev
+  }
+  return parseInt(process.env.CACHE_INTENT_TTL || '600000'); // 10min in prod
+};
+
+// Intent cache enabled unless explicitly disabled in dev mode
+const isIntentCacheEnabled = () => {
+  if (DEV_INTENT_MODE && process.env.CACHE_INTENT_IN_DEV === 'false') {
+    return false; // Dev mode can disable cache
+  }
+  return process.env.CACHE_INTENT !== 'false'; // Enabled by default now
+};
 
 export interface CacheConfigType {
   geocoding: {
@@ -26,6 +47,7 @@ export interface CacheConfigType {
     enabled: boolean;
     ttl: number;
     maxSize: number;
+    fastPathEnabled: boolean;
   };
 }
 
@@ -47,9 +69,10 @@ export const CacheConfig: CacheConfigType = {
     maxSize: parseInt(process.env.CACHE_RANKING_SIZE || '500'),
   },
   intentParsing: {
-    enabled: process.env.CACHE_INTENT === 'true', // Disabled by default (sensitive)
-    ttl: parseInt(process.env.CACHE_INTENT_TTL || '600000'), // 10 minutes
+    enabled: isIntentCacheEnabled(),
+    ttl: getIntentTTL(),
     maxSize: parseInt(process.env.CACHE_INTENT_SIZE || '200'),
+    fastPathEnabled: INTENT_FAST_PATH_ENABLED,
   },
 };
 
@@ -104,31 +127,45 @@ export function buildRankingCacheKey(
 }
 
 /**
- * Build cache key for intent parsing
+ * Build cache key for intent parsing with robust normalization
+ * v2: Adds punctuation removal, space collapse, geo bucket
  * Includes session context to distinguish queries with different implicit filters
  */
 export function buildIntentCacheKey(
   query: string, 
   language: string,
-  sessionContext?: { language?: string; lastIntent?: any }
+  sessionContext?: { language?: string; lastIntent?: any; currentCity?: string }
 ): string {
-  const normalizedQuery = query.toLowerCase().trim();
+  // Aggressive normalization
+  let normalized = query.toLowerCase().trim();
   
-  // Include a hash of relevant session context that affects intent parsing
-  // This prevents cache hits when context has changed (e.g., previous filters)
+  // Remove common punctuation
+  normalized = normalized.replace(/[?.!,;:]/g, ' ');
+  
+  // Collapse multiple spaces
+  normalized = normalized.replace(/\s+/g, ' ').trim();
+  
+  // Geo bucket (coarse location for cache stability)
+  let geoBucket = 'unknown';
+  if (sessionContext?.currentCity) {
+    geoBucket = sessionContext.currentCity.toLowerCase().trim();
+  } else if (sessionContext?.lastIntent?.location?.city) {
+    geoBucket = sessionContext.lastIntent.location.city.toLowerCase().trim();
+  }
+  
+  // Include session context hash only if relevant filters exist
   let contextHash = '';
   if (sessionContext?.lastIntent) {
     const relevantContext = {
       openNow: sessionContext.lastIntent.filters?.openNow,
       dietary: sessionContext.lastIntent.filters?.dietary
     };
-    // Only include if there are actual filters
     if (relevantContext.openNow || relevantContext.dietary?.length) {
-      contextHash = `:${JSON.stringify(relevantContext)}`;
+      contextHash = `:ctx:${JSON.stringify(relevantContext)}`;
     }
   }
   
-  return `intent:${normalizedQuery}:${language}${contextHash}`;
+  return `intent:v2:${language}:${geoBucket}:${normalized}${contextHash}`;
 }
 
 

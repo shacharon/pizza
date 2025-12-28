@@ -74,8 +74,9 @@
       type="button"
       class="action-button"
       (click)="onAction($event, 'GET_DIRECTIONS')"
-      title="Get directions"
-      aria-label="Get directions to restaurant"
+      [disabled]="!isActionAvailable('GET_DIRECTIONS')"
+      [title]="isActionAvailable('GET_DIRECTIONS') ? 'Get directions' : 'Location not available'"
+      [attr.aria-label]="isActionAvailable('GET_DIRECTIONS') ? 'Get directions to ' + restaurant().name : 'Directions not available'"
     >
       📍
     </button>
@@ -83,9 +84,9 @@
       type="button"
       class="action-button"
       (click)="onAction($event, 'CALL_RESTAURANT')"
-      title="Call restaurant"
-      aria-label="Call restaurant"
-      [disabled]="!restaurant().phoneNumber"
+      [disabled]="!isActionAvailable('CALL_RESTAURANT')"
+      [title]="isActionAvailable('CALL_RESTAURANT') ? 'Call restaurant' : 'Phone number not available'"
+      [attr.aria-label]="isActionAvailable('CALL_RESTAURANT') ? 'Call ' + restaurant().name : 'Phone number not available'"
     >
       📞
     </button>
@@ -93,8 +94,9 @@
       type="button"
       class="action-button favorite"
       (click)="onAction($event, 'SAVE_FAVORITE')"
+      [disabled]="!isActionAvailable('SAVE_FAVORITE')"
       title="Save to favorites"
-      aria-label="Save to favorites"
+      [attr.aria-label]="'Save ' + restaurant().name + ' to favorites'"
     >
       ❤️
     </button>

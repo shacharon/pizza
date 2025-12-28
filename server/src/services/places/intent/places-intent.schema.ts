@@ -17,7 +17,7 @@ export const FiltersSchema = z.object({
     type: z.string().optional(),
     keyword: z.string().optional(),
     price: z.object({ min: z.number().min(0).max(4).default(0), max: z.number().min(0).max(4).default(4) }).optional(),
-    opennow: z.boolean().optional(),
+    opennow: z.literal(true).optional(), // ONLY true allowed, never false (Google Places API limitation)
     radius: z.number().min(1).max(30000).optional(),
     rankby: z.enum(['prominence', 'distance']).optional(),
     language: z.enum(['he', 'en']).optional(),

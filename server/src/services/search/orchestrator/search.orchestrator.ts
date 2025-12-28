@@ -137,6 +137,12 @@ export class SearchOrchestrator {
             }
 
             // Step 2: Parse intent with confidence scoring
+            // Step 2: Parse intent with confidence scoring
+            // NOTE: Intent is parsed ONCE per search request.
+            // Chip interactions/refinements apply on top of this intent WITHOUT re-parsing.
+            // This prevents unnecessary LLM calls and maintains consistency.
+            // Intent Performance Policy: Fast Path → Cache → LLM fallback
+            
             // Add sessionId to context for city caching
             const contextWithSession = {
                 ...session.context,
@@ -150,6 +156,10 @@ export class SearchOrchestrator {
             timings.intentMs = Date.now() - intentStart;
             flags.usedLLMIntent = true;
             flags.liveDataRequested = intent.requiresLiveData || false;
+            
+            // Chips/refinements are deterministic operations on the base intent.
+            // If user selects a chip (e.g., "Budget", "Open Now"), the frontend
+            // applies that filter directly without triggering a new intent parse.
             
             /**
              * Phase 4: Language Resolution Policy (Single Source of Truth)
@@ -280,6 +290,16 @@ export class SearchOrchestrator {
 
             // Step 2.7: Check for single-token ambiguous queries
             const tokenDetection = this.tokenDetector.detect(request.query, session.context);
+            
+            // Step 2.7.1: Check for "open/closed now" keywords and set filter
+            if (tokenDetection.constraintType === 'openNow') {
+                intent.filters.openNow = true;
+                console.log(`[SearchOrchestrator] 🟢 Open keyword detected ("${request.query}"), setting openNow: true`);
+            } else if (tokenDetection.constraintType === 'closedNow') {
+                intent.filters.openNow = false;
+                console.log(`[SearchOrchestrator] 🔴 Closed keyword detected ("${request.query}"), setting openNow: false`);
+            }
+            
             if (tokenDetection.requiresClarification && tokenDetection.constraintType) {
                 console.log(`[SearchOrchestrator] 🤔 Single-token query detected: "${request.query}" (${tokenDetection.tokenType})`);
 

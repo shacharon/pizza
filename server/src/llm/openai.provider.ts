@@ -75,10 +75,34 @@ export class OpenAiProvider implements LLMProvider {
                 clearTimeout(t);
                 lastErr = e;
                 const status = e?.status ?? e?.code ?? e?.name;
-                const retriable = status === 429 || (typeof status === 'number' && status >= 500) || e?.name === 'AbortError';
+                
+                // Only retry transport/server errors (NOT JSON/Zod validation errors)
+                const isTransportError = status === 429 || 
+                                          (typeof status === 'number' && status >= 500) || 
+                                          e?.name === 'AbortError';
+                const isParseError = e?.name === 'ZodError' || 
+                                     e?.name === 'SyntaxError' || 
+                                     e?.message?.includes('JSON');
+                
+                // Parse errors: try ONE repair attempt
+                if (isParseError && attempt === 0) {
+                    // eslint-disable-next-line no-console
+                    console.warn(`[llm] Parse error on attempt 1, will try repair on attempt 2`);
+                    // Next attempt will use same prompt (no special repair logic for now)
+                    continue;
+                }
+                
+                // For parse errors on 2nd+ attempt OR non-retriable errors: fail fast
+                if (isParseError || !isTransportError) {
+                    // eslint-disable-next-line no-console
+                    console.error(`[llm] Non-retriable error, failing fast: ${status}`);
+                    throw e;
+                }
+                
+                // Transport errors: retry if attempts remaining
                 // eslint-disable-next-line no-console
-                console.warn(`[llm] attempt ${attempt + 1} failed: ${status}`);
-                if (!retriable || attempt === maxAttempts - 1) {
+                console.warn(`[llm] Retriable transport error, attempt ${attempt + 1}/${maxAttempts}: ${status}`);
+                if (attempt === maxAttempts - 1) {
                     // eslint-disable-next-line no-console
                     console.error(`[llm] failed attempts=${attempt + 1} durMs=${Date.now() - tStart}`);
                     throw e;

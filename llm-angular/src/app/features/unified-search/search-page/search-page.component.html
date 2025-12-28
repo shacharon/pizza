@@ -122,7 +122,12 @@
           @if (facade.chips().length > 0) {
             <div class="chips-mobile">
               @for (chip of facade.chips(); track trackByChip($index, chip)) {
-                <button class="chip" (click)="onChipClick(chip.id)">
+                <button 
+                  class="chip"
+                  [class.active]="isChipActive(chip)"
+                  [attr.data-action]="chip.action"
+                  (click)="onChipClick(chip.id)"
+                >
                   <span>{{ chip.emoji }}</span>
                   {{ chip.label }}
                 </button>

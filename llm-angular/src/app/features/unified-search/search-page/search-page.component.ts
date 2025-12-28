@@ -48,29 +48,34 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   readonly isRecoveryMode = computed(() => this.currentMode() === 'RECOVERY');
   readonly isClarifyMode = computed(() => this.currentMode() === 'CLARIFY');
 
-  // NEW: Conditional assistant - only show when needed
+  // Phase 7: Conditional assistant (UI/UX Contract - only show when needed)
   readonly showAssistant = computed(() => {
     const response = this.response();
     if (!response) return false;
     
-    // Show assistant only when:
-    // 1. No results found
+    // Show assistant ONLY when:
+    // 1. No results found (RECOVERY mode)
     if (!response.results || response.results.length === 0) {
       return true;
     }
     
-    // 2. Low confidence (< 60%)
+    // 2. Low confidence < 60% (RECOVERY mode)
     const confidence = response.meta?.confidence || 1;
     if (confidence < 0.6) {
       return true;
     }
     
-    // 3. Recovery or clarify mode (ambiguous query)
-    if (response.assist?.mode === 'RECOVERY' || response.assist?.mode === 'CLARIFY') {
+    // 3. Ambiguous query (CLARIFY mode)
+    if (response.assist?.mode === 'CLARIFY') {
       return true;
     }
     
-    // Otherwise hide assistant
+    // 4. Explicit RECOVERY mode
+    if (response.assist?.mode === 'RECOVERY') {
+      return true;
+    }
+    
+    // Otherwise hide assistant (NORMAL mode = no assistant, chips only)
     return false;
   });
 
@@ -228,6 +233,44 @@ export class SearchPageComponent implements OnInit, OnDestroy {
 
   trackByChip(_index: number, chip: any): string {
     return chip.id;
+  }
+
+  /**
+   * Check if a chip is currently active (Phase 7: UI/UX Contract)
+   * - SORT: Single-select - check if this chip's sort key matches current sort
+   * - FILTER: Multi-select - check if chip ID is in active filters set
+   * - VIEW: Single-select - check if view matches current view
+   */
+  isChipActive(chip: any): boolean {
+    if (chip.action === 'sort') {
+      return this.facade.currentSort() === this.mapChipToSortKey(chip.id);
+    } else if (chip.action === 'filter') {
+      return this.facade.activeFilters().includes(chip.id);
+    } else if (chip.action === 'map') {
+      return this.facade.currentView() === 'MAP';
+    }
+    return false;
+  }
+
+  /**
+   * Map chip ID to sort key (matches facade logic)
+   */
+  private mapChipToSortKey(chipId: string): 'BEST_MATCH' | 'CLOSEST' | 'RATING_DESC' | 'PRICE_ASC' {
+    switch (chipId) {
+      case 'sort_best_match':
+      case 'best_match':
+        return 'BEST_MATCH';
+      case 'sort_closest':
+      case 'closest':
+        return 'CLOSEST';
+      case 'sort_rating':
+      case 'toprated':
+        return 'RATING_DESC';
+      case 'sort_price':
+        return 'PRICE_ASC';
+      default:
+        return 'BEST_MATCH';
+    }
   }
 
   trackByAction(_index: number, action: any): string {

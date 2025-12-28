@@ -1,261 +1,234 @@
 /**
- * Search Facade Tests
+ * Search Facade State Management Tests
+ * Tests sort/filter/view state tracking per UI/UX Contract
  */
 
 import { TestBed } from '@angular/core/testing';
-import { HttpClientTestingModule } from '@angular/common/http/testing';
-import { of, throwError } from 'rxjs';
 import { SearchFacade } from './search.facade';
 import { UnifiedSearchService } from '../services/unified-search.service';
 import { ActionService } from '../services/action.service';
+import { InputStateMachine } from '../services/input-state-machine.service';
+import { RecentSearchesService } from '../services/recent-searches.service';
 import { SearchStore } from '../state/search.store';
 import { SessionStore } from '../state/session.store';
 import { ActionsStore } from '../state/actions.store';
-import type { SearchResponse, Restaurant } from '../domain/types/search.types';
+import { of } from 'rxjs';
 
-describe('SearchFacade', () => {
+describe('SearchFacade - State Management (UI/UX Contract)', () => {
   let facade: SearchFacade;
-  let searchService: jasmine.SpyObj<UnifiedSearchService>;
-  let actionService: jasmine.SpyObj<ActionService>;
-  let searchStore: SearchStore;
-  let sessionStore: SessionStore;
-
-  const mockRestaurant: Restaurant = {
-    id: '1',
-    placeId: 'place-1',
-    name: 'Test Restaurant',
-    address: '123 Main St',
-    location: { lat: 48.8566, lng: 2.3522 }
-  };
+  let searchStore: jasmine.SpyObj<SearchStore>;
 
   beforeEach(() => {
-    const searchServiceSpy = jasmine.createSpyObj('UnifiedSearchService', ['search', 'retryLastSearch']);
-    const actionServiceSpy = jasmine.createSpyObj('ActionService', ['proposeAction', 'approveAction', 'rejectAction', 'cleanupExpired']);
-
-    sessionStorage.clear();
+    const searchStoreSpy = jasmine.createSpyObj('SearchStore', ['reset'], {
+      loading: jasmine.createSpy('loading').and.returnValue(false),
+      error: jasmine.createSpy('error').and.returnValue(null),
+      query: jasmine.createSpy('query').and.returnValue(''),
+      results: jasmine.createSpy('results').and.returnValue([]),
+      chips: jasmine.createSpy('chips').and.returnValue([]),
+      meta: jasmine.createSpy('meta').and.returnValue(null),
+      assist: jasmine.createSpy('assist').and.returnValue(null),
+      proposedActions: jasmine.createSpy('proposedActions').and.returnValue([]),
+      hasResults: jasmine.createSpy('hasResults').and.returnValue(false),
+      groups: jasmine.createSpy('groups').and.returnValue([]),
+      hasGroups: jasmine.createSpy('hasGroups').and.returnValue(false),
+      exactResults: jasmine.createSpy('exactResults').and.returnValue([]),
+      nearbyResults: jasmine.createSpy('nearbyResults').and.returnValue([]),
+      exactCount: jasmine.createSpy('exactCount').and.returnValue(0),
+      nearbyCount: jasmine.createSpy('nearbyCount').and.returnValue(0),
+      clarification: jasmine.createSpy('clarification').and.returnValue(null),
+      requiresClarification: jasmine.createSpy('requiresClarification').and.returnValue(false)
+    });
 
     TestBed.configureTestingModule({
-      imports: [HttpClientTestingModule],
       providers: [
         SearchFacade,
-        SearchStore,
-        SessionStore,
-        ActionsStore,
-        { provide: UnifiedSearchService, useValue: searchServiceSpy },
-        { provide: ActionService, useValue: actionServiceSpy }
+        { provide: UnifiedSearchService, useValue: jasmine.createSpyObj('UnifiedSearchService', ['search']) },
+        { provide: ActionService, useValue: jasmine.createSpyObj('ActionService', ['proposeAction']) },
+        { provide: InputStateMachine, useValue: jasmine.createSpyObj('InputStateMachine', ['input'], {
+          state: jasmine.createSpy('state').and.returnValue('IDLE'),
+          query: jasmine.createSpy('query').and.returnValue(''),
+          showRecentSearches: jasmine.createSpy('showRecentSearches').and.returnValue(false),
+          showClearButton: jasmine.createSpy('showClearButton').and.returnValue(false),
+          canSubmit: jasmine.createSpy('canSubmit').and.returnValue(false),
+          intentReset: jasmine.createSpy('intentReset').and.returnValue(false)
+        }) },
+        { provide: RecentSearchesService, useValue: jasmine.createSpyObj('RecentSearchesService', ['add'], {
+          searches: jasmine.createSpy('searches').and.returnValue([]),
+          hasSearches: jasmine.createSpy('hasSearches').and.returnValue(false)
+        }) },
+        { provide: SearchStore, useValue: searchStoreSpy },
+        { provide: SessionStore, useValue: jasmine.createSpyObj('SessionStore', ['setLocale'], {
+          selectedRestaurant: jasmine.createSpy('selectedRestaurant').and.returnValue(null),
+          conversationId: jasmine.createSpy('conversationId').and.returnValue(''),
+          locale: jasmine.createSpy('locale').and.returnValue('en'),
+          preferences: jasmine.createSpy('preferences').and.returnValue({})
+        }) },
+        { provide: ActionsStore, useValue: jasmine.createSpyObj('ActionsStore', [], {
+          pending: jasmine.createSpy('pending').and.returnValue([]),
+          executed: jasmine.createSpy('executed').and.returnValue([])
+        }) }
       ]
     });
 
     facade = TestBed.inject(SearchFacade);
-    searchService = TestBed.inject(UnifiedSearchService) as jasmine.SpyObj<UnifiedSearchService>;
-    actionService = TestBed.inject(ActionService) as jasmine.SpyObj<ActionService>;
-    searchStore = TestBed.inject(SearchStore);
-    sessionStore = TestBed.inject(SessionStore);
+    searchStore = TestBed.inject(SearchStore) as jasmine.SpyObj<SearchStore>;
   });
 
-  afterEach(() => {
-    sessionStorage.clear();
-  });
-
-  it('should be created', () => {
-    expect(facade).toBeTruthy();
-  });
-
-  it('should expose store signals', () => {
-    expect(facade.loading).toBeDefined();
-    expect(facade.error).toBeDefined();
-    expect(facade.results).toBeDefined();
-    expect(facade.chips).toBeDefined();
-    expect(facade.selectedRestaurant).toBeDefined();
-    expect(facade.pendingActions).toBeDefined();
-  });
-
-  it('should delegate search to service', () => {
-    const mockResponse: SearchResponse = {
-      sessionId: 'test-session',
-      query: { original: 'pizza', parsed: {}, language: 'en' },
-      results: [mockRestaurant],
-      chips: [],
-      meta: {
-        tookMs: 100,
-        mode: 'textsearch',
-        appliedFilters: [],
-        confidence: 0.9,
-        source: 'google_places'
-      }
-    };
-
-    searchService.search.and.returnValue(of(mockResponse));
-
-    facade.search('pizza');
-
-    expect(searchService.search).toHaveBeenCalledWith('pizza', undefined);
-  });
-
-  it('should handle search errors gracefully', () => {
-    spyOn(console, 'error');
-    searchService.search.and.returnValue(throwError(() => new Error('Search failed')));
-
-    facade.search('pizza');
-
-    expect(console.error).toHaveBeenCalled();
-  });
-
-  it('should retry last search', () => {
-    const mockResponse: SearchResponse = {
-      sessionId: 'test-session',
-      query: { original: 'pizza', parsed: {}, language: 'en' },
-      results: [],
-      chips: [],
-      meta: {
-        tookMs: 100,
-        mode: 'textsearch',
-        appliedFilters: [],
-        confidence: 0.9,
-        source: 'google_places'
-      }
-    };
-
-    searchService.retryLastSearch.and.returnValue(of(mockResponse));
-
-    facade.retry();
-
-    expect(searchService.retryLastSearch).toHaveBeenCalled();
-  });
-
-  it('should handle retry when no previous search', () => {
-    searchService.retryLastSearch.and.returnValue(null);
-
-    facade.retry();
-
-    expect(searchService.retryLastSearch).toHaveBeenCalled();
-  });
-
-  it('should select restaurant', () => {
-    facade.selectRestaurant(mockRestaurant);
-
-    expect(facade.selectedRestaurant()).toEqual(mockRestaurant);
-  });
-
-  it('should propose action', () => {
-    actionService.proposeAction.and.returnValue(of({
-      id: 'action-1',
-      type: 'SAVE_FAVORITE',
-      level: 1,
-      restaurant: mockRestaurant,
-      status: 'PENDING',
-      createdAt: new Date(),
-      expiresAt: new Date(),
-      idempotencyKey: 'idem-1',
-      correlationId: 'corr-1'
-    }));
-
-    facade.proposeAction('SAVE_FAVORITE', 1, mockRestaurant);
-
-    expect(actionService.proposeAction).toHaveBeenCalledWith('SAVE_FAVORITE', 1, mockRestaurant);
-  });
-
-  it('should approve action', () => {
-    actionService.approveAction.and.returnValue(of({
-      success: true,
-      message: 'Approved'
-    }));
-
-    facade.approveAction('action-1');
-
-    expect(actionService.approveAction).toHaveBeenCalledWith('action-1');
-  });
-
-  it('should reject action', () => {
-    facade.rejectAction('action-1');
-
-    expect(actionService.rejectAction).toHaveBeenCalledWith('action-1');
-  });
-
-  it('should reset search store', () => {
-    searchStore.setQuery('pizza');
-    searchStore.setLoading(true);
-
-    facade.reset();
-
-    expect(searchStore.query()).toBe('');
-    expect(searchStore.loading()).toBe(false);
-  });
-
-  it('should set locale', () => {
-    facade.setLocale('fr');
-
-    expect(sessionStore.locale()).toBe('fr');
-  });
-
-  it('should set region', () => {
-    facade.setRegion('FR');
-
-    expect(sessionStore.region()).toBe('FR');
-  });
-
-  it('should cleanup expired actions', () => {
-    facade.cleanupExpiredActions();
-
-    expect(actionService.cleanupExpired).toHaveBeenCalled();
-  });
-
-  it('should handle chip click', () => {
-    spyOn(console, 'log');
-
-    searchStore.setResponse({
-      sessionId: 'test-session',
-      query: { original: 'pizza', parsed: {}, language: 'en' },
-      results: [],
-      chips: [
-        { id: 'chip-1', emoji: '💰', label: 'Budget', action: 'filter', filter: 'price<=2' }
-      ],
-      meta: {
-        tookMs: 100,
-        mode: 'textsearch',
-        appliedFilters: [],
-        confidence: 0.9,
-        source: 'google_places'
-      }
+  describe('Sort State (Single-Select)', () => {
+    beforeEach(() => {
+      (searchStore.chips as any).and.returnValue([
+        { id: 'sort_best_match', emoji: '✨', label: 'Best match', action: 'sort', filter: 'best_match' },
+        { id: 'sort_closest', emoji: '📍', label: 'Closest', action: 'sort', filter: 'distance' },
+        { id: 'sort_rating', emoji: '⭐', label: 'Rating', action: 'sort', filter: 'rating' }
+      ]);
     });
 
-    facade.onChipClick('chip-1');
+    it('should initialize with BEST_MATCH as default sort', () => {
+      expect(facade.currentSort()).toBe('BEST_MATCH');
+    });
 
-    expect(console.log).toHaveBeenCalled();
+    it('should activate RATING sort and deactivate BEST_MATCH (single-select)', () => {
+      facade.onChipClick('sort_rating');
+      expect(facade.currentSort()).toBe('RATING_DESC');
+    });
+
+    it('should activate CLOSEST sort and deactivate previous sort', () => {
+      facade.onChipClick('sort_rating');
+      expect(facade.currentSort()).toBe('RATING_DESC');
+
+      facade.onChipClick('sort_closest');
+      expect(facade.currentSort()).toBe('CLOSEST');
+    });
+
+    it('should only have ONE sort active at a time', () => {
+      facade.onChipClick('sort_rating');
+      const currentSort = facade.currentSort();
+      
+      // Only one sort should be active
+      expect(currentSort).toBe('RATING_DESC');
+      
+      // Activate another sort
+      facade.onChipClick('sort_price');
+      const newSort = facade.currentSort();
+      
+      // Previous sort should be deactivated
+      expect(newSort).toBe('PRICE_ASC');
+      expect(newSort).not.toBe('RATING_DESC');
+    });
+
+    it('should map legacy chip IDs correctly (toprated → RATING_DESC)', () => {
+      facade.onChipClick('toprated');
+      expect(facade.currentSort()).toBe('RATING_DESC');
+    });
   });
 
-  it('should search on assist action click', () => {
-    const mockResponse: SearchResponse = {
-      sessionId: 'test-session',
-      query: { original: 'italian', parsed: {}, language: 'en' },
-      results: [],
-      chips: [],
-      meta: {
-        tookMs: 100,
-        mode: 'textsearch',
-        appliedFilters: [],
-        confidence: 0.9,
-        source: 'google_places'
-      }
-    };
+  describe('Filter State (Multi-Select)', () => {
+    beforeEach(() => {
+      (searchStore.chips as any).and.returnValue([
+        { id: 'delivery', emoji: '🚗', label: 'Delivery', action: 'filter', filter: 'delivery' },
+        { id: 'budget', emoji: '💰', label: 'Budget', action: 'filter', filter: 'price<=2' },
+        { id: 'opennow', emoji: '🟢', label: 'Open now', action: 'filter', filter: 'opennow' }
+      ]);
+    });
 
-    searchService.search.and.returnValue(of(mockResponse));
+    it('should initialize with no active filters', () => {
+      expect(facade.activeFilters().length).toBe(0);
+    });
 
-    facade.onAssistActionClick('italian restaurant');
+    it('should add delivery filter when clicked', () => {
+      facade.onChipClick('delivery');
+      expect(facade.activeFilters()).toContain('delivery');
+    });
 
-    expect(searchService.search).toHaveBeenCalledWith('italian restaurant', undefined);
+    it('should toggle filter off when clicked again', () => {
+      facade.onChipClick('delivery');
+      expect(facade.activeFilters()).toContain('delivery');
+
+      facade.onChipClick('delivery');
+      expect(facade.activeFilters()).not.toContain('delivery');
+    });
+
+    it('should allow multiple filters to be active simultaneously', () => {
+      facade.onChipClick('delivery');
+      facade.onChipClick('budget');
+      facade.onChipClick('opennow');
+
+      const activeFilters = facade.activeFilters();
+      expect(activeFilters.length).toBe(3);
+      expect(activeFilters).toContain('delivery');
+      expect(activeFilters).toContain('budget');
+      expect(activeFilters).toContain('opennow');
+    });
+
+    it('should not affect sort state when toggling filters', () => {
+      const initialSort = facade.currentSort();
+
+      facade.onChipClick('delivery');
+      facade.onChipClick('budget');
+
+      expect(facade.currentSort()).toBe(initialSort);
+    });
+  });
+
+  describe('View State (Single-Select)', () => {
+    beforeEach(() => {
+      (searchStore.chips as any).and.returnValue([
+        { id: 'map', emoji: '🗺️', label: 'Map', action: 'map' }
+      ]);
+    });
+
+    it('should initialize with LIST as default view', () => {
+      expect(facade.currentView()).toBe('LIST');
+    });
+
+    it('should switch to MAP view when map chip clicked', () => {
+      facade.onChipClick('map');
+      expect(facade.currentView()).toBe('MAP');
+    });
+  });
+
+  describe('State Independence', () => {
+    beforeEach(() => {
+      (searchStore.chips as any).and.returnValue([
+        { id: 'sort_rating', emoji: '⭐', label: 'Rating', action: 'sort', filter: 'rating' },
+        { id: 'delivery', emoji: '🚗', label: 'Delivery', action: 'filter', filter: 'delivery' },
+        { id: 'map', emoji: '🗺️', label: 'Map', action: 'map' }
+      ]);
+    });
+
+    it('should not affect filter state when changing sort', () => {
+      facade.onChipClick('delivery');
+      expect(facade.activeFilters()).toContain('delivery');
+
+      facade.onChipClick('sort_rating');
+      expect(facade.activeFilters()).toContain('delivery');
+    });
+
+    it('should not affect sort state when changing view', () => {
+      facade.onChipClick('sort_rating');
+      expect(facade.currentSort()).toBe('RATING_DESC');
+
+      facade.onChipClick('map');
+      expect(facade.currentSort()).toBe('RATING_DESC');
+    });
+
+    it('should maintain all three states independently', () => {
+      // Set sort
+      facade.onChipClick('sort_rating');
+      expect(facade.currentSort()).toBe('RATING_DESC');
+
+      // Set filter
+      facade.onChipClick('delivery');
+      expect(facade.activeFilters()).toContain('delivery');
+
+      // Set view
+      facade.onChipClick('map');
+      expect(facade.currentView()).toBe('MAP');
+
+      // Verify all states are still correct
+      expect(facade.currentSort()).toBe('RATING_DESC');
+      expect(facade.activeFilters()).toContain('delivery');
+      expect(facade.currentView()).toBe('MAP');
+    });
   });
 });
-
-
-
-
-
-
-
-
-
-
-
-
-

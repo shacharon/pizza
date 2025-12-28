@@ -78,14 +78,15 @@ export class SuggestionGenerator {
             });
         }
 
-        // Suggest top rated if there are highly-rated options
+        // Suggest sort by rating if there are highly-rated options
+        // Changed from FILTER to SORT per UI/UX Contract
         if (characteristics.hasTopRated && !intent.rating) {
             suggestions.push({
-                id: 'toprated',
+                id: 'sort_rating',
                 emoji: '⭐',
                 label: i18n.t('chip.topRated', lang),
-                action: 'filter',
-                filter: 'rating>=4.5'
+                action: 'sort',
+                filter: 'rating'  // Sort key, not a filter condition
             });
         }
 
@@ -237,11 +238,19 @@ export class SuggestionGenerator {
                 filter: 'price<=2'
             },
             'toprated': {
-                id: 'toprated',
+                // Legacy ID kept for backward compatibility
+                id: 'sort_rating',
                 emoji: '⭐',
                 label: i18n.t('chip.topRated', lang),
-                action: 'filter',
-                filter: 'rating>=4.5'
+                action: 'sort',
+                filter: 'rating'  // Sort key
+            },
+            'sort_rating': {
+                id: 'sort_rating',
+                emoji: '⭐',
+                label: i18n.t('chip.topRated', lang),
+                action: 'sort',
+                filter: 'rating'  // Sort key
             },
             'opennow': {
                 id: 'opennow',

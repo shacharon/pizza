@@ -3,6 +3,38 @@
 ## Core Principle
 **One intent = one surface. No duplicate controls.**
 
+## Chip Taxonomy (Strict)
+
+Chips must be classified into exactly ONE type:
+
+### FILTER (Multi-Select)
+- Changes which results are included
+- Multiple filters can be active simultaneously
+- Examples: Delivery 🚗, Budget 💰, Open Now 🟢
+- State: `facade.activeFilters()` (array)
+
+### SORT (Single-Select)
+- Changes ordering only
+- Exactly ONE sort chip active at a time
+- Context-aware: Show when `results.length >= 5` AND `confidence >= 70%`
+- Examples: Best Match ✨, Closest 📍, Rating ⭐, Price 💰
+- State: `facade.currentSort()` (single value)
+- Default: `BEST_MATCH`
+
+### VIEW (Single-Select)
+- Changes presentation mode
+- One view active at a time
+- Examples: List 📋, Map 🗺️
+- State: `facade.currentView()` (single value)
+- Default: `LIST`
+
+**Critical Rules:**
+- "Top Rated ⭐" is SORT (not filter)
+- "Closed Now 🔴" is FILTER (RECOVERY mode only)
+- Clicking a sort chip deactivates all other sorts
+- Clicking a filter chip toggles it on/off
+- Never mix taxonomy (a chip cannot be both FILTER and SORT)
+
 ## Authoritative Documentation
 The complete reference for all tools, options, chips, and actions is in:
 📄 `docs/SYSTEM_TOOLS_AND_OPTIONS.md`
@@ -41,9 +73,15 @@ Distance grouping **MUST** depend on search granularity:
 
 ### 4. Mode-Driven Behavior
 The system operates in 3 modes. Each mode has different chips:
-- **NORMAL** → Context-aware filters (delivery, budget, top rated, etc.)
-- **RECOVERY** → Recovery chips (expand, remove filters, try nearby)
+- **NORMAL** → Context-aware filters + sorts (when 5+ results, 70%+ confidence)
+  - Filters: Delivery, Budget, Open Now, Takeout, etc.
+  - Sorts: Best Match (default), Closest, Rating, Price
+  - Max 5 chips total in NORMAL mode
+- **RECOVERY** → Recovery chips (expand, remove filters, try nearby, sort by rating, map)
+  - "Closed Now 🔴" chip appears ONLY in RECOVERY when user searched "open" but got 0 results
+  - Max 5 recovery chips
 - **CLARIFY** → Clarification chips (city suggestions, 1-3 chips max)
+  - Minimal set to resolve ambiguity
 
 **Chips MUST match the mode!**
 

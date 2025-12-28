@@ -13,7 +13,8 @@
     "nearby": "Рядом",
     "expandSearch": "Расширить поиск",
     "removeFilters": "Убрать фильтры",
-    "tryNearby": "Попробуй рядом"
+    "tryNearby": "Попробуй рядом",
+    "bestMatch": "Лучшее совпадение"
   },
   "fallback": {
     "noResults": "Результаты не найдены",
