@@ -89,12 +89,20 @@ export class RankingService implements IRankingService {
       score -= diff * this.weights.priceMatch;
     }
 
-    // Open now (hard requirement)
-    if (intent.filters.openNow) {
+    // Open/Closed status (hard requirement)
+    if (intent.filters.openNow === true) {
+      // User wants open restaurants
       if (restaurant.openNow === true) {
         score += this.weights.openNow;
       } else if (restaurant.openNow === false) {
         score -= this.weights.openNow;  // Penalize closed restaurants
+      }
+    } else if (intent.filters.openNow === false) {
+      // User wants closed restaurants (e.g., "פיצה סגור")
+      if (restaurant.openNow === false) {
+        score += this.weights.openNow;  // Boost closed restaurants
+      } else if (restaurant.openNow === true) {
+        score -= this.weights.openNow;  // Penalize open restaurants
       }
     }
 

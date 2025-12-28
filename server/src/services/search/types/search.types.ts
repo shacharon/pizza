@@ -9,6 +9,8 @@
 
 export type SearchMode = 'textsearch' | 'nearbysearch' | 'findplace';
 
+export type SearchGranularity = 'CITY' | 'STREET' | 'LANDMARK' | 'AREA';
+
 export type Occasion = 'date' | 'friends' | 'family' | 'business' | 'casual' | 'any';
 
 export type RestaurantSource = 'google_places' | 'tripadvisor' | 'internal';
@@ -88,6 +90,9 @@ export interface ParsedIntent {
     category?: string;      // "pizza"
     locationText?: string;  // "Tel Aviv"
   };
+  
+  // NEW: Search granularity (determines grouping behavior)
+  granularity?: SearchGranularity;
 }
 
 export interface IntentParseResult {

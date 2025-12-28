@@ -22,9 +22,73 @@
 }
 
 .search-content {
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
   padding: 2rem;
+}
+
+// NEW: Mobile-First Layout
+.search-results-layout {
+  display: flex;
+  gap: 2rem;
+  align-items: flex-start;
+  
+  .results-primary {
+    flex: 1;
+    min-width: 0; // Allow flex shrink
+  }
+  
+  .assistant-desktop {
+    display: none;
+    
+    @media (min-width: 1024px) {
+      display: block;
+      width: 320px;
+      flex-shrink: 0;
+    }
+  }
+}
+
+.chips-mobile {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  overflow-x: auto;
+  
+  // Visible on ALL breakpoints (single source of truth)
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.5rem 1rem;
+    background: white;
+    border: 1px solid #d1d5db;
+    border-radius: 20px;
+    font-size: 0.875rem;
+    color: #374151;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+
+    &:hover {
+      background: #f3f4f6;
+      border-color: #9ca3af;
+      transform: translateY(-1px);
+    }
+
+    &.active {
+      background: #3b82f6;
+      color: white;
+      border-color: #3b82f6;
+      font-weight: 600;
+    }
+
+    span {
+      font-size: 1rem;
+    }
+  }
 }
 
 // NEW: Recent Searches (Phase B)

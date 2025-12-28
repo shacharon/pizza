@@ -4,6 +4,7 @@
     "budget": "رخيص",
     "topRated": "الأعلى تقييماً",
     "openNow": "مفتوح الآن",
+    "closedNow": "مغلق الآن",
     "map": "خريطة",
     "closest": "الأقرب",
     "takeout": "استلام ذاتي",
@@ -110,6 +111,10 @@
     "recovery": "وضع الاسترداد",
     "clarify": "يحتاج توضيح",
     "refining": "تحسين البحث"
+  },
+  "disclosure": {
+    "closedNowDerived": "عرض الأماكن المغلقة فقط ({{count}} من {{total}} نتيجة)",
+    "closedNowExplanation": "Google Places لا يدعم تصفية المغلق - نقوم بتصفية النتائج من جانبنا"
   }
 }
 

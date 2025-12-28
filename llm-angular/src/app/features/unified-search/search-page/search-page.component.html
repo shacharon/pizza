@@ -76,15 +76,6 @@
       />
     }
 
-    <!-- NEW: AI Assistant Strip (contextual guidance) -->
-    @if (facade.assist() && facade.chips().length > 0 && !facade.loading()) {
-      <app-assistant-strip
-        [assist]="facade.assist()!"
-        [chips]="facade.chips()"
-        (actionClick)="onChipClick($event)"
-      />
-    }
-
     <!-- Phase 5: Mode Indicators (subtle, non-intrusive) -->
     @if (isRecoveryMode() && !facade.loading()) {
       <div class="mode-indicator recovery">
@@ -100,44 +91,63 @@
       </div>
     }
 
-    <!-- Refinement Chips -->
-    @if (facade.chips().length > 0 && facade.hasResults()) {
-      <div class="refinement-chips">
-        @for (chip of facade.chips(); track trackByChip($index, chip)) {
-          <button
-            class="chip"
-            (click)="onChipClick(chip.id)"
-          >
-            <span>{{ chip.emoji }}</span>
-            {{ chip.label }}
-          </button>
+    <!-- NEW: Mobile-First Ranked Results -->
+    @if (facade.hasResults() && !facade.loading()) {
+      <div class="search-results-layout">
+        <!-- Primary Results (scrollable) -->
+        <section class="results-primary">
+          <div class="results-header">
+            <h2>
+              Found {{ flatResults().length }} restaurant{{ flatResults().length !== 1 ? 's' : '' }}
+            </h2>
+            @if (facade.meta()) {
+              <p class="search-time">
+                Searched in {{ facade.meta()!.tookMs }}ms
+                @if (facade.meta()!.confidence) {
+                  · Confidence: {{ (facade.meta()!.confidence * 100).toFixed(0) }}%
+                }
+              </p>
+            }
+          </div>
+          
+          <!-- Phase 8: Disclosure Banner (transparency for derived filters) -->
+          @if (showClosedDisclosure() && facade.meta()?.openNowSummary) {
+            <app-disclosure-banner
+              [summary]="facade.meta()!.openNowSummary!"
+              [filterActive]="closedFilterActive()"
+            />
+          }
+          
+          <!-- Mobile: Chips above list -->
+          @if (facade.chips().length > 0) {
+            <div class="chips-mobile">
+              @for (chip of facade.chips(); track trackByChip($index, chip)) {
+                <button class="chip" (click)="onChipClick(chip.id)">
+                  <span>{{ chip.emoji }}</span>
+                  {{ chip.label }}
+                </button>
+              }
+            </div>
+          }
+          
+          <app-ranked-results
+            [results]="flatResults()"
+            [loading]="facade.loading()"
+            (restaurantClick)="onCardClick($event)"
+          />
+        </section>
+        
+        <!-- Desktop: Sticky Assistant Panel (Conditional - only when needed) -->
+        @if (facade.assist() && showAssistant()) {
+          <app-assistant-desktop-panel
+            class="assistant-desktop"
+            [assist]="facade.assist()!"
+            [chips]="[]"
+            [highlightedResults]="highlightedResults()"
+            (restaurantClick)="onCardClick($event)"
+          />
         }
       </div>
-    }
-
-    <!-- NEW: Grouped Results (Phase B) -->
-    @if (facade.hasGroups() && !facade.loading()) {
-      <section class="results-section">
-        <div class="results-header">
-          <h2>
-            Found {{ facade.exactCount() + facade.nearbyCount() }} restaurant{{ (facade.exactCount() + facade.nearbyCount()) !== 1 ? 's' : '' }}
-          </h2>
-          @if (facade.meta()) {
-            <p class="search-time">
-              Searched in {{ facade.meta()!.tookMs }}ms
-              @if (facade.meta()!.confidence) {
-                · Confidence: {{ (facade.meta()!.confidence * 100).toFixed(0) }}%
-              }
-            </p>
-          }
-        </div>
-
-        <app-grouped-results
-          [groups]="facade.groups()!"
-          [loading]="facade.loading()"
-          (restaurantClick)="onCardClick($event)"
-        />
-      </section>
     }
 
     <!-- Fallback: Flat Results Grid (backward compatibility) -->
@@ -168,6 +178,16 @@
           }
         </div>
       </section>
+    }
+
+    <!-- Mobile: Bottom Sheet (Conditional - only when assistant shown) -->
+    @if (showAssistant()) {
+      <app-assistant-bottom-sheet
+        [visible]="bottomSheetVisible()"
+        [highlightedResults]="highlightedResults()"
+        (close)="closeBottomSheet()"
+        (restaurantClick)="onCardClick($event); closeBottomSheet()"
+      />
     }
 
     <!-- Pending Actions Panel -->

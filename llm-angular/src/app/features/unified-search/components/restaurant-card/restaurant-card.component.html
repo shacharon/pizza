@@ -1,11 +1,17 @@
 <article 
   class="restaurant-card"
   [class.selected]="selected()"
+  [class.top-result]="isTopResult()"
+  [class.compact]="compact()"
   (click)="onCardClick()"
   role="button"
   tabindex="0"
   [attr.aria-label]="'View details for ' + restaurant().name"
 >
+  @if (showReasonLabel() && isTopResult()) {
+    <app-reason-label [restaurant]="restaurant()" />
+  }
+
   @if (restaurant().photoUrl) {
     <img 
       class="restaurant-photo" 

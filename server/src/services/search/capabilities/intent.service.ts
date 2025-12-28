@@ -1,6 +1,8 @@
 /**
  * IntentService: Parses natural language queries into structured intents with confidence scoring
  * Wraps PlacesIntentService and adds confidence calculation
+ * 
+ * Phase 8: Enhanced with intent caching
  */
 
 import type {
@@ -14,6 +16,8 @@ import { PlacesIntentService } from '../../places/intent/places-intent.service.j
 import type { PlacesIntent } from '../../places/intent/places-intent.schema.js';
 import { SearchConfig, type ConfidenceWeights } from '../config/search.config.js';
 import { GeocodingService } from '../geocoding/geocoding.service.js';
+import { caches } from '../../../lib/cache/cache-manager.js';
+import { CacheConfig, buildIntentCacheKey } from '../config/cache.config.js';
 
 export class IntentService implements IIntentService {
   private placesIntentService: PlacesIntentService;
@@ -44,9 +48,26 @@ export class IntentService implements IIntentService {
 
   /**
    * Parse a natural language query into a structured intent with confidence score
+   * Phase 8: With intent caching support
    */
   async parse(text: string, context?: SessionContext): Promise<IntentParseResult> {
-    // Get intent from existing PlacesIntentService
+    const parseStart = Date.now();
+    
+    // Phase 8: Check intent cache first
+    const language = context?.language || 'en';
+    if (CacheConfig.intentParsing.enabled) {
+      const cacheKey = buildIntentCacheKey(text, language, context);
+      const cached = caches.intentParsing.get(cacheKey);
+      
+      if (cached) {
+        const cacheTime = Date.now() - parseStart;
+        console.log(`[IntentService] ✅ INTENT CACHE HIT for "${text}" (${cacheTime}ms)`);
+        return cached;
+      }
+      console.log(`[IntentService] ❌ Intent cache MISS for "${text}"`);
+    }
+    
+    // Get intent from existing PlacesIntentService (LLM call)
     const placesIntent = await this.placesIntentService.resolve(text);
 
     // Convert to ParsedIntent format
@@ -121,7 +142,17 @@ export class IntentService implements IIntentService {
       locationText: intent.location?.city || intent.location?.place || undefined,
     };
 
-    return { intent, confidence };
+    const result = { intent, confidence };
+    
+    // Phase 8: Cache the result
+    if (CacheConfig.intentParsing.enabled) {
+      const cacheKey = buildIntentCacheKey(text, language, context);
+      caches.intentParsing.set(cacheKey, result, CacheConfig.intentParsing.ttl);
+      const totalTime = Date.now() - parseStart;
+      console.log(`[IntentService] 💾 Cached intent for "${text}" (${totalTime}ms, TTL: ${CacheConfig.intentParsing.ttl / 1000}s)`);
+    }
+
+    return result;
   }
 
   /**

@@ -1,0 +1,163 @@
+# System Tools & Options - Workspace Rules
+
+## Core Principle
+**One intent = one surface. No duplicate controls.**
+
+## Authoritative Documentation
+The complete reference for all tools, options, chips, and actions is in:
+📄 `docs/SYSTEM_TOOLS_AND_OPTIONS.md`
+
+This document is the **heart of the system** and must be consulted for:
+- Adding new chips or filters
+- Modifying chip behavior
+- Changing assistant visibility rules
+- Adjusting search modes
+- Implementing new actions
+
+## Immutable Rules (NEVER Violate)
+
+### 1. Single Control Surface
+- **ONLY ONE** chips row for sorting/filtering
+- Chips must call `facade.onChipClick(chipId)` (never open modals)
+- Never add duplicate chip rows, buttons, or controls
+- Desktop and mobile share the same chips row (no separate controls)
+
+### 2. Conditional Assistant
+Assistant is **ONLY** visible when:
+- No results found, OR
+- Confidence < 60%, OR
+- Mode is RECOVERY or CLARIFY
+
+**Never show assistant when results are good!**
+
+### 3. Granularity-Based Grouping
+Distance grouping **MUST** depend on search granularity:
+- **CITY** searches → All results in ONE "EXACT" group (no distance splitting)
+- **STREET** searches → "EXACT" (500m) + "NEARBY" (2km)
+- **LANDMARK** searches → "EXACT" (1km) + "NEARBY" (3km)
+- **AREA** searches → "EXACT" (1.5km) + "NEARBY" (5km)
+
+**Never apply street-level radii to city searches!**
+
+### 4. Mode-Driven Behavior
+The system operates in 3 modes. Each mode has different chips:
+- **NORMAL** → Context-aware filters (delivery, budget, top rated, etc.)
+- **RECOVERY** → Recovery chips (expand, remove filters, try nearby)
+- **CLARIFY** → Clarification chips (city suggestions, 1-3 chips max)
+
+**Chips MUST match the mode!**
+
+### 5. Mobile-First UX
+- Design for mobile first, enhance for desktop
+- Same mental model across breakpoints
+- Single ranked list (no competing columns or sections)
+- Chips row visible on ALL breakpoints
+
+### 6. Result Display Rules
+- **ONE ranked list** (best match on top)
+- No "EXACT vs NEARBY" grouping for city searches
+- Top result shows reason label (e.g., "Best match · Open now · 4.3⭐")
+- No re-sorting in the UI (trust backend ranking)
+
+## Implementation Checklist
+
+### When Adding a New Chip:
+- [ ] Add chip to `suggestion.service.ts` (mode-aware generation)
+- [ ] Add i18n keys to all `translations/{lang}.json` files
+- [ ] Add filter/sort logic to backend if needed
+- [ ] Update `docs/SYSTEM_TOOLS_AND_OPTIONS.md`
+- [ ] Add regression test in `search-page-no-duplication.spec.ts`
+- [ ] Verify chip appears ONLY once in the UI
+
+### When Adding a New Action:
+- [ ] Add action type to `action.types.ts`
+- [ ] Add action button to `restaurant-card.component.html`
+- [ ] Add action handler in `restaurant-card.component.ts`
+- [ ] Update `docs/SYSTEM_TOOLS_AND_OPTIONS.md`
+- [ ] Add i18n labels if needed
+- [ ] Test Human-in-the-Loop workflow
+
+### When Modifying Search Modes:
+- [ ] Update mode logic in `suggestion.service.ts`
+- [ ] Update `showAssistant` computed signal conditions
+- [ ] Update `docs/SYSTEM_TOOLS_AND_OPTIONS.md`
+- [ ] Add QA dataset entries for new mode scenarios
+- [ ] Run full regression suite
+
+### When Changing Grouping Logic:
+- [ ] Verify granularity classification in `granularity-classifier.service.ts`
+- [ ] Update grouping rules in `search.orchestrator.ts`
+- [ ] Update `docs/SYSTEM_TOOLS_AND_OPTIONS.md`
+- [ ] Test city searches (no splitting!)
+- [ ] Test street/landmark searches (proper radii)
+
+## Testing Requirements
+
+### Regression Tests (Must Pass)
+1. **search-page-no-duplication.spec.ts**
+   - Only ONE chips row exists
+   - Only ONE results list exists
+   - NO duplicate assistant strips
+   - Assistant conditional logic works
+
+2. **QA Harness (npm run qa)**
+   - All 41 canonical queries pass
+   - No regressions in NORMAL/RECOVERY/CLARIFY modes
+   - Granularity detection correct
+
+### Manual Testing Checklist
+- [ ] "pizza in tel aviv" → All results in ONE group (no "nearby" section)
+- [ ] "pizza on allenby" → "EXACT" + "NEARBY" sections (street search)
+- [ ] Click chip → Results filter immediately (no modal)
+- [ ] Good results + high confidence → Assistant hidden
+- [ ] No results → Assistant visible with recovery chips
+- [ ] Mobile: horizontal scroll chips
+- [ ] Desktop: chips wrap to multiple rows
+
+## Quick Reference: Key Files
+
+| Component | Location |
+|-----------|----------|
+| **Chips Generation** | `server/src/services/search/capabilities/suggestion.service.ts` |
+| **Granularity Logic** | `server/src/services/search/detectors/granularity-classifier.service.ts` |
+| **Grouping Logic** | `server/src/services/search/orchestrator/search.orchestrator.ts` |
+| **Frontend Chips** | `llm-angular/src/app/features/unified-search/search-page/` |
+| **Assistant Conditional** | `search-page.component.ts` → `showAssistant` computed |
+| **i18n Translations** | `server/src/services/i18n/translations/{lang}.json` |
+| **Regression Tests** | `llm-angular/src/app/features/unified-search/search-page/search-page-no-duplication.spec.ts` |
+| **QA Dataset** | `server/src/services/search/qa/qa.dataset.json` |
+
+## Common Pitfalls (Avoid!)
+
+❌ **Adding a second chips row** → Violates single control surface  
+❌ **Making chips open modals** → Chips must trigger actual filtering  
+❌ **Always showing assistant** → Assistant must be conditional  
+❌ **Re-sorting results in UI** → Trust backend ranking  
+❌ **Distance grouping for city searches** → Use granularity-based logic  
+❌ **Duplicate chips in desktop panel** → Pass empty array `[]`  
+❌ **Hardcoded labels** → Always use i18n keys  
+❌ **Skipping regression tests** → Tests enforce core principles  
+
+## Approval Required For
+
+The following changes require explicit user approval:
+1. Adding a new control surface (beyond the single chips row)
+2. Changing assistant visibility rules
+3. Modifying granularity-based grouping logic
+4. Adding new search modes (beyond NORMAL/RECOVERY/CLARIFY)
+5. Breaking changes to chip behavior or appearance
+
+## Philosophy
+
+> "The heart of the system is giving users **one clear path** to control results. Everything else is assistive, not competitive."
+
+- **One chips row** → Single source of truth
+- **One ranked list** → Trust through clarity
+- **Conditional assistant** → Help when needed, hide when not
+- **Mode-driven** → Adapt to user needs
+- **Mobile-first** → Works everywhere
+
+---
+
+**Remember:** This is the **heart of the system**. Consult `docs/SYSTEM_TOOLS_AND_OPTIONS.md` for all implementation details.
+

@@ -1,0 +1,26 @@
+<div class="ranked-results">
+  @if (loading) {
+    <div class="loading-state">
+      <div class="spinner"></div>
+      <p>Searching...</p>
+    </div>
+  } @else if (results.length > 0) {
+    <div class="results-list">
+      @for (result of results; track trackById($index, result); let i = $index) {
+        <app-restaurant-card
+          [restaurant]="result"
+          [isTopResult]="i === 0"
+          [showReasonLabel]="i === 0 && showReasonLabels"
+          (click)="onRestaurantClick(result)"
+        />
+      }
+    </div>
+  } @else {
+    <div class="empty-state">
+      <div class="empty-icon">🔍</div>
+      <h3>No results found</h3>
+      <p>Try adjusting your search or filters</p>
+    </div>
+  }
+</div>
+

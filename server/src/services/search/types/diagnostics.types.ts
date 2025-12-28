@@ -43,5 +43,8 @@ export interface Diagnostics {
     assistantOutput?: string;   // Detected assistant message language
     mismatchDetected: boolean;  // True if assistant validation failed
   };
+  
+  // Phase 7: Search granularity (for debugging grouping behavior)
+  granularity?: import('./search.types.js').SearchGranularity;
 }
 

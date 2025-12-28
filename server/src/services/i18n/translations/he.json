@@ -4,6 +4,7 @@
     "budget": "זול",
     "topRated": "מדורג גבוה",
     "openNow": "פתוח עכשיו",
+    "closedNow": "סגור עכשיו",
     "map": "מפה",
     "closest": "הכי קרוב",
     "takeout": "איסוף עצמי",
@@ -110,5 +111,9 @@
     "recovery": "מצב שחזור",
     "clarify": "נדרש הבהרה",
     "refining": "משפר חיפוש"
+  },
+  "disclosure": {
+    "closedNowDerived": "מציג רק מקומות סגורים ({{count}} מתוך {{total}} תוצאות)",
+    "closedNowExplanation": "Google Places לא תומך בסינון סגור - מסננים תוצאות בצד שלנו"
   }
 }

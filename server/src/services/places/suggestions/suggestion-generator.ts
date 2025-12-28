@@ -90,13 +90,24 @@ export class SuggestionGenerator {
         }
 
         // Suggest open now if not already filtered
-        if (!intent.temporal?.includes('opennow')) {
+        if (!intent.temporal?.includes('opennow') && !intent.opennow) {
             suggestions.push({
                 id: 'opennow',
                 emoji: '🟢',
                 label: i18n.t('chip.openNow', lang),
                 action: 'filter',
                 filter: 'opennow'
+            });
+        }
+
+        // Suggest closed now as an option (for planning ahead)
+        if (!intent.temporal?.includes('closed')) {
+            suggestions.push({
+                id: 'closednow',
+                emoji: '🔴',
+                label: i18n.t('chip.closedNow', lang),
+                action: 'filter',
+                filter: 'closed'
             });
         }
 

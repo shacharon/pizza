@@ -4,6 +4,7 @@
     "budget": "Budget",
     "topRated": "Top rated",
     "openNow": "Open now",
+    "closedNow": "Closed now",
     "map": "Map",
     "closest": "Closest",
     "takeout": "Takeout",
@@ -110,6 +111,10 @@
     "recovery": "Recovery mode",
     "clarify": "Clarification needed",
     "refining": "Refining search"
+  },
+  "disclosure": {
+    "closedNowDerived": "Showing only closed places ({{count}} of {{total}} results)",
+    "closedNowExplanation": "Google Places doesn't support closed filter - we filter results on our side"
   }
 }
 

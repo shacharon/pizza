@@ -24,6 +24,43 @@
     outline: 2px solid #60a5fa;
     outline-offset: 2px;
   }
+
+  // NEW: Mobile-first UX - Top result styling
+  &.top-result {
+    border-color: #3b82f6;
+    background: linear-gradient(to bottom, #eff6ff 0%, #fff 100%);
+  }
+
+  // NEW: Mobile-first UX - Compact mode for bottom sheet/panel
+  &.compact {
+    padding: 1rem;
+    gap: 1rem;
+
+    .restaurant-photo,
+    .restaurant-photo-placeholder {
+      width: 80px;
+      height: 80px;
+      min-width: 80px;
+    }
+
+    .restaurant-info {
+      .restaurant-name {
+        font-size: 1rem;
+      }
+
+      .restaurant-meta {
+        font-size: 0.8rem;
+      }
+
+      .restaurant-address {
+        font-size: 0.8rem;
+      }
+    }
+
+    .quick-actions {
+      display: none; // Hide actions in compact mode
+    }
+  }
 }
 
 .restaurant-photo {
@@ -60,6 +97,20 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   line-height: 1.3;
+  position: relative;
+  cursor: help;
+  
+  // Show full text on hover
+  &:hover {
+    overflow: visible;
+    white-space: normal;
+    background: white;
+    z-index: 10;
+    padding: 0.25rem;
+    margin: -0.25rem -0.25rem 0.5rem -0.25rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    border-radius: 4px;
+  }
 }
 
 .restaurant-meta {
@@ -129,6 +180,20 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   line-height: 1.5;
+  position: relative;
+  cursor: help;
+  
+  // Show full text on hover
+  &:hover {
+    overflow: visible;
+    white-space: normal;
+    background: white;
+    z-index: 10;
+    padding: 0.25rem;
+    margin: -0.25rem -0.25rem 0.5rem -0.25rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    border-radius: 4px;
+  }
 }
 
 .restaurant-tags {

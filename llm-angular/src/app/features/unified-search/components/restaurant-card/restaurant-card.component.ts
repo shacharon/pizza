@@ -5,13 +5,14 @@
 
 import { Component, input, output, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { ReasonLabelComponent } from '../reason-label/reason-label.component';
 import type { Restaurant } from '../../../../domain/types/search.types';
 import type { ActionType, ActionLevel } from '../../../../domain/types/action.types';
 
 @Component({
   selector: 'app-restaurant-card',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, ReasonLabelComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './restaurant-card.component.html',
   styleUrl: './restaurant-card.component.scss'
@@ -20,6 +21,9 @@ export class RestaurantCardComponent {
   // Inputs
   readonly restaurant = input.required<Restaurant>();
   readonly selected = input(false);
+  readonly isTopResult = input(false); // NEW: Mobile-first UX
+  readonly showReasonLabel = input(false); // NEW: Mobile-first UX
+  readonly compact = input(false); // NEW: For bottom sheet/panel cards
 
   // Outputs
   readonly cardClick = output<Restaurant>();

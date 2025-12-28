@@ -111,7 +111,7 @@ export class SuggestionService implements ISuggestionService {
     });
 
     // 2. Remove filters (if any applied)
-    if (intent.filters.openNow || intent.filters.dietary?.length) {
+    if (intent.filters.openNow !== undefined || intent.filters.dietary?.length) {
       chips.push({
         id: 'remove_filters',
         emoji: '🔄',

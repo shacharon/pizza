@@ -60,6 +60,19 @@ export interface SearchResponseMeta {
     exactRadius: number;
     nearbyRadius: number;
   };
+  // Opening hours summary (for closed filter transparency)
+  openNowSummary?: {
+    open: number;
+    closed: number;
+    unknown: number;
+    total: number;
+  };
+  // API capabilities (for transparent derived filters)
+  capabilities?: {
+    openNowApiSupported: boolean;
+    closedNowApiSupported: boolean;
+    closedNowIsDerived: boolean;
+  };
 }
 
 export interface SearchResponse {
@@ -155,6 +168,17 @@ export function createSearchResponse(params: {
       nearbyCount: number;
       exactRadius: number;
       nearbyRadius: number;
+    };
+    openNowSummary?: {
+      open: number;
+      closed: number;
+      unknown: number;
+      total: number;
+    };
+    capabilities?: {
+      openNowApiSupported: boolean;
+      closedNowApiSupported: boolean;
+      closedNowIsDerived: boolean;
     };
   };
 }): SearchResponse {

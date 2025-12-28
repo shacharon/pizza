@@ -46,6 +46,10 @@ export interface Restaurant {
   source?: string;  // NEW: Phase B
   groupKind?: 'EXACT' | 'NEARBY';  // NEW: Phase B
   distanceMeters?: number;  // NEW: Phase B
+  
+  // NEW: Mobile-first UX - Match reason for top result
+  matchReason?: string;  // Single reason text from backend
+  matchReasons?: string[];  // Array of reason tags (e.g., ['highly_rated', 'open_now', 'nearby'])
 }
 
 // Alias for backward compatibility
@@ -126,6 +130,19 @@ export interface SearchMeta {
   originalQuery?: string;
   failureReason?: FailureReason;
   liveData?: LiveDataVerification;
+  // Phase 8: Opening hours summary (for transparency)
+  openNowSummary?: {
+    open: number;
+    closed: number;
+    unknown: number;
+    total: number;
+  };
+  // Phase 8: API capabilities (for derived filter disclosure)
+  capabilities?: {
+    openNowApiSupported: boolean;
+    closedNowApiSupported: boolean;
+    closedNowIsDerived: boolean;
+  };
 }
 
 export interface ProposedActions {

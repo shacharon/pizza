@@ -6,7 +6,7 @@
 import type { SessionContext } from '../types/search.types.js';
 
 export type TokenType = 'CONSTRAINT' | 'NAME' | 'CUISINE' | 'UNKNOWN';
-export type ConstraintTokenType = 'parking' | 'kosher' | 'openNow' | 'glutenFree' | 'vegan' | 'delivery';
+export type ConstraintTokenType = 'parking' | 'kosher' | 'openNow' | 'closedNow' | 'glutenFree' | 'vegan' | 'delivery';
 
 export interface TokenDetectionResult {
   isSingleToken: boolean;
@@ -22,6 +22,7 @@ export class TokenDetectorService {
     parking: ['חניה', 'parking', 'parkplatz', 'موقف', 'парковка'],
     kosher: ['כשר', 'kosher', 'halal', 'حلال', 'חלאל'],
     openNow: ['פתוח', 'open', 'ouvert', 'مفتوح', 'открыто', 'offen'],
+    closedNow: ['סגור', 'closed', 'fermé', 'مغلق', 'закрыто', 'geschlossen'],
     glutenFree: ['ללא גלוטן', 'gluten free', 'glutenfree', 'sans gluten', 'sin gluten'],
     vegan: ['טבעוני', 'vegan', 'végétalien', 'نباتي'],
     delivery: ['משלוח', 'delivery', 'livraison', 'توصيل', 'доставка']
@@ -159,6 +160,8 @@ export class TokenDetectorService {
       .replace(/\s+/g, ' ');
   }
 }
+
+
 
 
 

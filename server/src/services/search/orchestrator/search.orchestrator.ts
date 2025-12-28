@@ -31,11 +31,13 @@ import { QueryComposer } from '../utils/query-composer.js';
 import { CityFilterService } from '../filters/city-filter.service.js';
 import { StreetDetectorService } from '../detectors/street-detector.service.js';
 import { TokenDetectorService } from '../detectors/token-detector.service.js';
+import { GranularityClassifier } from '../detectors/granularity-classifier.service.js';
 import { ClarificationService } from '../clarification/clarification.service.js';
 import { ResultStateEngine } from '../rse/result-state-engine.js';
 import { ChatBackService } from '../chatback/chatback.service.js';
 import { FailureDetectorService, AssistantNarrationService, isTimeoutError, isQuotaError } from '../assistant/index.js';
 import type { ResultGroup, LiveDataVerification } from '../types/search.types.js';
+import { calculateOpenNowSummary } from '../utils/opening-hours-summary.js';
 
 // Phase 7: Production hardening imports
 import { logger } from '../../../lib/logger/structured-logger.js';
@@ -52,6 +54,7 @@ export class SearchOrchestrator {
     private cityFilter: CityFilterService;
     private streetDetector: StreetDetectorService;
     private tokenDetector: TokenDetectorService;
+    private granularityClassifier: GranularityClassifier;
     private clarificationService: ClarificationService;
     private rse: ResultStateEngine;
     private chatBackService: ChatBackService;
@@ -71,6 +74,7 @@ export class SearchOrchestrator {
         this.cityFilter = new CityFilterService(5); // Min 5 results before fallback
         this.streetDetector = new StreetDetectorService();
         this.tokenDetector = new TokenDetectorService();
+        this.granularityClassifier = new GranularityClassifier();
         this.clarificationService = new ClarificationService();
         this.rse = new ResultStateEngine();
         this.chatBackService = new ChatBackService();
@@ -342,8 +346,15 @@ export class SearchOrchestrator {
             const filters: SearchParams['filters'] = {};
 
             // Merge filters carefully
+            // IMPORTANT: Google Places API doesn't support openNow=false (closed filter)
+            // We'll filter for closed restaurants AFTER getting results (derived filter)
             const openNow = request.filters?.openNow ?? intent.filters.openNow;
-            if (openNow !== undefined) filters.openNow = openNow;
+            const needsClosedFiltering = openNow === false;
+            
+            // Only send openNow to Google if it's true (they don't support false)
+            if (openNow === true) {
+                filters.openNow = true;
+            }
 
             const priceLevel = request.filters?.priceLevel ?? intent.filters.priceLevel;
             if (priceLevel !== undefined) filters.priceLevel = priceLevel;
@@ -381,6 +392,11 @@ export class SearchOrchestrator {
 
             // Step 4: Detect if this is a street-level query
             const streetDetection = this.streetDetector.detect(intent, request.query);
+            
+            // Step 4.1: Classify search granularity for grouping behavior
+            const granularity = this.granularityClassifier.classify(intent, streetDetection);
+            intent.granularity = granularity;
+            console.log(`[SearchOrchestrator] 🎯 Search granularity: ${granularity}`);
 
             let groups: ResultGroup[];
             let allResults: RestaurantResult[];
@@ -457,6 +473,29 @@ export class SearchOrchestrator {
                 }];
             }
 
+            // Phase 8: Calculate opening hours summary BEFORE filtering (for transparency)
+            const openNowSummary = calculateOpenNowSummary(allResults);
+            console.log(`[SearchOrchestrator] 📊 Opening hours summary: ${openNowSummary.open} open, ${openNowSummary.closed} closed, ${openNowSummary.unknown} unknown`);
+
+            // Phase 8: Apply derived filter for "closed now" (Google API doesn't support opennow=false)
+            if (needsClosedFiltering) {
+                console.log(`[SearchOrchestrator] 🔴 Applying derived "closed now" filter (Google API limitation)`);
+                const beforeCount = allResults.length;
+                allResults = allResults.filter(r => r.openNow === false);
+                console.log(`[SearchOrchestrator] 🔴 Closed filter: ${beforeCount} → ${allResults.length} results`);
+                
+                // Update groups with closed-only results
+                if (streetDetection.isStreet) {
+                    const closedIds = new Set(allResults.map(r => r.placeId));
+                    groups = groups.map(group => ({
+                        ...group,
+                        results: group.results.filter(r => closedIds.has(r.placeId))
+                    }));
+                } else {
+                    groups[0].results = allResults;
+                }
+            }
+
             // Step 4.5: Apply city filter to all results (coordinate-based)
             const rankingStart = Date.now();
             const filterStartTime = Date.now();
@@ -500,30 +539,25 @@ export class SearchOrchestrator {
             
             if (weak.length > 0) {
                 console.log(`[SearchOrchestrator] ⚠️ Detected ${weak.length} weak matches (score < ${SearchConfig.ranking.thresholds.weakMatch})`);
+                console.log(`[SearchOrchestrator] 📉 Weak matches dropped:`, weak.map(r => ({
+                    name: r.name,
+                    score: r.score?.toFixed(1),
+                    rating: r.rating
+                })));
             }
 
             // Step 6: Use strong results (or all if no weak matches)
             const topResults = strong.length > 0 ? strong.slice(0, 10) : rankedResults.slice(0, 10);
+            console.log(`[SearchOrchestrator] 📊 Final result count: ${topResults.length} (${strong.length} strong, ${weak.length} weak from ${rankedResults.length} ranked)`);
 
-            // Phase 3: Group results by distance (consistent for all searches)
+            // Phase 3: Group results by search granularity
             if (location.coords) {
-                if (streetDetection.isStreet) {
-                    // Street search: use street-specific radii
-                    groups = this.groupResultsByDistance(
-                        topResults,
-                        location.coords,
-                        SearchConfig.streetSearch.exactRadius,
-                        SearchConfig.streetSearch.nearbyRadius
-                    );
-                } else {
-                    // Regular search: use default radii
-                    groups = this.groupResultsByDistance(
-                        topResults,
-                        location.coords,
-                        500,   // 500m for "exact"
-                        2000   // 2km for "nearby"
-                    );
-                }
+                groups = this.groupByGranularity(
+                    topResults,
+                    location.coords,
+                    intent.granularity || 'CITY',
+                    intent.location?.city
+                );
             } else {
                 // No coords: single EXACT group
                 groups = [{
@@ -632,6 +666,8 @@ export class SearchOrchestrator {
                     resolved: intent.language,
                     mismatchDetected: false,  // Would be set if assistant validation failed
                 },
+                // Phase 7: Search granularity
+                granularity: intent.granularity,
             } : undefined;
 
             const responseParams: Parameters<typeof createSearchResponse>[0] = {
@@ -687,6 +723,14 @@ export class SearchOrchestrator {
                             nearbyRadius: 400,
                         }
                     } : {}),
+                    // Phase 8: Opening hours summary (for transparency)
+                    openNowSummary,
+                    // Phase 8: API capabilities (for derived filter disclosure)
+                    capabilities: {
+                        openNowApiSupported: true,
+                        closedNowApiSupported: false,
+                        closedNowIsDerived: true,
+                    },
                 },
             };
 
@@ -707,6 +751,16 @@ export class SearchOrchestrator {
             if (diagnostics) {
                 console.log(`[SearchOrchestrator] 📊 Diagnostics: Intent(${timings.intentMs}ms) + Geocode(${timings.geocodeMs}ms) + Provider(${timings.providerMs}ms) + Ranking(${timings.rankingMs}ms) + Assistant(${timings.assistantMs}ms)`);
             }
+            
+            // Phase 8: Log cache stats periodically
+            if (Math.random() < 0.1) { // 10% of requests
+                const { caches } = await import('../../../lib/cache/cache-manager.js');
+                console.log(`[SearchOrchestrator] 📈 Cache Stats:`, {
+                    places: caches.placesSearch.getStats(),
+                    geocoding: caches.geocoding.getStats()
+                });
+            }
+            
             return response;
 
         } catch (error) {
@@ -936,6 +990,62 @@ export class SearchOrchestrator {
         }
         
         return groups;
+    }
+
+    /**
+     * Group results by search granularity
+     * Applies appropriate distance thresholds based on search type
+     */
+    private groupByGranularity(
+        results: RestaurantResult[],
+        centerCoords: { lat: number; lng: number },
+        granularity: import('../types/search.types.js').SearchGranularity,
+        cityName?: string
+    ): ResultGroup[] {
+        
+        // CITY: No distance grouping - all results in one group
+        if (granularity === 'CITY') {
+            results.forEach(r => (r as any).groupKind = 'EXACT');
+            return [{
+                kind: 'EXACT',
+                label: cityName ? `Results in ${cityName}` : 'Results',
+                results,
+                radiusMeters: 3000
+            }];
+        }
+        
+        // STREET: Tight radii
+        if (granularity === 'STREET') {
+            return this.groupResultsByDistance(
+                results,
+                centerCoords,
+                SearchConfig.streetSearch.exactRadius,  // 200m
+                SearchConfig.streetSearch.nearbyRadius  // 400m
+            );
+        }
+        
+        // LANDMARK: Medium radii
+        if (granularity === 'LANDMARK') {
+            return this.groupResultsByDistance(
+                results,
+                centerCoords,
+                1000,  // 1km for exact
+                3000   // 3km for nearby
+            );
+        }
+        
+        // AREA: Larger radii
+        if (granularity === 'AREA') {
+            return this.groupResultsByDistance(
+                results,
+                centerCoords,
+                1500,  // 1.5km for exact
+                5000   // 5km for nearby
+            );
+        }
+        
+        // Fallback: treat as CITY
+        return this.groupByGranularity(results, centerCoords, 'CITY', cityName);
     }
 
     /**

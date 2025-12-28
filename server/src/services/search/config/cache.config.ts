@@ -105,11 +105,32 @@ export function buildRankingCacheKey(
 
 /**
  * Build cache key for intent parsing
+ * Includes session context to distinguish queries with different implicit filters
  */
-export function buildIntentCacheKey(query: string, language: string): string {
+export function buildIntentCacheKey(
+  query: string, 
+  language: string,
+  sessionContext?: { language?: string; lastIntent?: any }
+): string {
   const normalizedQuery = query.toLowerCase().trim();
-  return `intent:${normalizedQuery}:${language}`;
+  
+  // Include a hash of relevant session context that affects intent parsing
+  // This prevents cache hits when context has changed (e.g., previous filters)
+  let contextHash = '';
+  if (sessionContext?.lastIntent) {
+    const relevantContext = {
+      openNow: sessionContext.lastIntent.filters?.openNow,
+      dietary: sessionContext.lastIntent.filters?.dietary
+    };
+    // Only include if there are actual filters
+    if (relevantContext.openNow || relevantContext.dietary?.length) {
+      contextHash = `:${JSON.stringify(relevantContext)}`;
+    }
+  }
+  
+  return `intent:${normalizedQuery}:${language}${contextHash}`;
 }
+
 
 
 

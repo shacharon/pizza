@@ -39,6 +39,8 @@ export class PlacesProviderService implements IPlacesProviderService {
    * Phase 8: With caching support
    */
   async search(params: SearchParams): Promise<RestaurantResult[]> {
+    const searchStart = Date.now();
+    
     // Phase 8: Check cache first
     if (CacheConfig.placesSearch.enabled && params.location) {
       const cacheKey = buildPlacesSearchCacheKey(
@@ -51,9 +53,13 @@ export class PlacesProviderService implements IPlacesProviderService {
       
       const cached = caches.placesSearch.get(cacheKey);
       if (cached) {
-        console.log(`[PlacesProviderService] Cache hit for "${params.query}"`);
+        const cacheTime = Date.now() - searchStart;
+        console.log(`[PlacesProviderService] ✅ CACHE HIT for "${params.query}" (${cacheTime}ms, ${cached.length} results)`);
+        console.log(`[PlacesProviderService] 🔑 Cache key: ${cacheKey.substring(0, 80)}...`);
         return cached;
       }
+      console.log(`[PlacesProviderService] ❌ CACHE MISS for "${params.query}"`);
+      console.log(`[PlacesProviderService] 🔑 Cache key: ${cacheKey.substring(0, 80)}...`);
     }
 
     const mode = params.mode ?? 'textsearch';
@@ -79,8 +85,9 @@ export class PlacesProviderService implements IPlacesProviderService {
 
     // Normalize results
     const results = this.normalizeResults(response, params.pageSize ?? 10);
-
-    console.log(`[PlacesProviderService] Found ${results.length} results`);
+    
+    const totalTime = Date.now() - searchStart;
+    console.log(`[PlacesProviderService] Found ${results.length} results (${totalTime}ms total)`);
 
     // Phase 8: Cache the results
     if (CacheConfig.placesSearch.enabled && params.location) {
@@ -94,6 +101,7 @@ export class PlacesProviderService implements IPlacesProviderService {
       
       const ttl = getPlacesSearchTTL(params.filters.openNow ?? false);
       caches.placesSearch.set(cacheKey, results, ttl);
+      console.log(`[PlacesProviderService] 💾 Cached ${results.length} results (TTL: ${ttl / 1000}s)`);
     }
 
     return results;
