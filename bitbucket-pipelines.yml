@@ -1,0 +1,64 @@
+# Bitbucket Pipelines Configuration
+# Phase 7: CI Integration for QA Harness and Legacy Import Fence
+
+image: node:18
+
+definitions:
+  caches:
+    npm: ~/.npm
+  
+  steps:
+    - step: &legacy-fence
+        name: Legacy Import Fence
+        script:
+          - echo "🔍 Checking for forbidden legacy imports..."
+          - chmod +x scripts/check-legacy-imports.sh
+          - ./scripts/check-legacy-imports.sh
+    
+    - step: &qa-harness
+        name: QA Regression Tests
+        caches:
+          - npm
+        script:
+          - echo "🧪 Running QA Harness..."
+          - cd server
+          - npm ci
+          - echo "📊 Executing QA dataset..."
+          - npm run qa
+        artifacts:
+          - server/src/services/search/qa/snapshots/*.json
+        after-script:
+          - |
+            if [ -f server/src/services/search/qa/snapshots/qa-*.json ]; then
+              echo "💾 QA snapshot generated successfully"
+            else
+              echo "⚠️  No QA snapshot found"
+            fi
+
+pipelines:
+  default:
+    - step: *legacy-fence
+    - step: *qa-harness
+  
+  pull-requests:
+    '**':
+      - step: *legacy-fence
+      - step: *qa-harness
+  
+  branches:
+    main:
+      - step: *legacy-fence
+      - step: *qa-harness
+    master:
+      - step: *legacy-fence
+      - step: *qa-harness
+
+# Environment Variables Required:
+# Add these in Bitbucket Repository Settings → Pipelines → Variables:
+# - GOOGLE_MAPS_API_KEY (secured)
+# - OPENAI_API_KEY (secured, optional)
+# - PLACES_PROVIDER_MODE=mock (for stable CI)
+# - LOG_LEVEL=info (optional)
+
+
+

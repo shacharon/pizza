@@ -176,12 +176,23 @@ export interface StreetDetectionResult {
 // Suggestion Types
 // ============================================================================
 
+/**
+ * Phase 5: RefinementChip - Actionable UI chips for search refinement
+ * 
+ * Action semantics:
+ * - 'filter': Apply or modify search constraints (e.g., price, dietary, radius)
+ * - 'sort': Change result ordering (e.g., by rating, distance, price)
+ * - 'map': Location-based actions (e.g., show on map, get directions)
+ * 
+ * All chips are deterministic and i18n-translated.
+ * Assistant can only select from allowlist (cannot invent new chips).
+ */
 export interface RefinementChip {
   id: string;
   emoji: string;
   label: string;
   action: 'filter' | 'sort' | 'map';
-  filter?: string;  // Filter to apply (e.g., "price<=2")
+  filter?: string;  // Filter to apply (e.g., "price<=2", "radius:10000", "clear_filters")
 }
 
 // ============================================================================
@@ -208,13 +219,21 @@ export interface LiveDataVerification {
 
 export type AssistType = 'clarify' | 'suggest' | 'guide' | 'recovery';
 
+/**
+ * Phase 5: AssistPayload - AI assistant guidance with mode-aware behavior
+ * 
+ * Mode behavior:
+ * - NORMAL: Brief summary + suggested next action
+ * - RECOVERY: Explain issue + concrete recovery steps
+ * - CLARIFY: Ask specific clarifying question
+ */
 export interface AssistPayload {
   type: AssistType;
-  mode?: 'NORMAL' | 'RECOVERY';  // Recovery mode for 0 results or weak results
+  mode?: 'NORMAL' | 'RECOVERY' | 'CLARIFY';  // Phase 5: Added CLARIFY mode
   message: string;  // LLM-generated, multilingual
   
   // NEW: Reference chip IDs instead of inline actions
-  primaryActionId?: string;     // Highlighted chip
+  primaryActionId?: string;     // Highlighted chip (most important next step)
   secondaryActionIds?: string[]; // Up to 4 additional chips (optional for backward compat)
   
   // NEW: Debug metadata

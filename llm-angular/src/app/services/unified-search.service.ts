@@ -49,7 +49,7 @@ export class UnifiedSearchService {
         const duration = Date.now() - startTime;
 
         // Update language/direction from response
-        this.languageService.updateFromResponse(response.meta?.language);
+        this.languageService.updateFromResponse(response.query?.language);
 
         // Update store
         this.searchStore.setResponse(response);

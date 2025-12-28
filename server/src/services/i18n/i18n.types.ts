@@ -79,3 +79,5 @@ export function getTextDirection(lang: Lang): 'rtl' | 'ltr' {
   return (lang === 'he' || lang === 'ar') ? 'rtl' : 'ltr';
 }
 
+
+

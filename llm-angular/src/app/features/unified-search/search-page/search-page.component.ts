@@ -3,7 +3,7 @@
  * Main container for unified search experience
  */
 
-import { Component, inject, OnInit, OnDestroy, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, OnInit, OnDestroy, ChangeDetectionStrategy, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { SearchFacade } from '../../../facades/search.facade';
 import { SearchBarComponent } from '../components/search-bar/search-bar.component';
@@ -34,6 +34,15 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   readonly facade = inject(SearchFacade);
   
   private cleanupInterval?: number;
+
+  // Phase 5: Mode indicators
+  readonly response = this.facade.response;
+  readonly currentMode = computed(() => {
+    const assist = this.response()?.assist;
+    return assist?.mode || 'NORMAL';
+  });
+  readonly isRecoveryMode = computed(() => this.currentMode() === 'RECOVERY');
+  readonly isClarifyMode = computed(() => this.currentMode() === 'CLARIFY');
 
   readonly popularSearches = [
     { emoji: '🍕', label: 'Pizza', query: 'pizza' },

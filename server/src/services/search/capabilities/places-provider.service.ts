@@ -1,6 +1,8 @@
 /**
  * PlacesProviderService: Searches for restaurants via external APIs
  * Wraps GooglePlacesClient and normalizes results to RestaurantResult format
+ * 
+ * Phase 8: Enhanced with caching
  */
 
 import type {
@@ -16,6 +18,8 @@ import type {
   GoogleRawResponse,
 } from '../../places/client/google-places.client.js';
 import { SearchConfig, type PlacesConfig } from '../config/search.config.js';
+import { caches } from '../../../lib/cache/cache-manager.js';
+import { CacheConfig, buildPlacesSearchCacheKey, getPlacesSearchTTL } from '../config/cache.config.js';
 
 export class PlacesProviderService implements IPlacesProviderService {
   private googlePlacesClient: GooglePlacesClient;
@@ -32,8 +36,26 @@ export class PlacesProviderService implements IPlacesProviderService {
 
   /**
    * Search for restaurants using the appropriate Google Places API mode
+   * Phase 8: With caching support
    */
   async search(params: SearchParams): Promise<RestaurantResult[]> {
+    // Phase 8: Check cache first
+    if (CacheConfig.placesSearch.enabled && params.location) {
+      const cacheKey = buildPlacesSearchCacheKey(
+        params.query,
+        params.location,
+        params.radius ?? 5000,
+        params.language ?? 'en',
+        params.filters.openNow ?? false
+      );
+      
+      const cached = caches.placesSearch.get(cacheKey);
+      if (cached) {
+        console.log(`[PlacesProviderService] Cache hit for "${params.query}"`);
+        return cached;
+      }
+    }
+
     const mode = params.mode ?? 'textsearch';
 
     console.log(`[PlacesProviderService] Searching with mode: ${mode}`);
@@ -60,6 +82,20 @@ export class PlacesProviderService implements IPlacesProviderService {
 
     console.log(`[PlacesProviderService] Found ${results.length} results`);
 
+    // Phase 8: Cache the results
+    if (CacheConfig.placesSearch.enabled && params.location) {
+      const cacheKey = buildPlacesSearchCacheKey(
+        params.query,
+        params.location,
+        params.radius ?? 5000,
+        params.language ?? 'en',
+        params.filters.openNow ?? false
+      );
+      
+      const ttl = getPlacesSearchTTL(params.filters.openNow ?? false);
+      caches.placesSearch.set(cacheKey, results, ttl);
+    }
+
     return results;
   }
 
@@ -68,6 +104,13 @@ export class PlacesProviderService implements IPlacesProviderService {
    */
   getName(): RestaurantSource {
     return this.source;
+  }
+
+  /**
+   * Get cache statistics (Phase 8)
+   */
+  getCacheStats() {
+    return caches.placesSearch.getStats();
   }
 
   /**

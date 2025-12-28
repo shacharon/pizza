@@ -3,7 +3,7 @@
  * Component orchestration layer - simplifies component interaction with stores and services
  */
 
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, computed } from '@angular/core';
 import { UnifiedSearchService } from '../services/unified-search.service';
 import { ActionService } from '../services/action.service';
 import { InputStateMachine } from '../services/input-state-machine.service';
@@ -13,7 +13,8 @@ import { SessionStore } from '../state/session.store';
 import { ActionsStore } from '../state/actions.store';
 import type { 
   SearchFilters, 
-  Restaurant 
+  Restaurant,
+  SearchResponse 
 } from '../domain/types/search.types';
 import type { ActionType, ActionLevel } from '../domain/types/action.types';
 
@@ -43,6 +44,30 @@ export class SearchFacade {
   readonly conversationId = this.sessionStore.conversationId;
   readonly locale = this.sessionStore.locale;
   readonly recentSearches = this.sessionStore.preferences;
+  
+  // NEW: Combined response signal for convenience (Phase 5)
+  readonly response = computed<SearchResponse | null>(() => {
+    const results = this.results();
+    const meta = this.meta();
+    if (!results || !meta) return null;
+    
+    return {
+      sessionId: this.conversationId(),
+      query: {
+        original: this.query() || '',
+        parsed: {},
+        language: this.locale()
+      },
+      results,
+      groups: this.groups(),
+      chips: this.chips(),
+      assist: this.assist(),
+      proposedActions: this.proposedActions(),
+      clarification: this.clarification(),
+      requiresClarification: this.requiresClarification(),
+      meta
+    };
+  });
 
   // NEW: Phase B - Groups support
   readonly groups = this.searchStore.groups;

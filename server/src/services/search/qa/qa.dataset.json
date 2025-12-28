@@ -1,0 +1,628 @@
+[
+  {
+    "id": "pizza_tel_aviv_he",
+    "query": "פיצה בתל אביב",
+    "language": "he",
+    "category": "NORMAL",
+    "expectedMode": "NORMAL",
+    "expectedFailureReason": "NONE",
+    "notes": "Basic pizza search in Hebrew",
+    "assertions": {
+      "hasResults": true,
+      "minResults": 1,
+      "hasChips": true,
+      "minChips": 3,
+      "hasAssist": true,
+      "languageMatch": true,
+      "modeMatch": true
+    }
+  },
+  {
+    "id": "pizza_open_now_he",
+    "query": "פיצה פתוח עכשיו בתל אביב",
+    "language": "he",
+    "category": "NORMAL",
+    "expectedMode": "NORMAL",
+    "expectedFailureReason": "NONE",
+    "notes": "Pizza with open now constraint in Hebrew",
+    "assertions": {
+      "hasResults": true,
+      "minResults": 1,
+      "hasChips": true,
+      "hasAssist": true,
+      "requiresLiveData": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "sushi_jerusalem_he",
+    "query": "סושי בירושלים",
+    "language": "he",
+    "category": "NORMAL",
+    "expectedMode": "NORMAL",
+    "expectedFailureReason": "NONE",
+    "notes": "Sushi in Jerusalem - Hebrew",
+    "assertions": {
+      "hasResults": true,
+      "minResults": 1,
+      "hasChips": true,
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "italian_haifa_he",
+    "query": "איטלקי בחיפה",
+    "language": "he",
+    "category": "NORMAL",
+    "expectedMode": "NORMAL",
+    "expectedFailureReason": "NONE",
+    "notes": "Italian food in Haifa - Hebrew",
+    "assertions": {
+      "hasResults": true,
+      "minResults": 1,
+      "hasChips": true,
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "burger_tel_aviv_he",
+    "query": "המבורגר בתל אביב",
+    "language": "he",
+    "category": "NORMAL",
+    "expectedMode": "NORMAL",
+    "expectedFailureReason": "NONE",
+    "notes": "Burger in Tel Aviv - Hebrew",
+    "assertions": {
+      "hasResults": true,
+      "minResults": 1,
+      "hasChips": true,
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "pizza_tel_aviv_en",
+    "query": "pizza in tel aviv",
+    "language": "en",
+    "category": "NORMAL",
+    "expectedMode": "NORMAL",
+    "expectedFailureReason": "NONE",
+    "notes": "Basic pizza search in English",
+    "assertions": {
+      "hasResults": true,
+      "minResults": 1,
+      "hasChips": true,
+      "hasAssist": true,
+      "languageMatch": true,
+      "modeMatch": true
+    }
+  },
+  {
+    "id": "sushi_jerusalem_en",
+    "query": "sushi in jerusalem",
+    "language": "en",
+    "category": "NORMAL",
+    "expectedMode": "NORMAL",
+    "expectedFailureReason": "NONE",
+    "notes": "Sushi in Jerusalem - English",
+    "assertions": {
+      "hasResults": true,
+      "minResults": 1,
+      "hasChips": true,
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "italian_haifa_en",
+    "query": "italian restaurant in haifa",
+    "language": "en",
+    "category": "NORMAL",
+    "expectedMode": "NORMAL",
+    "expectedFailureReason": "NONE",
+    "notes": "Italian restaurant in Haifa - English",
+    "assertions": {
+      "hasResults": true,
+      "minResults": 1,
+      "hasChips": true,
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "vegan_tel_aviv_en",
+    "query": "vegan restaurant in tel aviv",
+    "language": "en",
+    "category": "NORMAL",
+    "expectedMode": "NORMAL",
+    "expectedFailureReason": "NONE",
+    "notes": "Vegan restaurant - English",
+    "assertions": {
+      "hasResults": true,
+      "minResults": 1,
+      "hasChips": true,
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "kosher_jerusalem_en",
+    "query": "kosher restaurant in jerusalem",
+    "language": "en",
+    "category": "NORMAL",
+    "expectedMode": "NORMAL",
+    "expectedFailureReason": "NONE",
+    "notes": "Kosher restaurant - English",
+    "assertions": {
+      "hasResults": true,
+      "minResults": 1,
+      "hasChips": true,
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "no_results_remote_village",
+    "query": "vegan gluten-free kosher pizza in remote village",
+    "language": "en",
+    "category": "RECOVERY",
+    "expectedMode": "RECOVERY",
+    "expectedFailureReason": "NO_RESULTS",
+    "notes": "Overly specific query likely to have no results",
+    "assertions": {
+      "hasResults": false,
+      "hasChips": true,
+      "minChips": 3,
+      "hasAssist": true,
+      "modeMatch": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "no_results_antarctica",
+    "query": "pizza in antarctica",
+    "language": "en",
+    "category": "RECOVERY",
+    "expectedMode": "RECOVERY",
+    "expectedFailureReason": "NO_RESULTS",
+    "notes": "Invalid location - no restaurants",
+    "assertions": {
+      "hasChips": true,
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "no_results_very_specific_he",
+    "query": "מסעדה טבעונית כשרה ללא גלוטן עם חניה חינם בכפר קטן",
+    "language": "he",
+    "category": "RECOVERY",
+    "expectedMode": "RECOVERY",
+    "notes": "Overly specific - Hebrew",
+    "assertions": {
+      "hasChips": true,
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "clarify_ambiguous_city",
+    "query": "pizza in springfield",
+    "language": "en",
+    "category": "CLARIFY",
+    "expectedMode": "CLARIFY",
+    "expectedFailureReason": "GEOCODING_FAILED",
+    "notes": "Ambiguous city name (multiple Springfields exist)",
+    "assertions": {
+      "hasChips": true,
+      "maxChips": 5,
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "clarify_low_confidence",
+    "query": "food",
+    "language": "en",
+    "category": "CLARIFY",
+    "expectedMode": "CLARIFY",
+    "expectedFailureReason": "LOW_CONFIDENCE",
+    "notes": "Single token - too ambiguous",
+    "assertions": {
+      "hasChips": true,
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "clarify_single_token_he",
+    "query": "אוכל",
+    "language": "he",
+    "category": "CLARIFY",
+    "expectedMode": "CLARIFY",
+    "expectedFailureReason": "LOW_CONFIDENCE",
+    "notes": "Single token Hebrew - ambiguous",
+    "assertions": {
+      "hasChips": true,
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "clarify_parking_token",
+    "query": "parking",
+    "language": "en",
+    "category": "CLARIFY",
+    "notes": "Ambiguous token - could be constraint or name",
+    "assertions": {
+      "hasChips": true,
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "clarify_kosher_token_he",
+    "query": "כשר",
+    "language": "he",
+    "category": "CLARIFY",
+    "notes": "Ambiguous token - Hebrew",
+    "assertions": {
+      "hasChips": true,
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "pizza_arabic",
+    "query": "بيتزا في تل أبيب",
+    "language": "ar",
+    "category": "NORMAL",
+    "expectedMode": "NORMAL",
+    "expectedFailureReason": "NONE",
+    "notes": "Pizza in Tel Aviv - Arabic",
+    "assertions": {
+      "hasResults": true,
+      "minResults": 1,
+      "hasChips": true,
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "sushi_arabic",
+    "query": "سوشي في القدس",
+    "language": "ar",
+    "category": "NORMAL",
+    "expectedMode": "NORMAL",
+    "expectedFailureReason": "NONE",
+    "notes": "Sushi in Jerusalem - Arabic",
+    "assertions": {
+      "hasResults": true,
+      "minResults": 1,
+      "hasChips": true,
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "italian_arabic",
+    "query": "مطعم إيطالي في حيفا",
+    "language": "ar",
+    "category": "NORMAL",
+    "expectedMode": "NORMAL",
+    "expectedFailureReason": "NONE",
+    "notes": "Italian in Haifa - Arabic",
+    "assertions": {
+      "hasResults": true,
+      "minResults": 1,
+      "hasChips": true,
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "restaurant_arabic",
+    "query": "مطعم في تل أبيب",
+    "language": "ar",
+    "category": "NORMAL",
+    "expectedMode": "NORMAL",
+    "expectedFailureReason": "NONE",
+    "notes": "Restaurant in Tel Aviv - Arabic",
+    "assertions": {
+      "hasResults": true,
+      "minResults": 1,
+      "hasChips": true,
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "pizza_russian",
+    "query": "пицца в тель-авиве",
+    "language": "ru",
+    "category": "NORMAL",
+    "expectedMode": "NORMAL",
+    "expectedFailureReason": "NONE",
+    "notes": "Pizza in Tel Aviv - Russian",
+    "assertions": {
+      "hasResults": true,
+      "minResults": 1,
+      "hasChips": true,
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "sushi_russian",
+    "query": "суши в иерусалиме",
+    "language": "ru",
+    "category": "NORMAL",
+    "expectedMode": "NORMAL",
+    "expectedFailureReason": "NONE",
+    "notes": "Sushi in Jerusalem - Russian",
+    "assertions": {
+      "hasResults": true,
+      "minResults": 1,
+      "hasChips": true,
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "italian_russian",
+    "query": "итальянский ресторан в хайфе",
+    "language": "ru",
+    "category": "NORMAL",
+    "expectedMode": "NORMAL",
+    "expectedFailureReason": "NONE",
+    "notes": "Italian in Haifa - Russian",
+    "assertions": {
+      "hasResults": true,
+      "minResults": 1,
+      "hasChips": true,
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "restaurant_russian",
+    "query": "ресторан в тель-авиве",
+    "language": "ru",
+    "category": "NORMAL",
+    "expectedMode": "NORMAL",
+    "expectedFailureReason": "NONE",
+    "notes": "Restaurant in Tel Aviv - Russian",
+    "assertions": {
+      "hasResults": true,
+      "minResults": 1,
+      "hasChips": true,
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "edge_empty_query",
+    "query": "",
+    "language": "en",
+    "category": "EDGE_CASE",
+    "notes": "Empty query - should handle gracefully",
+    "assertions": {
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "edge_very_long_query",
+    "query": "I am looking for a very specific type of restaurant that serves authentic neapolitan pizza made with san marzano tomatoes and buffalo mozzarella with a wood-fired oven that has been operating for at least 50 years in the heart of tel aviv",
+    "language": "en",
+    "category": "EDGE_CASE",
+    "notes": "Very long query - should handle gracefully",
+    "assertions": {
+      "hasChips": true,
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "edge_special_characters",
+    "query": "pizza!@#$%^&*()_+{}|:\"<>?[]\\;',./~`",
+    "language": "en",
+    "category": "EDGE_CASE",
+    "notes": "Special characters - should sanitize",
+    "assertions": {
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "edge_mixed_language",
+    "query": "pizza פיצה بيتزا пицца",
+    "language": "en",
+    "category": "EDGE_CASE",
+    "notes": "Mixed language query",
+    "assertions": {
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "edge_location_only",
+    "query": "tel aviv",
+    "language": "en",
+    "category": "EDGE_CASE",
+    "expectedMode": "CLARIFY",
+    "notes": "Location without category",
+    "assertions": {
+      "hasChips": true,
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "delivery_tel_aviv_he",
+    "query": "פיצה משלוחים תל אביב",
+    "language": "he",
+    "category": "NORMAL",
+    "expectedMode": "NORMAL",
+    "expectedFailureReason": "NONE",
+    "notes": "Pizza with delivery - Hebrew",
+    "assertions": {
+      "hasResults": true,
+      "minResults": 1,
+      "hasChips": true,
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "vegan_jerusalem_he",
+    "query": "מסעדה טבעונית בירושלים",
+    "language": "he",
+    "category": "NORMAL",
+    "expectedMode": "NORMAL",
+    "expectedFailureReason": "NONE",
+    "notes": "Vegan restaurant in Jerusalem - Hebrew",
+    "assertions": {
+      "hasResults": true,
+      "minResults": 1,
+      "hasChips": true,
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "budget_tel_aviv_en",
+    "query": "cheap eats in tel aviv",
+    "language": "en",
+    "category": "NORMAL",
+    "expectedMode": "NORMAL",
+    "expectedFailureReason": "NONE",
+    "notes": "Budget-friendly search - English",
+    "assertions": {
+      "hasResults": true,
+      "minResults": 1,
+      "hasChips": true,
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "romantic_haifa_en",
+    "query": "romantic restaurant in haifa",
+    "language": "en",
+    "category": "NORMAL",
+    "expectedMode": "NORMAL",
+    "expectedFailureReason": "NONE",
+    "notes": "Romantic occasion - English",
+    "assertions": {
+      "hasResults": true,
+      "minResults": 1,
+      "hasChips": true,
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "family_friendly_he",
+    "query": "מסעדה משפחתית בתל אביב",
+    "language": "he",
+    "category": "NORMAL",
+    "expectedMode": "NORMAL",
+    "expectedFailureReason": "NONE",
+    "notes": "Family-friendly - Hebrew",
+    "assertions": {
+      "hasResults": true,
+      "minResults": 1,
+      "hasChips": true,
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "cafe_tel_aviv_en",
+    "query": "cafe in tel aviv",
+    "language": "en",
+    "category": "NORMAL",
+    "expectedMode": "NORMAL",
+    "expectedFailureReason": "NONE",
+    "notes": "Cafe search - English",
+    "assertions": {
+      "hasResults": true,
+      "minResults": 1,
+      "hasChips": true,
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "breakfast_jerusalem_he",
+    "query": "ארוחת בוקר בירושלים",
+    "language": "he",
+    "category": "NORMAL",
+    "expectedMode": "NORMAL",
+    "expectedFailureReason": "NONE",
+    "notes": "Breakfast in Jerusalem - Hebrew",
+    "assertions": {
+      "hasResults": true,
+      "minResults": 1,
+      "hasChips": true,
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "street_allenby_he",
+    "query": "פיצה ברחוב אלנבי",
+    "language": "he",
+    "category": "NORMAL",
+    "expectedMode": "NORMAL",
+    "expectedFailureReason": "NONE",
+    "notes": "Street-level search - Allenby Street",
+    "assertions": {
+      "hasResults": true,
+      "minResults": 1,
+      "hasChips": true,
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "no_results_specific_dietary",
+    "query": "certified organic vegan gluten-free kosher sushi",
+    "language": "en",
+    "category": "RECOVERY",
+    "expectedMode": "RECOVERY",
+    "notes": "Overly specific dietary requirements",
+    "assertions": {
+      "hasChips": true,
+      "minChips": 3,
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "timeout_scenario",
+    "query": "pizza in tel aviv",
+    "language": "en",
+    "category": "EDGE_CASE",
+    "notes": "Simulated timeout scenario (manual test only - cannot be triggered in normal QA)",
+    "assertions": {
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  },
+  {
+    "id": "quota_exceeded_scenario",
+    "query": "sushi in jerusalem",
+    "language": "en",
+    "category": "EDGE_CASE",
+    "notes": "Simulated quota error scenario (manual test only - cannot be triggered in normal QA)",
+    "assertions": {
+      "hasAssist": true,
+      "languageMatch": true
+    }
+  }
+]
+

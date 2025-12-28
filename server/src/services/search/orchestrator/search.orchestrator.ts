@@ -4,6 +4,7 @@
  * 
  * Phase 2: Builds TruthState to lock deterministic decisions
  * before passing minimal context to LLM Pass B
+ * Phase 7: Production hardening with timeout/retry guards and structured logging
  */
 
 import type {
@@ -33,8 +34,15 @@ import { TokenDetectorService } from '../detectors/token-detector.service.js';
 import { ClarificationService } from '../clarification/clarification.service.js';
 import { ResultStateEngine } from '../rse/result-state-engine.js';
 import { ChatBackService } from '../chatback/chatback.service.js';
-import { FailureDetectorService, AssistantNarrationService } from '../assistant/index.js';
+import { FailureDetectorService, AssistantNarrationService, isTimeoutError, isQuotaError } from '../assistant/index.js';
 import type { ResultGroup, LiveDataVerification } from '../types/search.types.js';
+
+// Phase 7: Production hardening imports
+import { logger } from '../../../lib/logger/structured-logger.js';
+import { withTimeout, isTimeoutError as isTimeout } from '../../../lib/reliability/timeout-guard.js';
+import { withRetry } from '../../../lib/reliability/retry-policy.js';
+import { ReliabilityConfig } from '../config/reliability.config.js';
+import { SearchConfig } from '../config/search.config.js';
 
 /**
  * SearchOrchestrator
@@ -79,9 +87,12 @@ export class SearchOrchestrator {
     /**
      * Main search orchestration method
      * Coordinates all services to provide unified search results
+     * 
+     * Phase 7: Enhanced with structured logging
      */
     async search(request: SearchRequest): Promise<SearchResponse> {
         const startTime = Date.now();
+        const requestId = request.sessionId || `req-${Date.now()}`;
 
         // Diagnostics tracking
         const timings = {
@@ -98,6 +109,14 @@ export class SearchOrchestrator {
             usedTranslation: false,
             liveDataRequested: false,
         };
+
+        // Phase 7: Structured logging at entry point
+        logger.info('Search request received', {
+            requestId,
+            query: request.query,
+            language: request.language,
+            hasUserLocation: !!request.userLocation
+        });
 
         console.log(`[SearchOrchestrator] Starting search: "${request.query}"`);
 
@@ -673,6 +692,17 @@ export class SearchOrchestrator {
 
             const response = createSearchResponse(responseParams);
 
+            // Phase 7: Structured logging at success exit point
+            logger.info('Search completed successfully', {
+                requestId,
+                timings,
+                failureReason: response.meta.failureReason,
+                mode: response.assist?.mode,
+                resultCount: response.results.length,
+                usedLLMIntent: flags.usedLLMIntent,
+                usedLLMAssistant: flags.usedLLMAssistant
+            });
+
             console.log(`[SearchOrchestrator] ✅ Search complete in ${tookMs}ms`);
             if (diagnostics) {
                 console.log(`[SearchOrchestrator] 📊 Diagnostics: Intent(${timings.intentMs}ms) + Geocode(${timings.geocodeMs}ms) + Provider(${timings.providerMs}ms) + Ranking(${timings.rankingMs}ms) + Assistant(${timings.assistantMs}ms)`);
@@ -680,6 +710,13 @@ export class SearchOrchestrator {
             return response;
 
         } catch (error) {
+            // Phase 7: Structured error logging
+            logger.error('Search failed', {
+                requestId,
+                query: request.query,
+                timings
+            }, error as Error);
+            
             console.error('[SearchOrchestrator] ❌ Search failed:', error);
             throw error;
         }

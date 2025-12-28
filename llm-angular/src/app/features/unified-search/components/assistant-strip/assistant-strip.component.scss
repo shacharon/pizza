@@ -92,24 +92,29 @@
     box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2);
   }
 
+  // Phase 5: Enhanced primary chip styling
   &.primary {
-    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-    border-color: #2563eb;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-color: #764ba2;
     color: #fff;
-    box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
+    font-weight: 600;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    transform: scale(1.05);
 
     &:hover {
-      background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-      border-color: #1d4ed8;
-      box-shadow: 0 4px 10px rgba(37, 99, 235, 0.4);
+      background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+      border-color: #667eea;
+      box-shadow: 0 6px 16px rgba(102, 126, 234, 0.6);
+      transform: scale(1.08);
     }
 
     &:active {
-      box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
+      transform: scale(1.05);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
     }
 
     &:focus {
-      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.4);
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.4);
     }
   }
 

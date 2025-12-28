@@ -2,7 +2,12 @@
  * Geocoding Service
  * Validates city names and addresses using Google Geocoding API
  * Implements two-step validation: LLM extracts candidate → Geocoding verifies
+ * 
+ * Phase 8: Enhanced with centralized cache manager
  */
+
+import { caches } from '../../../lib/cache/cache-manager.js';
+import { CacheConfig, buildGeocodingCacheKey } from '../config/cache.config.js';
 
 export interface Coordinates {
   lat: number;
@@ -29,43 +34,40 @@ export interface GeocodingResult {
   cacheHit?: boolean;
 }
 
-interface CacheEntry {
-  result: GeocodingResult;
-  timestamp: number;
-}
-
 /**
  * GeocodingService
  * Validates city names using external geocoding APIs with caching
+ * Phase 8: Migrated to centralized cache manager
  */
 export class GeocodingService {
-  private readonly cache = new Map<string, CacheEntry>();
-  private readonly CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
   private readonly apiKey: string;
   private readonly baseUrl = 'https://maps.googleapis.com/maps/api/geocode/json';
 
   constructor(apiKey: string) {
     this.apiKey = apiKey;
-    
-    // Cleanup expired cache entries every hour
-    setInterval(() => this.cleanupCache(), 60 * 60 * 1000);
   }
 
   /**
    * Validate a city name
    * Returns VERIFIED if found, FAILED if not found, AMBIGUOUS if multiple matches
+   * Phase 8: Using centralized cache manager
    */
   async validateCity(
     cityCandidate: string,
     countryHint?: string
   ): Promise<GeocodingResult> {
-    const cacheKey = this.getCacheKey(cityCandidate, countryHint);
+    // Phase 8: Use centralized cache key builder
+    const cacheKey = buildGeocodingCacheKey(
+      countryHint ? `${cityCandidate}|${countryHint}` : cityCandidate
+    );
     
-    // Check cache first
-    const cached = this.getFromCache(cacheKey);
-    if (cached) {
-      console.log(`[GeocodingService] Cache hit for "${cityCandidate}"`);
-      return { ...cached, cacheHit: true };
+    // Check cache first (Phase 8: centralized cache)
+    if (CacheConfig.geocoding.enabled) {
+      const cached = caches.geocoding.get(cacheKey);
+      if (cached) {
+        console.log(`[GeocodingService] Cache hit for "${cityCandidate}"`);
+        return { ...cached, cacheHit: true };
+      }
     }
 
     console.log(`[GeocodingService] Validating city: "${cityCandidate}" (country: ${countryHint || 'any'})`);
@@ -73,11 +75,10 @@ export class GeocodingService {
     try {
       const result = await this.geocodeCity(cityCandidate, countryHint);
       
-      // Cache successful results
-      this.cache.set(cacheKey, {
-        result,
-        timestamp: Date.now()
-      });
+      // Cache successful results (Phase 8: centralized cache)
+      if (CacheConfig.geocoding.enabled) {
+        caches.geocoding.set(cacheKey, result, CacheConfig.geocoding.ttl);
+      }
 
       return result;
     } catch (error) {
@@ -176,14 +177,18 @@ export class GeocodingService {
 
   /**
    * General geocoding (for addresses, landmarks, etc.)
+   * Phase 8: Using centralized cache manager
    */
   async geocode(address: string): Promise<GeocodingResult> {
-    const cacheKey = `geocode:${address.toLowerCase()}`;
+    const cacheKey = buildGeocodingCacheKey(address);
     
-    // Check cache
-    const cached = this.getFromCache(cacheKey);
-    if (cached) {
-      return { ...cached, cacheHit: true };
+    // Check cache (Phase 8)
+    if (CacheConfig.geocoding.enabled) {
+      const cached = caches.geocoding.get(cacheKey);
+      if (cached) {
+        console.log(`[GeocodingService] Cache hit for address: "${address}"`);
+        return { ...cached, cacheHit: true };
+      }
     }
 
     console.log(`[GeocodingService] Geocoding address: "${address}"`);
@@ -214,8 +219,10 @@ export class GeocodingService {
         confidence: 1.0
       };
 
-      // Cache
-      this.cache.set(cacheKey, { result, timestamp: Date.now() });
+      // Cache result (Phase 8)
+      if (CacheConfig.geocoding.enabled) {
+        caches.geocoding.set(cacheKey, result, CacheConfig.geocoding.ttl);
+      }
 
       return result;
     } catch (error) {
@@ -228,64 +235,18 @@ export class GeocodingService {
   }
 
   /**
-   * Get from cache if not expired
+   * Get cache statistics (Phase 8)
    */
-  private getFromCache(key: string): GeocodingResult | null {
-    const entry = this.cache.get(key);
-    if (!entry) return null;
-
-    const age = Date.now() - entry.timestamp;
-    if (age > this.CACHE_TTL_MS) {
-      this.cache.delete(key);
-      return null;
-    }
-
-    return entry.result;
+  getCacheStats() {
+    return caches.geocoding.getStats();
   }
 
   /**
-   * Generate cache key
-   */
-  private getCacheKey(city: string, country?: string): string {
-    const normalized = city.toLowerCase().trim();
-    return country ? `${normalized}:${country}` : normalized;
-  }
-
-  /**
-   * Cleanup expired cache entries
-   */
-  private cleanupCache(): void {
-    const now = Date.now();
-    let cleaned = 0;
-
-    for (const [key, entry] of this.cache.entries()) {
-      if (now - entry.timestamp > this.CACHE_TTL_MS) {
-        this.cache.delete(key);
-        cleaned++;
-      }
-    }
-
-    if (cleaned > 0) {
-      console.log(`[GeocodingService] Cleaned ${cleaned} expired cache entries`);
-    }
-  }
-
-  /**
-   * Clear all cache (for testing)
+   * Clear all cache (for testing) - Phase 8
    */
   clearCache(): void {
-    this.cache.clear();
+    caches.geocoding.cleanup();
     console.log(`[GeocodingService] Cache cleared`);
-  }
-
-  /**
-   * Get cache stats (for monitoring)
-   */
-  getCacheStats(): { size: number; entries: number } {
-    return {
-      size: this.cache.size,
-      entries: this.cache.size
-    };
   }
 }
 

@@ -1,5 +1,6 @@
 /**
  * Failure Detector Service
+ * Phase 7 Enhanced: Timeout and quota error detection
  * Deterministically computes failure reasons based on system state
  * Never uses LLM - pure business logic
  */
@@ -12,14 +13,27 @@ export class FailureDetectorService {
   /**
    * Compute failure reason based on deterministic rules
    * This is NOT done by LLM - it's code-based truth about system state
+   * 
+   * Phase 7: Enhanced with error object detection
    */
   computeFailureReason(
     results: RestaurantResult[],
     confidence: number,
     meta: Partial<SearchResponseMeta>,
-    intent: ParsedIntent
+    intent: ParsedIntent,
+    error?: Error  // NEW: Accept error object for direct detection
   ): FailureReason {
-    // Rule 1: Check for API/system errors first
+    // Rule 0: Check error object directly (Phase 7)
+    if (error) {
+      if (isTimeoutError(error)) {
+        return 'TIMEOUT';
+      }
+      if (isQuotaError(error)) {
+        return 'QUOTA_EXCEEDED';
+      }
+    }
+    
+    // Rule 1: Check for API/system errors in meta
     if (meta.source?.toLowerCase().includes('error')) {
       if (meta.source.includes('timeout')) {
         return 'TIMEOUT';
@@ -119,5 +133,37 @@ export class FailureDetectorService {
     ];
     return criticalReasons.includes(reason);
   }
+}
+
+// ============================================================================
+// Phase 7: Error Detection Helpers
+// ============================================================================
+
+/**
+ * Check if error is a timeout error
+ * Detects TimeoutError from timeout-guard.ts
+ */
+export function isTimeoutError(error: Error): boolean {
+  return (
+    error.name === 'TimeoutError' ||
+    error.message.toLowerCase().includes('timed out') ||
+    error.message.toLowerCase().includes('timeout')
+  );
+}
+
+/**
+ * Check if error is a quota/rate limit error
+ * Detects various quota error patterns from Google APIs
+ */
+export function isQuotaError(error: Error): boolean {
+  const msg = error.message.toLowerCase();
+  return (
+    error.name === 'QuotaExceededError' ||
+    msg.includes('quota') ||
+    msg.includes('rate limit') ||
+    msg.includes('too many requests') ||
+    msg.includes('429') || // HTTP status code
+    msg.includes('resource exhausted')
+  );
 }
 

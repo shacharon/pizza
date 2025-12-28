@@ -92,7 +92,7 @@ export interface LiveDataVerification {
 // Updated: AI Assistant Payload (was MicroAssist)
 export interface AssistPayload {
   type: 'clarify' | 'suggest' | 'guide' | 'recovery';
-  mode?: 'NORMAL' | 'RECOVERY';
+  mode?: 'NORMAL' | 'RECOVERY' | 'CLARIFY';  // Phase 5: Added CLARIFY mode
   message: string;  // LLM-generated, multilingual
   
   // NEW: Reference chip IDs instead of inline actions

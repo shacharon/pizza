@@ -85,6 +85,21 @@
       />
     }
 
+    <!-- Phase 5: Mode Indicators (subtle, non-intrusive) -->
+    @if (isRecoveryMode() && !facade.loading()) {
+      <div class="mode-indicator recovery">
+        <span class="mode-icon">🔄</span>
+        <span class="mode-text">Recovery mode - refining search</span>
+      </div>
+    }
+
+    @if (isClarifyMode() && !facade.loading()) {
+      <div class="mode-indicator clarify">
+        <span class="mode-icon">❓</span>
+        <span class="mode-text">Need more info</span>
+      </div>
+    }
+
     <!-- Refinement Chips -->
     @if (facade.chips().length > 0 && facade.hasResults()) {
       <div class="refinement-chips">

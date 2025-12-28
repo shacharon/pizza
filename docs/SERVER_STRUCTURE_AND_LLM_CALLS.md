@@ -550,3 +550,5 @@ User Query: "פיצה טבעונית בתל אביב"
 
 **Last Updated:** December 27, 2024
 
+
+
