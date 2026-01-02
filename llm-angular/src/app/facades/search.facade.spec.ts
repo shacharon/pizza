@@ -17,12 +17,13 @@ import { of } from 'rxjs';
 describe('SearchFacade - State Management (UI/UX Contract)', () => {
   let facade: SearchFacade;
   let searchStore: jasmine.SpyObj<SearchStore>;
+  let searchService: jasmine.SpyObj<UnifiedSearchService>;
 
   beforeEach(() => {
     const searchStoreSpy = jasmine.createSpyObj('SearchStore', ['reset'], {
       loading: jasmine.createSpy('loading').and.returnValue(false),
       error: jasmine.createSpy('error').and.returnValue(null),
-      query: jasmine.createSpy('query').and.returnValue(''),
+      query: jasmine.createSpy('query').and.returnValue('pizza in tel aviv'),
       results: jasmine.createSpy('results').and.returnValue([]),
       chips: jasmine.createSpy('chips').and.returnValue([]),
       meta: jasmine.createSpy('meta').and.returnValue(null),
@@ -39,10 +40,13 @@ describe('SearchFacade - State Management (UI/UX Contract)', () => {
       requiresClarification: jasmine.createSpy('requiresClarification').and.returnValue(false)
     });
 
+    const searchServiceSpy = jasmine.createSpyObj('UnifiedSearchService', ['search']);
+    searchServiceSpy.search.and.returnValue(of(null));
+
     TestBed.configureTestingModule({
       providers: [
         SearchFacade,
-        { provide: UnifiedSearchService, useValue: jasmine.createSpyObj('UnifiedSearchService', ['search']) },
+        { provide: UnifiedSearchService, useValue: searchServiceSpy },
         { provide: ActionService, useValue: jasmine.createSpyObj('ActionService', ['proposeAction']) },
         { provide: InputStateMachine, useValue: jasmine.createSpyObj('InputStateMachine', ['input'], {
           state: jasmine.createSpy('state').and.returnValue('IDLE'),
@@ -72,6 +76,7 @@ describe('SearchFacade - State Management (UI/UX Contract)', () => {
 
     facade = TestBed.inject(SearchFacade);
     searchStore = TestBed.inject(SearchStore) as jasmine.SpyObj<SearchStore>;
+    searchService = TestBed.inject(UnifiedSearchService) as jasmine.SpyObj<UnifiedSearchService>;
   });
 
   describe('Sort State (Single-Select)', () => {
@@ -167,6 +172,50 @@ describe('SearchFacade - State Management (UI/UX Contract)', () => {
       facade.onChipClick('budget');
 
       expect(facade.currentSort()).toBe(initialSort);
+    });
+
+    it('should trigger re-search with priceLevel filter when budget chip clicked', () => {
+      // Click budget chip
+      facade.onChipClick('budget');
+
+      // Should call search service with parsed filter
+      expect(searchService.search).toHaveBeenCalledWith(
+        'pizza in tel aviv',
+        jasmine.objectContaining({ priceLevel: 2 }),
+        jasmine.any(Boolean)
+      );
+    });
+
+    it('should trigger re-search without filter when budget chip removed', () => {
+      // Activate budget
+      facade.onChipClick('budget');
+      searchService.search.calls.reset();
+
+      // Deactivate budget
+      facade.onChipClick('budget');
+
+      // Should call search service with empty filters
+      expect(searchService.search).toHaveBeenCalledWith(
+        'pizza in tel aviv',
+        {},
+        jasmine.any(Boolean)
+      );
+    });
+
+    it('should combine multiple filters when re-searching', () => {
+      // Activate budget and open now
+      facade.onChipClick('budget');
+      facade.onChipClick('opennow');
+
+      // Should call search service with both filters
+      expect(searchService.search).toHaveBeenCalledWith(
+        'pizza in tel aviv',
+        jasmine.objectContaining({ 
+          priceLevel: 2,
+          openNow: true
+        }),
+        jasmine.any(Boolean)
+      );
     });
   });
 

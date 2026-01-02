@@ -36,10 +36,27 @@ Chips must be classified into exactly ONE type:
 - Never mix taxonomy (a chip cannot be both FILTER and SORT)
 
 ## Authoritative Documentation
-The complete reference for all tools, options, chips, and actions is in:
-📄 `docs/SYSTEM_TOOLS_AND_OPTIONS.md`
 
-This document is the **heart of the system** and must be consulted for:
+### Core Search Mechanics (MANDATORY)
+📄 `docs/SEARCH_POOL_PAGINATION_RULES.md` — **Non-Negotiable Rules**
+
+**Key Principle:**
+> **Ranking happens once per search pool. Pagination is slicing, not re-ranking.**
+
+**Must Follow:**
+- Filter/sort changes MUST create a new pool via re-search
+- NEVER filter or sort client-side (breaks pagination truth)
+- Page navigation ONLY slices existing pool (no re-ranking)
+- Assistant message stays constant across pages
+
+**Violations of these rules are bugs.**
+
+---
+
+### System Tools & Options (Reference)
+📄 `docs/SYSTEM_TOOLS_AND_OPTIONS.md` — **Heart of the System**
+
+This document must be consulted for:
 - Adding new chips or filters
 - Modifying chip behavior
 - Changing assistant visibility rules

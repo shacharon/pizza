@@ -82,11 +82,23 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   // NEW: Mobile-first UX - Bottom sheet and flattened results
   readonly bottomSheetVisible = signal(false);
   
+  // Pagination: Display limit
+  private displayLimit = signal(10);
+  
   readonly flatResults = computed(() => {
     const groups = this.response()?.groups;
     if (!groups) return [];
     // Flatten groups, preserving backend order
-    return groups.flatMap(g => g.results);
+    const allResults = groups.flatMap(g => g.results);
+    // Apply display limit
+    return allResults.slice(0, this.displayLimit());
+  });
+  
+  readonly hasMoreResults = computed(() => {
+    const groups = this.response()?.groups;
+    if (!groups) return false;
+    const totalResults = groups.flatMap(g => g.results).length;
+    return totalResults > this.displayLimit();
   });
 
   readonly highlightedResults = computed(() => {
@@ -164,6 +176,8 @@ export class SearchPageComponent implements OnInit, OnDestroy {
 
   onSearch(query: string): void {
     this.facade.search(query);
+    // Reset display limit on new search
+    this.displayLimit.set(10);
   }
 
   onClear(): void {
@@ -200,10 +214,18 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   onChipClick(chipId: string): void {
     // Trigger actual filtering/sorting via facade (single source of truth)
     this.facade.onChipClick(chipId);
+    // Reset display limit when filtering/sorting (new search pool)
+    this.displayLimit.set(10);
   }
 
   closeBottomSheet(): void {
     this.bottomSheetVisible.set(false);
+  }
+
+  loadMore(): void {
+    // Increase display limit by 10
+    this.displayLimit.update(limit => limit + 10);
+    console.log('[SearchPage] Load more clicked, new limit:', this.displayLimit());
   }
 
   onAssistActionClick(query: string): void {

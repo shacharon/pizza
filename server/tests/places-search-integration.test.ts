@@ -984,4 +984,3 @@ describe('✅ MODE VERIFICATION: City Queries Use textsearch', () => {
         console.log(`  ✅ Verified: city query → textsearch mode`);
     });
 });
-

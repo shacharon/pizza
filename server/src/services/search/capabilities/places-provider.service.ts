@@ -65,11 +65,18 @@ export class PlacesProviderService implements IPlacesProviderService {
     }
 
     const mode = params.mode ?? 'textsearch';
+    const targetSize = this.poolConfig.candidatePoolSize;
 
-    console.log(`[PlacesProviderService] Searching with mode: ${mode}`);
+    console.log(`[PlacesProviderService] Searching with mode: ${mode}, target: ${targetSize} results`);
 
+    // Multi-page fetching
+    const allResults: NormalizedPlace[] = [];
+    let nextPageToken: string | null = null;
+    let pageCount = 0;
+    const maxPages = 3; // Limit to 3 pages (60 results max)
+
+    // Page 1
     let response: GoogleRawResponse;
-
     switch (mode) {
       case 'textsearch':
         response = await this.textSearch(params);
@@ -78,19 +85,49 @@ export class PlacesProviderService implements IPlacesProviderService {
         response = await this.nearbySearch(params);
         break;
       case 'findplace':
-        // For findplace, we still use textsearch (as per current implementation)
         response = await this.textSearch(params);
         break;
       default:
         response = await this.textSearch(params);
     }
 
-    // Normalize results
-    // Phase 1: Use candidatePoolSize instead of default page size
-    const results = this.normalizeResults(response, params.pageSize ?? this.poolConfig.candidatePoolSize);
+    const firstPageResults = this.normalizeResults(response, 20);
+    allResults.push(...firstPageResults);
+    nextPageToken = response.next_page_token ?? null;
+    pageCount++;
+
+    console.log(`[PlacesProviderService] 📄 Page ${pageCount}: ${firstPageResults.length} results`);
+
+    // Fetch additional pages if needed
+    while (allResults.length < targetSize && nextPageToken && pageCount < maxPages) {
+      // Google requires 2-second delay before using next_page_token
+      console.log(`[PlacesProviderService] ⏳ Waiting 2s for next page...`);
+      await this.delay(2000);
+
+      try {
+        // Use pageToken to fetch next page (only works with textsearch)
+        const nextPageResponse = await this.textSearch({ 
+          ...params, 
+          pageToken: nextPageToken 
+        });
+        
+        const nextPageResults = this.normalizeResults(nextPageResponse, 20);
+        allResults.push(...nextPageResults);
+        nextPageToken = nextPageResponse.next_page_token ?? null;
+        pageCount++;
+        
+        console.log(`[PlacesProviderService] 📄 Page ${pageCount}: ${nextPageResults.length} results (total: ${allResults.length})`);
+      } catch (error) {
+        console.error(`[PlacesProviderService] ⚠️ Failed to fetch page ${pageCount + 1}:`, error);
+        break; // Stop fetching on error
+      }
+    }
+
+    // Slice to exact target size
+    const results = allResults.slice(0, targetSize);
     
     const totalTime = Date.now() - searchStart;
-    console.log(`[PlacesProviderService] Found ${results.length} results (${totalTime}ms total)`);
+    console.log(`[PlacesProviderService] ✅ Found ${results.length} results across ${pageCount} pages (${totalTime}ms total)`);
 
     // Phase 8: Cache the results
     if (CacheConfig.placesSearch.enabled && params.location) {
@@ -279,6 +316,14 @@ export class PlacesProviderService implements IPlacesProviderService {
     // For now, just Google Places
     // Future: Promise.all([googleResults, tripAdvisorResults, ...])
     return await this.search(params);
+  }
+
+  /**
+   * Helper: Delay for specified milliseconds
+   * Used for Google Places next_page_token (requires 2s delay)
+   */
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 }
 

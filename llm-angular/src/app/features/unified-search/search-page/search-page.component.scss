@@ -603,3 +603,39 @@
     max-width: none;
   }
 }
+
+// Load More Button
+.load-more-container {
+  display: flex;
+  justify-content: center;
+  padding: 2rem 0;
+  margin-top: 1rem;
+}
+
+.load-more-btn {
+  padding: 0.875rem 2.5rem;
+  background: #fff;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  
+  &:hover:not(:disabled) {
+    background: #f9fafb;
+    border-color: #d1d5db;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+  }
+  
+  &:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+  
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}

@@ -8,6 +8,7 @@ import {
     LLM_RETRY_BACKOFF_MS,
     LLM_COMPLETION_TIMEOUT_MS
 } from "../config/index.js";
+import { traceProviderCall, calculateOpenAICost } from "../lib/telemetry/providerTrace.js";
 
 function sleep(ms: number) { return new Promise(res => setTimeout(res, ms)); }
 
@@ -36,7 +37,7 @@ export class OpenAiProvider implements LLMProvider {
     async completeJSON<T extends z.ZodTypeAny>(
         messages: Message[],
         schema: T,
-        opts?: { temperature?: number; timeout?: number }
+        opts?: { temperature?: number; timeout?: number; traceId?: string; sessionId?: string }
     ): Promise<z.infer<T>> {
         const temperature = opts?.temperature ?? 0;
         const timeoutMs = opts?.timeout ?? LLM_JSON_TIMEOUT_MS;
@@ -50,11 +51,52 @@ export class OpenAiProvider implements LLMProvider {
             const controller = new AbortController();
             const t = setTimeout(() => controller.abort(), timeoutMs);
             try {
-                const resp = await openai.responses.create({
-                    model: (opts as any)?.model || DEFAULT_LLM_MODEL,
-                    input: toInput(messages),
-                    temperature
-                }, { signal: controller.signal });
+                const model = (opts as any)?.model || DEFAULT_LLM_MODEL;
+                
+                // Wrap OpenAI call with tracing
+                const resp = await traceProviderCall(
+                    {
+                        traceId: opts?.traceId,
+                        sessionId: opts?.sessionId,
+                        provider: 'openai',
+                        operation: 'completeJSON',
+                        retryCount: attempt,
+                    },
+                    async () => {
+                        return await openai.responses.create({
+                            model,
+                            input: toInput(messages),
+                            temperature
+                        }, { signal: controller.signal });
+                    },
+                    (event, result) => {
+                        // Robust token extraction - check multiple possible locations
+                        const usage = (result as any)?.usage;
+                        const tokensIn = usage?.prompt_tokens ?? usage?.input_tokens ?? 0;
+                        const tokensOut = usage?.completion_tokens ?? usage?.output_tokens ?? 0;
+                        const totalTokens = usage?.total_tokens ?? (tokensIn + tokensOut);
+                        
+                        event.model = model;
+                        event.tokensIn = tokensIn;
+                        event.tokensOut = tokensOut;
+                        event.totalTokens = totalTokens;
+                        
+                        // Safe cost calculation
+                        if (tokensIn > 0 || tokensOut > 0) {
+                            const cost = calculateOpenAICost(model, tokensIn, tokensOut);
+                            if (cost !== null) {
+                                event.estimatedCostUsd = cost;
+                                event.costUnknown = false;
+                            } else {
+                                event.costUnknown = true;
+                            }
+                        } else {
+                            // No token data available
+                            event.costUnknown = true;
+                        }
+                    }
+                );
+                
                 clearTimeout(t);
                 const raw = resp.output_text || '';
                 // Strict parse first via Zod
@@ -114,20 +156,59 @@ export class OpenAiProvider implements LLMProvider {
 
     async complete(
         messages: Message[],
-        opts?: { temperature?: number; timeout?: number; model?: string; }
+        opts?: { temperature?: number; timeout?: number; model?: string; traceId?: string; sessionId?: string; }
     ): Promise<string> {
         const temperature = opts?.temperature ?? 0;
         const timeoutMs = opts?.timeout ?? LLM_COMPLETION_TIMEOUT_MS;
+        const model = opts?.model || DEFAULT_LLM_MODEL;
 
         const controller = new AbortController();
         const t = setTimeout(() => controller.abort(), timeoutMs);
 
         try {
-            const resp = await openai.responses.create({
-                model: opts?.model || DEFAULT_LLM_MODEL,
-                input: toInput(messages),
-                temperature
-            }, { signal: controller.signal });
+            const resp = await traceProviderCall(
+                {
+                    traceId: opts?.traceId,
+                    sessionId: opts?.sessionId,
+                    provider: 'openai',
+                    operation: 'complete',
+                    retryCount: 0,
+                },
+                async () => {
+                    return await openai.responses.create({
+                        model,
+                        input: toInput(messages),
+                        temperature
+                    }, { signal: controller.signal });
+                },
+                (event, result) => {
+                    // Robust token extraction - check multiple possible locations
+                    const usage = (result as any)?.usage;
+                    const tokensIn = usage?.prompt_tokens ?? usage?.input_tokens ?? 0;
+                    const tokensOut = usage?.completion_tokens ?? usage?.output_tokens ?? 0;
+                    const totalTokens = usage?.total_tokens ?? (tokensIn + tokensOut);
+                    
+                    event.model = model;
+                    event.tokensIn = tokensIn;
+                    event.tokensOut = tokensOut;
+                    event.totalTokens = totalTokens;
+                    
+                    // Safe cost calculation
+                    if (tokensIn > 0 || tokensOut > 0) {
+                        const cost = calculateOpenAICost(model, tokensIn, tokensOut);
+                        if (cost !== null) {
+                            event.estimatedCostUsd = cost;
+                            event.costUnknown = false;
+                        } else {
+                            event.costUnknown = true;
+                        }
+                    } else {
+                        // No token data available
+                        event.costUnknown = true;
+                    }
+                }
+            );
+            
             clearTimeout(t);
             return resp.output_text || '';
         } catch (e: any) {

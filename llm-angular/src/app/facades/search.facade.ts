@@ -170,39 +170,61 @@ export class SearchFacade {
 
   /**
    * Handle chip click - implements UI/UX Contract state management
-   * - SORT: Single-select (deactivate all others, activate this one)
-   * - FILTER: Multi-select (toggle on/off)
-   * - VIEW: Single-select (switch view mode)
+   * - SORT: Re-search with sort parameter (creates new pool)
+   * - FILTER: Re-search with filter parameter (creates new pool)
+   * - VIEW: Switch view mode (no new pool)
+   * 
+   * Per SEARCH_POOL_PAGINATION_RULES.md:
+   * - Filter/sort changes MUST create a new pool via re-search
+   * - Never filter/sort client-side (breaks pagination truth)
    */
   onChipClick(chipId: string): void {
     const chip = this.chips().find(c => c.id === chipId);
     if (!chip) return;
 
+    const currentQuery = this.query();
+    if (!currentQuery) {
+      console.warn('[SearchFacade] No current query to re-search');
+      return;
+    }
+
     switch (chip.action) {
       case 'sort':
-        // Single-select: deactivate all other sorts, activate this one
+        // Single-select: re-search with sort (creates new pool)
         const sortKey = this.mapChipToSortKey(chipId);
         this.sortState.set(sortKey);
-        console.log('[SearchFacade] Sort activated:', sortKey);
-        // TODO: Re-sort results locally or re-fetch
+        console.log('[SearchFacade] ✅ Sort chip clicked, re-searching with sort:', sortKey);
+        
+        // TODO: Pass sort to backend when API supports it
+        // For now, backend always returns best match
+        console.warn('[SearchFacade] ⚠️ Sort not yet sent to backend');
         break;
         
       case 'filter':
-        // Multi-select: toggle filter
+        // Multi-select: toggle filter and re-search (creates new pool)
         const filters = new Set(this.filterState());
-        if (filters.has(chipId)) {
+        const isRemoving = filters.has(chipId);
+        
+        if (isRemoving) {
           filters.delete(chipId);
-          console.log('[SearchFacade] Filter removed:', chipId);
+          console.log('[SearchFacade] ✅ Filter chip removed, re-searching without filter:', chipId);
         } else {
           filters.add(chipId);
-          console.log('[SearchFacade] Filter added:', chipId);
+          console.log('[SearchFacade] ✅ Filter chip added, re-searching with filter:', chipId);
         }
+        
         this.filterState.set(filters);
-        // TODO: Apply filters and re-search
+        
+        // Parse all active filters into SearchFilters
+        const searchFilters = this.buildSearchFilters(filters);
+        console.log('[SearchFacade] 🔄 Re-searching with filters:', searchFilters);
+        
+        // Re-search creates a new pool (per pool rules)
+        this.search(currentQuery, searchFilters);
         break;
         
       case 'map':
-        // Single-select: switch to map view
+        // Single-select: switch to map view (no new pool)
         this.viewState.set('MAP');
         console.log('[SearchFacade] View changed to: MAP');
         // TODO: Implement map view
@@ -229,6 +251,50 @@ export class SearchFacade {
       default:
         return 'BEST_MATCH';
     }
+  }
+
+  /**
+   * Build SearchFilters from active filter chip IDs
+   * Parses chip.filter strings like "price<=2", "opennow", "delivery"
+   * 
+   * Per SEARCH_POOL_PAGINATION_RULES.md:
+   * - These filters create a new search pool
+   * - Backend must receive and apply them
+   */
+  private buildSearchFilters(activeFilterIds: Set<string>): SearchFilters {
+    const filters: SearchFilters = {};
+    const allChips = this.chips();
+
+    for (const chipId of activeFilterIds) {
+      const chip = allChips.find(c => c.id === chipId);
+      if (!chip || chip.action !== 'filter') continue;
+
+      const filterStr = chip.filter || '';
+
+      // Parse filter string
+      if (filterStr === 'opennow') {
+        filters.openNow = true;
+      } else if (filterStr === 'closednow') {
+        filters.openNow = false;
+      } else if (filterStr.startsWith('price<=')) {
+        // Parse "price<=2" → priceLevel: 2
+        const maxPrice = parseInt(filterStr.replace('price<=', ''), 10);
+        if (!isNaN(maxPrice) && maxPrice >= 1 && maxPrice <= 4) {
+          filters.priceLevel = maxPrice;
+        }
+      } else if (filterStr === 'delivery') {
+        // Delivery is a mustHave constraint
+        filters.mustHave = filters.mustHave || [];
+        filters.mustHave.push('delivery');
+      } else if (filterStr === 'kosher' || filterStr === 'vegan' || filterStr === 'glutenfree') {
+        // Dietary constraints
+        filters.dietary = filters.dietary || [];
+        filters.dietary.push(filterStr);
+      }
+      // Add more filter types as needed
+    }
+
+    return filters;
   }
 
   onAssistActionClick(query: string): void {

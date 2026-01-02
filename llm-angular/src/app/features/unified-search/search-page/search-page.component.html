@@ -140,6 +140,19 @@
             [loading]="facade.loading()"
             (restaurantClick)="onCardClick($event)"
           />
+          
+          <!-- Load More Button -->
+          @if (hasMoreResults()) {
+            <div class="load-more-container">
+              <button 
+                class="load-more-btn"
+                (click)="loadMore()"
+                [disabled]="facade.loading()"
+              >
+                Show More
+              </button>
+            </div>
+          }
         </section>
         
         <!-- Desktop: Sticky Assistant Panel (Conditional - only when needed) -->
