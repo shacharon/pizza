@@ -1,6 +1,10 @@
 /**
  * Unified Search Controller
- * POST /api/search - The new BFF endpoint
+ * Routes are mounted at /search by the v1 aggregator
+ * 
+ * Internal routes:
+ * - POST /       → /search
+ * - GET /stats   → /search/stats
  */
 
 import { Router, type Request, type Response } from 'express';
@@ -23,10 +27,10 @@ const router = Router();
 const orchestrator = createSearchOrchestrator();
 
 /**
- * POST /api/search
+ * POST /search
  * Unified search endpoint
  */
-router.post('/search', async (req: Request, res: Response) => {
+router.post('/', async (req: Request, res: Response) => {
   try {
     // Validate request
     const validation = safeParseSearchRequest(req.body);
@@ -63,10 +67,10 @@ router.post('/search', async (req: Request, res: Response) => {
 });
 
 /**
- * GET /api/search/stats
+ * GET /search/stats
  * Get orchestrator statistics (for monitoring)
  */
-router.get('/search/stats', (req: Request, res: Response) => {
+router.get('/stats', (req: Request, res: Response) => {
   try {
     const stats = orchestrator.getStats();
     res.json(stats);
