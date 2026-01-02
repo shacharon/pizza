@@ -1,6 +1,9 @@
 import { Injectable } from '@angular/core';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { Observable, throwError } from 'rxjs';
+import { catchError } from 'rxjs/operators';
+import { ENDPOINTS } from '../api/api.config';
+import { mapApiError, logApiError, type ApiErrorView } from '../http/api-error.mapper';
 
 export type Language = 'he' | 'en';
 
@@ -33,23 +36,40 @@ export interface PlacesResponseDto {
 export class PlacesApiService {
     constructor(private readonly http: HttpClient) { }
 
+    /**
+     * Search with text query
+     * Note: x-session-id is automatically added by apiSessionInterceptor
+     * 
+     * @returns Observable or ApiErrorView
+     */
     searchWithText(request: PlacesRequestText): Observable<PlacesResponseDto> {
-        const headers = request.sessionId
-            ? new HttpHeaders({ 'x-session-id': request.sessionId })
-            : undefined;
-
-        return this.http.post<PlacesResponseDto>('/api/places/search', {
+        return this.http.post<PlacesResponseDto>(ENDPOINTS.PLACES_SEARCH, {
             text: request.text,
             language: request.language,
             userLocation: request.userLocation,
             nearMe: request.nearMe
-        }, { headers });
+        }).pipe(
+            catchError((error: HttpErrorResponse) => {
+                const apiError: ApiErrorView = mapApiError(error);
+                logApiError('PlacesApiService.searchWithText', apiError);
+                return throwError(() => apiError);
+            })
+        );
     }
 
+    /**
+     * Search with schema
+     * Note: x-session-id is automatically added by apiSessionInterceptor
+     * 
+     * @returns Observable or ApiErrorView
+     */
     searchWithSchema(schema: unknown, sessionId?: string): Observable<PlacesResponseDto> {
-        const headers = sessionId
-            ? new HttpHeaders({ 'x-session-id': sessionId })
-            : undefined;
-        return this.http.post<PlacesResponseDto>('/api/places/search', { schema }, { headers });
+        return this.http.post<PlacesResponseDto>(ENDPOINTS.PLACES_SEARCH, { schema }).pipe(
+            catchError((error: HttpErrorResponse) => {
+                const apiError: ApiErrorView = mapApiError(error);
+                logApiError('PlacesApiService.searchWithSchema', apiError);
+                return throwError(() => apiError);
+            })
+        );
     }
 }

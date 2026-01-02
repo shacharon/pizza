@@ -7,11 +7,11 @@ import { Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Observable, of } from 'rxjs';
 import { catchError } from 'rxjs/operators';
+import { ENDPOINTS } from '../shared/api/api.config';
+import { mapApiError } from '../shared/http/api-error.mapper';
 
 @Injectable({ providedIn: 'root' })
 export class FlagsApiClient {
-  private readonly apiUrl = '/api/flags';
-
   constructor(private http: HttpClient) {}
 
   /**
@@ -19,10 +19,11 @@ export class FlagsApiClient {
    * Fails gracefully if endpoint not available
    */
   loadFlags(): Observable<Record<string, boolean>> {
-    return this.http.get<Record<string, boolean>>(this.apiUrl).pipe(
+    return this.http.get<Record<string, boolean>>(ENDPOINTS.FLAGS).pipe(
       catchError((error: HttpErrorResponse) => {
-        console.warn('[FlagsApiClient] Failed to load flags, using defaults:', error.message);
-        // Return default flags on error
+        const apiError = mapApiError(error);
+        console.warn('[FlagsApiClient] Failed to load flags, using defaults:', apiError.message);
+        // Return default flags on error (graceful degradation)
         return of({
           unifiedSearch: false,
           actionProposals: false

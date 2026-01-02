@@ -6,37 +6,41 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Observable, throwError } from 'rxjs';
-import { retry, catchError } from 'rxjs/operators';
+import { catchError } from 'rxjs/operators';
 import type { SearchRequest, SearchResponse } from '../domain/types/search.types';
+import { ENDPOINTS } from '../shared/api/api.config';
+import { mapApiError, logApiError, type ApiErrorView } from '../shared/http/api-error.mapper';
 
 @Injectable({ providedIn: 'root' })
 export class SearchApiClient {
-  private readonly apiUrl = '/api/search';
-  private abortController: AbortController | null = null;
-
   constructor(private http: HttpClient) {}
 
+  /**
+   * Execute search request
+   * Returns ApiErrorView on failure (not Error)
+   */
   search(request: SearchRequest): Observable<SearchResponse> {
-    // Cancel previous request if exists
-    this.abortController?.abort();
-    this.abortController = new AbortController();
-
-    return this.http.post<SearchResponse>(this.apiUrl, request).pipe(
-      retry({ count: 2, delay: 1000 }),
-      catchError(this.handleError)
+    return this.http.post<SearchResponse>(ENDPOINTS.SEARCH, request).pipe(
+      catchError((error: HttpErrorResponse) => {
+        const apiError: ApiErrorView = mapApiError(error);
+        logApiError('SearchApiClient.search', apiError);
+        return throwError(() => apiError);
+      })
     );
   }
 
+  /**
+   * Get search statistics
+   * Returns ApiErrorView on failure (not Error)
+   */
   getStats(): Observable<any> {
-    return this.http.get(`${this.apiUrl}/stats`).pipe(
-      catchError(this.handleError)
+    return this.http.get(ENDPOINTS.SEARCH_STATS).pipe(
+      catchError((error: HttpErrorResponse) => {
+        const apiError: ApiErrorView = mapApiError(error);
+        logApiError('SearchApiClient.getStats', apiError);
+        return throwError(() => apiError);
+      })
     );
-  }
-
-  private handleError(error: HttpErrorResponse): Observable<never> {
-    const message = error.error?.error || error.message || 'Search failed';
-    console.error('[SearchApiClient] Error:', message);
-    return throwError(() => new Error(message));
   }
 }
 

@@ -9,36 +9,40 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Observable, throwError } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 import type { ActionProposal, ActionExecutionResult } from '../domain/types/action.types';
+import { ENDPOINTS } from '../shared/api/api.config';
+import { mapApiError, logApiError, type ApiErrorView } from '../shared/http/api-error.mapper';
 
 @Injectable({ providedIn: 'root' })
 export class ActionsApiClient {
-  private readonly apiUrl = '/api/actions';
-
   constructor(private http: HttpClient) {}
 
   /**
    * Future: Backend approval endpoint (Phase 2)
    * When backend implements action approval service
+   * @throws ApiErrorView on failure
    */
   approveAction(actionId: string): Observable<ActionExecutionResult> {
-    return this.http.post<ActionExecutionResult>(`${this.apiUrl}/${actionId}/approve`, {}).pipe(
-      catchError(this.handleError)
+    return this.http.post<ActionExecutionResult>(`${ENDPOINTS.ACTIONS_BY_ID(actionId)}/approve`, {}).pipe(
+      catchError((error: HttpErrorResponse) => {
+        const apiError: ApiErrorView = mapApiError(error);
+        logApiError('ActionsApiClient.approveAction', apiError);
+        return throwError(() => apiError);
+      })
     );
   }
 
   /**
    * Future: Get action status from backend
+   * @throws ApiErrorView on failure
    */
   getActionStatus(actionId: string): Observable<ActionProposal> {
-    return this.http.get<ActionProposal>(`${this.apiUrl}/${actionId}`).pipe(
-      catchError(this.handleError)
+    return this.http.get<ActionProposal>(ENDPOINTS.ACTIONS_BY_ID(actionId)).pipe(
+      catchError((error: HttpErrorResponse) => {
+        const apiError: ApiErrorView = mapApiError(error);
+        logApiError('ActionsApiClient.getActionStatus', apiError);
+        return throwError(() => apiError);
+      })
     );
-  }
-
-  private handleError(error: HttpErrorResponse): Observable<never> {
-    const message = error.error?.error || error.message || 'Action request failed';
-    console.error('[ActionsApiClient] Error:', message);
-    return throwError(() => new Error(message));
   }
 }
 

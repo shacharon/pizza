@@ -2,6 +2,7 @@ import { Injectable, signal } from '@angular/core';
 import { ChatService } from '../../chat.service';
 import { PrefsService } from '../../shared/services/prefs.service';
 import { debounceTime, Subject } from 'rxjs';
+import { ENDPOINTS } from '../../shared/api/api.config';
 
 @Injectable()
 export class ChatFacade {
@@ -98,7 +99,7 @@ export class ChatFacade {
             for (let i = userLog.length - 1; i >= 0; i--) {
                 if (userLog[i].role === 'user') { lastUserText = userLog[i].text; break; }
             }
-            const req$ = (this.chat as any)['http'].post('/api/chat', {
+            const req$ = (this.chat as any)['http'].post(ENDPOINTS.CHAT, {
                 message: lastUserText,
                 language: this.language(),
                 page: this.page,

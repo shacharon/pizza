@@ -4,6 +4,7 @@ import { provideRouter } from '@angular/router';
 import { routes } from './app.routes';
 import { httpTimeoutRetryInterceptor } from './core/interceptors/http-timeout-retry.interceptor';
 import { httpErrorInterceptor } from './core/interceptors/http-error.interceptor';
+import { apiSessionInterceptor } from './shared/http/api-session.interceptor';
 import { FlagsStore } from './state/flags.store';
 
 /**
@@ -21,7 +22,11 @@ function initializeFeatureFlags(flagsStore: FlagsStore) {
 export const appConfig: ApplicationConfig = {
   providers: [
     provideZoneChangeDetection({ eventCoalescing: true }),
-    provideHttpClient(withInterceptors([httpTimeoutRetryInterceptor, httpErrorInterceptor])),
+    provideHttpClient(withInterceptors([
+      apiSessionInterceptor,           // 1st: attach x-session-id (before retry/error)
+      httpTimeoutRetryInterceptor,     // 2nd: timeout + retry (needs session already present)
+      httpErrorInterceptor             // 3rd: error normalization (after retries exhausted)
+    ])),
     provideRouter(routes),
     // Initialize feature flags on startup
     {

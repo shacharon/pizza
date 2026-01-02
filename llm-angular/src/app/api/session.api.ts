@@ -10,35 +10,39 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Observable, throwError } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 import type { SessionState } from '../domain/types/session.types';
+import { ENDPOINTS } from '../shared/api/api.config';
+import { mapApiError, logApiError, type ApiErrorView } from '../shared/http/api-error.mapper';
 
 @Injectable({ providedIn: 'root' })
 export class SessionApiClient {
-  private readonly apiUrl = '/api/session';
-
   constructor(private http: HttpClient) {}
 
   /**
    * Future: Create session on backend
+   * @throws ApiErrorView on failure
    */
   createSession(): Observable<{ sessionId: string }> {
-    return this.http.post<{ sessionId: string }>(this.apiUrl, {}).pipe(
-      catchError(this.handleError)
+    return this.http.post<{ sessionId: string }>(ENDPOINTS.SESSION, {}).pipe(
+      catchError((error: HttpErrorResponse) => {
+        const apiError: ApiErrorView = mapApiError(error);
+        logApiError('SessionApiClient.createSession', apiError);
+        return throwError(() => apiError);
+      })
     );
   }
 
   /**
    * Future: Get session from backend
+   * @throws ApiErrorView on failure
    */
   getSession(sessionId: string): Observable<SessionState> {
-    return this.http.get<SessionState>(`${this.apiUrl}/${sessionId}`).pipe(
-      catchError(this.handleError)
+    return this.http.get<SessionState>(ENDPOINTS.SESSION_BY_ID(sessionId)).pipe(
+      catchError((error: HttpErrorResponse) => {
+        const apiError: ApiErrorView = mapApiError(error);
+        logApiError('SessionApiClient.getSession', apiError);
+        return throwError(() => apiError);
+      })
     );
-  }
-
-  private handleError(error: HttpErrorResponse): Observable<never> {
-    const message = error.error?.error || error.message || 'Session request failed';
-    console.error('[SessionApiClient] Error:', message);
-    return throwError(() => new Error(message));
   }
 }
 
