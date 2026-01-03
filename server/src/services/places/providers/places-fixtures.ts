@@ -6,7 +6,7 @@
  * Ensures stable, repeatable test results
  */
 
-import type { PlaceItem } from '../places.types.js';
+import type { PlaceItem } from './mock-places.provider.js';
 
 /**
  * Fixture data keyed by category_city pattern

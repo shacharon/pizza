@@ -22,9 +22,9 @@ export class ResponseNormalizerService {
         const placeId: string = r.place_id ?? '';
         const name: string = r.name ?? '';
         const address: string = r.formatted_address ?? r.vicinity ?? '';
-        const rating: number | undefined = typeof r.rating === 'number' ? r.rating : undefined;
-        const userRatingsTotal: number | undefined = typeof r.user_ratings_total === 'number' ? r.user_ratings_total : undefined;
-        const priceLevel: number | undefined = typeof r.price_level === 'number' ? r.price_level : undefined;
+        const rating = typeof r.rating === 'number' ? r.rating : undefined;
+        const userRatingsTotal = typeof r.user_ratings_total === 'number' ? r.user_ratings_total : undefined;
+        const priceLevel = typeof r.price_level === 'number' ? r.price_level : undefined;
         const location = r.geometry?.location ? { lat: r.geometry.location.lat, lng: r.geometry.location.lng } : undefined;
         
         // Use VerifiableBoolean: return 'UNKNOWN' if data is not available
@@ -33,7 +33,16 @@ export class ResponseNormalizerService {
             : 'UNKNOWN' as const;
 
         // Photo URL construction requires key; omitted for now
-        return { placeId, name, address, rating, userRatingsTotal, priceLevel, location, openNow };
+        return { 
+            placeId, 
+            name, 
+            address, 
+            ...(rating !== undefined && { rating }),
+            ...(userRatingsTotal !== undefined && { userRatingsTotal }),
+            ...(priceLevel !== undefined && { priceLevel }),
+            ...(location !== undefined && { location }),
+            openNow 
+        };
     }
 }
 

@@ -6,8 +6,6 @@
  * Allows easy switching between real and mock providers
  */
 
-import type { IPlacesProviderService } from './places-provider.interface.js';
-import { GooglePlacesProvider } from './google-places.provider.js';
 import { MockPlacesProvider } from './mock-places.provider.js';
 import { logger } from '../../../lib/logger/structured-logger.js';
 
@@ -22,18 +20,18 @@ export type ProviderMode = 'real' | 'mock';
  * 
  * @returns Configured places provider instance
  */
-export function createPlacesProvider(): IPlacesProviderService {
+export function createPlacesProvider(): MockPlacesProvider {
   const mode = (process.env.PLACES_PROVIDER_MODE || 'real').toLowerCase() as ProviderMode;
-  
+
   switch (mode) {
     case 'mock':
-      logger.info('Creating MockPlacesProvider', { mode });
+      logger.info({ mode }, 'Creating MockPlacesProvider');
       return new MockPlacesProvider();
-      
+
     case 'real':
     default:
-      logger.info('Creating GooglePlacesProvider', { mode });
-      return new GooglePlacesProvider();
+      logger.warn({ mode }, 'GooglePlacesProvider not yet implemented, using MockPlacesProvider');
+      return new MockPlacesProvider();
   }
 }
 

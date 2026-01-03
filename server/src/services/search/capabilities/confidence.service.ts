@@ -55,7 +55,7 @@ export class ConfidenceService {
     
     // 2. Score gap between #1 and #10 (lower = more consistent)
     const scoreGap = top10.length >= 10 
-      ? (top10[0].score || 0) - (top10[9].score || 0)
+      ? (top10[0]?.score || 0) - (top10[9]?.score || 0)
       : 0;
     const gapPenalty = Math.min(scoreGap / 50, 0.2); // Max 20% penalty
     

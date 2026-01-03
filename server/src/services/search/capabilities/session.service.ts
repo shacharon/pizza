@@ -258,11 +258,11 @@ export class SessionService implements ISessionService {
 
     session.context = {
       conversationHistory: [],
-      validatedCities,  // Preserve city validation cache
+      ...(validatedCities !== undefined && { validatedCities }),  // Preserve city validation cache
     };
 
-    // Clear current intent
-    session.currentIntent = undefined;
+    // Clear current intent (don't assign undefined, just omit the property)
+    delete (session as any).currentIntent;
     session.updatedAt = new Date();
 
     this.sessions.set(sessionId, session);

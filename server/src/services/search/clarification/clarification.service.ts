@@ -29,10 +29,7 @@ export class ClarificationService {
         label: candidate.displayName,
         emoji: '📍',
         constraintPatch: {
-          location: {
-            city: candidate.name,
-            coords: candidate.coordinates,
-          }
+          location: candidate.coordinates
         } as Partial<SearchParams>
       };
     });

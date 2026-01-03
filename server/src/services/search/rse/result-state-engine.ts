@@ -134,7 +134,7 @@ export class ResultStateEngine {
       // Get the first dropped result's city if available
       // This is a simple heuristic - could be improved
       const firstDropped = filterResult.dropped[0];
-      if (firstDropped.address) {
+      if (firstDropped && firstDropped.address) {
         // Try to extract city name from address (simple approach)
         const addressParts = firstDropped.address.split(',');
         if (addressParts.length >= 2) {
@@ -143,7 +143,7 @@ export class ResultStateEngine {
       }
       
       // Calculate approximate distance if we have location
-      if (firstDropped.location && (firstDropped as any).distanceKm) {
+      if (firstDropped && firstDropped.location && (firstDropped as any).distanceKm) {
         nearbyDistance = (firstDropped as any).distanceKm;
       }
     }
@@ -151,8 +151,8 @@ export class ResultStateEngine {
     return {
       droppedCount,
       reasons,
-      nearbyCity,
-      nearbyDistance
+      ...(nearbyCity !== undefined && { nearbyCity }),
+      ...(nearbyDistance !== undefined && { nearbyDistance })
     };
   }
   

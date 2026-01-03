@@ -23,41 +23,37 @@ export function generateNormalTemplate(ctx: TemplateContext): string {
   
   // No results
   if (ctx.resultCount === 0) {
-    return i18n.t('assistant.noResults', { language: ctx.language });
+    return i18n.t('assistant.noResults', ctx.language);
   }
   
   // Results with category and city
   if (ctx.category && ctx.city) {
-    return i18n.t('assistant.foundResults', {
+    return i18n.t('assistant.foundResults', ctx.language, {
       count: ctx.resultCount,
       category: ctx.category,
-      city: ctx.city,
-      language: ctx.language
+      city: ctx.city
     });
   }
   
   // Results with category only
   if (ctx.category) {
-    return i18n.t('assistant.foundWithCategory', {
+    return i18n.t('assistant.foundWithCategory', ctx.language, {
       count: ctx.resultCount,
-      category: ctx.category,
-      language: ctx.language
+      category: ctx.category
     });
   }
   
   // Results with city only
   if (ctx.city) {
-    return i18n.t('assistant.foundInCity', {
+    return i18n.t('assistant.foundInCity', ctx.language, {
       count: ctx.resultCount,
-      city: ctx.city,
-      language: ctx.language
+      city: ctx.city
     });
   }
   
   // Generic results
-  return i18n.t('assistant.foundGeneric', {
-    count: ctx.resultCount,
-    language: ctx.language
+  return i18n.t('assistant.foundGeneric', ctx.language, {
+    count: ctx.resultCount
   });
 }
 
@@ -70,7 +66,7 @@ export function addFilterContext(message: string, ctx: TemplateContext): string 
   }
   
   const i18n = getI18n();
-  const filterText = i18n.t('assistant.withFilters', { language: ctx.language });
+  const filterText = i18n.t('assistant.withFilters', ctx.language);
   
   return `${message} ${filterText}`;
 }

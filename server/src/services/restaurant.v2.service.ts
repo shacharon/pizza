@@ -321,7 +321,7 @@ export async function getRestaurantsV2(dto: FoodQueryDTO): Promise<RestaurantsRe
             }
 
             // Check if restaurant meets ALL dietary requirements
-            const meetsRequirements = requiredDietary.every(requirement => {
+            const meetsRequirements = requiredDietary.every((requirement: string) => {
                 let meets = false;
                 switch (requirement) {
                     case 'kosher': meets = dietary.kosher === true; break;

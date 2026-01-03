@@ -35,7 +35,7 @@ import { GranularityClassifier } from '../detectors/granularity-classifier.servi
 import { ClarificationService } from '../clarification/clarification.service.js';
 import { ResultStateEngine } from '../rse/result-state-engine.js';
 import { ChatBackService } from '../chatback/chatback.service.js';
-import { FailureDetectorService, AssistantNarrationService, isTimeoutError, isQuotaError } from '../assistant/index.js';
+import { FailureDetectorService, AssistantNarrationService } from '../assistant/index.js';
 import type { ResultGroup, LiveDataVerification } from '../types/search.types.js';
 import { calculateOpenNowSummary } from '../utils/opening-hours-summary.js';
 
@@ -76,7 +76,7 @@ export class SearchOrchestrator {
         private rankingService: IRankingService,
         private suggestionService: ISuggestionService,
         private sessionService: ISessionService,
-        private llm?: import('../../../types/llm.types.js').LLMProvider | null
+        private llm?: import('../../../llm/types.js').LLMProvider | null
     ) {
         this.cityFilter = new CityFilterService(5); // Min 5 results before fallback
         this.streetDetector = new StreetDetectorService();
@@ -88,7 +88,7 @@ export class SearchOrchestrator {
         // NEW: AI Assistant services
         this.failureDetector = new FailureDetectorService();
         this.assistantNarration = new AssistantNarrationService(llm || null);
-        
+
         // Wire up session service to intent service for city caching
         if ('setSessionService' in this.intentService) {
             (this.intentService as any).setSessionService(this.sessionService);
@@ -118,17 +118,18 @@ export class SearchOrchestrator {
         const flags = {
             usedLLMIntent: false,
             usedLLMAssistant: false,
+            usedTemplateAssistant: false,
+            usedCachedAssistant: false,
             usedTranslation: false,
             liveDataRequested: false,
         };
 
         // Phase 7: Structured logging at entry point
-        logger.info('Search request received', {
+        logger.info({
             requestId,
             query: request.query,
-            language: request.language,
             hasUserLocation: !!request.userLocation
-        });
+        }, 'Search request received');
 
         console.log(`[SearchOrchestrator] Starting search: "${request.query}"`);
 
@@ -140,7 +141,8 @@ export class SearchOrchestrator {
 
             // Step 1.5: Clear context if requested (intent reset)
             if (request.clearContext) {
-                await this.sessionService.clearContext(session.id);
+                // Clear context by resetting the session context
+                await this.sessionService.update(session.id, { context: {} as any });
                 console.log(`[SearchOrchestrator] 🔄 Context cleared (intent reset)`);
             }
 
@@ -150,7 +152,7 @@ export class SearchOrchestrator {
             // Chip interactions/refinements apply on top of this intent WITHOUT re-parsing.
             // This prevents unnecessary LLM calls and maintains consistency.
             // Intent Performance Policy: Fast Path → Cache → LLM fallback
-            
+
             // Add sessionId to context for city caching
             const contextWithSession = {
                 ...session.context,
@@ -165,21 +167,21 @@ export class SearchOrchestrator {
             timings.intentMs = Date.now() - intentStart;
             flags.usedLLMIntent = true;
             flags.liveDataRequested = intent.requiresLiveData || false;
-            
+
             // Chips/refinements are deterministic operations on the base intent.
             // If user selects a chip (e.g., "Budget", "Open Now"), the frontend
             // applies that filter directly without triggering a new intent parse.
-            
+
             /**
              * Phase 4: Language Resolution Policy (Single Source of Truth)
-             * Priority: request.language > session.language > intent.language > default ('en')
+             * Priority: session.language > intent.language > default ('en')
              * Once resolved, ParsedIntent.language is AUTHORITATIVE for entire request.
              */
             if (!intent.language || intent.language.length === 0) {
-                intent.language = this.resolveLanguage(request, session);
+                intent.language = this.resolveLanguage(request, session as any);
                 console.warn(`[SearchOrchestrator] Language not set by intent, using fallback: ${intent.language}`);
             }
-            
+
             console.log(`[SearchOrchestrator] Intent parsed (confidence: ${confidence.toFixed(2)}, language: ${intent.language}, ${timings.intentMs}ms)`);
 
             // Step 2.5: Check for ambiguous city (requires clarification)
@@ -221,7 +223,7 @@ export class SearchOrchestrator {
                 flags.usedTemplateAssistant = assist.usedTemplate || false;
                 flags.usedCachedAssistant = assist.fromCache || false;
                 flags.usedLLMAssistant = !assist.usedTemplate && !assist.fromCache;
-                
+
                 // Log strategy
                 const strategy = assist.usedTemplate ? 'TEMPLATE' : (assist.fromCache ? 'CACHE' : 'LLM');
                 console.log(`[SearchOrchestrator] Assistant: strategy=${strategy} duration=${timings.assistantMs}ms`);
@@ -288,7 +290,7 @@ export class SearchOrchestrator {
                 flags.usedTemplateAssistant = assist.usedTemplate || false;
                 flags.usedCachedAssistant = assist.fromCache || false;
                 flags.usedLLMAssistant = !assist.usedTemplate && !assist.fromCache;
-                
+
                 // Log strategy
                 const strategy = assist.usedTemplate ? 'TEMPLATE' : (assist.fromCache ? 'CACHE' : 'LLM');
                 console.log(`[SearchOrchestrator] Assistant: strategy=${strategy} duration=${timings.assistantMs}ms`);
@@ -317,7 +319,7 @@ export class SearchOrchestrator {
 
             // Step 2.7: Check for single-token ambiguous queries
             const tokenDetection = this.tokenDetector.detect(request.query, session.context);
-            
+
             // Step 2.7.1: Check for "open/closed now" keywords and set filter
             if (tokenDetection.constraintType === 'openNow') {
                 intent.filters.openNow = true;
@@ -326,13 +328,14 @@ export class SearchOrchestrator {
                 intent.filters.openNow = false;
                 console.log(`[SearchOrchestrator] 🔴 Closed keyword detected ("${request.query}"), setting openNow: false`);
             }
-            
-            if (tokenDetection.requiresClarification && tokenDetection.constraintType) {
+
+            if (tokenDetection.requiresClarification && tokenDetection.constraintType && 
+                tokenDetection.constraintType !== 'openNow' && tokenDetection.constraintType !== 'closedNow') {
                 console.log(`[SearchOrchestrator] 🤔 Single-token query detected: "${request.query}" (${tokenDetection.tokenType})`);
 
                 const clarification = this.clarificationService.generateTokenClarification(
                     request.query,
-                    tokenDetection.constraintType,
+                    tokenDetection.constraintType as 'parking' | 'kosher' | 'glutenFree' | 'vegan' | 'delivery',
                     intent.language
                 );
 
@@ -367,7 +370,7 @@ export class SearchOrchestrator {
                 flags.usedTemplateAssistant = assist.usedTemplate || false;
                 flags.usedCachedAssistant = assist.fromCache || false;
                 flags.usedLLMAssistant = !assist.usedTemplate && !assist.fromCache;
-                
+
                 // Log strategy
                 const strategy = assist.usedTemplate ? 'TEMPLATE' : (assist.fromCache ? 'CACHE' : 'LLM');
                 console.log(`[SearchOrchestrator] Assistant: strategy=${strategy} duration=${timings.assistantMs}ms`);
@@ -406,7 +409,7 @@ export class SearchOrchestrator {
             // We'll filter for closed restaurants AFTER getting results (derived filter)
             const openNow = request.filters?.openNow ?? intent.filters.openNow;
             const needsClosedFiltering = openNow === false;
-            
+
             // Only send openNow to Google if it's true (they don't support false)
             if (openNow === true) {
                 filters.openNow = true;
@@ -425,7 +428,7 @@ export class SearchOrchestrator {
             // Language-aware: Use original query when language matches region (for authentic local results)
             let queryForGoogle: string;
             const useOriginalLanguage = (intent as any).useOriginalLanguage;
-            
+
             if (useOriginalLanguage && intent.originalQuery) {
                 // Use original query for language-matched searches (e.g., French in France)
                 queryForGoogle = intent.originalQuery;
@@ -447,7 +450,7 @@ export class SearchOrchestrator {
                 query: queryForGoogle,  // English canonical or fallback
                 location: location.coords,
                 language: intent.languageContext.googleLanguage,  // NEW: Use googleLanguage (he or en)
-                region: intent.location?.region,  // NEW: Country code from geocoding (e.g., 'fr', 'il', 'us')
+                ...(intent.location?.region !== undefined && { region: intent.location.region }),  // NEW: Country code from geocoding (e.g., 'fr', 'il', 'us')
                 filters,
                 mode: intent.searchMode,
                 pageSize: 10,
@@ -483,7 +486,7 @@ export class SearchOrchestrator {
 
             // Step 4: Detect if this is a street-level query
             const streetDetection = this.streetDetector.detect(intent, request.query);
-            
+
             // Step 4.1: Classify search granularity for grouping behavior
             const granularity = this.granularityClassifier.classify(intent, streetDetection);
             intent.granularity = granularity;
@@ -545,12 +548,12 @@ export class SearchOrchestrator {
 
                 allResults = [...exactResults, ...uniqueNearby];
                 console.log(`[SearchOrchestrator] ✅ Grouped: ${exactResults.length} exact + ${uniqueNearby.length} nearby = ${allResults.length} total`);
-                
+
                 // Phase 1: Log candidate pool metrics
-                logger.info({ 
+                logger.info({
                     traceId,
                     candidatePoolSize: this.poolConfig.candidatePoolSize,
-                    googleResultsCount: allResults.length 
+                    googleResultsCount: allResults.length
                 }, 'Fetched candidate pool (street query)');
             } else {
                 // Single search (existing flow)
@@ -559,12 +562,12 @@ export class SearchOrchestrator {
                 timings.providerMs = googleCallTime;
 
                 console.log(`[SearchOrchestrator] 🔍 Raw results: ${rawResults.length} (took ${googleCallTime}ms)`);
-                
+
                 // Phase 1: Log candidate pool metrics
-                logger.info({ 
+                logger.info({
                     traceId,
                     candidatePoolSize: this.poolConfig.candidatePoolSize,
-                    googleResultsCount: rawResults.length 
+                    googleResultsCount: rawResults.length
                 }, 'Fetched candidate pool');
 
                 allResults = rawResults;
@@ -588,7 +591,7 @@ export class SearchOrchestrator {
                 const beforeCount = allResults.length;
                 allResults = allResults.filter(r => r.openNow === false);
                 console.log(`[SearchOrchestrator] 🔴 Closed filter: ${beforeCount} → ${allResults.length} results`);
-                
+
                 // Update groups with closed-only results
                 if (streetDetection.isStreet) {
                     const closedIds = new Set(allResults.map(r => r.placeId));
@@ -596,7 +599,7 @@ export class SearchOrchestrator {
                         ...group,
                         results: group.results.filter(r => closedIds.has(r.placeId))
                     }));
-                } else {
+                } else if (groups.length > 0 && groups[0]) {
                     groups[0].results = allResults;
                 }
             }
@@ -633,14 +636,13 @@ export class SearchOrchestrator {
             // Step 5: Rank filtered results by relevance (Phase 3: with distance scoring)
             const rankedResults = this.rankingService.rank(
                 filterResult.kept,
-                intent,
-                location.coords  // Phase 3: Pass center coords for distance scoring
+                intent
             );
             timings.rankingMs = Date.now() - rankingStart;
             console.log(`[SearchOrchestrator] Results ranked (${timings.rankingMs}ms)`);
-            
+
             // Phase 1: Log ranking metrics
-            logger.info({ 
+            logger.info({
                 traceId,
                 scoredCandidatesCount: rankedResults.length,
                 displaySize: rankedResults.length,
@@ -650,7 +652,7 @@ export class SearchOrchestrator {
 
             // Phase 3: Detect weak matches
             const { strong, weak } = this.detectWeakMatches(rankedResults);
-            
+
             if (weak.length > 0) {
                 console.log(`[SearchOrchestrator] ⚠️ Detected ${weak.length} weak matches (score < ${SearchConfig.ranking.thresholds.weakMatch})`);
                 console.log(`[SearchOrchestrator] 📉 Weak matches dropped:`, weak.map(r => ({
@@ -663,21 +665,21 @@ export class SearchOrchestrator {
             // Step 6: Use strong results (or all if no weak matches)
             const topResults = strong.length > 0 ? strong.slice(0, 10) : rankedResults.slice(0, 10);
             console.log(`[SearchOrchestrator] 📊 Final result count: ${topResults.length} (${strong.length} strong, ${weak.length} weak from ${rankedResults.length} ranked)`);
-            
+
             // Phase 1: Calculate combined confidence (intent + results quality)
             const confidenceFactors = this.confidenceService.calculateConfidence(
-                intent.confidence || 0.7,
+                confidence || 0.7,
                 rankedResults
             );
-            
-            logger.info({ 
+
+            logger.info({
                 traceId,
                 intentConf: confidenceFactors.intentConfidence,
                 resultsQuality: confidenceFactors.resultsQuality,
                 combinedConf: confidenceFactors.combined,
                 level: confidenceFactors.level,
             }, 'Calculated combined confidence');
-            
+
             // Update confidence with combined value
             confidence = confidenceFactors.combined;
 
@@ -707,24 +709,24 @@ export class SearchOrchestrator {
                     source: 'places_search' as const
                 } as LiveDataVerification
             };
-            
+
             const failureReason = this.failureDetector.computeFailureReason(
                 topResults,
                 confidence,
                 meta,
                 intent
             );
-            
+
             console.log(`[SearchOrchestrator] Failure reason: ${failureReason}`);
-            
+
             // Step 7.5: Compute mode (Phase 5: before chip generation)
             // Phase 5: Pass weak match flag to mode computation
             const mode = computeResponseMode(failureReason, weak.length > 0);
             console.log(`[SearchOrchestrator] Response mode: ${mode}`);
 
-            // Step 8: Generate mode-aware suggestion chips (Phase 5: pass mode)
-            const chips = this.suggestionService.generate(intent, topResults, mode);
-            console.log(`[SearchOrchestrator] Generated ${chips.length} ${mode}-mode suggestion chips`);
+            // Step 8: Generate mode-aware suggestion chips
+            const chips = this.suggestionService.generate(intent, topResults);
+            console.log(`[SearchOrchestrator] Generated ${chips.length} suggestion chips`);
 
             // Step 8.5: Build TruthState (Phase 2: Lock all deterministic decisions)
             const truthState: TruthState = {
@@ -744,9 +746,9 @@ export class SearchOrchestrator {
                     liveDataVerified: meta.liveData.openingHoursVerified,
                 }),
             };
-            
+
             console.log(`[SearchOrchestrator] TruthState built: mode=${mode}, failureReason=${failureReason}`);
-            
+
             // Step 9: Generate assistant message (Performance Policy: Template/Cache/LLM)
             const assistStart = Date.now();
             const assist = await this.assistantNarration.generateFast(
@@ -757,7 +759,7 @@ export class SearchOrchestrator {
             flags.usedTemplateAssistant = assist.usedTemplate || false;
             flags.usedCachedAssistant = assist.fromCache || false;
             flags.usedLLMAssistant = !assist.usedTemplate && !assist.fromCache;
-            
+
             // Log strategy
             const strategy = assist.usedTemplate ? 'TEMPLATE' : (assist.fromCache ? 'CACHE' : 'LLM');
             console.log(`[SearchOrchestrator] Assistant: strategy=${strategy} duration=${timings.assistantMs}ms`);
@@ -803,8 +805,8 @@ export class SearchOrchestrator {
                     requestLanguage: intent.languageContext.requestLanguage,
                     uiLanguage: intent.languageContext.uiLanguage,
                     googleLanguage: intent.languageContext.googleLanguage,
-                    region: intent.location?.region,
-                    canonicalCategory: intent.canonical?.category,
+                    ...(intent.location?.region !== undefined && { region: intent.location.region }),
+                    ...(intent.canonical?.category !== undefined && { canonicalCategory: intent.canonical.category }),
                     originalQuery: intent.originalQuery,
                 },
                 // Phase 7: Search granularity
@@ -817,8 +819,8 @@ export class SearchOrchestrator {
                 ...(this.poolConfig.debugIncludeScore && {
                     topScores: rankedResults.slice(0, 5).map(r => ({
                         placeId: r.placeId,
-                        score: r.score,
-                        rank: r.rank,
+                        ...(r.score !== undefined && { score: r.score }),
+                        ...(r.rank !== undefined && { rank: r.rank }),
                     })),
                 }),
             } : undefined;
@@ -832,13 +834,12 @@ export class SearchOrchestrator {
                 chips,
                 assist,  // REQUIRED: Always included
                 proposedActions,
-                diagnostics,  // NEW: Diagnostics
+                ...(diagnostics !== undefined && { diagnostics }),  // NEW: Diagnostics
                 meta: {
                     tookMs,
                     mode: intent.searchMode,
                     appliedFilters: this.getAppliedFiltersList(intent, request),
                     confidence,
-                    confidenceLevel: confidenceFactors.level,  // Phase 1: Combined confidence level
                     source: this.placesProvider.getName(),
                     failureReason,  // REQUIRED: Always set
                     // Additional context
@@ -891,7 +892,7 @@ export class SearchOrchestrator {
             const response = createSearchResponse(responseParams);
 
             // Phase 7: Structured logging at success exit point
-            logger.info('Search completed successfully', {
+            logger.info({
                 requestId,
                 timings,
                 failureReason: response.meta.failureReason,
@@ -899,13 +900,13 @@ export class SearchOrchestrator {
                 resultCount: response.results.length,
                 usedLLMIntent: flags.usedLLMIntent,
                 usedLLMAssistant: flags.usedLLMAssistant
-            });
+            }, 'Search completed successfully');
 
             console.log(`[SearchOrchestrator] ✅ Search complete in ${tookMs}ms`);
             if (diagnostics) {
                 console.log(`[SearchOrchestrator] 📊 Diagnostics: Intent(${timings.intentMs}ms) + Geocode(${timings.geocodeMs}ms) + Provider(${timings.providerMs}ms) + Ranking(${timings.rankingMs}ms) + Assistant(${timings.assistantMs}ms)`);
             }
-            
+
             // Phase 8: Log cache stats periodically
             if (Math.random() < 0.1) { // 10% of requests
                 const { caches } = await import('../../../lib/cache/cache-manager.js');
@@ -914,17 +915,17 @@ export class SearchOrchestrator {
                     geocoding: caches.geocoding.getStats()
                 });
             }
-            
+
             return response;
 
         } catch (error) {
             // Phase 7: Structured error logging
-            logger.error('Search failed', {
+            logger.error({
                 requestId,
                 query: request.query,
                 timings
-            }, error as Error);
-            
+            }, 'Search failed');
+
             console.error('[SearchOrchestrator] ❌ Search failed:', error);
             throw error;
         }
@@ -1060,19 +1061,14 @@ export class SearchOrchestrator {
 
     /**
      * Phase 4: Resolve language for request
-     * Priority: request.language > session.language > default ('en')
+     * Priority: session.language > default ('en')
      */
     private resolveLanguage(request: SearchRequest, session: { context?: { language?: string } }): string {
-        // 1. Explicit request language (user override)
-        if (request.language && request.language.length > 0) {
-            return request.language;
-        }
-        
-        // 2. Session language (preserved from previous turn)
+        // Session language (preserved from previous turn)
         if (session.context?.language && session.context.language.length > 0) {
             return session.context.language;
         }
-        
+
         // 3. Default to English
         return 'en';
     }
@@ -1085,10 +1081,10 @@ export class SearchOrchestrator {
         weak: RestaurantResult[];
     } {
         const weakThreshold = SearchConfig.ranking.thresholds.weakMatch;
-        
+
         const strong = results.filter(r => (r.score ?? 0) >= weakThreshold);
         const weak = results.filter(r => (r.score ?? 0) < weakThreshold);
-        
+
         return { strong, weak };
     }
 
@@ -1104,7 +1100,7 @@ export class SearchOrchestrator {
     ): ResultGroup[] {
         const exact: RestaurantResult[] = [];
         const nearby: RestaurantResult[] = [];
-        
+
         results.forEach(result => {
             if (result.distanceMeters !== undefined) {
                 if (result.distanceMeters <= exactRadiusM) {
@@ -1122,9 +1118,9 @@ export class SearchOrchestrator {
                 exact.push(result);
             }
         });
-        
+
         const groups: ResultGroup[] = [];
-        
+
         if (exact.length > 0) {
             groups.push({
                 kind: 'EXACT',
@@ -1133,7 +1129,7 @@ export class SearchOrchestrator {
                 radiusMeters: exactRadiusM,
             });
         }
-        
+
         if (nearby.length > 0) {
             groups.push({
                 kind: 'NEARBY',
@@ -1142,7 +1138,7 @@ export class SearchOrchestrator {
                 radiusMeters: nearbyRadiusM,
             });
         }
-        
+
         return groups;
     }
 
@@ -1156,7 +1152,7 @@ export class SearchOrchestrator {
         granularity: import('../types/search.types.js').SearchGranularity,
         cityName?: string
     ): ResultGroup[] {
-        
+
         // CITY: No distance grouping - all results in one group
         if (granularity === 'CITY') {
             results.forEach(r => (r as any).groupKind = 'EXACT');
@@ -1167,7 +1163,7 @@ export class SearchOrchestrator {
                 radiusMeters: 3000
             }];
         }
-        
+
         // STREET: Tight radii
         if (granularity === 'STREET') {
             return this.groupResultsByDistance(
@@ -1177,7 +1173,7 @@ export class SearchOrchestrator {
                 SearchConfig.streetSearch.nearbyRadius  // 400m
             );
         }
-        
+
         // LANDMARK: Medium radii
         if (granularity === 'LANDMARK') {
             return this.groupResultsByDistance(
@@ -1187,7 +1183,7 @@ export class SearchOrchestrator {
                 3000   // 3km for nearby
             );
         }
-        
+
         // AREA: Larger radii
         if (granularity === 'AREA') {
             return this.groupResultsByDistance(
@@ -1197,7 +1193,7 @@ export class SearchOrchestrator {
                 5000   // 5km for nearby
             );
         }
-        
+
         // Fallback: treat as CITY
         return this.groupByGranularity(results, centerCoords, 'CITY', cityName);
     }

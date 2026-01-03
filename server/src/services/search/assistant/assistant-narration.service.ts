@@ -9,7 +9,7 @@
  */
 
 import { z } from 'zod';
-import type { LLMProvider, Message } from '../../../types/llm.types.js';
+import type { LLMProvider, Message } from '../../../llm/types.js';
 import type {
   AssistPayload,
   FailureReason,
@@ -85,7 +85,7 @@ export class AssistantNarrationService {
     try {
       const prompt = this.buildPrompt(ctx);
 
-      const result = await this.llm.completeJSON<AssistantResponse>(
+      const result = await this.llm.completeJSON(
         prompt,
         AssistantResponseSchema,
         {
@@ -112,9 +112,9 @@ export class AssistantNarrationService {
         type: ctx.failureReason === 'NONE' ? 'guide' : 'recovery',
         mode: ctx.mode,
         message: validatedPayload.message,
-        primaryActionId: validatedPayload.primaryActionId,
+        ...(validatedPayload.primaryActionId !== undefined && { primaryActionId: validatedPayload.primaryActionId }),
         secondaryActionIds: validatedPayload.secondaryActionIds || [],
-        reasoning: validatedPayload.reasoning,
+        ...(validatedPayload.reasoning !== undefined && { reasoning: validatedPayload.reasoning }),
         failureReason: ctx.failureReason,
       };
     } catch (error) {
@@ -141,11 +141,11 @@ export class AssistantNarrationService {
     if (decision.strategy === 'TEMPLATE') {
       const templateCtx: TemplateContext = {
         resultCount: truthState.results.length,
-        category: truthState.intent.canonical?.category,
-        city: truthState.intent.canonical?.locationText,
+        ...(truthState.intent.canonical?.category !== undefined && { category: truthState.intent.canonical.category }),
+        ...(truthState.intent.canonical?.locationText !== undefined && { city: truthState.intent.canonical.locationText }),
         language: truthState.language as 'he' | 'en' | 'ar' | 'ru',
         hasActiveFilters: Object.keys(truthState.intent.filters || {}).length > 0,
-        topResultName: truthState.results[0]?.name
+        ...(truthState.results[0]?.name !== undefined && { topResultName: truthState.results[0].name })
       };
       
       const message = generateNormalTemplate(templateCtx);
@@ -157,7 +157,6 @@ export class AssistantNarrationService {
         type: 'guide',
         mode: 'NORMAL',
         message,
-        primaryActionId: undefined,
         secondaryActionIds: [],
         failureReason: 'NONE',
         usedTemplate: true,
@@ -451,7 +450,7 @@ OUTPUT JSON ONLY (no other text):
       type: ctx.failureReason === 'NONE' ? 'guide' : 'recovery',
       mode: ctx.mode,
       message,
-      primaryActionId,
+      ...(primaryActionId !== undefined && { primaryActionId }),
       secondaryActionIds,
       failureReason: ctx.failureReason,
     };

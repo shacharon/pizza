@@ -162,7 +162,7 @@ export function buildAssistantContext(params: {
 }): AssistantContext {
   return {
     // Language
-    language: params.intent.language,
+    language: params.intent.language || params.intent.languageContext.uiLanguage || 'en',
     
     // Original query
     originalQuery: params.intent.originalQuery || params.intent.query,

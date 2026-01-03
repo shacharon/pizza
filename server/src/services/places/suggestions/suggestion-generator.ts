@@ -12,7 +12,7 @@
  * - Search: "sushi tel aviv" → Suggest: Open now, Romantic, Takeout
  */
 
-import type { ParsedIntent } from '../session/session-manager.js';
+import type { ParsedIntent } from '../../search/types/search.types.js';
 import { getI18n, type Lang, normalizeLang } from '../../i18n/index.js';
 
 const i18n = getI18n();
@@ -56,8 +56,8 @@ export class SuggestionGenerator {
         // Analyze results to suggest relevant filters
         const characteristics = this.analyzeResults(results);
 
-        // Suggest delivery if available but not filtered
-        if (characteristics.hasDelivery && !intent.delivery) {
+        // Suggest delivery if available
+        if (characteristics.hasDelivery) {
             suggestions.push({
                 id: 'delivery',
                 emoji: '🚗',
@@ -68,7 +68,7 @@ export class SuggestionGenerator {
         }
 
         // Suggest budget if there are cheap options
-        if (characteristics.hasCheap && !intent.price) {
+        if (characteristics.hasCheap) {
             suggestions.push({
                 id: 'budget',
                 emoji: '💰',
@@ -80,7 +80,7 @@ export class SuggestionGenerator {
 
         // Suggest sort by rating if there are highly-rated options
         // Changed from FILTER to SORT per UI/UX Contract
-        if (characteristics.hasTopRated && !intent.rating) {
+        if (characteristics.hasTopRated) {
             suggestions.push({
                 id: 'sort_rating',
                 emoji: '⭐',
@@ -91,7 +91,7 @@ export class SuggestionGenerator {
         }
 
         // Suggest open now if not already filtered
-        if (!intent.temporal?.includes('opennow') && !intent.opennow) {
+        if (!intent.filters?.openNow) {
             suggestions.push({
                 id: 'opennow',
                 emoji: '🟢',
@@ -102,15 +102,13 @@ export class SuggestionGenerator {
         }
 
         // Suggest closed now as an option (for planning ahead)
-        if (!intent.temporal?.includes('closed')) {
-            suggestions.push({
-                id: 'closednow',
-                emoji: '🔴',
-                label: i18n.t('chip.closedNow', lang),
-                action: 'filter',
-                filter: 'closed'
-            });
-        }
+        suggestions.push({
+            id: 'closednow',
+            emoji: '🔴',
+            label: i18n.t('chip.closedNow', lang),
+            action: 'filter',
+            filter: 'closed'
+        });
 
         // Always suggest map view (useful for location-based decisions)
         suggestions.push({
@@ -165,19 +163,19 @@ export class SuggestionGenerator {
     ): Suggestion[] {
         const suggestions: Suggestion[] = [];
 
-        // If temporal filter exists, suggest removing it
-        if (intent.temporal && intent.temporal.length > 0) {
+        // Suggest expanding filters if they exist
+        if (intent.filters?.openNow) {
             suggestions.push({
                 id: 'anytime',
                 emoji: '🕒',
-                label: i18n.t('chip.openNow', lang), // Reuse "Open now" for temporal
+                label: i18n.t('chip.openNow', lang),
                 action: 'filter',
                 filter: 'remove:temporal'
             });
         }
 
         // If dietary filter exists, suggest removing it
-        if (intent.dietary && intent.dietary.length > 0) {
+        if (intent.filters?.dietary && intent.filters.dietary.length > 0) {
             suggestions.push({
                 id: 'any_dietary',
                 emoji: '🍽️',

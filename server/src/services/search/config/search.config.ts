@@ -166,6 +166,7 @@ export function createSearchConfig(overrides?: {
     ranking: {
       weights: { ...SearchConfig.ranking.weights, ...overrides?.ranking?.weights },
       thresholds: { ...SearchConfig.ranking.thresholds, ...overrides?.ranking?.thresholds },
+      scoring: { ...SearchConfig.ranking.scoring, ...overrides?.ranking?.scoring },
     },
     session: { ...SearchConfig.session, ...overrides?.session },
     places: { ...SearchConfig.places, ...overrides?.places },

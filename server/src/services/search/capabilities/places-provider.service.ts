@@ -70,7 +70,7 @@ export class PlacesProviderService implements IPlacesProviderService {
     console.log(`[PlacesProviderService] Searching with mode: ${mode}, target: ${targetSize} results`);
 
     // Multi-page fetching
-    const allResults: NormalizedPlace[] = [];
+    const allResults: RestaurantResult[] = [];
     let nextPageToken: string | null = null;
     let pageCount = 0;
     const maxPages = 3; // Limit to 3 pages (60 results max)
@@ -109,7 +109,7 @@ export class PlacesProviderService implements IPlacesProviderService {
         const nextPageResponse = await this.textSearch({ 
           ...params, 
           pageToken: nextPageToken 
-        });
+        } as SearchParams);
         
         const nextPageResults = this.normalizeResults(nextPageResponse, 20);
         allResults.push(...nextPageResults);

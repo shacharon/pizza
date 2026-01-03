@@ -71,6 +71,15 @@ export class TokenDetectorService {
     }
 
     const token = tokens[0];
+    if (!token) {
+      // Safety check (should never happen due to length check above)
+      return {
+        isSingleToken: true,
+        tokenType: 'UNKNOWN',
+        requiresClarification: false,
+        confidence: 0.5
+      };
+    }
 
     // Single token - check if it's a constraint token (redundant after loop above, but kept for clarity)
     const constraintType = this.detectConstraintToken(token);

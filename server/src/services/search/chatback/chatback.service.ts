@@ -80,7 +80,8 @@ export class ChatBackService {
       });
       
       // Validate against forbidden phrases
-      if (this.hasForbiddenPhrases(result.message)) {
+      const lang = normalizeLang(input.intent.language);
+      if (this.hasForbiddenPhrases(result.message, lang)) {
         console.warn('[ChatBack] Forbidden phrase detected, retrying...');
         return this.retryWithStricterPrompt(input);
       }
@@ -150,7 +151,7 @@ Remember: This is not a dead end. There's always a way forward.
     }
     
     const originalPrompt = this.buildPrompt(input);
-    const stricterSystem = originalPrompt[0].content + `
+    const stricterSystem = (originalPrompt[0]?.content || '') + `
 
 CRITICAL: Your response was rejected because it contained forbidden phrases.
 ABSOLUTELY FORBIDDEN phrases: "no results", "nothing found", "try again", "לא נמצאו תוצאות", "אין תוצאות"
@@ -168,14 +169,15 @@ Try again, being even more helpful and positive.
       const result = await this.llm.completeJSON(
         [
           { role: 'system', content: stricterSystem },
-          { role: 'user', content: originalPrompt[1].content }
+          { role: 'user', content: originalPrompt[1]?.content || '' }
         ],
         ChatBackSchema,
         { temperature: 0.6, timeout: 10000 }
       );
       
       // If still has forbidden phrases, use fallback
-      if (this.hasForbiddenPhrases(result.message)) {
+      const lang = normalizeLang(input.intent.language);
+      if (this.hasForbiddenPhrases(result.message, lang)) {
         console.error('[ChatBack] Still has forbidden phrases after retry, using fallback');
         return this.fallbackMessage(input);
       }

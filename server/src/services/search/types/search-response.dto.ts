@@ -188,7 +188,7 @@ export function createSearchResponse(params: {
     query: {
       original: params.originalQuery,
       parsed: params.intent,
-      language: params.intent.language,
+      language: params.intent.language || params.intent.languageContext.uiLanguage || 'en',
     },
     results: params.results,
     chips: params.chips,

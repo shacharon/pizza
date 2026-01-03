@@ -67,7 +67,7 @@ export class SuggestionService implements ISuggestionService {
    * Enhanced with context-aware sort chips
    */
   private generateNormalChips(intent: ParsedIntent, results: RestaurantResult[]): RefinementChip[] {
-    const lang = intent.language;
+    const lang = normalizeLang(intent.language);
     
     // Convert to format expected by SuggestionGenerator
     const places = results.map(r => {

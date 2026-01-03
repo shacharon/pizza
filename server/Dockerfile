@@ -12,8 +12,13 @@ WORKDIR /build
 
 # Copy package files from server directory
 COPY server/package*.json ./server/
+COPY shared/package*.json ./shared/
 
-# Install all dependencies (including devDependencies for TypeScript build)
+# Install dependencies in shared folder first
+WORKDIR /build/shared
+RUN npm install --legacy-peer-deps || echo "No dependencies to install in shared"
+
+# Install all dependencies in server (including devDependencies for TypeScript build)
 WORKDIR /build/server
 RUN npm ci --legacy-peer-deps
 

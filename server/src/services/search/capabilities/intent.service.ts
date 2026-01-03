@@ -34,7 +34,9 @@ export class IntentService implements IIntentService {
     geocodingService?: GeocodingService
   ) {
     this.placesIntentService = new PlacesIntentService();
-    this.geocodingService = geocodingService;
+    if (geocodingService !== undefined) {
+      this.geocodingService = geocodingService;
+    }
     this.confidenceWeights = {
       ...SearchConfig.confidence,
       ...confidenceWeights,
@@ -98,7 +100,7 @@ export class IntentService implements IIntentService {
         } else {
           intent.canonical = {
             category: intent.query,
-            locationText: intent.location?.city
+            ...(intent.location?.city !== undefined && { locationText: intent.location.city })
           };
         }
         
@@ -109,7 +111,11 @@ export class IntentService implements IIntentService {
     
     // PHASE 2: Check intent cache
     if (CacheConfig.intentParsing.enabled) {
-      const cacheKey = buildIntentCacheKey(text, googleLanguage, context);
+      const cacheKey = buildIntentCacheKey(text, googleLanguage, context ? {
+        language: context.previousIntent?.language,
+        lastIntent: context.previousIntent,
+        currentCity: context.previousIntent?.location?.city
+      } : undefined);
       const cached = caches.intentParsing.get(cacheKey);
       
       if (cached) {
@@ -246,10 +252,10 @@ export class IntentService implements IIntentService {
       const region = intent.location.region;
       let useOriginalLanguage = false;
       
-      // French query in France → use French
+      // French query in France → use French (currently not supported, fallback to 'en')
       if (requestLanguage === 'fr' && region === 'fr') {
         useOriginalLanguage = true;
-        intent.languageContext.googleLanguage = 'fr';
+        intent.languageContext.googleLanguage = 'en'; // TODO: Add 'fr' to GoogleLanguage type
         
         logger.info({
           requestLanguage,
@@ -292,9 +298,11 @@ export class IntentService implements IIntentService {
     if ((placesIntent as any).canonical) {
       intent.canonical = (placesIntent as any).canonical;
     } else {
+      const category = intent.query;
+      const locationText = intent.location?.city || intent.location?.place;
       intent.canonical = {
-        category: intent.query || undefined,
-        locationText: intent.location?.city || intent.location?.place || undefined,
+        ...(category !== undefined && { category }),
+        ...(locationText !== undefined && { locationText }),
       };
     }
 
@@ -302,7 +310,11 @@ export class IntentService implements IIntentService {
     
     // Phase 8: Cache the result
     if (CacheConfig.intentParsing.enabled) {
-      const cacheKey = buildIntentCacheKey(text, googleLanguage, context);
+      const cacheKey = buildIntentCacheKey(text, googleLanguage, context ? {
+        ...(context.previousIntent?.language !== undefined && { language: context.previousIntent.language }),
+        ...(context.previousIntent !== undefined && { lastIntent: context.previousIntent }),
+        ...(context.previousIntent?.location?.city !== undefined && { currentCity: context.previousIntent.location.city })
+      } : undefined);
       caches.intentParsing.set(cacheKey, result, CacheConfig.intentParsing.ttl);
     }
 
@@ -337,7 +349,7 @@ export class IntentService implements IIntentService {
       query: search.query ?? originalText,
       searchMode: search.mode as SearchMode,
       filters: {
-        openNow: filters.opennow,  // Don't default to false - undefined means no filter
+        ...(filters.opennow !== undefined && { openNow: filters.opennow }),  // Don't default to false - undefined means no filter
       },
       languageContext,  // NEW: Use LanguageContext
       originalQuery: originalText,  // REQUIRED field
