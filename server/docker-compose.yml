@@ -1,0 +1,49 @@
+# ============================================
+# Docker Compose for Local Development
+# ============================================
+
+version: "3.8"
+
+services:
+  # Backend API Service
+  backend:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    container_name: pizza-backend
+    ports:
+      - "3000:3000"
+    environment:
+      # Override these in .env file or docker-compose.override.yml
+      NODE_ENV: development
+      PORT: 3000
+      LOG_LEVEL: debug
+      # Add your OpenAI key here or via environment variable
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    volumes:
+      # Mount logs directory for persistence
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - pizza-network
+
+networks:
+  pizza-network:
+    driver: bridge
+# To run:
+# docker-compose up -d
+#
+# To stop:
+# docker-compose down
+#
+# To view logs:
+# docker-compose logs -f backend
+#
+# To rebuild:
+# docker-compose up -d --build

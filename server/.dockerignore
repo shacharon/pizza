@@ -1,0 +1,71 @@
+# ============================================
+# Docker ignore file for Pizza Backend
+# Build context: Repository root
+# ============================================
+
+# Node modules (installed in container)
+**/node_modules
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+package-lock.json
+
+# Build outputs (built in container)
+**/dist
+**/build
+**/*.js.map
+**/*.tsbuildinfo
+
+# Test files
+**/tests
+**/*.test.ts
+**/*.spec.ts
+**/coverage
+**/.nyc_output
+
+# Environment files
+**/.env
+**/.env.*
+!**/.env.example
+
+# Logs
+**/logs
+**/*.log
+**/*.log.txt
+**/*.log.gz
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# CI/CD
+.github
+.gitlab
+bitbucket-pipelines.yml
+
+# Documentation
+**/docs
+**/*.md
+!server/package.json
+!shared/package.json
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor files
+**/.vscode
+**/.idea
+**/*.swp
+**/*.swo
+*~
+
+# Angular frontend (not needed for backend build)
+llm-angular
+
+# Temporary files
+**/tmp
+**/temp
+**/*.tmp
