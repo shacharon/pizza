@@ -8,7 +8,8 @@
 
 ### 1. Start Here: Decision & Overview
 
-**[AWS_DEPLOYMENT_GUIDE.md](./AWS_DEPLOYMENT_GUIDE.md)** - *Comprehensive Guide*
+**[AWS_DEPLOYMENT_GUIDE.md](./AWS_DEPLOYMENT_GUIDE.md)** - _Comprehensive Guide_
+
 - ✅ Why we chose ECS over Lambda
 - ✅ Complete step-by-step deployment instructions
 - ✅ Prerequisites and cost estimates
@@ -20,7 +21,8 @@
 
 ### 2. Quick Commands
 
-**[AWS_DEPLOYMENT_QUICK_REFERENCE.md](./AWS_DEPLOYMENT_QUICK_REFERENCE.md)** - *Cheat Sheet*
+**[AWS_DEPLOYMENT_QUICK_REFERENCE.md](./AWS_DEPLOYMENT_QUICK_REFERENCE.md)** - _Cheat Sheet_
+
 - ✅ Common commands (deploy, rollback, scale)
 - ✅ Emergency procedures
 - ✅ Cost calculator
@@ -32,7 +34,8 @@
 
 ### 3. Visual Architecture
 
-**[AWS_DEPLOYMENT_ARCHITECTURE_DIAGRAMS.md](./AWS_DEPLOYMENT_ARCHITECTURE_DIAGRAMS.md)** - *Diagrams*
+**[AWS_DEPLOYMENT_ARCHITECTURE_DIAGRAMS.md](./AWS_DEPLOYMENT_ARCHITECTURE_DIAGRAMS.md)** - _Diagrams_
+
 - ✅ Architecture diagrams (network, security, scaling)
 - ✅ Request flow visualization
 - ✅ Monitoring dashboards
@@ -47,6 +50,7 @@
 If you just want to get started immediately:
 
 ### Step 1: Prerequisites (10 minutes)
+
 ```bash
 # Install AWS CLI
 # Windows: Download from https://aws.amazon.com/cli/
@@ -63,7 +67,9 @@ aws sts get-caller-identity
 ```
 
 ### Step 2: Create Infrastructure (45 minutes)
+
 Follow **[AWS_DEPLOYMENT_GUIDE.md](./AWS_DEPLOYMENT_GUIDE.md)** Phase 1-3:
+
 - Create VPC and subnets
 - Create ECR repository
 - Store secrets in Secrets Manager
@@ -71,7 +77,9 @@ Follow **[AWS_DEPLOYMENT_GUIDE.md](./AWS_DEPLOYMENT_GUIDE.md)** Phase 1-3:
 - Set up Application Load Balancer
 
 ### Step 3: Deploy Applications (30 minutes)
+
 Follow **[AWS_DEPLOYMENT_GUIDE.md](./AWS_DEPLOYMENT_GUIDE.md)** Phase 4-5:
+
 - Build and push Docker image
 - Deploy backend to ECS
 - Build and upload frontend to S3
@@ -107,13 +115,14 @@ Follow **[AWS_DEPLOYMENT_GUIDE.md](./AWS_DEPLOYMENT_GUIDE.md)** Phase 4-5:
 
 ## 💰 Cost Summary
 
-| Configuration | Monthly Cost | Use Case |
-|---------------|--------------|----------|
-| **Minimal** (1-2 tasks) | $66 | Development, low traffic |
-| **Standard** (2-5 tasks) | $90 | Production, medium traffic |
-| **Scaled** (5-10 tasks) | $150 | High traffic, peak hours |
+| Configuration            | Monthly Cost | Use Case                   |
+| ------------------------ | ------------ | -------------------------- |
+| **Minimal** (1-2 tasks)  | $66          | Development, low traffic   |
+| **Standard** (2-5 tasks) | $90          | Production, medium traffic |
+| **Scaled** (5-10 tasks)  | $150         | High traffic, peak hours   |
 
 **Included in cost:**
+
 - ECS Fargate tasks
 - Application Load Balancer
 - S3 + CloudFront
@@ -121,6 +130,7 @@ Follow **[AWS_DEPLOYMENT_GUIDE.md](./AWS_DEPLOYMENT_GUIDE.md)** Phase 4-5:
 - Secrets Manager
 
 **Not included:**
+
 - OpenAI API costs (pay-as-you-go)
 - Domain registration (~$12/year)
 - AWS WAF (~$15/month, optional)
@@ -130,21 +140,25 @@ Follow **[AWS_DEPLOYMENT_GUIDE.md](./AWS_DEPLOYMENT_GUIDE.md)** Phase 4-5:
 ## 📖 Documentation Map by Role
 
 ### For Developers
+
 1. **Read:** [AWS_DEPLOYMENT_GUIDE.md](./AWS_DEPLOYMENT_GUIDE.md) (Phases 1-5)
 2. **Bookmark:** [AWS_DEPLOYMENT_QUICK_REFERENCE.md](./AWS_DEPLOYMENT_QUICK_REFERENCE.md) (Daily commands)
 3. **Reference:** [BACKEND_ARCHITECTURE.md](./BACKEND_ARCHITECTURE.md) (App architecture)
 
 ### For DevOps Engineers
+
 1. **Read:** [AWS_DEPLOYMENT_ARCHITECTURE_DIAGRAMS.md](./AWS_DEPLOYMENT_ARCHITECTURE_DIAGRAMS.md) (Network design)
 2. **Implement:** [AWS_DEPLOYMENT_GUIDE.md](./AWS_DEPLOYMENT_GUIDE.md) (Infrastructure setup)
 3. **Use:** [CI_INTEGRATION.md](./CI_INTEGRATION.md) (Automation)
 
 ### For Project Managers
+
 1. **Review:** This README (Overview)
 2. **Present:** [AWS_DEPLOYMENT_ARCHITECTURE_DIAGRAMS.md](./AWS_DEPLOYMENT_ARCHITECTURE_DIAGRAMS.md) (Stakeholder visuals)
 3. **Budget:** [AWS_DEPLOYMENT_GUIDE.md](./AWS_DEPLOYMENT_GUIDE.md) → Cost Estimation section
 
 ### For QA/Testing
+
 1. **Read:** [AWS_DEPLOYMENT_GUIDE.md](./AWS_DEPLOYMENT_GUIDE.md) → Post-Deployment Checklist
 2. **Use:** [AWS_DEPLOYMENT_QUICK_REFERENCE.md](./AWS_DEPLOYMENT_QUICK_REFERENCE.md) → Health Checks
 3. **Test:** [../server/docs/api/route-inventory.md](../server/docs/api/route-inventory.md) (API endpoints)
@@ -154,36 +168,42 @@ Follow **[AWS_DEPLOYMENT_GUIDE.md](./AWS_DEPLOYMENT_GUIDE.md)** Phase 4-5:
 ## 🚀 Deployment Phases Overview
 
 ### Phase 0: Planning (1 hour)
+
 - [ ] Read documentation
 - [ ] Gather AWS credentials
 - [ ] Estimate costs
 - [ ] Get stakeholder approval
 
 ### Phase 1: Infrastructure Setup (1-2 hours)
+
 - [ ] Create VPC and networking
 - [ ] Set up security groups
 - [ ] Create ECR repository
 - [ ] Configure Secrets Manager
 
 ### Phase 2: Backend Deployment (1 hour)
+
 - [ ] Create Dockerfile
 - [ ] Build and push Docker image
 - [ ] Create ECS cluster and task definition
 - [ ] Deploy ECS service with ALB
 
 ### Phase 3: Frontend Deployment (30 minutes)
+
 - [ ] Build Angular application
 - [ ] Create S3 bucket
 - [ ] Upload static files
 - [ ] Configure CloudFront distribution
 
 ### Phase 4: Monitoring & Alarms (30 minutes)
+
 - [ ] Configure CloudWatch dashboards
 - [ ] Set up alarms (CPU, errors)
 - [ ] Test log aggregation
 - [ ] Verify health checks
 
 ### Phase 5: Testing & Validation (1 hour)
+
 - [ ] Test API endpoints
 - [ ] Verify frontend loading
 - [ ] Load testing
@@ -197,6 +217,7 @@ Follow **[AWS_DEPLOYMENT_GUIDE.md](./AWS_DEPLOYMENT_GUIDE.md)** Phase 4-5:
 ## ⚡ Quick Command Reference
 
 ### Deploy Backend
+
 ```bash
 cd server
 docker build -t pizza-backend:latest .
@@ -206,6 +227,7 @@ aws ecs update-service --cluster pizza-app-cluster --service pizza-backend-servi
 ```
 
 ### Deploy Frontend
+
 ```bash
 cd llm-angular
 npm run build
@@ -214,6 +236,7 @@ aws cloudfront create-invalidation --distribution-id <ID> --paths "/*"
 ```
 
 ### Check Status
+
 ```bash
 # Backend health
 curl https://<ALB_URL>/health
@@ -226,6 +249,7 @@ aws ecs describe-services --cluster pizza-app-cluster --services pizza-backend-s
 ```
 
 ### Rollback
+
 ```bash
 # Rollback backend
 aws ecs update-service --cluster pizza-app-cluster --service pizza-backend-service --task-definition pizza-backend-task:PREVIOUS_VERSION
@@ -242,6 +266,7 @@ aws s3 sync s3://pizza-app-frontend-backup/ s3://pizza-app-frontend-<ID>/ --dele
 
 **Cause:** Insufficient IAM permissions  
 **Fix:**
+
 ```bash
 # Check current permissions
 aws sts get-caller-identity
@@ -257,6 +282,7 @@ aws sts get-caller-identity
 
 **Cause:** Node modules or dependencies missing  
 **Fix:**
+
 ```bash
 cd server
 rm -rf node_modules package-lock.json
@@ -269,6 +295,7 @@ docker build -t pizza-backend:latest .
 
 **Cause:** Secrets Manager access denied  
 **Fix:**
+
 ```bash
 # Check IAM role has SecretsManagerReadWrite policy
 aws iam list-attached-role-policies --role-name ecsTaskExecutionRole
@@ -283,6 +310,7 @@ aws iam attach-role-policy \
 
 **Cause:** Resources running when not needed  
 **Fix:**
+
 ```bash
 # Scale down during off-hours
 aws ecs update-service --cluster pizza-app-cluster --service pizza-backend-service --desired-count 1
@@ -304,18 +332,19 @@ More troubleshooting: See [AWS_DEPLOYMENT_GUIDE.md](./AWS_DEPLOYMENT_GUIDE.md) �
 
 ### Health Indicators (Green = Good)
 
-| Metric | Target | Alert If |
-|--------|--------|----------|
-| **ECS CPU** | <70% | >80% for 5 min |
-| **ECS Memory** | <80% | >90% for 5 min |
-| **ALB Latency** | <500ms | >2s average |
-| **Target Health** | 100% healthy | <50% healthy |
-| **Error Rate (5xx)** | <1% | >5% |
-| **CloudFront Cache Hit** | >80% | <50% |
+| Metric                   | Target       | Alert If       |
+| ------------------------ | ------------ | -------------- |
+| **ECS CPU**              | <70%         | >80% for 5 min |
+| **ECS Memory**           | <80%         | >90% for 5 min |
+| **ALB Latency**          | <500ms       | >2s average    |
+| **Target Health**        | 100% healthy | <50% healthy   |
+| **Error Rate (5xx)**     | <1%          | >5%            |
+| **CloudFront Cache Hit** | >80%         | <50%           |
 
 ### Cost Alerts
 
 Set up billing alarms:
+
 ```bash
 aws cloudwatch put-metric-alarm \
   --alarm-name pizza-high-bill \
@@ -350,21 +379,25 @@ Before going to production:
 ## 📞 Support Resources
 
 ### Internal Documentation
+
 - **Backend Architecture:** [BACKEND_ARCHITECTURE.md](./BACKEND_ARCHITECTURE.md)
 - **API Reference:** [../server/docs/api/route-inventory.md](../server/docs/api/route-inventory.md)
 - **CI/CD Pipeline:** [CI_INTEGRATION.md](./CI_INTEGRATION.md)
 
 ### AWS Documentation
+
 - **ECS Guide:** https://docs.aws.amazon.com/ecs/
 - **CloudFront Guide:** https://docs.aws.amazon.com/cloudfront/
 - **ALB Guide:** https://docs.aws.amazon.com/elasticloadbalancing/
 
 ### Community Support
+
 - **AWS Forums:** https://forums.aws.amazon.com/
 - **Stack Overflow:** Tag with `amazon-ecs`, `aws-fargate`
 - **AWS Support:** https://console.aws.amazon.com/support/
 
 ### Team Contacts
+
 - **DevOps Lead:** [Add contact]
 - **Backend Lead:** [Add contact]
 - **AWS Admin:** [Add contact]
@@ -374,24 +407,28 @@ Before going to production:
 ## 🎓 Learning Path
 
 ### Week 1: AWS Basics
+
 - [ ] Complete AWS Free Tier signup
 - [ ] AWS Console tour (15 min)
 - [ ] VPC and networking basics (YouTube)
 - [ ] IAM roles and policies (YouTube)
 
 ### Week 2: Container Basics
+
 - [ ] Docker tutorial (Docker 101)
 - [ ] Build a simple Docker image
 - [ ] Push image to ECR
 - [ ] Run container locally
 
 ### Week 3: ECS Deployment
+
 - [ ] Follow [AWS_DEPLOYMENT_GUIDE.md](./AWS_DEPLOYMENT_GUIDE.md)
 - [ ] Deploy to dev environment
 - [ ] Test and validate
 - [ ] Monitor logs and metrics
 
 ### Week 4: Production Readiness
+
 - [ ] Set up CI/CD pipeline
 - [ ] Configure auto-scaling
 - [ ] Enable monitoring and alarms
@@ -405,16 +442,19 @@ Before going to production:
 ### After First Deployment
 
 1. **Week 1-2:** Monitor and optimize
+
    - Review CloudWatch metrics
    - Adjust auto-scaling thresholds
    - Optimize Docker image size
 
 2. **Month 1:** Add features
+
    - Enable ElastiCache (if needed)
    - Add RDS database (if needed)
    - Implement blue-green deployment
 
 3. **Month 2:** Advanced monitoring
+
    - AWS X-Ray tracing
    - Custom CloudWatch dashboards
    - PagerDuty/Slack integration
@@ -428,9 +468,9 @@ Before going to production:
 
 ## 📝 Version History
 
-| Version | Date | Changes | Author |
-|---------|------|---------|--------|
-| 1.0 | 2026-01-03 | Initial deployment documentation | AI Assistant |
+| Version | Date       | Changes                          | Author       |
+| ------- | ---------- | -------------------------------- | ------------ |
+| 1.0     | 2026-01-03 | Initial deployment documentation | AI Assistant |
 
 ---
 
@@ -439,11 +479,13 @@ Before going to production:
 ### For Your First Deployment
 
 1. **Today:**
+
    - [ ] Read this README (10 min)
    - [ ] Review [AWS_DEPLOYMENT_ARCHITECTURE_DIAGRAMS.md](./AWS_DEPLOYMENT_ARCHITECTURE_DIAGRAMS.md) (15 min)
    - [ ] Get AWS credentials
 
 2. **This Week:**
+
    - [ ] Follow [AWS_DEPLOYMENT_GUIDE.md](./AWS_DEPLOYMENT_GUIDE.md) step-by-step
    - [ ] Deploy to dev/staging environment
    - [ ] Test thoroughly

@@ -15,7 +15,7 @@ COPY server/package*.json ./server/
 
 # Install all dependencies (including devDependencies for TypeScript build)
 WORKDIR /build/server
-RUN npm ci
+RUN npm ci --legacy-peer-deps
 
 # Copy TypeScript config and source files
 WORKDIR /build
@@ -27,6 +27,9 @@ COPY shared/ ./shared/
 # Build TypeScript - outputs to server/dist/
 WORKDIR /build/server
 RUN npm run build
+
+# Verify build output exists
+RUN ls -la dist/ || (echo "ERROR: dist directory not found after build" && exit 1)
 
 # ---------------------------------------------
 # Stage 2: Production
@@ -55,7 +58,7 @@ WORKDIR /app
 COPY server/package*.json ./
 
 # Install production dependencies only
-RUN npm ci --only=production && \
+RUN npm ci --omit=dev --legacy-peer-deps && \
     npm cache clean --force
 
 # Copy built application from builder
@@ -79,5 +82,4 @@ HEALTHCHECK --interval=30s \
 
 # Start the application
 # Entry point: dist/server/src/server.js
-# (TypeScript preserves directory structure from rootDir)
 CMD ["node", "dist/server/src/server.js"]

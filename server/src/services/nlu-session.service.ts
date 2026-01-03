@@ -41,6 +41,9 @@ export class NLUSessionService {
             dietary: slots.dietary.length > 0 ? slots.dietary : existing?.lastSlots.dietary || [],
             spicy: slots.spicy ?? existing?.lastSlots.spicy ?? null,
             quantity: slots.quantity ?? existing?.lastSlots.quantity ?? null,
+            address: slots.address || existing?.lastSlots.address || null,
+            radiusKm: slots.radiusKm ?? existing?.lastSlots.radiusKm ?? null,
+            aroundMe: slots.aroundMe ?? existing?.lastSlots.aroundMe ?? null,
         };
 
         sessions.set(sessionId, {
@@ -67,6 +70,9 @@ export class NLUSessionService {
             maxPrice: currentSlots.maxPrice ?? session.lastSlots.maxPrice,
             dietary: currentSlots.dietary.length > 0 ? currentSlots.dietary : session.lastSlots.dietary,
             spicy: currentSlots.spicy ?? session.lastSlots.spicy,
+            address: currentSlots.address || session.lastSlots.address,
+            radiusKm: currentSlots.radiusKm ?? session.lastSlots.radiusKm,
+            aroundMe: currentSlots.aroundMe ?? session.lastSlots.aroundMe,
             quantity: currentSlots.quantity ?? session.lastSlots.quantity,
         };
     }

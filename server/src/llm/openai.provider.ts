@@ -56,11 +56,11 @@ export class OpenAiProvider implements LLMProvider {
                 // Wrap OpenAI call with tracing
                 const resp = await traceProviderCall(
                     {
-                        traceId: opts?.traceId,
-                        sessionId: opts?.sessionId,
+                        ...(opts?.traceId !== undefined && { traceId: opts.traceId }),
+                        ...(opts?.sessionId !== undefined && { sessionId: opts.sessionId }),
                         provider: 'openai',
                         operation: 'completeJSON',
-                        retryCount: attempt,
+                        ...(attempt !== undefined && { retryCount: attempt }),
                     },
                     async () => {
                         return await openai.responses.create({
@@ -168,8 +168,8 @@ export class OpenAiProvider implements LLMProvider {
         try {
             const resp = await traceProviderCall(
                 {
-                    traceId: opts?.traceId,
-                    sessionId: opts?.sessionId,
+                    ...(opts?.traceId !== undefined && { traceId: opts.traceId }),
+                    ...(opts?.sessionId !== undefined && { sessionId: opts.sessionId }),
                     provider: 'openai',
                     operation: 'complete',
                     retryCount: 0,

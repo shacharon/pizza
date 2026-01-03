@@ -84,27 +84,27 @@ export class ConfigValidator {
       const message = `Missing required configuration: ${result.missing.join(', ')}`;
       
       // Log error before throwing
-      logger.error('Configuration validation failed', {
+      logger.error({
         missing: result.missing,
         required: CONFIG_REQUIREMENTS.required
-      });
+      }, 'Configuration validation failed');
       
       throw new ConfigError(message);
     }
     
     // Log warnings for missing optional config
     if (result.warnings.length > 0) {
-      logger.warn('Configuration warnings', { 
+      logger.warn({ 
         warnings: result.warnings 
-      });
+      }, 'Configuration warnings');
     }
     
     // Log successful validation
-    logger.info('Configuration validated', {
+    logger.info({
       providerMode: process.env.PLACES_PROVIDER_MODE || 'real',
       logLevel: process.env.LOG_LEVEL || 'info',
       nodeEnv: process.env.NODE_ENV || 'development'
-    });
+    }, 'Configuration validated');
   }
   
   /**

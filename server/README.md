@@ -18,6 +18,8 @@ npm install
 npm run dev
 ```
 
+docker build -f .\server\Dockerfile -t food-backend .
+
 - Default URL: `http://localhost:3000`
 
 ### Production run

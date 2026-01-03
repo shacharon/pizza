@@ -20,7 +20,10 @@ export async function runAgentLoopPlanner(input: PlannerInput): Promise<Restaura
         let data: any;
         let radius = geo ? 2_000 : undefined;
         if (geo) {
-            data = await textSearch(q, input.language, undefined, { location: { lat: geo.lat, lng: geo.lng }, radiusMeters: radius });
+            data = await textSearch(q, input.language, undefined, { 
+                location: { lat: geo.lat, lng: geo.lng }, 
+                ...(radius !== undefined && { radiusMeters: radius })
+            });
         } else {
             data = await textSearch(q, input.language);
         }
@@ -64,7 +67,7 @@ export async function runAgentLoopPlanner(input: PlannerInput): Promise<Restaura
         let enrichedTopN = 0;
         if (Date.now() - t0 < TIME_CAP_MS - 1500 && restaurants.length > 0) {
             const topN = Math.min(8, restaurants.length);
-            const promises = restaurants.slice(0, topN).map(r => fetchDetails((r as any).placeId, input.language));
+            const promises = restaurants.slice(0, topN).map((r: any) => fetchDetails(r.placeId, input.language));
             const settled = await Promise.allSettled(promises);
             settled.forEach((s, i) => {
                 if (s.status === 'fulfilled' && s.value) {

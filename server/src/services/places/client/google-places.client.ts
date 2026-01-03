@@ -132,8 +132,8 @@ export class GooglePlacesClient {
                 // Wrap fetch call with tracing
                 const data = await traceProviderCall(
                     {
-                        traceId,
-                        sessionId,
+                        ...(traceId !== undefined && { traceId }),
+                        ...(sessionId !== undefined && { sessionId }),
                         provider: 'google_places',
                         operation: 'apiCall',
                         retryCount: i,

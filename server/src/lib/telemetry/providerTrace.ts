@@ -93,16 +93,16 @@ export async function traceProviderCall<T>(
     // Build base event
     const event: ProviderTraceEvent = {
       type: 'provider_call',
-      traceId: params.traceId,
-      sessionId: params.sessionId,
+      ...(params.traceId !== undefined && { traceId: params.traceId }),
+      ...(params.sessionId !== undefined && { sessionId: params.sessionId }),
       provider: params.provider,
       operation: params.operation,
       latencyMs,
       success,
-      retryCount: params.retryCount,
-      statusCode,
-      errorCode,
-      errorReason,
+      ...(params.retryCount !== undefined && { retryCount: params.retryCount }),
+      ...(statusCode !== undefined && { statusCode }),
+      ...(errorCode !== undefined && { errorCode }),
+      ...(errorReason !== undefined && { errorReason }),
       timestamp: new Date().toISOString(),
     };
 
