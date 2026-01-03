@@ -1,7 +1,8 @@
 import type { LLMProvider, Message } from '../../llm/types.js';
 import { createLLMProvider } from '../../llm/factory.js';
 import { TranslationService } from '../places/translation/translation.service.js';
-import { PlacesLangGraph } from '../places/orchestrator/places.langgraph.js';
+// EXPERIMENTAL: Moved to server/experimental/ folder
+// import { PlacesLangGraph } from '../places/orchestrator/places.langgraph.js';
 import {
     DialogueContext,
     DialogueMessage,
@@ -27,7 +28,8 @@ import {
 export class DialogueService {
     private readonly llm: LLMProvider | null;
     private readonly translationService: TranslationService;
-    private readonly placesGraph: PlacesLangGraph;
+    // EXPERIMENTAL: placesGraph removed (experimental code)
+    // private readonly placesGraph: PlacesLangGraph;
     private readonly sessions: Map<string, DialogueContext>;
 
     // Feature flag: Use advanced two-call flow for better accuracy
@@ -36,7 +38,8 @@ export class DialogueService {
     constructor() {
         this.llm = createLLMProvider();
         this.translationService = new TranslationService();
-        this.placesGraph = new PlacesLangGraph();
+        // EXPERIMENTAL: placesGraph disabled (use /api/search endpoint instead)
+        // this.placesGraph = new PlacesLangGraph();
         this.sessions = new Map();
     }
 
@@ -348,18 +351,9 @@ Analyze this message and generate your response.`;
             hasLocation: !!userLocation
         });
 
-        // Use existing PlacesLangGraph (includes translation)
-        const result = await this.placesGraph.run({
-            text: effectiveQuery,
-            userLocation: userLocation ?? null,
-            nearMe: !!userLocation,
-            browserLanguage: context.language
-        });
-
-        return {
-            places: result.restaurants,
-            meta: result.meta
-        };
+        // EXPERIMENTAL: PlacesLangGraph is disabled (experimental feature)
+        // Use /api/search endpoint instead
+        throw new Error('DialogueService search is experimental and disabled. Please use POST /api/search endpoint instead.');
     }
 
     /**

@@ -168,7 +168,7 @@ export function buildAssistantContext(params: {
     originalQuery: params.intent.originalQuery || params.intent.query,
     
     // Canonical interpretation
-    canonical: params.intent.canonical,
+    ...(params.intent.canonical !== undefined && { canonical: params.intent.canonical }),
     
     // Result summary (count only, not full results)
     resultsCount: params.results.length,

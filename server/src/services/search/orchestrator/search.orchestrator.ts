@@ -329,7 +329,7 @@ export class SearchOrchestrator {
                 console.log(`[SearchOrchestrator] 🔴 Closed keyword detected ("${request.query}"), setting openNow: false`);
             }
 
-            if (tokenDetection.requiresClarification && tokenDetection.constraintType && 
+            if (tokenDetection.requiresClarification && tokenDetection.constraintType &&
                 tokenDetection.constraintType !== 'openNow' && tokenDetection.constraintType !== 'closedNow') {
                 console.log(`[SearchOrchestrator] 🤔 Single-token query detected: "${request.query}" (${tokenDetection.tokenType})`);
 

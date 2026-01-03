@@ -112,9 +112,9 @@ export class IntentService implements IIntentService {
     // PHASE 2: Check intent cache
     if (CacheConfig.intentParsing.enabled) {
       const cacheKey = buildIntentCacheKey(text, googleLanguage, context ? {
-        language: context.previousIntent?.language,
-        lastIntent: context.previousIntent,
-        currentCity: context.previousIntent?.location?.city
+        ...(context.previousIntent?.language !== undefined && { language: context.previousIntent.language }),
+        ...(context.previousIntent !== undefined && { lastIntent: context.previousIntent }),
+        ...(context.previousIntent?.location?.city !== undefined && { currentCity: context.previousIntent.location.city })
       } : undefined);
       const cached = caches.intentParsing.get(cacheKey);
       

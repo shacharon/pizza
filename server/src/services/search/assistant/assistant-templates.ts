@@ -20,12 +20,12 @@ export interface TemplateContext {
  */
 export function generateNormalTemplate(ctx: TemplateContext): string {
   const i18n = getI18n();
-  
+
   // No results
   if (ctx.resultCount === 0) {
     return i18n.t('assistant.noResults', ctx.language);
   }
-  
+
   // Results with category and city
   if (ctx.category && ctx.city) {
     return i18n.t('assistant.foundResults', ctx.language, {
@@ -34,7 +34,7 @@ export function generateNormalTemplate(ctx: TemplateContext): string {
       city: ctx.city
     });
   }
-  
+
   // Results with category only
   if (ctx.category) {
     return i18n.t('assistant.foundWithCategory', ctx.language, {
@@ -42,7 +42,7 @@ export function generateNormalTemplate(ctx: TemplateContext): string {
       category: ctx.category
     });
   }
-  
+
   // Results with city only
   if (ctx.city) {
     return i18n.t('assistant.foundInCity', ctx.language, {
@@ -50,7 +50,7 @@ export function generateNormalTemplate(ctx: TemplateContext): string {
       city: ctx.city
     });
   }
-  
+
   // Generic results
   return i18n.t('assistant.foundGeneric', ctx.language, {
     count: ctx.resultCount
@@ -64,10 +64,10 @@ export function addFilterContext(message: string, ctx: TemplateContext): string 
   if (!ctx.hasActiveFilters) {
     return message;
   }
-  
+
   const i18n = getI18n();
   const filterText = i18n.t('assistant.withFilters', ctx.language);
-  
+
   return `${message} ${filterText}`;
 }
 

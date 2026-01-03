@@ -1,10 +1,10 @@
 import type { Request, Response } from 'express';
-import { PlacesLangGraph } from '../../services/places/orchestrator/places.langgraph.js';
+// EXPERIMENTAL: Moved to server/experimental/ folder
+// import { PlacesLangGraph } from '../../services/places/orchestrator/places.langgraph.js';
 import { PlacesIntentSchema, validateGoogleRules } from '../../services/places/intent/places-intent.schema.js';
 
-// Singleton PlacesLangGraph instance (reused across requests)
-// Matches DialogueService pattern: create once, reuse forever
-const placesGraph = new PlacesLangGraph();
+// EXPERIMENTAL: PlacesLangGraph is in experimental folder, not for production
+// const placesGraph = new PlacesLangGraph();
 
 /**
  * Handle places search requests
@@ -44,17 +44,16 @@ export async function placesSearchHandler(req: Request, res: Response) {
             validated = parsed.data;
         }
 
-        // Use PlacesLangGraph directly (matches Dialogue pattern)
-        const result = await placesGraph.run({
-            text,
-            schema: validated,
-            sessionId,
-            userLocation: userLocation ?? null,
-            nearMe: Boolean(nearMe),
-            browserLanguage: finalBrowserLanguage
+        // DEPRECATED ENDPOINT: Return error to force migration
+        return res.status(410).json({
+            error: 'Endpoint deprecated and removed',
+            message: 'Please use POST /api/search instead',
+            migration: {
+                from: '/api/places/search',
+                to: '/api/search',
+                sunset: '2026-06-01'
+            }
         });
-
-        return res.json(result);
     } catch (e: any) {
         console.error('[PlacesController] Error:', e);
         return res.status(500).json({
