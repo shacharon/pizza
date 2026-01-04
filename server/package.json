@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "nodemon",
-    "build": "tsc -p .",
+    "build": "tsc -p . && npx tsc-alias -p tsconfig.json",
     "start": "node dist/server.js",
     "test": "node --test --import tsx tests/intent.test.ts tests/agent.reducer.test.ts tests/places/phase1-services.test.ts tests/city-filter.test.ts tests/street-grouping.test.ts tests/spec-compliance.test.ts",
     "test:integration": "node --test --import tsx tests/places-search-integration.test.ts",
@@ -31,6 +31,8 @@
     "openai": "^5.13.1",
     "pino": "^10.1.0",
     "pino-http": "^11.0.0",
+    "pino-pretty": "^13.1.3",
+    "rotating-file-stream": "^3.2.7",
     "uuid": "^13.0.0",
     "zod": "^4.2.1"
   },
@@ -41,8 +43,6 @@
     "@types/node": "^24.3.0",
     "@types/uuid": "^10.0.0",
     "nodemon": "^3.1.10",
-    "pino-pretty": "^13.1.3",
-    "rotating-file-stream": "^3.2.7",
     "ts-node": "^10.9.2",
     "tsx": "^4.16.0",
     "typescript": "^5.9.2"

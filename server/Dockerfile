@@ -33,6 +33,10 @@ COPY shared/ ./shared/
 WORKDIR /build/server
 RUN npm run build
 
+# Copy translation files (not compiled by TypeScript)
+RUN mkdir -p dist/server/src/services/i18n/translations
+RUN cp -r src/services/i18n/translations/*.json dist/server/src/services/i18n/translations/ || true
+
 # Verify build output exists
 RUN ls -la dist/ || (echo "ERROR: dist directory not found after build" && exit 1)
 

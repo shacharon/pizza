@@ -3,7 +3,13 @@
   "version": "0.0.0",
   "scripts": {
     "ng": "ng",
-    "build": "ng build",
+    "start": "ng serve --proxy-config proxy.conf.json",
+    "local": "ng serve --proxy-config proxy.conf.json",
+    "dev": "ng serve --configuration=development --proxy-config proxy.conf.json",
+    "prod": "ng serve --configuration=production --proxy-config proxy.conf.json",
+    "build": "ng build --configuration=production",
+    "build:dev": "ng build --configuration=development",
+    "build:prod": "ng build --configuration=production",
     "watch": "ng build --watch --configuration development",
     "test": "jest --watch",
     "test:ci": "jest --ci --coverage",
@@ -11,8 +17,7 @@
     "prev-secondery": "jest --ci && npx --yes serve reports -l 5520",
     "report-coverage": "jest --ci --coverage",
     "serve:report": "http-server ./reports/jest -p 5173 -c-1",
-    "serve-coverage": "npm run report-coverage && npx --yes serve coverage/lcov-report -l 5530",
-    "start": "ng serve --proxy-config proxy.conf.json"
+    "serve-coverage": "npm run report-coverage && npx --yes serve coverage/lcov-report -l 5530"
   },
   "private": true,
   "dependencies": {

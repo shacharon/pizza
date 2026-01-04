@@ -485,3 +485,20 @@
 {"level":"info","time":"2026-01-03T16:05:11.417Z","pid":2700,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
 {"level":"info","time":"2026-01-03T16:05:11.522Z","pid":2700,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
 {"level":"info","time":"2026-01-03T16:11:08.340Z","pid":2700,"hostname":"il-dev-win-lt-shahar-pot","msg":"Received SIGINT. Shutting down gracefully..."}
+{"level":"info","time":"2026-01-04T17:56:32.398Z","pid":13552,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-04T17:56:32.420Z","pid":13552,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-04T17:56:32.421Z","pid":13552,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-04T17:56:32.423Z","pid":13552,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-04T17:56:32.427Z","pid":13552,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-04T17:56:32.550Z","pid":13552,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-04T17:56:58.170Z","pid":13552,"hostname":"il-dev-win-lt-shahar-pot","traceId":"cc159ef9-4080-4c35-95eb-04781223a424","msg":"HTTP request","method":"GET","path":"/","query":{}}
+{"level":"warn","time":"2026-01-04T17:56:58.200Z","pid":13552,"hostname":"il-dev-win-lt-shahar-pot","traceId":"cc159ef9-4080-4c35-95eb-04781223a424","msg":"HTTP response","method":"GET","path":"/","statusCode":404,"durationMs":31}
+{"level":"info","time":"2026-01-04T17:57:09.663Z","pid":13552,"hostname":"il-dev-win-lt-shahar-pot","traceId":"522521ad-43a6-4425-a810-a6149debc197","msg":"HTTP request","method":"GET","path":"/","query":{}}
+{"level":"warn","time":"2026-01-04T17:57:09.671Z","pid":13552,"hostname":"il-dev-win-lt-shahar-pot","traceId":"522521ad-43a6-4425-a810-a6149debc197","msg":"HTTP response","method":"GET","path":"/","statusCode":404,"durationMs":8}
+{"level":"info","time":"2026-01-04T17:57:10.424Z","pid":13552,"hostname":"il-dev-win-lt-shahar-pot","traceId":"c23cb20d-00fc-4c06-9ea8-2f9cd212a5f8","msg":"HTTP request","method":"GET","path":"/","query":{}}
+{"level":"warn","time":"2026-01-04T17:57:10.429Z","pid":13552,"hostname":"il-dev-win-lt-shahar-pot","traceId":"c23cb20d-00fc-4c06-9ea8-2f9cd212a5f8","msg":"HTTP response","method":"GET","path":"/","statusCode":404,"durationMs":5}
+{"level":"info","time":"2026-01-04T17:57:21.052Z","pid":13552,"hostname":"il-dev-win-lt-shahar-pot","traceId":"f970a5dd-a044-4856-834b-c48556087e8e","msg":"HTTP request","method":"GET","path":"/healthz","query":{}}
+{"level":"info","time":"2026-01-04T17:57:21.064Z","pid":13552,"hostname":"il-dev-win-lt-shahar-pot","traceId":"f970a5dd-a044-4856-834b-c48556087e8e","msg":"HTTP response","method":"GET","path":"/healthz","statusCode":200,"durationMs":12}
+{"level":"info","time":"2026-01-04T17:57:21.311Z","pid":13552,"hostname":"il-dev-win-lt-shahar-pot","traceId":"80060440-a1c2-4dad-b004-03d067400e05","msg":"HTTP request","method":"GET","path":"/favicon.ico","query":{}}
+{"level":"warn","time":"2026-01-04T17:57:21.317Z","pid":13552,"hostname":"il-dev-win-lt-shahar-pot","traceId":"80060440-a1c2-4dad-b004-03d067400e05","msg":"HTTP response","method":"GET","path":"/favicon.ico","statusCode":404,"durationMs":6}
+{"level":"info","time":"2026-01-04T20:04:58.801Z","pid":13552,"hostname":"il-dev-win-lt-shahar-pot","msg":"Received SIGINT. Shutting down gracefully..."}

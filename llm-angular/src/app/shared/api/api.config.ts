@@ -2,38 +2,20 @@
  * Central API Configuration
  * Single source of truth for all backend endpoints
  * 
- * Runtime override support:
- * - Set window.__API_BASE_URL__ in index.html for AWS/CDN deployments
- * - Default: /api/v1 (canonical)
+ * Environment-based configuration:
+ * - Local: http://localhost:3000/api/v1
+ * - Dev: http://food-alb-1712335919.eu-north-1.elb.amazonaws.com/api/v1
+ * - Prod: https://api.yourdomain.com/api/v1
  */
 
-declare global {
-  interface Window {
-    __API_BASE_URL__?: string;
-  }
-}
+import { environment } from '../../../environments/environment';
 
 /**
- * Resolve the API base URL from runtime override or default
+ * Resolve the full API base URL from environment configuration
  */
 function resolveApiBase(): string {
-  // Check for runtime override (set in index.html via <script> tag)
-  if (typeof window !== 'undefined' && window.__API_BASE_URL__) {
-    const runtimeBase = window.__API_BASE_URL__.replace(/\/$/, '');
-    
-    // MANDATORY: Warn if using legacy /api without version
-    if (runtimeBase === '/api' || runtimeBase.endsWith('/api')) {
-      console.warn(
-        '[API Config] ⚠️ Runtime base uses legacy /api path without version. ' +
-        'Please migrate to /api/v1. Legacy support will be removed soon.'
-      );
-    }
-    
-    return runtimeBase;
-  }
-  
-  // Default to canonical /api/v1
-  return '/api/v1';
+  const { apiUrl, apiBasePath } = environment;
+  return `${apiUrl}${apiBasePath}`;
 }
 
 /**
@@ -102,10 +84,12 @@ export function isApiRequest(url: string): boolean {
  * Log configuration on app startup (for debugging)
  * DEV ONLY: Avoid logging in production
  */
-if (typeof window !== 'undefined') {
+if (typeof window !== 'undefined' && !environment.production) {
+  console.log(`%c🌍 API Environment: ${environment.environmentName.toUpperCase()}`, 'color: #4CAF50; font-weight: bold; font-size: 14px;');
   console.log('[API Config] ✅ Initialized:', {
-    base: API_BASE,
-    runtimeOverride: window.__API_BASE_URL__ || 'none',
+    environment: environment.environmentName,
+    apiUrl: environment.apiUrl,
+    fullBase: API_BASE,
     endpointCount: Object.keys(ENDPOINTS).filter(k => typeof ENDPOINTS[k as keyof typeof ENDPOINTS] !== 'function').length
   });
 }
