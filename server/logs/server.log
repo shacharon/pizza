@@ -502,3 +502,52 @@
 {"level":"info","time":"2026-01-04T17:57:21.311Z","pid":13552,"hostname":"il-dev-win-lt-shahar-pot","traceId":"80060440-a1c2-4dad-b004-03d067400e05","msg":"HTTP request","method":"GET","path":"/favicon.ico","query":{}}
 {"level":"warn","time":"2026-01-04T17:57:21.317Z","pid":13552,"hostname":"il-dev-win-lt-shahar-pot","traceId":"80060440-a1c2-4dad-b004-03d067400e05","msg":"HTTP response","method":"GET","path":"/favicon.ico","statusCode":404,"durationMs":6}
 {"level":"info","time":"2026-01-04T20:04:58.801Z","pid":13552,"hostname":"il-dev-win-lt-shahar-pot","msg":"Received SIGINT. Shutting down gracefully..."}
+{"level":"info","time":"2026-01-06T08:55:50.536Z","pid":18272,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-06T08:55:50.610Z","pid":18272,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-06T08:55:50.613Z","pid":18272,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-06T08:55:50.615Z","pid":18272,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-06T08:55:50.619Z","pid":18272,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-06T08:55:51.048Z","pid":18272,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-06T08:56:52.521Z","pid":5740,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-06T08:56:53.648Z","pid":5740,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-06T08:56:53.649Z","pid":5740,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-06T08:56:53.650Z","pid":5740,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-06T08:56:53.652Z","pid":5740,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-06T08:56:54.123Z","pid":5740,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-06T10:29:22.892Z","pid":19268,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-06T10:29:22.898Z","pid":19268,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-06T10:29:22.899Z","pid":19268,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-06T10:29:22.899Z","pid":19268,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-06T10:29:22.901Z","pid":19268,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-06T10:29:22.947Z","pid":19268,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-06T10:34:07.800Z","pid":23504,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-06T10:34:07.809Z","pid":23504,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-06T10:34:07.810Z","pid":23504,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-06T10:34:07.810Z","pid":23504,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-06T10:34:07.812Z","pid":23504,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-06T10:34:07.871Z","pid":23504,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-06T10:34:39.416Z","pid":9328,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-06T10:34:39.429Z","pid":9328,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-06T10:34:39.431Z","pid":9328,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-06T10:34:39.433Z","pid":9328,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-06T10:34:39.438Z","pid":9328,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-06T10:34:39.535Z","pid":9328,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-06T10:41:05.421Z","pid":32,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-06T10:41:05.428Z","pid":32,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-06T10:41:05.428Z","pid":32,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-06T10:41:05.429Z","pid":32,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-06T10:41:05.430Z","pid":32,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-06T10:41:05.475Z","pid":32,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-06T10:41:20.084Z","pid":32,"hostname":"il-dev-win-lt-shahar-pot","msg":"Received SIGINT. Shutting down gracefully..."}
+{"level":"info","time":"2026-01-06T10:41:29.460Z","pid":21028,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-06T10:41:29.465Z","pid":21028,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-06T10:41:29.466Z","pid":21028,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-06T10:41:29.466Z","pid":21028,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-06T10:41:29.467Z","pid":21028,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-06T10:41:29.504Z","pid":21028,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-06T12:40:57.514Z","pid":20180,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-06T12:40:57.522Z","pid":20180,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-06T12:40:57.522Z","pid":20180,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-06T12:40:57.523Z","pid":20180,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-06T12:40:57.525Z","pid":20180,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-06T12:40:57.580Z","pid":20180,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}

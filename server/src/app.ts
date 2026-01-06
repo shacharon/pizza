@@ -53,6 +53,19 @@ export function createApp() {
   // Centralized error handler (MUST be LAST)
   app.use(errorMiddleware);
 
+
+  app.get('/api/v1/debug/env', (req, res) => {
+    const key = process.env.GOOGLE_API_KEY;
+
+    res.json({
+      hostname: process.env.HOSTNAME ?? null,
+      nodeEnv: process.env.NODE_ENV ?? null,
+      hasGoogleKey: Boolean(key),
+      googleKeyLast4: key ? key.slice(-4) : null,
+    });
+  });
+
+
   return app;
 }
 

@@ -14,19 +14,23 @@ Your app now supports 3 environments with automatic API URL switching:
 
 ## 🚀 How to Use
 
-### Local Development (Default)
+### Local Development (Default) - Port 4200
 ```bash
 npm start
 # or
 npm run local
 ```
-**API:** http://localhost:3000/api/v1
+**API:** http://localhost:3000/api/v1  
+**Frontend:** http://localhost:4200
 
-### Dev Environment (AWS)
+### AWS Dev Environment - Port 4201
 ```bash
+npm run aws
+# or
 npm run dev
 ```
-**API:** http://food-alb-1712335919.eu-north-1.elb.amazonaws.com/api/v1
+**API:** http://food-alb-1712335919.eu-north-1.elb.amazonaws.com/api/v1  
+**Frontend:** http://localhost:4201
 
 ### Production Build
 ```bash
@@ -116,20 +120,25 @@ The console will show which environment you're using:
 
 ---
 
-## 🧪 Testing Different Environments
+## 🧪 Testing Both Environments Simultaneously
 
+**Open 2 terminals:**
+
+**Terminal 1 - Local Backend:**
 ```bash
-# Test local
+cd C:\dev\piza\angular-piza\llm-angular
 npm start
-
-# Test dev (AWS)
-npm run dev
-
-# Test production build locally
-npm run build
-cd dist/llm-angular/browser
-python -m http.server 4200
 ```
+Opens: http://localhost:4200 → Connects to `localhost:3000`
+
+**Terminal 2 - AWS Backend:**
+```bash
+cd C:\dev\piza\angular-piza\llm-angular
+npm run aws
+```
+Opens: http://localhost:4201 → Connects to AWS ALB
+
+**Now you can test both side-by-side!** 🎉
 
 ---
 
@@ -138,11 +147,18 @@ python -m http.server 4200
 All scripts are already configured in `package.json`:
 
 ```bash
-npm start        # Local development (default)
-npm run local    # Same as start (explicit)
-npm run dev      # AWS development environment
-npm run prod     # Production mode (serve)
+# Run Both Simultaneously:
+npm start        # Local backend (port 4200)
+npm run aws      # AWS backend (port 4201)
 
+# Alternative Commands:
+npm run local    # Same as start
+npm run dev      # Same as aws
+
+# Production:
+npm run prod     # Production mode
+
+# Builds:
 npm run build       # Production build
 npm run build:dev   # Development build
 npm run build:prod  # Production build (same as build)
