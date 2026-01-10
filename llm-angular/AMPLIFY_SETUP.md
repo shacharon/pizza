@@ -5,38 +5,45 @@
 Your Angular app is now ready for AWS Amplify deployment! Here's what was done:
 
 ### ✅ **1. Moved `shared/` into Angular Workspace**
+
 - **From:** `<repo-root>/shared/`
 - **To:** `llm-angular/shared/`
 - **Why:** Amplify builds from `llm-angular/` directory, so dependencies must be resolvable from there
 
 ### ✅ **2. Fixed TypeScript Path Aliases**
+
 Updated `tsconfig.base.json`:
+
 ```json
 {
   "paths": {
-    "@api": ["llm-angular/shared/api/index.ts"],  // ← Fixed!
+    "@api": ["llm-angular/shared/api/index.ts"], // ← Fixed!
     "@api/*": ["llm-angular/shared/api/*"]
   }
 }
 ```
 
 ### ✅ **3. Added Dependencies**
+
 Updated `llm-angular/package.json`:
+
 ```json
 {
   "dependencies": {
-    "zod": "^3.22.4",      // ← Added (used by shared DTOs)
-    "leaflet": "^1.9.4"    // ← Added (used by map component)
+    "zod": "^3.22.4", // ← Added (used by shared DTOs)
+    "leaflet": "^1.9.4" // ← Added (used by map component)
   }
 }
 ```
 
 ### ✅ **4. Verified Local Build**
+
 ```bash
 cd llm-angular
 npm ci
 npm run build
 ```
+
 **Result:** ✅ Build succeeded!
 **Output:** `dist/llm-angular/browser/` with all assets
 
@@ -79,7 +86,7 @@ frontend:
   artifacts:
     baseDirectory: llm-angular/dist/llm-angular/browser
     files:
-      - '**/*'
+      - "**/*"
   cache:
     paths:
       - llm-angular/node_modules/**/*
@@ -104,6 +111,7 @@ Create `C:\dev\piza\angular-piza\.nvmrc`:
 Already done! ✅ (We added zod and leaflet)
 
 Optional - Add node version:
+
 ```json
 {
   "engines": {
@@ -120,6 +128,7 @@ Optional - Add node version:
 Your branch `fix/amplify-shared` is already pushed! ✅
 
 **Merge to main:**
+
 ```bash
 git checkout main
 git merge fix/amplify-shared
@@ -134,17 +143,20 @@ https://github.com/shacharon/pizza/pull/new/fix/amplify-shared
 ### **5. Configure Amplify in AWS Console**
 
 1. **Create App:**
+
    - AWS Amplify Console → **New app** → **Host web app**
    - Connect GitHub: `shacharon/pizza`
    - Branch: `main`
 
 2. **Build Settings:**
+
    - Amplify will auto-detect `amplify.yml` ✅
    - Or manually set:
      - Build command: `npm run build:prod`
      - Output directory: `llm-angular/dist/llm-angular/browser`
 
 3. **Add SPA Rewrite Rule:**
+
    - Source: `/*`
    - Target: `/index.html`
    - Type: `200 (Rewrite)`
@@ -160,30 +172,32 @@ https://github.com/shacharon/pizza/pull/new/fix/amplify-shared
 Your backend must allow Amplify's origin. After deployment, update `server/src/app.ts`:
 
 ```typescript
-app.use(cors({
-  origin: [
-    'http://localhost:4200',                    // Local
-    'http://localhost:4201',                    // AWS test
-    'https://main.d123456.amplifyapp.com',     // ← Add your Amplify URL
-    'https://app.going2eat.food'               // ← Custom domain (when ready)
-  ],
-  credentials: false
-}));
+app.use(
+  cors({
+    origin: [
+      "http://localhost:4200", // Local
+      "http://localhost:4201", // AWS test
+      "https://main.d123456.amplifyapp.com", // ← Add your Amplify URL
+      "https://app.going2eat.food", // ← Custom domain (when ready)
+    ],
+    credentials: false,
+  })
+);
 ```
 
 ---
 
 ## 📊 Changes Summary
 
-| File/Folder | Change | Status |
-|-------------|--------|--------|
-| `shared/` → `llm-angular/shared/` | Moved | ✅ |
-| `tsconfig.base.json` | Updated @api paths | ✅ |
-| `llm-angular/package.json` | Added zod, leaflet | ✅ |
-| `llm-angular/package-lock.json` | Regenerated | ✅ |
-| Local build | Verified working | ✅ |
-| Git commit | Created | ✅ |
-| Git push | Pushed to origin | ✅ |
+| File/Folder                       | Change             | Status |
+| --------------------------------- | ------------------ | ------ |
+| `shared/` → `llm-angular/shared/` | Moved              | ✅     |
+| `tsconfig.base.json`              | Updated @api paths | ✅     |
+| `llm-angular/package.json`        | Added zod, leaflet | ✅     |
+| `llm-angular/package-lock.json`   | Regenerated        | ✅     |
+| Local build                       | Verified working   | ✅     |
+| Git commit                        | Created            | ✅     |
+| Git push                          | Pushed to origin   | ✅     |
 
 ---
 

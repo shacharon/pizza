@@ -13,7 +13,7 @@ frontend:
   artifacts:
     baseDirectory: llm-angular/dist/llm-angular/browser
     files:
-      - '**/*'
+      - "**/*"
   cache:
     paths:
       - llm-angular/node_modules/**/*
