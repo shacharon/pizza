@@ -4,40 +4,46 @@
 
 Your app now supports 3 environments with automatic API URL switching:
 
-| Environment | API URL | Usage |
-|-------------|---------|-------|
-| **Local** | `http://localhost:3000` | Default development |
-| **Dev** | `https://api.going2eat.food` | AWS development server |
-| **Prod** | `https://api.going2eat.food` | Production |
+| Environment | API URL                      | Usage                  |
+| ----------- | ---------------------------- | ---------------------- |
+| **Local**   | `http://localhost:3000`      | Default development    |
+| **Dev**     | `https://api.going2eat.food` | AWS development server |
+| **Prod**    | `https://api.going2eat.food` | Production             |
 
 ---
 
 ## 🚀 How to Use
 
 ### Local Development (Default) - Port 4200
+
 ```bash
 npm start
 # or
 npm run local
 ```
+
 **API:** http://localhost:3000/api/v1  
 **Frontend:** http://localhost:4200
 
 ### AWS Dev Environment - Port 4201
+
 ```bash
 npm run aws
 # or
 npm run dev
 ```
+
 **API:** https://api.going2eat.food/api/v1  
 **Frontend:** http://localhost:4201
 
 ### Production Build
+
 ```bash
 npm run build
 # or
 npm run build:prod
 ```
+
 **API:** https://api.going2eat.food/api/v1
 
 ---
@@ -57,10 +63,10 @@ src/environments/
 
 ```typescript
 export const environment = {
-  production: boolean,      // Is production mode
-  apiUrl: string,          // Base API URL (without /api/v1)
-  apiBasePath: string,     // API path (/api/v1)
-  environmentName: string  // Display name
+  production: boolean, // Is production mode
+  apiUrl: string, // Base API URL (without /api/v1)
+  apiBasePath: string, // API path (/api/v1)
+  environmentName: string, // Display name
 };
 ```
 
@@ -74,19 +80,20 @@ export const environment = {
 // environment.ts
 export const environment = {
   production: false,
-  apiUrl: 'http://localhost:3000',
-  apiBasePath: '/api/v1',
-  environmentName: 'local',
-  featureFlags: {           // ← New variable
-    enableNewFeature: true
-  }
+  apiUrl: "http://localhost:3000",
+  apiBasePath: "/api/v1",
+  environmentName: "local",
+  featureFlags: {
+    // ← New variable
+    enableNewFeature: true,
+  },
 };
 ```
 
 2. Use it in your code:
 
 ```typescript
-import { environment } from '../environments/environment';
+import { environment } from "../environments/environment";
 
 if (environment.featureFlags.enableNewFeature) {
   // ...
@@ -125,17 +132,21 @@ The console will show which environment you're using:
 **Open 2 terminals:**
 
 **Terminal 1 - Local Backend:**
+
 ```bash
 cd C:\dev\piza\angular-piza\llm-angular
 npm start
 ```
+
 Opens: http://localhost:4200 → Connects to `localhost:3000`
 
 **Terminal 2 - AWS Backend:**
+
 ```bash
 cd C:\dev\piza\angular-piza\llm-angular
 npm run aws
 ```
+
 Opens: http://localhost:4201 → Connects to AWS ALB
 
 **Now you can test both side-by-side!** 🎉
@@ -172,17 +183,18 @@ Make sure your backend (`server/src/app.ts`) allows the frontend origin:
 
 ```typescript
 // For local development
-app.use(cors({
-  origin: 'http://localhost:4200'
-}));
+app.use(
+  cors({
+    origin: "http://localhost:4200",
+  })
+);
 
 // For AWS dev
-app.use(cors({
-  origin: [
-    'http://localhost:4200',
-    'http://your-cloudfront-url'
-  ]
-}));
+app.use(
+  cors({
+    origin: ["http://localhost:4200", "http://your-cloudfront-url"],
+  })
+);
 ```
 
 ---
