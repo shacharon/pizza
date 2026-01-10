@@ -6,7 +6,7 @@ import { WebSocketManager } from './infra/websocket/websocket-manager.js';
 import 'dotenv/config';
 
 // Phase 2: Initialize state store singleton
-const requestStateStore = new InMemoryRequestStore(300, 60_000);
+export const requestStateStore = new InMemoryRequestStore(300, 60_000);
 
 function maskKey(k?: string) {
     if (!k) return { exists: false, len: 0, last4: '----' };
