@@ -1,0 +1,19 @@
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - cd llm-angular
+        - node --version
+        - npm --version
+        - npm ci
+    build:
+      commands:
+        - npm run build:prod
+  artifacts:
+    baseDirectory: llm-angular/dist/llm-angular/browser
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - llm-angular/node_modules/**/*
