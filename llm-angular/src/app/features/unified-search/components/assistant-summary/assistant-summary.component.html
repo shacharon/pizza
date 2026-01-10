@@ -1,0 +1,33 @@
+@if (hasContent()) {
+  <div class="assistant-summary" 
+       [class.streaming]="isStreaming()"
+       [class.completed]="isCompleted()"
+       [class.failed]="isFailed()">
+    
+    @if (isPending()) {
+      <div class="status-pending">
+        <span class="spinner"></span>
+        <span class="text">Preparing assistant...</span>
+      </div>
+    }
+    
+    @if (isStreaming()) {
+      <div class="streaming-text">
+        {{ text() }}<span class="cursor-blink">▌</span>
+      </div>
+    }
+    
+    @if (isCompleted()) {
+      <div class="completed-text">
+        {{ text() }}
+      </div>
+    }
+    
+    @if (isFailed()) {
+      <div class="error-text">
+        <span class="icon">⚠️</span>
+        <span>{{ error() || 'Assistant unavailable. Results are still shown below.' }}</span>
+      </div>
+    }
+  </div>
+}

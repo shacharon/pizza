@@ -89,7 +89,7 @@ describe('Search Orchestrator - Derived Closed Filter', () => {
       // - Set needsClosedFiltering flag
       // - Fetch all results
       // - Filter on backend for openNow === false
-      
+
       // This test documents the expected behavior
       const expectedBehavior = {
         googleApiCall: {
@@ -114,7 +114,7 @@ describe('Search Orchestrator - Derived Closed Filter', () => {
 
       // Step 1: Calculate summary (BEFORE filtering)
       const summary = calculateOpenNowSummary(rawResults as RestaurantResult[]);
-      
+
       assert.strictEqual(summary.total, 3);
       assert.strictEqual(summary.open, 1);
       assert.strictEqual(summary.closed, 1);
@@ -122,7 +122,7 @@ describe('Search Orchestrator - Derived Closed Filter', () => {
 
       // Step 2: Apply derived filter
       const filtered = (rawResults as RestaurantResult[]).filter(r => r.openNow === false);
-      
+
       assert.strictEqual(filtered.length, 1);
       assert.strictEqual(filtered[0].id, '2');
 

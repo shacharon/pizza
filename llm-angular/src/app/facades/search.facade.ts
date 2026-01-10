@@ -4,6 +4,7 @@
  */
 
 import { Injectable, inject, computed, signal } from '@angular/core';
+import { firstValueFrom } from 'rxjs';
 import { UnifiedSearchService } from '../services/unified-search.service';
 import { ActionService } from '../services/action.service';
 import { InputStateMachine } from '../services/input-state-machine.service';
@@ -11,6 +12,9 @@ import { RecentSearchesService } from '../services/recent-searches.service';
 import { SearchStore } from '../state/search.store';
 import { SessionStore } from '../state/session.store';
 import { ActionsStore } from '../state/actions.store';
+import { WsClientService } from '../core/services/ws-client.service';
+import { SearchApiClient } from '../api/search.api';
+import { environment } from '../../environments/environment';
 import type { 
   SearchFilters, 
   Restaurant,
@@ -18,6 +22,7 @@ import type {
   RefinementChip
 } from '../domain/types/search.types';
 import type { ActionType, ActionLevel } from '../domain/types/action.types';
+import type { WSServerMessage, AssistantStatus, ActionDefinition } from '../core/models/ws-protocol.types';
 
 @Injectable()
 export class SearchFacade {
@@ -28,6 +33,8 @@ export class SearchFacade {
   private readonly searchStore = inject(SearchStore);
   private readonly sessionStore = inject(SessionStore);
   private readonly actionsStore = inject(ActionsStore);
+  private readonly wsClient = inject(WsClientService);
+  private readonly searchApiClient = inject(SearchApiClient);
 
   // Expose store state as readonly signals
   readonly loading = this.searchStore.loading;
@@ -93,6 +100,23 @@ export class SearchFacade {
   readonly clarification = this.searchStore.clarification;
   readonly requiresClarification = this.searchStore.requiresClarification;
 
+  // Phase 6: WebSocket/Async state
+  private readonly currentRequestId = signal<string | undefined>(undefined);
+  private readonly assistantText = signal<string>('');
+  private readonly assistantStatus = signal<AssistantStatus>('idle');
+  private readonly wsRecommendations = signal<ActionDefinition[]>([]);
+  private readonly wsError = signal<string | undefined>(undefined);
+  private readonly useAsyncMode = signal<boolean>(environment.features?.asyncSearch ?? false);
+  
+  // Expose WebSocket state as readonly
+  readonly requestId = this.currentRequestId.asReadonly();
+  readonly assistantNarration = this.assistantText.asReadonly();
+  readonly assistantState = this.assistantStatus.asReadonly();
+  readonly recommendations = this.wsRecommendations.asReadonly();
+  readonly assistantError = this.wsError.asReadonly();
+  readonly isAsyncMode = this.useAsyncMode.asReadonly();
+  readonly wsConnectionStatus = this.wsClient.connectionStatus;
+
   // Phase 7: UI/UX Contract - State Management
   // Sort state (single-select)
   private sortState = signal<'BEST_MATCH' | 'CLOSEST' | 'RATING_DESC' | 'PRICE_ASC'>('BEST_MATCH');
@@ -105,9 +129,111 @@ export class SearchFacade {
   // View state (single-select)
   private viewState = signal<'LIST' | 'MAP'>('LIST');
   readonly currentView = this.viewState.asReadonly();
+  
+  constructor() {
+    // Phase 6: Subscribe to WebSocket messages
+    this.wsClient.messages$.subscribe(msg => this.handleWsMessage(msg));
+    
+    // Ensure WebSocket is connected
+    if (this.useAsyncMode()) {
+      this.wsClient.connect();
+    }
+  }
 
   // Public actions
   search(query: string, filters?: SearchFilters): void {
+    const useAsync = this.useAsyncMode();
+    
+    if (useAsync) {
+      this.searchAsync(query, filters);
+    } else {
+      this.searchSync(query, filters);
+    }
+  }
+  
+  /**
+   * Async search (Phase 6)
+   * Fast path with WebSocket assistant streaming
+   */
+  private async searchAsync(query: string, filters?: SearchFilters): Promise<void> {
+    try {
+      // Reset assistant state
+      this.assistantText.set('');
+      this.assistantStatus.set('pending');
+      this.wsRecommendations.set([]);
+      this.wsError.set(undefined);
+      
+      // Update input state machine
+      this.recentSearchesService.add(query);
+      this.inputStateMachine.submit();
+      
+      // Set loading
+      this.searchStore.setLoading(true);
+      this.searchStore.setQuery(query);
+      
+      // Check if this is a fresh search after intent reset
+      const shouldClearContext = this.inputStateMachine.intentReset();
+      
+      // Call async API
+      const response = await firstValueFrom(
+        this.searchApiClient.searchAsync({
+          query,
+          filters,
+          sessionId: this.conversationId(),
+          clearContext: shouldClearContext,
+          locale: this.locale()
+        })
+      );
+      
+      // Store requestId
+      this.currentRequestId.set(response.requestId);
+      
+      // Convert CoreSearchResult to SearchResponse (partial)
+      // This maintains compatibility with existing SearchStore
+      const partialResponse: SearchResponse = {
+        sessionId: response.sessionId || this.conversationId(),
+        query: response.query || {
+          original: query,
+          parsed: {},
+          language: this.locale()
+        },
+        results: response.results,
+        groups: response.groups,
+        chips: response.chips,
+        meta: response.meta as any,
+        // No assist or proposedActions - will come via WebSocket
+      };
+      
+      // Update store with partial response
+      this.searchStore.setResponse(partialResponse);
+      this.searchStore.setLoading(false);
+      
+      // Update input state machine
+      this.inputStateMachine.searchComplete();
+      
+      // Subscribe to WebSocket for assistant
+      this.wsClient.subscribe(response.requestId);
+      
+      console.log('[SearchFacade] Async search completed', {
+        requestId: response.requestId,
+        resultCount: response.results.length,
+        tookMs: response.meta.tookMs
+      });
+      
+    } catch (error) {
+      console.error('[SearchFacade] Async search error:', error);
+      this.searchStore.setError(error as any);
+      this.searchStore.setLoading(false);
+      this.assistantStatus.set('failed');
+      this.wsError.set('Search failed. Please try again.');
+      this.inputStateMachine.searchFailed();
+    }
+  }
+  
+  /**
+   * Sync search (legacy - deprecated)
+   */
+  private searchSync(query: string, filters?: SearchFilters): void {
     // Check if this is a fresh search after intent reset
     const shouldClearContext = this.inputStateMachine.intentReset();
     
@@ -124,6 +250,60 @@ export class SearchFacade {
         console.error('[SearchFacade] Search error:', error);
       }
     });
+  }
+  
+  /**
+   * Handle incoming WebSocket messages
+   * Race-safe: ignores messages for old requestIds
+   */
+  private handleWsMessage(msg: WSServerMessage): void {
+    // Ignore messages for old requests
+    if (msg.requestId !== this.currentRequestId()) {
+      console.warn('[SearchFacade] Ignoring WS message for old request', msg.requestId);
+      return;
+    }
+    
+    switch (msg.type) {
+      case 'status':
+        this.assistantStatus.set(msg.status);
+        console.log('[SearchFacade] Assistant status:', msg.status);
+        break;
+        
+      case 'stream.delta':
+        // Append chunk
+        this.assistantText.update(text => text + msg.text);
+        this.assistantStatus.set('streaming');
+        break;
+        
+      case 'stream.done':
+        // Finalize text
+        this.assistantText.set(msg.fullText);
+        console.log('[SearchFacade] Assistant stream complete');
+        break;
+        
+      case 'recommendation':
+        this.wsRecommendations.set(msg.actions);
+        console.log('[SearchFacade] Recommendations received:', msg.actions.length);
+        break;
+        
+      case 'error':
+        console.error('[SearchFacade] Assistant error', msg);
+        this.wsError.set(msg.message);
+        this.assistantStatus.set('failed');
+        break;
+    }
+  }
+  
+  /**
+   * Toggle async/sync mode (dev/testing only)
+   */
+  setAsyncMode(enabled: boolean): void {
+    this.useAsyncMode.set(enabled);
+    console.log(`[SearchFacade] Async mode: ${enabled ? 'ON' : 'OFF'}`);
+    
+    if (enabled) {
+      this.wsClient.connect();
+    }
   }
 
   retry(): void {

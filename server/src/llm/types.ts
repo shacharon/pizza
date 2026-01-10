@@ -24,4 +24,20 @@ export interface LLMProvider {
             timeout?: number;
         }
     ): Promise<string>;
+
+    /**
+     * Phase 4: Stream completion with chunk callback
+     * Returns full text when done
+     */
+    completeStream(
+        messages: Message[],
+        onChunk: (text: string) => void,
+        opts?: {
+            model?: string;
+            temperature?: number;
+            timeout?: number;
+            traceId?: string;
+            sessionId?: string;
+        }
+    ): Promise<string>;
 }

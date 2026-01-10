@@ -403,3 +403,670 @@
 {"level":"info","time":"2026-01-10T14:59:59.295Z","pid":26272,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
 {"level":"info","time":"2026-01-10T14:59:59.336Z","pid":26272,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
 {"level":"warn","time":"2026-01-10T15:01:34.110Z","pid":27772,"hostname":"il-dev-win-lt-shahar-pot","neededCount":3,"targetCity":"Tel Aviv","msg":"[CityFilterService] Fallback triggered - adding nearby results"}
+{"level":"info","time":"2026-01-10T15:19:32.235Z","pid":19704,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T15:19:32.250Z","pid":19704,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T15:19:32.252Z","pid":19704,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T15:19:32.253Z","pid":19704,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T15:19:32.256Z","pid":19704,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T15:19:32.308Z","pid":19704,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T15:19:32.347Z","pid":19704,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T15:36:15.620Z","pid":22228,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T15:36:15.645Z","pid":22228,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T15:36:15.648Z","pid":22228,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T15:36:15.650Z","pid":22228,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T15:36:15.654Z","pid":22228,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T15:36:15.728Z","pid":22228,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T15:36:15.764Z","pid":22228,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T15:56:06.246Z","pid":17360,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T15:56:06.263Z","pid":17360,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T15:56:06.264Z","pid":17360,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T15:56:06.265Z","pid":17360,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T15:56:06.269Z","pid":17360,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T15:56:06.324Z","pid":17360,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T15:56:06.345Z","pid":17360,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T15:56:19.727Z","pid":10904,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T15:56:19.741Z","pid":10904,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T15:56:19.743Z","pid":10904,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T15:56:19.744Z","pid":10904,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T15:56:19.746Z","pid":10904,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T15:56:19.796Z","pid":10904,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T15:56:19.818Z","pid":10904,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T15:58:32.611Z","pid":30044,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T15:58:32.630Z","pid":30044,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T15:58:32.635Z","pid":30044,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T15:58:32.636Z","pid":30044,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T15:58:32.639Z","pid":30044,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T15:58:32.727Z","pid":30044,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T15:58:32.749Z","pid":30044,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T16:04:30.451Z","pid":27744,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T16:04:30.462Z","pid":27744,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T16:04:30.464Z","pid":27744,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T16:04:30.465Z","pid":27744,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T16:04:30.468Z","pid":27744,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T16:04:30.513Z","pid":27744,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T16:04:30.537Z","pid":27744,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T16:05:11.667Z","pid":31196,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T16:05:11.680Z","pid":31196,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T16:05:11.687Z","pid":31196,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T16:05:11.688Z","pid":31196,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T16:05:11.692Z","pid":31196,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T16:05:11.750Z","pid":31196,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T16:05:11.776Z","pid":31196,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T16:05:46.272Z","pid":32432,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T16:05:46.282Z","pid":32432,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T16:05:46.283Z","pid":32432,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T16:05:46.284Z","pid":32432,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T16:05:46.286Z","pid":32432,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T16:05:46.321Z","pid":32432,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T16:05:46.336Z","pid":32432,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T16:06:37.510Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","query":"pizza","msg":"search_started"}
+{"level":"info","time":"2026-01-10T16:06:37.521Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","query":"pizza","hasUserLocation":false,"msg":"search_started"}
+{"level":"info","time":"2026-01-10T16:06:37.523Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","confidence":"0.85","language":"en","durationMs":0,"msg":"[SearchOrchestrator] Intent parsed"}
+{"level":"warn","time":"2026-01-10T16:06:37.526Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","msg":"[SearchOrchestrator] No location found, using fallback"}
+{"level":"info","time":"2026-01-10T16:06:37.527Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","displayName":"Tel Aviv","durationMs":1,"msg":"[SearchOrchestrator] Location resolved"}
+{"level":"warn","time":"2026-01-10T16:06:37.528Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","queryForGoogle":"test","msg":"[SearchOrchestrator] Fallback to composed query"}
+{"level":"info","time":"2026-01-10T16:06:37.529Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","traceId":"test-trace","query":"test","language":"en","region":null,"requestLanguage":"en","useOriginalLanguage":false,"msg":"Google Places API parameters"}
+{"level":"info","time":"2026-01-10T16:06:37.529Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","targetCity":"none","radius":"default","googleQuery":"test","language":"en","region":"none","msg":"[SearchOrchestrator] Search parameters"}
+{"level":"info","time":"2026-01-10T16:06:37.536Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","rawResultsCount":0,"durationMs":0,"msg":"[SearchOrchestrator] Raw results fetched"}
+{"level":"info","time":"2026-01-10T16:06:37.537Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","traceId":"test-trace","candidatePoolSize":30,"googleResultsCount":0,"msg":"Fetched candidate pool"}
+{"level":"info","time":"2026-01-10T16:06:37.538Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","open":0,"closed":0,"unknown":0,"msg":"[SearchOrchestrator] Opening hours summary"}
+{"level":"info","time":"2026-01-10T16:06:37.539Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","kept":0,"dropped":0,"durationMs":0,"msg":"[SearchOrchestrator] City filter applied"}
+{"level":"info","time":"2026-01-10T16:06:37.540Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","durationMs":1,"msg":"[SearchOrchestrator] Results ranked"}
+{"level":"info","time":"2026-01-10T16:06:37.540Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","traceId":"test-trace","scoredCandidatesCount":0,"displaySize":0,"msg":"Ranked and filtered candidates"}
+{"level":"info","time":"2026-01-10T16:06:37.541Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","finalCount":0,"strongCount":0,"weakCount":0,"totalRanked":0,"msg":"[SearchOrchestrator] Final result count"}
+{"level":"info","time":"2026-01-10T16:06:37.542Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","traceId":"test-trace","intentConf":0.85,"resultsQuality":0,"combinedConf":0.51,"level":"low","msg":"Calculated combined confidence"}
+{"level":"info","time":"2026-01-10T16:06:37.544Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","strategy":"LLM","durationMs":1,"msg":"[SearchOrchestrator] Assistant response generated"}
+{"level":"info","time":"2026-01-10T16:06:37.546Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","timings":{"intentMs":0,"geocodeMs":1,"providerMs":0,"rankingMs":1,"assistantMs":1,"totalMs":24},"failureReason":"NO_RESULTS","mode":"RECOVERY","resultCount":0,"usedLLMIntent":true,"usedLLMAssistant":true,"msg":"Search completed successfully"}
+{"level":"info","time":"2026-01-10T16:06:37.546Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","tookMs":24,"msg":"[SearchOrchestrator] Search complete"}
+{"level":"info","time":"2026-01-10T16:06:37.547Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","coreMs":38,"resultCount":0,"mode":"textsearch","msg":"search_core_completed"}
+{"level":"info","time":"2026-01-10T16:06:37.548Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-123","query":"test","msg":"search_started"}
+{"level":"info","time":"2026-01-10T16:06:37.549Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-123","query":"test","hasUserLocation":false,"msg":"search_started"}
+{"level":"info","time":"2026-01-10T16:06:37.549Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","confidence":"0.80","language":"en","durationMs":0,"msg":"[SearchOrchestrator] Intent parsed"}
+{"level":"warn","time":"2026-01-10T16:06:37.550Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","msg":"[SearchOrchestrator] No location found, using fallback"}
+{"level":"info","time":"2026-01-10T16:06:37.550Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","displayName":"test","durationMs":0,"msg":"[SearchOrchestrator] Location resolved"}
+{"level":"warn","time":"2026-01-10T16:06:37.551Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","queryForGoogle":"test","msg":"[SearchOrchestrator] Fallback to composed query"}
+{"level":"info","time":"2026-01-10T16:06:37.551Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","query":"test","language":"en","region":null,"requestLanguage":"en","useOriginalLanguage":false,"msg":"Google Places API parameters"}
+{"level":"info","time":"2026-01-10T16:06:37.551Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","targetCity":"none","radius":"default","googleQuery":"test","language":"en","region":"none","msg":"[SearchOrchestrator] Search parameters"}
+{"level":"info","time":"2026-01-10T16:06:37.553Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","rawResultsCount":0,"durationMs":0,"msg":"[SearchOrchestrator] Raw results fetched"}
+{"level":"info","time":"2026-01-10T16:06:37.553Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","candidatePoolSize":30,"googleResultsCount":0,"msg":"Fetched candidate pool"}
+{"level":"info","time":"2026-01-10T16:06:37.553Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","open":0,"closed":0,"unknown":0,"msg":"[SearchOrchestrator] Opening hours summary"}
+{"level":"info","time":"2026-01-10T16:06:37.554Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","kept":0,"dropped":0,"durationMs":0,"msg":"[SearchOrchestrator] City filter applied"}
+{"level":"info","time":"2026-01-10T16:06:37.554Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","durationMs":0,"msg":"[SearchOrchestrator] Results ranked"}
+{"level":"info","time":"2026-01-10T16:06:37.554Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","scoredCandidatesCount":0,"displaySize":0,"msg":"Ranked and filtered candidates"}
+{"level":"info","time":"2026-01-10T16:06:37.554Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","finalCount":0,"strongCount":0,"weakCount":0,"totalRanked":0,"msg":"[SearchOrchestrator] Final result count"}
+{"level":"info","time":"2026-01-10T16:06:37.554Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","intentConf":0.8,"resultsQuality":0,"combinedConf":0.48,"level":"low","msg":"Calculated combined confidence"}
+{"level":"info","time":"2026-01-10T16:06:37.555Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","strategy":"LLM","durationMs":0,"msg":"[SearchOrchestrator] Assistant response generated"}
+{"level":"info","time":"2026-01-10T16:06:37.555Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-123","timings":{"intentMs":0,"geocodeMs":0,"providerMs":0,"rankingMs":0,"assistantMs":0,"totalMs":6},"failureReason":"NO_RESULTS","mode":"RECOVERY","resultCount":0,"usedLLMIntent":true,"usedLLMAssistant":true,"msg":"Search completed successfully"}
+{"level":"info","time":"2026-01-10T16:06:37.556Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","tookMs":6,"msg":"[SearchOrchestrator] Search complete"}
+{"level":"info","time":"2026-01-10T16:06:37.556Z","pid":24156,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-123","coreMs":8,"resultCount":0,"mode":"textsearch","msg":"search_core_completed"}
+{"level":"warn","time":"2026-01-10T16:07:48.559Z","pid":15464,"hostname":"il-dev-win-lt-shahar-pot","neededCount":3,"targetCity":"Tel Aviv","msg":"[CityFilterService] Fallback triggered - adding nearby results"}
+{"level":"info","time":"2026-01-10T18:48:21.497Z","pid":28828,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T18:48:21.523Z","pid":28828,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T18:48:21.526Z","pid":28828,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T18:48:21.527Z","pid":28828,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T18:48:21.530Z","pid":28828,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T18:48:21.646Z","pid":28828,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T18:48:21.677Z","pid":28828,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T18:48:48.853Z","pid":12064,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T18:48:48.914Z","pid":12064,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T18:48:48.920Z","pid":12064,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T18:48:48.924Z","pid":12064,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T18:48:48.939Z","pid":12064,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T18:48:49.223Z","pid":12064,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T18:48:49.320Z","pid":12064,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T18:49:21.210Z","pid":23516,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T18:49:21.226Z","pid":23516,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T18:49:21.227Z","pid":23516,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T18:49:21.229Z","pid":23516,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T18:49:21.232Z","pid":23516,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T18:49:21.296Z","pid":23516,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T18:49:21.302Z","pid":23516,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T18:49:21.322Z","pid":23516,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T18:50:48.840Z","pid":25972,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T18:50:48.869Z","pid":25972,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T18:50:48.874Z","pid":25972,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T18:50:48.878Z","pid":25972,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T18:50:48.884Z","pid":25972,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T18:50:48.988Z","pid":25972,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T18:50:48.998Z","pid":25972,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T18:50:49.041Z","pid":25972,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T18:52:48.061Z","pid":22104,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T18:52:48.080Z","pid":22104,"hostname":"il-dev-win-lt-shahar-pot","clearedEntries":1,"msg":"InMemoryRequestStore shutdown"}
+{"level":"info","time":"2026-01-10T18:52:48.090Z","pid":22104,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T18:52:48.093Z","pid":22104,"hostname":"il-dev-win-lt-shahar-pot","clearedEntries":0,"msg":"InMemoryRequestStore shutdown"}
+{"level":"info","time":"2026-01-10T18:52:48.094Z","pid":22104,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T18:52:49.635Z","pid":22104,"hostname":"il-dev-win-lt-shahar-pot","clearedEntries":0,"msg":"InMemoryRequestStore shutdown"}
+{"level":"info","time":"2026-01-10T18:52:49.648Z","pid":22104,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T18:52:49.765Z","pid":22104,"hostname":"il-dev-win-lt-shahar-pot","clearedEntries":1,"msg":"InMemoryRequestStore shutdown"}
+{"level":"info","time":"2026-01-10T18:52:49.782Z","pid":22104,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T18:52:49.785Z","pid":22104,"hostname":"il-dev-win-lt-shahar-pot","clearedEntries":1,"msg":"InMemoryRequestStore shutdown"}
+{"level":"info","time":"2026-01-10T18:52:49.787Z","pid":22104,"hostname":"il-dev-win-lt-shahar-pot","clearedEntries":0,"msg":"InMemoryRequestStore shutdown"}
+{"level":"info","time":"2026-01-10T18:52:49.791Z","pid":22104,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T18:52:49.794Z","pid":22104,"hostname":"il-dev-win-lt-shahar-pot","clearedEntries":0,"msg":"InMemoryRequestStore shutdown"}
+{"level":"info","time":"2026-01-10T18:56:16.260Z","pid":31748,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T18:56:16.285Z","pid":31748,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T18:56:16.288Z","pid":31748,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T18:56:16.291Z","pid":31748,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T18:56:16.295Z","pid":31748,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T18:56:16.471Z","pid":31748,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T18:56:16.485Z","pid":31748,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T18:56:16.571Z","pid":31748,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T18:57:54.827Z","pid":10488,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T18:57:54.845Z","pid":10488,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T18:57:54.846Z","pid":10488,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T18:57:54.847Z","pid":10488,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T18:57:54.850Z","pid":10488,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T18:57:54.914Z","pid":10488,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T18:57:54.917Z","pid":10488,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T18:57:54.944Z","pid":10488,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T18:58:14.922Z","pid":22900,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T18:58:14.943Z","pid":22900,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T18:58:14.945Z","pid":22900,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T18:58:14.947Z","pid":22900,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T18:58:14.953Z","pid":22900,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T18:58:15.117Z","pid":22900,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T18:58:15.134Z","pid":22900,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T18:58:15.180Z","pid":22900,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T19:00:12.963Z","pid":12776,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T19:00:12.988Z","pid":12776,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T19:00:12.990Z","pid":12776,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T19:00:12.992Z","pid":12776,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T19:00:13.003Z","pid":12776,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T19:00:13.162Z","pid":12776,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T19:00:13.169Z","pid":12776,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T19:00:13.197Z","pid":12776,"hostname":"il-dev-win-lt-shahar-pot","path":"/ws","heartbeatMs":30000,"msg":"WebSocketManager initialized"}
+{"level":"info","time":"2026-01-10T19:00:13.204Z","pid":12776,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T19:01:18.915Z","pid":25500,"hostname":"il-dev-win-lt-shahar-pot","path":"/ws","heartbeatMs":60000,"msg":"WebSocketManager initialized"}
+{"level":"info","time":"2026-01-10T19:01:19.005Z","pid":25500,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768071679005-sz067l","msg":"websocket_connected"}
+{"level":"info","time":"2026-01-10T19:01:19.024Z","pid":25500,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768071679024-s5wson","msg":"websocket_connected"}
+{"level":"info","time":"2026-01-10T19:01:19.034Z","pid":25500,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768071679024-s5wson","requestId":"test-req-123","msg":"websocket_subscribed"}
+{"level":"info","time":"2026-01-10T19:01:19.036Z","pid":25500,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768071679005-sz067l","msg":"websocket_disconnected"}
+{"level":"info","time":"2026-01-10T19:01:19.141Z","pid":25500,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768071679141-e7oz8g","msg":"websocket_connected"}
+{"level":"info","time":"2026-01-10T19:01:19.143Z","pid":25500,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768071679024-s5wson","msg":"websocket_disconnected"}
+{"level":"info","time":"2026-01-10T19:01:19.144Z","pid":25500,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768071679141-e7oz8g","requestId":"test-req-456","msg":"websocket_subscribed"}
+{"level":"info","time":"2026-01-10T19:01:19.372Z","pid":25500,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768071679372-047k37","msg":"websocket_connected"}
+{"level":"info","time":"2026-01-10T19:01:19.374Z","pid":25500,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768071679141-e7oz8g","msg":"websocket_disconnected"}
+{"level":"info","time":"2026-01-10T19:01:19.375Z","pid":25500,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768071679372-047k37","requestId":"test-req-789","msg":"websocket_subscribed"}
+{"level":"info","time":"2026-01-10T19:01:19.490Z","pid":25500,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768071679372-047k37","msg":"websocket_disconnected"}
+{"level":"info","time":"2026-01-10T19:01:20.041Z","pid":25500,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768071680041-9b1y6t","msg":"websocket_connected"}
+{"level":"warn","time":"2026-01-10T19:01:20.055Z","pid":25500,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768071680041-9b1y6t","messageType":"invalid_type","msg":"Invalid WebSocket message format"}
+{"level":"info","time":"2026-01-10T19:01:20.158Z","pid":25500,"hostname":"il-dev-win-lt-shahar-pot","closedConnections":1,"msg":"WebSocketManager shutdown"}
+{"level":"info","time":"2026-01-10T19:01:20.167Z","pid":25500,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768071680041-9b1y6t","msg":"websocket_disconnected"}
+{"level":"warn","time":"2026-01-10T19:01:47.185Z","pid":31308,"hostname":"il-dev-win-lt-shahar-pot","neededCount":3,"targetCity":"Tel Aviv","msg":"[CityFilterService] Fallback triggered - adding nearby results"}
+{"level":"info","time":"2026-01-10T19:28:09.571Z","pid":27780,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T19:28:09.594Z","pid":27780,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T19:28:09.598Z","pid":27780,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T19:28:09.602Z","pid":27780,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T19:28:09.609Z","pid":27780,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T19:28:09.794Z","pid":27780,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T19:28:09.798Z","pid":27780,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T19:28:09.824Z","pid":27780,"hostname":"il-dev-win-lt-shahar-pot","path":"/ws","heartbeatMs":30000,"msg":"WebSocketManager initialized"}
+{"level":"info","time":"2026-01-10T19:28:09.831Z","pid":27780,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T19:28:22.077Z","pid":18312,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T19:28:22.095Z","pid":18312,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T19:28:22.098Z","pid":18312,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T19:28:22.101Z","pid":18312,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T19:28:22.105Z","pid":18312,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T19:28:22.217Z","pid":18312,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T19:28:22.219Z","pid":18312,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T19:28:22.236Z","pid":18312,"hostname":"il-dev-win-lt-shahar-pot","path":"/ws","heartbeatMs":30000,"msg":"WebSocketManager initialized"}
+{"level":"info","time":"2026-01-10T19:28:22.239Z","pid":18312,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T19:28:41.312Z","pid":5228,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T19:28:41.325Z","pid":5228,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T19:28:41.326Z","pid":5228,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T19:28:41.328Z","pid":5228,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T19:28:41.332Z","pid":5228,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T19:28:41.418Z","pid":5228,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T19:28:41.421Z","pid":5228,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T19:28:41.434Z","pid":5228,"hostname":"il-dev-win-lt-shahar-pot","path":"/ws","heartbeatMs":30000,"msg":"WebSocketManager initialized"}
+{"level":"info","time":"2026-01-10T19:28:41.437Z","pid":5228,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T19:29:18.555Z","pid":22932,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T19:29:18.564Z","pid":22932,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T19:29:18.565Z","pid":22932,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T19:29:18.566Z","pid":22932,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T19:29:18.568Z","pid":22932,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T19:29:18.634Z","pid":22932,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T19:29:18.637Z","pid":22932,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T19:29:18.646Z","pid":22932,"hostname":"il-dev-win-lt-shahar-pot","path":"/ws","heartbeatMs":30000,"msg":"WebSocketManager initialized"}
+{"level":"info","time":"2026-01-10T19:29:18.648Z","pid":22932,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T19:30:45.902Z","pid":26176,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T19:30:45.918Z","pid":26176,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T19:30:45.920Z","pid":26176,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T19:30:45.922Z","pid":26176,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T19:30:45.927Z","pid":26176,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T19:30:46.091Z","pid":26176,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T19:30:46.097Z","pid":26176,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T19:30:46.120Z","pid":26176,"hostname":"il-dev-win-lt-shahar-pot","path":"/ws","heartbeatMs":30000,"allowedOrigins":["*"],"hasStateStore":false,"msg":"WebSocketManager initialized"}
+{"level":"info","time":"2026-01-10T19:30:46.127Z","pid":26176,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T19:31:11.227Z","pid":28308,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T19:31:11.258Z","pid":28308,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T19:31:11.261Z","pid":28308,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T19:31:11.262Z","pid":28308,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T19:31:11.276Z","pid":28308,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T19:31:11.447Z","pid":28308,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T19:31:11.451Z","pid":28308,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T19:31:11.475Z","pid":28308,"hostname":"il-dev-win-lt-shahar-pot","path":"/ws","heartbeatMs":30000,"allowedOrigins":["*"],"hasStateStore":false,"msg":"WebSocketManager initialized"}
+{"level":"info","time":"2026-01-10T19:31:11.480Z","pid":28308,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T19:31:25.039Z","pid":28000,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T19:31:25.053Z","pid":28000,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T19:31:25.056Z","pid":28000,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T19:31:25.058Z","pid":28000,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T19:31:25.061Z","pid":28000,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T19:31:25.196Z","pid":28000,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T19:31:25.200Z","pid":28000,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T19:31:25.217Z","pid":28000,"hostname":"il-dev-win-lt-shahar-pot","path":"/ws","heartbeatMs":30000,"allowedOrigins":["*"],"hasStateStore":true,"msg":"WebSocketManager initialized"}
+{"level":"info","time":"2026-01-10T19:31:25.224Z","pid":28000,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T19:31:48.818Z","pid":29360,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T19:31:48.849Z","pid":29360,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T19:31:48.852Z","pid":29360,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T19:31:48.855Z","pid":29360,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T19:31:48.860Z","pid":29360,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T19:31:49.063Z","pid":29360,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T19:31:49.069Z","pid":29360,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T19:31:49.097Z","pid":29360,"hostname":"il-dev-win-lt-shahar-pot","path":"/ws","heartbeatMs":30000,"allowedOrigins":["*"],"hasStateStore":true,"msg":"WebSocketManager initialized"}
+{"level":"info","time":"2026-01-10T19:31:49.102Z","pid":29360,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T19:31:57.711Z","pid":22404,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T19:31:57.724Z","pid":22404,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T19:31:57.726Z","pid":22404,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T19:31:57.726Z","pid":22404,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T19:31:57.728Z","pid":22404,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T19:31:57.819Z","pid":22404,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T19:31:57.822Z","pid":22404,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T19:31:57.838Z","pid":22404,"hostname":"il-dev-win-lt-shahar-pot","path":"/ws","heartbeatMs":30000,"allowedOrigins":["*"],"hasStateStore":true,"msg":"WebSocketManager initialized"}
+{"level":"info","time":"2026-01-10T19:31:57.842Z","pid":22404,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T19:32:08.584Z","pid":15556,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T19:32:08.597Z","pid":15556,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T19:32:08.599Z","pid":15556,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T19:32:08.600Z","pid":15556,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T19:32:08.603Z","pid":15556,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T19:32:08.696Z","pid":15556,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T19:32:08.699Z","pid":15556,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T19:32:08.720Z","pid":15556,"hostname":"il-dev-win-lt-shahar-pot","path":"/ws","heartbeatMs":30000,"allowedOrigins":["*"],"hasStateStore":true,"msg":"WebSocketManager initialized"}
+{"level":"info","time":"2026-01-10T19:32:08.724Z","pid":15556,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T19:33:12.288Z","pid":28284,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T19:33:12.297Z","pid":28284,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T19:33:12.300Z","pid":28284,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T19:33:12.301Z","pid":28284,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T19:33:12.302Z","pid":28284,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T19:33:12.383Z","pid":28284,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T19:33:12.385Z","pid":28284,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T19:33:12.396Z","pid":28284,"hostname":"il-dev-win-lt-shahar-pot","path":"/ws","heartbeatMs":30000,"allowedOrigins":["*"],"hasStateStore":true,"msg":"WebSocketManager initialized"}
+{"level":"info","time":"2026-01-10T19:33:12.401Z","pid":28284,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T19:33:24.310Z","pid":12508,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T19:33:24.329Z","pid":12508,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T19:33:24.334Z","pid":12508,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T19:33:24.335Z","pid":12508,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T19:33:24.339Z","pid":12508,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T19:33:24.547Z","pid":12508,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T19:33:24.553Z","pid":12508,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T19:33:24.581Z","pid":12508,"hostname":"il-dev-win-lt-shahar-pot","path":"/ws","heartbeatMs":30000,"allowedOrigins":["*"],"hasStateStore":true,"msg":"WebSocketManager initialized"}
+{"level":"info","time":"2026-01-10T19:33:24.586Z","pid":12508,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T19:34:10.285Z","pid":31784,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T19:34:10.345Z","pid":31784,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T19:34:10.349Z","pid":31784,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T19:34:10.350Z","pid":31784,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T19:34:10.354Z","pid":31784,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T19:34:10.698Z","pid":31784,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T19:34:10.704Z","pid":31784,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T19:34:10.735Z","pid":31784,"hostname":"il-dev-win-lt-shahar-pot","path":"/ws","heartbeatMs":30000,"allowedOrigins":["*"],"hasStateStore":true,"msg":"WebSocketManager initialized"}
+{"level":"info","time":"2026-01-10T19:34:10.742Z","pid":31784,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T19:34:48.762Z","pid":13844,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T19:34:48.783Z","pid":13844,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T19:34:48.790Z","pid":13844,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T19:34:48.795Z","pid":13844,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T19:34:48.801Z","pid":13844,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T19:34:49.012Z","pid":13844,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T19:34:49.016Z","pid":13844,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T19:34:49.035Z","pid":13844,"hostname":"il-dev-win-lt-shahar-pot","path":"/ws","heartbeatMs":30000,"allowedOrigins":["*"],"hasStateStore":true,"msg":"WebSocketManager initialized"}
+{"level":"info","time":"2026-01-10T19:34:49.038Z","pid":13844,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T19:35:26.502Z","pid":24776,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T19:35:26.525Z","pid":24776,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T19:35:26.531Z","pid":24776,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T19:35:26.532Z","pid":24776,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T19:35:26.545Z","pid":24776,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T19:35:26.724Z","pid":24776,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T19:35:26.732Z","pid":24776,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T19:35:26.759Z","pid":24776,"hostname":"il-dev-win-lt-shahar-pot","path":"/ws","heartbeatMs":30000,"allowedOrigins":["*"],"hasStateStore":true,"msg":"WebSocketManager initialized"}
+{"level":"info","time":"2026-01-10T19:35:26.764Z","pid":24776,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T19:37:48.389Z","pid":31072,"hostname":"il-dev-win-lt-shahar-pot","path":"/ws","heartbeatMs":60000,"allowedOrigins":["*"],"hasStateStore":false,"msg":"WebSocketManager initialized"}
+{"level":"info","time":"2026-01-10T19:37:48.521Z","pid":31072,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768073868521-z99hfu","msg":"websocket_connected"}
+{"level":"info","time":"2026-01-10T19:37:48.540Z","pid":31072,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768073868521-z99hfu","requestId":"cleanup-test-req-123","msg":"websocket_subscribed"}
+{"level":"info","time":"2026-01-10T19:37:48.766Z","pid":31072,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768073868521-z99hfu","msg":"websocket_disconnected"}
+{"level":"info","time":"2026-01-10T19:37:49.281Z","pid":31072,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768073869280-c86mkf","msg":"websocket_connected"}
+{"level":"info","time":"2026-01-10T19:37:49.285Z","pid":31072,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768073869285-ti8vtb","msg":"websocket_connected"}
+{"level":"info","time":"2026-01-10T19:37:49.290Z","pid":31072,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768073869285-ti8vtb","requestId":"multi-req-1","msg":"websocket_subscribed"}
+{"level":"info","time":"2026-01-10T19:37:49.292Z","pid":31072,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768073869280-c86mkf","requestId":"multi-req-2","msg":"websocket_subscribed"}
+{"level":"info","time":"2026-01-10T19:37:49.505Z","pid":31072,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768073869280-c86mkf","msg":"websocket_disconnected"}
+{"level":"info","time":"2026-01-10T19:37:49.506Z","pid":31072,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768073869285-ti8vtb","msg":"websocket_disconnected"}
+{"level":"info","time":"2026-01-10T19:37:50.021Z","pid":31072,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768073870021-gu92d3","msg":"websocket_connected"}
+{"level":"info","time":"2026-01-10T19:37:50.024Z","pid":31072,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768073870021-gu92d3","requestId":"multi-sub-1","msg":"websocket_subscribed"}
+{"level":"info","time":"2026-01-10T19:37:50.025Z","pid":31072,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768073870021-gu92d3","requestId":"multi-sub-2","msg":"websocket_subscribed"}
+{"level":"info","time":"2026-01-10T19:37:50.026Z","pid":31072,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768073870021-gu92d3","requestId":"multi-sub-3","msg":"websocket_subscribed"}
+{"level":"info","time":"2026-01-10T19:37:50.233Z","pid":31072,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768073870021-gu92d3","msg":"websocket_disconnected"}
+{"level":"info","time":"2026-01-10T19:37:50.731Z","pid":31072,"hostname":"il-dev-win-lt-shahar-pot","closedConnections":0,"msg":"WebSocketManager shutdown"}
+{"level":"info","time":"2026-01-10T19:38:12.943Z","pid":31440,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","msg":"assistant_job_started"}
+{"level":"error","time":"2026-01-10T19:38:12.964Z","pid":31440,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","error":"Cannot read properties of undefined (reading 'language')","assistantMs":24,"msg":"assistant_job_failed"}
+{"level":"warn","time":"2026-01-10T19:38:12.987Z","pid":31440,"hostname":"il-dev-win-lt-shahar-pot","requestId":"non-existent-req","msg":"assistant_job_skipped: state not found"}
+{"level":"info","time":"2026-01-10T19:38:12.990Z","pid":31440,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","msg":"assistant_job_started"}
+{"level":"error","time":"2026-01-10T19:38:12.992Z","pid":31440,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","error":"Cannot read properties of undefined (reading 'language')","assistantMs":2,"msg":"assistant_job_failed"}
+{"level":"info","time":"2026-01-10T19:38:13.006Z","pid":31440,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","msg":"assistant_job_started"}
+{"level":"error","time":"2026-01-10T19:38:13.008Z","pid":31440,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","error":"Cannot read properties of undefined (reading 'language')","assistantMs":2,"msg":"assistant_job_failed"}
+{"level":"info","time":"2026-01-10T19:38:13.017Z","pid":31440,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-error","msg":"assistant_job_started"}
+{"level":"error","time":"2026-01-10T19:38:13.020Z","pid":31440,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-error","error":"Cannot read properties of undefined (reading 'language')","assistantMs":4,"msg":"assistant_job_failed"}
+{"level":"info","time":"2026-01-10T19:38:13.023Z","pid":31440,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-fallback","msg":"assistant_job_started"}
+{"level":"info","time":"2026-01-10T19:38:13.026Z","pid":31440,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-fallback","assistantMs":3,"recommendationCount":3,"msg":"assistant_job_completed"}
+{"level":"info","time":"2026-01-10T19:38:37.034Z","pid":12064,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T19:38:37.053Z","pid":12064,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T19:38:37.055Z","pid":12064,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T19:38:37.056Z","pid":12064,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T19:38:37.059Z","pid":12064,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T19:38:37.158Z","pid":12064,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T19:38:37.163Z","pid":12064,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T19:38:37.186Z","pid":12064,"hostname":"il-dev-win-lt-shahar-pot","path":"/ws","heartbeatMs":30000,"allowedOrigins":["*"],"hasStateStore":true,"msg":"WebSocketManager initialized"}
+{"level":"info","time":"2026-01-10T19:38:37.189Z","pid":12064,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T19:38:41.588Z","pid":3424,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T19:38:41.602Z","pid":3424,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T19:38:41.604Z","pid":3424,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T19:38:41.605Z","pid":3424,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T19:38:41.608Z","pid":3424,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T19:38:41.688Z","pid":3424,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T19:38:41.690Z","pid":3424,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T19:38:41.703Z","pid":3424,"hostname":"il-dev-win-lt-shahar-pot","path":"/ws","heartbeatMs":30000,"allowedOrigins":["*"],"hasStateStore":true,"msg":"WebSocketManager initialized"}
+{"level":"info","time":"2026-01-10T19:38:41.705Z","pid":3424,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T19:38:49.523Z","pid":32276,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T19:38:49.540Z","pid":32276,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T19:38:49.544Z","pid":32276,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T19:38:49.545Z","pid":32276,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T19:38:49.550Z","pid":32276,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T19:38:49.684Z","pid":32276,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T19:38:49.688Z","pid":32276,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T19:38:49.710Z","pid":32276,"hostname":"il-dev-win-lt-shahar-pot","path":"/ws","heartbeatMs":30000,"allowedOrigins":["*"],"hasStateStore":true,"msg":"WebSocketManager initialized"}
+{"level":"info","time":"2026-01-10T19:38:49.717Z","pid":32276,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T19:38:55.511Z","pid":27688,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","msg":"assistant_job_started"}
+{"level":"error","time":"2026-01-10T19:38:55.521Z","pid":27688,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","error":"Cannot read properties of undefined (reading 'language')","assistantMs":11,"msg":"assistant_job_failed"}
+{"level":"warn","time":"2026-01-10T19:38:55.531Z","pid":27688,"hostname":"il-dev-win-lt-shahar-pot","requestId":"non-existent-req","msg":"assistant_job_skipped: state not found"}
+{"level":"info","time":"2026-01-10T19:38:55.533Z","pid":27688,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","msg":"assistant_job_started"}
+{"level":"error","time":"2026-01-10T19:38:55.533Z","pid":27688,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","error":"Cannot read properties of undefined (reading 'language')","assistantMs":0,"msg":"assistant_job_failed"}
+{"level":"info","time":"2026-01-10T19:38:55.537Z","pid":27688,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","msg":"assistant_job_started"}
+{"level":"error","time":"2026-01-10T19:38:55.538Z","pid":27688,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","error":"Cannot read properties of undefined (reading 'language')","assistantMs":1,"msg":"assistant_job_failed"}
+{"level":"info","time":"2026-01-10T19:38:55.541Z","pid":27688,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-error","msg":"assistant_job_started"}
+{"level":"error","time":"2026-01-10T19:38:55.541Z","pid":27688,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-error","error":"Cannot read properties of undefined (reading 'language')","assistantMs":1,"msg":"assistant_job_failed"}
+{"level":"info","time":"2026-01-10T19:38:55.543Z","pid":27688,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-fallback","msg":"assistant_job_started"}
+{"level":"info","time":"2026-01-10T19:38:55.547Z","pid":27688,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-fallback","assistantMs":4,"recommendationCount":3,"msg":"assistant_job_completed"}
+{"level":"info","time":"2026-01-10T19:39:11.235Z","pid":32532,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","msg":"assistant_job_started"}
+{"level":"error","time":"2026-01-10T19:39:11.244Z","pid":32532,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","error":"Cannot read properties of undefined (reading 'language')","assistantMs":9,"msg":"assistant_job_failed"}
+{"level":"warn","time":"2026-01-10T19:39:11.253Z","pid":32532,"hostname":"il-dev-win-lt-shahar-pot","requestId":"non-existent-req","msg":"assistant_job_skipped: state not found"}
+{"level":"info","time":"2026-01-10T19:39:11.255Z","pid":32532,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","msg":"assistant_job_started"}
+{"level":"error","time":"2026-01-10T19:39:11.255Z","pid":32532,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","error":"Cannot read properties of undefined (reading 'language')","assistantMs":1,"msg":"assistant_job_failed"}
+{"level":"info","time":"2026-01-10T19:39:11.259Z","pid":32532,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","msg":"assistant_job_started"}
+{"level":"error","time":"2026-01-10T19:39:11.260Z","pid":32532,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","error":"Cannot read properties of undefined (reading 'language')","assistantMs":1,"msg":"assistant_job_failed"}
+{"level":"info","time":"2026-01-10T19:39:11.265Z","pid":32532,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-error","msg":"assistant_job_started"}
+{"level":"error","time":"2026-01-10T19:39:11.266Z","pid":32532,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-error","error":"Cannot read properties of undefined (reading 'language')","assistantMs":1,"msg":"assistant_job_failed"}
+{"level":"info","time":"2026-01-10T19:39:11.267Z","pid":32532,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-fallback","msg":"assistant_job_started"}
+{"level":"info","time":"2026-01-10T19:39:11.269Z","pid":32532,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-fallback","assistantMs":2,"recommendationCount":3,"msg":"assistant_job_completed"}
+{"level":"info","time":"2026-01-10T19:39:41.065Z","pid":24892,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","msg":"assistant_job_started"}
+{"level":"error","time":"2026-01-10T19:39:41.073Z","pid":24892,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","error":"Cannot read properties of undefined (reading 'language')","assistantMs":9,"msg":"assistant_job_failed"}
+{"level":"warn","time":"2026-01-10T19:39:41.084Z","pid":24892,"hostname":"il-dev-win-lt-shahar-pot","requestId":"non-existent-req","msg":"assistant_job_skipped: state not found"}
+{"level":"info","time":"2026-01-10T19:39:41.085Z","pid":24892,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","msg":"assistant_job_started"}
+{"level":"error","time":"2026-01-10T19:39:41.086Z","pid":24892,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","error":"Cannot read properties of undefined (reading 'language')","assistantMs":1,"msg":"assistant_job_failed"}
+{"level":"info","time":"2026-01-10T19:39:41.090Z","pid":24892,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","msg":"assistant_job_started"}
+{"level":"error","time":"2026-01-10T19:39:41.091Z","pid":24892,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","error":"Cannot read properties of undefined (reading 'language')","assistantMs":3,"msg":"assistant_job_failed"}
+{"level":"info","time":"2026-01-10T19:39:41.097Z","pid":24892,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-error","msg":"assistant_job_started"}
+{"level":"error","time":"2026-01-10T19:39:41.098Z","pid":24892,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-error","error":"Cannot read properties of undefined (reading 'language')","assistantMs":1,"msg":"assistant_job_failed"}
+{"level":"info","time":"2026-01-10T19:39:41.099Z","pid":24892,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-fallback","msg":"assistant_job_started"}
+{"level":"info","time":"2026-01-10T19:39:41.101Z","pid":24892,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-fallback","assistantMs":2,"recommendationCount":3,"msg":"assistant_job_completed"}
+{"level":"info","time":"2026-01-10T19:39:57.679Z","pid":14200,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","msg":"assistant_job_started"}
+{"level":"error","time":"2026-01-10T19:39:57.687Z","pid":14200,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","error":"Cannot read properties of undefined (reading 'language')","assistantMs":9,"msg":"assistant_job_failed"}
+{"level":"warn","time":"2026-01-10T19:39:57.696Z","pid":14200,"hostname":"il-dev-win-lt-shahar-pot","requestId":"non-existent-req","msg":"assistant_job_skipped: state not found"}
+{"level":"info","time":"2026-01-10T19:39:57.697Z","pid":14200,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","msg":"assistant_job_started"}
+{"level":"error","time":"2026-01-10T19:39:57.698Z","pid":14200,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","error":"Cannot read properties of undefined (reading 'language')","assistantMs":1,"msg":"assistant_job_failed"}
+{"level":"info","time":"2026-01-10T19:39:57.701Z","pid":14200,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","msg":"assistant_job_started"}
+{"level":"error","time":"2026-01-10T19:39:57.702Z","pid":14200,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","error":"Cannot read properties of undefined (reading 'language')","assistantMs":1,"msg":"assistant_job_failed"}
+{"level":"info","time":"2026-01-10T19:39:57.705Z","pid":14200,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-error","msg":"assistant_job_started"}
+{"level":"error","time":"2026-01-10T19:39:57.705Z","pid":14200,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-error","error":"Cannot read properties of undefined (reading 'language')","assistantMs":0,"msg":"assistant_job_failed"}
+{"level":"info","time":"2026-01-10T19:39:57.707Z","pid":14200,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-fallback","msg":"assistant_job_started"}
+{"level":"info","time":"2026-01-10T19:39:57.710Z","pid":14200,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-fallback","assistantMs":3,"recommendationCount":3,"msg":"assistant_job_completed"}
+{"level":"info","time":"2026-01-10T19:40:25.353Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T19:40:25.374Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T19:40:25.380Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T19:40:25.382Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T19:40:25.386Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T19:40:25.580Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T19:40:25.584Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T19:40:25.614Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","path":"/ws","heartbeatMs":30000,"allowedOrigins":["*"],"hasStateStore":true,"msg":"WebSocketManager initialized"}
+{"level":"info","time":"2026-01-10T19:40:25.618Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T19:40:33.401Z","pid":28568,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","msg":"assistant_job_started"}
+{"level":"info","time":"2026-01-10T19:40:33.478Z","pid":28568,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","assistantMs":78,"recommendationCount":3,"msg":"assistant_job_completed"}
+{"level":"warn","time":"2026-01-10T19:40:33.486Z","pid":28568,"hostname":"il-dev-win-lt-shahar-pot","requestId":"non-existent-req","msg":"assistant_job_skipped: state not found"}
+{"level":"info","time":"2026-01-10T19:40:33.488Z","pid":28568,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","msg":"assistant_job_started"}
+{"level":"info","time":"2026-01-10T19:40:33.552Z","pid":28568,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","assistantMs":64,"recommendationCount":3,"msg":"assistant_job_completed"}
+{"level":"info","time":"2026-01-10T19:40:33.555Z","pid":28568,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","msg":"assistant_job_started"}
+{"level":"info","time":"2026-01-10T19:40:33.629Z","pid":28568,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","assistantMs":73,"recommendationCount":3,"msg":"assistant_job_completed"}
+{"level":"info","time":"2026-01-10T19:40:33.635Z","pid":28568,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-error","msg":"assistant_job_started"}
+{"level":"error","time":"2026-01-10T19:40:33.636Z","pid":28568,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-error","error":"LLM service unavailable","assistantMs":2,"msg":"assistant_job_failed"}
+{"level":"info","time":"2026-01-10T19:40:33.639Z","pid":28568,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-fallback","msg":"assistant_job_started"}
+{"level":"info","time":"2026-01-10T19:40:33.642Z","pid":28568,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-fallback","assistantMs":3,"recommendationCount":3,"msg":"assistant_job_completed"}
+{"level":"info","time":"2026-01-10T19:41:14.635Z","pid":14688,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T19:41:14.647Z","pid":14688,"hostname":"il-dev-win-lt-shahar-pot","path":"/ws","heartbeatMs":60000,"allowedOrigins":["*"],"hasStateStore":true,"msg":"WebSocketManager initialized"}
+{"level":"info","time":"2026-01-10T19:41:14.713Z","pid":14688,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768074074713-m137gp","msg":"websocket_connected"}
+{"level":"info","time":"2026-01-10T19:41:14.728Z","pid":14688,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768074074713-m137gp","requestId":"replay-test-req-123","msg":"websocket_subscribed"}
+{"level":"info","time":"2026-01-10T19:41:14.730Z","pid":14688,"hostname":"il-dev-win-lt-shahar-pot","requestId":"replay-test-req-123","clientId":"ws-1768074074713-m137gp","hasOutput":true,"hasRecommendations":true,"msg":"websocket_replay_sent"}
+{"level":"info","time":"2026-01-10T19:41:15.246Z","pid":14688,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768074075246-kv7ids","msg":"websocket_connected"}
+{"level":"info","time":"2026-01-10T19:41:15.251Z","pid":14688,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768074074713-m137gp","msg":"websocket_disconnected"}
+{"level":"info","time":"2026-01-10T19:41:15.252Z","pid":14688,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768074075246-kv7ids","requestId":"replay-test-no-state","msg":"websocket_subscribed"}
+{"level":"info","time":"2026-01-10T19:41:15.565Z","pid":14688,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768074075564-ze0z9s","msg":"websocket_connected"}
+{"level":"info","time":"2026-01-10T19:41:15.566Z","pid":14688,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768074075246-kv7ids","msg":"websocket_disconnected"}
+{"level":"info","time":"2026-01-10T19:41:15.568Z","pid":14688,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768074075564-ze0z9s","requestId":"replay-test-pending","msg":"websocket_subscribed"}
+{"level":"info","time":"2026-01-10T19:41:15.570Z","pid":14688,"hostname":"il-dev-win-lt-shahar-pot","requestId":"replay-test-pending","clientId":"ws-1768074075564-ze0z9s","hasOutput":false,"hasRecommendations":false,"msg":"websocket_replay_sent"}
+{"level":"info","time":"2026-01-10T19:41:15.876Z","pid":14688,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768074075876-h9a0k1","msg":"websocket_connected"}
+{"level":"info","time":"2026-01-10T19:41:15.878Z","pid":14688,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768074075564-ze0z9s","msg":"websocket_disconnected"}
+{"level":"info","time":"2026-01-10T19:41:15.879Z","pid":14688,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768074075876-h9a0k1","requestId":"replay-test-streaming","msg":"websocket_subscribed"}
+{"level":"info","time":"2026-01-10T19:41:15.879Z","pid":14688,"hostname":"il-dev-win-lt-shahar-pot","requestId":"replay-test-streaming","clientId":"ws-1768074075876-h9a0k1","hasOutput":true,"hasRecommendations":false,"msg":"websocket_replay_sent"}
+{"level":"info","time":"2026-01-10T19:41:16.180Z","pid":14688,"hostname":"il-dev-win-lt-shahar-pot","clearedEntries":3,"msg":"InMemoryRequestStore shutdown"}
+{"level":"info","time":"2026-01-10T19:41:16.181Z","pid":14688,"hostname":"il-dev-win-lt-shahar-pot","closedConnections":1,"msg":"WebSocketManager shutdown"}
+{"level":"info","time":"2026-01-10T19:41:16.185Z","pid":14688,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768074075876-h9a0k1","msg":"websocket_disconnected"}
+{"level":"warn","time":"2026-01-10T19:41:40.151Z","pid":24984,"hostname":"il-dev-win-lt-shahar-pot","neededCount":3,"targetCity":"Tel Aviv","msg":"[CityFilterService] Fallback triggered - adding nearby results"}
+{"level":"info","time":"2026-01-10T19:41:40.214Z","pid":26328,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T19:41:40.248Z","pid":26328,"hostname":"il-dev-win-lt-shahar-pot","clearedEntries":1,"msg":"InMemoryRequestStore shutdown"}
+{"level":"info","time":"2026-01-10T19:41:40.256Z","pid":26328,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T19:41:40.260Z","pid":26328,"hostname":"il-dev-win-lt-shahar-pot","clearedEntries":0,"msg":"InMemoryRequestStore shutdown"}
+{"level":"info","time":"2026-01-10T19:41:40.262Z","pid":26328,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T19:41:41.410Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","query":"pizza","msg":"search_started"}
+{"level":"info","time":"2026-01-10T19:41:41.429Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","query":"pizza","hasUserLocation":false,"msg":"search_started"}
+{"level":"info","time":"2026-01-10T19:41:41.433Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","confidence":"0.85","language":"en","durationMs":0,"msg":"[SearchOrchestrator] Intent parsed"}
+{"level":"warn","time":"2026-01-10T19:41:41.437Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","msg":"[SearchOrchestrator] No location found, using fallback"}
+{"level":"info","time":"2026-01-10T19:41:41.439Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","displayName":"Tel Aviv","durationMs":2,"msg":"[SearchOrchestrator] Location resolved"}
+{"level":"warn","time":"2026-01-10T19:41:41.441Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","queryForGoogle":"test","msg":"[SearchOrchestrator] Fallback to composed query"}
+{"level":"info","time":"2026-01-10T19:41:41.442Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","traceId":"test-trace","query":"test","language":"en","region":null,"requestLanguage":"en","useOriginalLanguage":false,"msg":"Google Places API parameters"}
+{"level":"info","time":"2026-01-10T19:41:41.442Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","targetCity":"none","radius":"default","googleQuery":"test","language":"en","region":"none","msg":"[SearchOrchestrator] Search parameters"}
+{"level":"info","time":"2026-01-10T19:41:41.446Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","rawResultsCount":0,"durationMs":0,"msg":"[SearchOrchestrator] Raw results fetched"}
+{"level":"info","time":"2026-01-10T19:41:41.447Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","traceId":"test-trace","candidatePoolSize":30,"googleResultsCount":0,"msg":"Fetched candidate pool"}
+{"level":"info","time":"2026-01-10T19:41:41.448Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","open":0,"closed":0,"unknown":0,"msg":"[SearchOrchestrator] Opening hours summary"}
+{"level":"info","time":"2026-01-10T19:41:41.450Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","kept":0,"dropped":0,"durationMs":1,"msg":"[SearchOrchestrator] City filter applied"}
+{"level":"info","time":"2026-01-10T19:41:41.451Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","durationMs":2,"msg":"[SearchOrchestrator] Results ranked"}
+{"level":"info","time":"2026-01-10T19:41:41.452Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","traceId":"test-trace","scoredCandidatesCount":0,"displaySize":0,"msg":"Ranked and filtered candidates"}
+{"level":"info","time":"2026-01-10T19:41:41.454Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","finalCount":0,"strongCount":0,"weakCount":0,"totalRanked":0,"msg":"[SearchOrchestrator] Final result count"}
+{"level":"info","time":"2026-01-10T19:41:41.457Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","traceId":"test-trace","intentConf":0.85,"resultsQuality":0,"combinedConf":0.51,"level":"low","msg":"Calculated combined confidence"}
+{"level":"info","time":"2026-01-10T19:41:41.461Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","strategy":"LLM","durationMs":2,"msg":"[SearchOrchestrator] Assistant response generated"}
+{"level":"info","time":"2026-01-10T19:41:41.463Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","timings":{"intentMs":0,"geocodeMs":2,"providerMs":0,"rankingMs":2,"assistantMs":2,"totalMs":34},"failureReason":"NO_RESULTS","mode":"RECOVERY","resultCount":0,"usedLLMIntent":true,"usedLLMAssistant":true,"msg":"Search completed successfully"}
+{"level":"info","time":"2026-01-10T19:41:41.464Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","tookMs":34,"msg":"[SearchOrchestrator] Search complete"}
+{"level":"info","time":"2026-01-10T19:41:41.464Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-req-123","coreMs":55,"resultCount":0,"mode":"textsearch","msg":"search_core_completed"}
+{"level":"info","time":"2026-01-10T19:41:41.467Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-123","query":"test","msg":"search_started"}
+{"level":"info","time":"2026-01-10T19:41:41.467Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-123","query":"test","hasUserLocation":false,"msg":"search_started"}
+{"level":"info","time":"2026-01-10T19:41:41.468Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","confidence":"0.80","language":"en","durationMs":0,"msg":"[SearchOrchestrator] Intent parsed"}
+{"level":"warn","time":"2026-01-10T19:41:41.470Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","msg":"[SearchOrchestrator] No location found, using fallback"}
+{"level":"info","time":"2026-01-10T19:41:41.472Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","displayName":"test","durationMs":1,"msg":"[SearchOrchestrator] Location resolved"}
+{"level":"warn","time":"2026-01-10T19:41:41.473Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","queryForGoogle":"test","msg":"[SearchOrchestrator] Fallback to composed query"}
+{"level":"info","time":"2026-01-10T19:41:41.473Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","query":"test","language":"en","region":null,"requestLanguage":"en","useOriginalLanguage":false,"msg":"Google Places API parameters"}
+{"level":"info","time":"2026-01-10T19:41:41.474Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","targetCity":"none","radius":"default","googleQuery":"test","language":"en","region":"none","msg":"[SearchOrchestrator] Search parameters"}
+{"level":"info","time":"2026-01-10T19:41:41.477Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","rawResultsCount":0,"durationMs":0,"msg":"[SearchOrchestrator] Raw results fetched"}
+{"level":"info","time":"2026-01-10T19:41:41.478Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","candidatePoolSize":30,"googleResultsCount":0,"msg":"Fetched candidate pool"}
+{"level":"info","time":"2026-01-10T19:41:41.478Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","open":0,"closed":0,"unknown":0,"msg":"[SearchOrchestrator] Opening hours summary"}
+{"level":"info","time":"2026-01-10T19:41:41.478Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","kept":0,"dropped":0,"durationMs":0,"msg":"[SearchOrchestrator] City filter applied"}
+{"level":"info","time":"2026-01-10T19:41:41.479Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","durationMs":1,"msg":"[SearchOrchestrator] Results ranked"}
+{"level":"info","time":"2026-01-10T19:41:41.479Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","scoredCandidatesCount":0,"displaySize":0,"msg":"Ranked and filtered candidates"}
+{"level":"info","time":"2026-01-10T19:41:41.479Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","finalCount":0,"strongCount":0,"weakCount":0,"totalRanked":0,"msg":"[SearchOrchestrator] Final result count"}
+{"level":"info","time":"2026-01-10T19:41:41.480Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","intentConf":0.8,"resultsQuality":0,"combinedConf":0.48,"level":"low","msg":"Calculated combined confidence"}
+{"level":"info","time":"2026-01-10T19:41:41.481Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","strategy":"LLM","durationMs":1,"msg":"[SearchOrchestrator] Assistant response generated"}
+{"level":"info","time":"2026-01-10T19:41:41.481Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-123","timings":{"intentMs":0,"geocodeMs":1,"providerMs":0,"rankingMs":1,"assistantMs":1,"totalMs":14},"failureReason":"NO_RESULTS","mode":"RECOVERY","resultCount":0,"usedLLMIntent":true,"usedLLMAssistant":true,"msg":"Search completed successfully"}
+{"level":"info","time":"2026-01-10T19:41:41.482Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","tookMs":14,"msg":"[SearchOrchestrator] Search complete"}
+{"level":"info","time":"2026-01-10T19:41:41.499Z","pid":17828,"hostname":"il-dev-win-lt-shahar-pot","requestId":"test-123","coreMs":32,"resultCount":0,"mode":"textsearch","msg":"search_core_completed"}
+{"level":"info","time":"2026-01-10T19:41:41.776Z","pid":26328,"hostname":"il-dev-win-lt-shahar-pot","clearedEntries":0,"msg":"InMemoryRequestStore shutdown"}
+{"level":"info","time":"2026-01-10T19:41:41.778Z","pid":26328,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T19:41:41.886Z","pid":26328,"hostname":"il-dev-win-lt-shahar-pot","clearedEntries":1,"msg":"InMemoryRequestStore shutdown"}
+{"level":"info","time":"2026-01-10T19:41:41.892Z","pid":26328,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T19:41:41.894Z","pid":26328,"hostname":"il-dev-win-lt-shahar-pot","clearedEntries":1,"msg":"InMemoryRequestStore shutdown"}
+{"level":"info","time":"2026-01-10T19:41:41.895Z","pid":26328,"hostname":"il-dev-win-lt-shahar-pot","clearedEntries":0,"msg":"InMemoryRequestStore shutdown"}
+{"level":"info","time":"2026-01-10T19:41:41.897Z","pid":26328,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T19:41:41.898Z","pid":26328,"hostname":"il-dev-win-lt-shahar-pot","clearedEntries":0,"msg":"InMemoryRequestStore shutdown"}
+{"level":"info","time":"2026-01-10T20:55:34.743Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"8de1adaf-f793-482d-9de2-a1e89e5c4bed","sessionId":"sess_0a6a9323-dfaa-4864-836a-fbffe02d7ec4","method":"POST","path":"/api/v1/analytics/events","query":{},"msg":"HTTP request"}
+{"level":"info","time":"2026-01-10T20:55:34.763Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"8de1adaf-f793-482d-9de2-a1e89e5c4bed","sessionId":"sess_0a6a9323-dfaa-4864-836a-fbffe02d7ec4","method":"POST","path":"/api/v1/analytics/events","statusCode":200,"durationMs":20,"msg":"HTTP response"}
+{"level":"info","time":"2026-01-10T20:55:34.776Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"ea43ed46-6d12-4a93-beb5-3e8f2fded13a","sessionId":"sess_0a6a9323-dfaa-4864-836a-fbffe02d7ec4","method":"POST","path":"/api/v1/search","query":{},"msg":"HTTP request"}
+{"level":"info","time":"2026-01-10T20:55:34.782Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"ea43ed46-6d12-4a93-beb5-3e8f2fded13a","sessionId":"sess_0a6a9323-dfaa-4864-836a-fbffe02d7ec4","requestId":"req-1768078534779-65wlxu6bp","query":"pizza in ashdod","mode":"sync","msg":"Search request validated"}
+{"level":"info","time":"2026-01-10T20:55:34.786Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","requestId":"req-1768078534779-65wlxu6bp","query":"pizza in ashdod","hasUserLocation":false,"msg":"search_started"}
+{"level":"info","time":"2026-01-10T20:55:34.789Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","requestLanguage":"en","googleLanguage":"en","uiLanguage":"en","msg":"Language detected"}
+{"level":"info","time":"2026-01-10T20:55:34.790Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","query":"pizza in ashdod","durationMs":1,"reason":"fast_path_cuisine_city","msg":"[IntentService] FAST PATH HIT"}
+{"level":"info","time":"2026-01-10T20:55:34.793Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","confidence":"0.85","language":"en","durationMs":5,"msg":"[SearchOrchestrator] Intent parsed"}
+{"level":"warn","time":"2026-01-10T20:55:34.795Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","city":"ashdod","msg":"[SearchOrchestrator] City validation skipped (API unavailable), proceeding with LLM coordinates"}
+{"level":"info","time":"2026-01-10T20:55:35.642Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","type":"provider_call","provider":"google_places","operation":"apiCall","latencyMs":839,"success":true,"retryCount":0,"timestamp":"2026-01-10T20:55:35.642Z","msg":"Provider call: google_places.apiCall"}
+{"level":"info","time":"2026-01-10T20:55:35.650Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","displayName":"ashdod","durationMs":852,"msg":"[SearchOrchestrator] Location resolved"}
+{"level":"info","time":"2026-01-10T20:55:35.651Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"ea43ed46-6d12-4a93-beb5-3e8f2fded13a","query":"pizza","language":"en","region":null,"radius":3000,"requestLanguage":"en","useOriginalLanguage":false,"canonicalCategory":"pizza","canonicalLocation":"ashdod","msg":"Google Places API parameters"}
+{"level":"info","time":"2026-01-10T20:55:35.651Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","targetCity":"ashdod","radius":3000,"googleQuery":"pizza","language":"en","region":"none","msg":"[SearchOrchestrator] Search parameters"}
+{"level":"info","time":"2026-01-10T20:55:35.654Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","mode":"textsearch","targetSize":30,"msg":"[PlacesProviderService] Starting search"}
+{"level":"info","time":"2026-01-10T20:55:36.752Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","type":"provider_call","provider":"google_places","operation":"apiCall","latencyMs":1097,"success":true,"retryCount":0,"timestamp":"2026-01-10T20:55:36.752Z","msg":"Provider call: google_places.apiCall"}
+{"level":"info","time":"2026-01-10T20:55:38.793Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","type":"provider_call","provider":"google_places","operation":"apiCall","latencyMs":30,"success":true,"retryCount":0,"timestamp":"2026-01-10T20:55:38.792Z","msg":"Provider call: google_places.apiCall"}
+{"level":"info","time":"2026-01-10T20:55:38.794Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","resultCount":30,"pageCount":2,"totalMs":3140,"msg":"[PlacesProviderService] Search complete"}
+{"level":"info","time":"2026-01-10T20:55:38.795Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","rawResultsCount":30,"durationMs":3142,"msg":"[SearchOrchestrator] Raw results fetched"}
+{"level":"info","time":"2026-01-10T20:55:38.795Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"ea43ed46-6d12-4a93-beb5-3e8f2fded13a","candidatePoolSize":30,"googleResultsCount":30,"msg":"Fetched candidate pool"}
+{"level":"info","time":"2026-01-10T20:55:38.796Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","open":30,"closed":0,"unknown":0,"msg":"[SearchOrchestrator] Opening hours summary"}
+{"level":"info","time":"2026-01-10T20:55:38.797Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","city":"ashdod","msg":"[SearchOrchestrator] City filter STRICT mode enabled"}
+{"level":"info","time":"2026-01-10T20:55:38.812Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","kept":30,"dropped":0,"durationMs":15,"msg":"[SearchOrchestrator] City filter applied"}
+{"level":"info","time":"2026-01-10T20:55:38.815Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","durationMs":18,"msg":"[SearchOrchestrator] Results ranked"}
+{"level":"info","time":"2026-01-10T20:55:38.815Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"ea43ed46-6d12-4a93-beb5-3e8f2fded13a","scoredCandidatesCount":10,"displaySize":10,"top1Score":64.8,"top1PlaceId":"ChIJK5tXXfmiAhURu4iPQfc-SBo","msg":"Ranked and filtered candidates"}
+{"level":"info","time":"2026-01-10T20:55:38.816Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","finalCount":10,"strongCount":10,"weakCount":0,"totalRanked":10,"msg":"[SearchOrchestrator] Final result count"}
+{"level":"info","time":"2026-01-10T20:55:38.816Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"ea43ed46-6d12-4a93-beb5-3e8f2fded13a","intentConf":0.85,"resultsQuality":0.42950000000000005,"combinedConf":0.6818000000000001,"level":"medium","msg":"Calculated combined confidence"}
+{"level":"info","time":"2026-01-10T20:55:42.521Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","type":"provider_call","provider":"openai","operation":"completeJSON","latencyMs":3699,"success":true,"retryCount":0,"timestamp":"2026-01-10T20:55:42.521Z","model":"gpt-4o-mini","tokensIn":478,"tokensOut":95,"totalTokens":573,"estimatedCostUsd":0.002145,"costUnknown":false,"msg":"Provider call: openai.completeJSON"}
+{"level":"info","time":"2026-01-10T20:55:42.534Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","strategy":"LLM","durationMs":3714,"msg":"[SearchOrchestrator] Assistant response generated"}
+{"level":"info","time":"2026-01-10T20:55:42.536Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","requestId":"req-1768078534779-65wlxu6bp","timings":{"intentMs":5,"geocodeMs":852,"providerMs":3142,"rankingMs":18,"assistantMs":3714,"totalMs":7749},"failureReason":"NONE","mode":"NORMAL","resultCount":10,"usedLLMIntent":true,"usedLLMAssistant":true,"msg":"Search completed successfully"}
+{"level":"info","time":"2026-01-10T20:55:42.537Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","tookMs":7749,"msg":"[SearchOrchestrator] Search complete"}
+{"level":"info","time":"2026-01-10T20:55:42.537Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"ea43ed46-6d12-4a93-beb5-3e8f2fded13a","sessionId":"sess_0a6a9323-dfaa-4864-836a-fbffe02d7ec4","requestId":"req-1768078534779-65wlxu6bp","resultCount":10,"mode":"sync","msg":"Search completed (sync)"}
+{"level":"info","time":"2026-01-10T20:55:42.546Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"ea43ed46-6d12-4a93-beb5-3e8f2fded13a","sessionId":"sess_0a6a9323-dfaa-4864-836a-fbffe02d7ec4","method":"POST","path":"/api/v1/search","statusCode":200,"durationMs":7770,"msg":"HTTP response"}
+{"level":"info","time":"2026-01-10T20:55:42.594Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"77a8b233-6419-4c67-9522-06f5799fe831","sessionId":"sess_0a6a9323-dfaa-4864-836a-fbffe02d7ec4","method":"POST","path":"/api/v1/analytics/events","query":{},"msg":"HTTP request"}
+{"level":"info","time":"2026-01-10T20:55:42.603Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"77a8b233-6419-4c67-9522-06f5799fe831","sessionId":"sess_0a6a9323-dfaa-4864-836a-fbffe02d7ec4","method":"POST","path":"/api/v1/analytics/events","statusCode":200,"durationMs":9,"msg":"HTTP response"}
+{"level":"info","time":"2026-01-10T20:55:42.604Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"370b520a-17ab-46cd-9f2c-bf525e9d55a3","sessionId":"sess_0a6a9323-dfaa-4864-836a-fbffe02d7ec4","method":"POST","path":"/api/v1/analytics/events","query":{},"msg":"HTTP request"}
+{"level":"info","time":"2026-01-10T20:55:42.608Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"370b520a-17ab-46cd-9f2c-bf525e9d55a3","sessionId":"sess_0a6a9323-dfaa-4864-836a-fbffe02d7ec4","method":"POST","path":"/api/v1/analytics/events","statusCode":200,"durationMs":4,"msg":"HTTP response"}
+{"level":"info","time":"2026-01-10T20:58:35.597Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"169fb816-5a74-4ba6-ad8e-ec8169ff299a","method":"POST","path":"/api/v1/search?mode=async","query":{"mode":"async"},"msg":"HTTP request"}
+{"level":"info","time":"2026-01-10T20:58:35.598Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"169fb816-5a74-4ba6-ad8e-ec8169ff299a","requestId":"req-1768078715598-416pcoz8h","query":"pizza in tel aviv","mode":"async","msg":"Search request validated"}
+{"level":"info","time":"2026-01-10T20:58:35.600Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ AssistantJobService initialized (async mode)"}
+{"level":"info","time":"2026-01-10T20:58:35.601Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","requestId":"req-1768078715598-416pcoz8h","query":"pizza in tel aviv","msg":"search_started"}
+{"level":"info","time":"2026-01-10T20:58:35.601Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","requestId":"req-1768078715598-416pcoz8h","query":"pizza in tel aviv","hasUserLocation":false,"msg":"search_started"}
+{"level":"info","time":"2026-01-10T20:58:35.601Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","requestLanguage":"en","googleLanguage":"en","uiLanguage":"en","msg":"Language detected"}
+{"level":"info","time":"2026-01-10T20:58:35.602Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","query":"pizza in tel aviv","durationMs":1,"reason":"fast_path_cuisine_city","msg":"[IntentService] FAST PATH HIT"}
+{"level":"info","time":"2026-01-10T20:58:35.602Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","confidence":"0.85","language":"en","durationMs":1,"msg":"[SearchOrchestrator] Intent parsed"}
+{"level":"warn","time":"2026-01-10T20:58:35.603Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","city":"tel aviv","msg":"[SearchOrchestrator] City validation skipped (API unavailable), proceeding with LLM coordinates"}
+{"level":"info","time":"2026-01-10T20:58:36.070Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","type":"provider_call","provider":"google_places","operation":"apiCall","latencyMs":463,"success":true,"retryCount":0,"timestamp":"2026-01-10T20:58:36.070Z","msg":"Provider call: google_places.apiCall"}
+{"level":"info","time":"2026-01-10T20:58:36.082Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","displayName":"tel aviv","durationMs":478,"msg":"[SearchOrchestrator] Location resolved"}
+{"level":"info","time":"2026-01-10T20:58:36.083Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"169fb816-5a74-4ba6-ad8e-ec8169ff299a","query":"pizza","language":"en","region":null,"radius":3000,"requestLanguage":"en","useOriginalLanguage":false,"canonicalCategory":"pizza","canonicalLocation":"tel aviv","msg":"Google Places API parameters"}
+{"level":"info","time":"2026-01-10T20:58:36.084Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","targetCity":"tel aviv","radius":3000,"googleQuery":"pizza","language":"en","region":"none","msg":"[SearchOrchestrator] Search parameters"}
+{"level":"info","time":"2026-01-10T20:58:36.102Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","mode":"textsearch","targetSize":30,"msg":"[PlacesProviderService] Starting search"}
+{"level":"info","time":"2026-01-10T20:58:36.934Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","type":"provider_call","provider":"google_places","operation":"apiCall","latencyMs":827,"success":true,"retryCount":0,"timestamp":"2026-01-10T20:58:36.934Z","msg":"Provider call: google_places.apiCall"}
+{"level":"info","time":"2026-01-10T20:58:38.964Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","type":"provider_call","provider":"google_places","operation":"apiCall","latencyMs":25,"success":true,"retryCount":0,"timestamp":"2026-01-10T20:58:38.964Z","msg":"Provider call: google_places.apiCall"}
+{"level":"info","time":"2026-01-10T20:58:38.964Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","resultCount":30,"pageCount":2,"totalMs":2863,"msg":"[PlacesProviderService] Search complete"}
+{"level":"info","time":"2026-01-10T20:58:38.965Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","rawResultsCount":30,"durationMs":2864,"msg":"[SearchOrchestrator] Raw results fetched"}
+{"level":"info","time":"2026-01-10T20:58:38.965Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"169fb816-5a74-4ba6-ad8e-ec8169ff299a","candidatePoolSize":30,"googleResultsCount":30,"msg":"Fetched candidate pool"}
+{"level":"info","time":"2026-01-10T20:58:38.965Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","open":30,"closed":0,"unknown":0,"msg":"[SearchOrchestrator] Opening hours summary"}
+{"level":"info","time":"2026-01-10T20:58:38.965Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","city":"tel aviv","msg":"[SearchOrchestrator] City filter STRICT mode enabled"}
+{"level":"info","time":"2026-01-10T20:58:38.965Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","kept":30,"dropped":0,"durationMs":0,"msg":"[SearchOrchestrator] City filter applied"}
+{"level":"info","time":"2026-01-10T20:58:38.966Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","durationMs":1,"msg":"[SearchOrchestrator] Results ranked"}
+{"level":"info","time":"2026-01-10T20:58:38.966Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"169fb816-5a74-4ba6-ad8e-ec8169ff299a","scoredCandidatesCount":10,"displaySize":10,"top1Score":68.9,"top1PlaceId":"ChIJ64mVj4VLHRUR43JF7ysTGzU","msg":"Ranked and filtered candidates"}
+{"level":"info","time":"2026-01-10T20:58:38.966Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","finalCount":10,"strongCount":10,"weakCount":0,"totalRanked":10,"msg":"[SearchOrchestrator] Final result count"}
+{"level":"info","time":"2026-01-10T20:58:38.967Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"169fb816-5a74-4ba6-ad8e-ec8169ff299a","intentConf":0.85,"resultsQuality":0.5197999999999999,"combinedConf":0.71792,"level":"medium","msg":"Calculated combined confidence"}
+{"level":"info","time":"2026-01-10T20:58:42.718Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","type":"provider_call","provider":"openai","operation":"completeJSON","latencyMs":3749,"success":true,"retryCount":0,"timestamp":"2026-01-10T20:58:42.718Z","model":"gpt-4o-mini","tokensIn":478,"tokensOut":103,"totalTokens":581,"estimatedCostUsd":0.002225,"costUnknown":false,"msg":"Provider call: openai.completeJSON"}
+{"level":"info","time":"2026-01-10T20:58:42.728Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","strategy":"LLM","durationMs":3760,"msg":"[SearchOrchestrator] Assistant response generated"}
+{"level":"info","time":"2026-01-10T20:58:42.729Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","requestId":"req-1768078715598-416pcoz8h","timings":{"intentMs":1,"geocodeMs":478,"providerMs":2864,"rankingMs":1,"assistantMs":3760,"totalMs":7128},"failureReason":"NONE","mode":"NORMAL","resultCount":10,"usedLLMIntent":true,"usedLLMAssistant":true,"msg":"Search completed successfully"}
+{"level":"info","time":"2026-01-10T20:58:42.730Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","tookMs":7128,"msg":"[SearchOrchestrator] Search complete"}
+{"level":"info","time":"2026-01-10T20:58:42.731Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","requestId":"req-1768078715598-416pcoz8h","coreMs":7131,"resultCount":10,"mode":"textsearch","msg":"search_core_completed"}
+{"level":"error","time":"2026-01-10T20:58:42.732Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"169fb816-5a74-4ba6-ad8e-ec8169ff299a","requestId":"req-1768078715598-416pcoz8h","error":{},"msg":"Search error"}
+{"level":"info","time":"2026-01-10T21:02:28.885Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"89a6ecc8-d349-4921-ad7b-a9da2f9418e6","sessionId":"sess_0a6a9323-dfaa-4864-836a-fbffe02d7ec4","method":"POST","path":"/api/v1/analytics/events","query":{},"msg":"HTTP request"}
+{"level":"info","time":"2026-01-10T21:02:28.901Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"89a6ecc8-d349-4921-ad7b-a9da2f9418e6","sessionId":"sess_0a6a9323-dfaa-4864-836a-fbffe02d7ec4","method":"POST","path":"/api/v1/analytics/events","statusCode":200,"durationMs":16,"msg":"HTTP response"}
+{"level":"info","time":"2026-01-10T21:02:28.909Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"c79bcae9-cb6c-4c8a-aa7a-37d595578225","sessionId":"sess_0a6a9323-dfaa-4864-836a-fbffe02d7ec4","method":"POST","path":"/api/v1/search","query":{},"msg":"HTTP request"}
+{"level":"info","time":"2026-01-10T21:02:28.921Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"c79bcae9-cb6c-4c8a-aa7a-37d595578225","sessionId":"sess_0a6a9323-dfaa-4864-836a-fbffe02d7ec4","requestId":"req-1768078948921-85j4ia5fq","query":"pizza in ashdod","mode":"sync","msg":"Search request validated"}
+{"level":"info","time":"2026-01-10T21:02:28.951Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","requestId":"req-1768078948921-85j4ia5fq","query":"pizza in ashdod","hasUserLocation":false,"msg":"search_started"}
+{"level":"info","time":"2026-01-10T21:02:28.956Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","requestLanguage":"en","googleLanguage":"en","uiLanguage":"en","msg":"Language detected"}
+{"level":"info","time":"2026-01-10T21:02:28.957Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","query":"pizza in ashdod","durationMs":1,"reason":"fast_path_cuisine_city","msg":"[IntentService] FAST PATH HIT"}
+{"level":"info","time":"2026-01-10T21:02:28.957Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","confidence":"0.85","language":"en","durationMs":1,"msg":"[SearchOrchestrator] Intent parsed"}
+{"level":"warn","time":"2026-01-10T21:02:28.958Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","city":"ashdod","msg":"[SearchOrchestrator] City validation skipped (API unavailable), proceeding with LLM coordinates"}
+{"level":"info","time":"2026-01-10T21:02:28.960Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","displayName":"ashdod","durationMs":1,"msg":"[SearchOrchestrator] Location resolved"}
+{"level":"info","time":"2026-01-10T21:02:28.961Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"c79bcae9-cb6c-4c8a-aa7a-37d595578225","query":"pizza","language":"en","region":null,"radius":3000,"requestLanguage":"en","useOriginalLanguage":false,"canonicalCategory":"pizza","canonicalLocation":"ashdod","msg":"Google Places API parameters"}
+{"level":"info","time":"2026-01-10T21:02:28.961Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","targetCity":"ashdod","radius":3000,"googleQuery":"pizza","language":"en","region":"none","msg":"[SearchOrchestrator] Search parameters"}
+{"level":"info","time":"2026-01-10T21:02:28.965Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","query":"pizza","durationMs":0,"resultCount":30,"cacheKeyPreview":"places:pizza:31.8044,34.6553:3000:en:false","msg":"[PlacesProviderService] Cache HIT"}
+{"level":"info","time":"2026-01-10T21:02:28.966Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","rawResultsCount":30,"durationMs":1,"msg":"[SearchOrchestrator] Raw results fetched"}
+{"level":"info","time":"2026-01-10T21:02:28.966Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"c79bcae9-cb6c-4c8a-aa7a-37d595578225","candidatePoolSize":30,"googleResultsCount":30,"msg":"Fetched candidate pool"}
+{"level":"info","time":"2026-01-10T21:02:28.967Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","open":30,"closed":0,"unknown":0,"msg":"[SearchOrchestrator] Opening hours summary"}
+{"level":"info","time":"2026-01-10T21:02:28.967Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","city":"ashdod","msg":"[SearchOrchestrator] City filter STRICT mode enabled"}
+{"level":"info","time":"2026-01-10T21:02:28.968Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","kept":30,"dropped":0,"durationMs":1,"msg":"[SearchOrchestrator] City filter applied"}
+{"level":"info","time":"2026-01-10T21:02:28.969Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","durationMs":2,"msg":"[SearchOrchestrator] Results ranked"}
+{"level":"info","time":"2026-01-10T21:02:28.970Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"c79bcae9-cb6c-4c8a-aa7a-37d595578225","scoredCandidatesCount":10,"displaySize":10,"top1Score":64.8,"top1PlaceId":"ChIJK5tXXfmiAhURu4iPQfc-SBo","msg":"Ranked and filtered candidates"}
+{"level":"info","time":"2026-01-10T21:02:28.979Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","finalCount":10,"strongCount":10,"weakCount":0,"totalRanked":10,"msg":"[SearchOrchestrator] Final result count"}
+{"level":"info","time":"2026-01-10T21:02:28.982Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"c79bcae9-cb6c-4c8a-aa7a-37d595578225","intentConf":0.85,"resultsQuality":0.42950000000000005,"combinedConf":0.6818000000000001,"level":"medium","msg":"Calculated combined confidence"}
+{"level":"info","time":"2026-01-10T21:02:28.987Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","strategy":"CACHE","durationMs":2,"msg":"[SearchOrchestrator] Assistant response generated"}
+{"level":"info","time":"2026-01-10T21:02:28.988Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","requestId":"req-1768078948921-85j4ia5fq","timings":{"intentMs":1,"geocodeMs":1,"providerMs":1,"rankingMs":2,"assistantMs":2,"totalMs":36},"failureReason":"NONE","mode":"NORMAL","resultCount":10,"usedLLMIntent":true,"usedLLMAssistant":false,"msg":"Search completed successfully"}
+{"level":"info","time":"2026-01-10T21:02:28.988Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","tookMs":36,"msg":"[SearchOrchestrator] Search complete"}
+{"level":"info","time":"2026-01-10T21:02:28.988Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"c79bcae9-cb6c-4c8a-aa7a-37d595578225","sessionId":"sess_0a6a9323-dfaa-4864-836a-fbffe02d7ec4","requestId":"req-1768078948921-85j4ia5fq","resultCount":10,"mode":"sync","msg":"Search completed (sync)"}
+{"level":"info","time":"2026-01-10T21:02:28.998Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"c79bcae9-cb6c-4c8a-aa7a-37d595578225","sessionId":"sess_0a6a9323-dfaa-4864-836a-fbffe02d7ec4","method":"POST","path":"/api/v1/search","statusCode":200,"durationMs":89,"msg":"HTTP response"}
+{"level":"info","time":"2026-01-10T21:02:29.096Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"8bc97613-58e8-4c4b-8c28-7566cbf04b24","sessionId":"sess_0a6a9323-dfaa-4864-836a-fbffe02d7ec4","method":"POST","path":"/api/v1/analytics/events","query":{},"msg":"HTTP request"}
+{"level":"info","time":"2026-01-10T21:02:29.112Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"8bc97613-58e8-4c4b-8c28-7566cbf04b24","sessionId":"sess_0a6a9323-dfaa-4864-836a-fbffe02d7ec4","method":"POST","path":"/api/v1/analytics/events","statusCode":200,"durationMs":16,"msg":"HTTP response"}
+{"level":"info","time":"2026-01-10T21:02:29.121Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"f81359a7-0472-43f9-878f-23262970e9bc","sessionId":"sess_0a6a9323-dfaa-4864-836a-fbffe02d7ec4","method":"POST","path":"/api/v1/analytics/events","query":{},"msg":"HTTP request"}
+{"level":"info","time":"2026-01-10T21:02:29.130Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"f81359a7-0472-43f9-878f-23262970e9bc","sessionId":"sess_0a6a9323-dfaa-4864-836a-fbffe02d7ec4","method":"POST","path":"/api/v1/analytics/events","statusCode":200,"durationMs":9,"msg":"HTTP response"}
+{"level":"info","time":"2026-01-10T21:02:51.632Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"654d7f32-de11-489d-8c83-143d77adaefd","sessionId":"sess_0a6a9323-dfaa-4864-836a-fbffe02d7ec4","method":"POST","path":"/api/v1/analytics/events","query":{},"msg":"HTTP request"}
+{"level":"info","time":"2026-01-10T21:02:51.669Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"654d7f32-de11-489d-8c83-143d77adaefd","sessionId":"sess_0a6a9323-dfaa-4864-836a-fbffe02d7ec4","method":"POST","path":"/api/v1/analytics/events","statusCode":200,"durationMs":38,"msg":"HTTP response"}
+{"level":"info","time":"2026-01-10T21:02:51.691Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"6e017131-af50-4b9f-a983-9672cf929893","sessionId":"sess_0a6a9323-dfaa-4864-836a-fbffe02d7ec4","method":"POST","path":"/api/v1/search","query":{},"msg":"HTTP request"}
+{"level":"info","time":"2026-01-10T21:02:51.693Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"6e017131-af50-4b9f-a983-9672cf929893","sessionId":"sess_0a6a9323-dfaa-4864-836a-fbffe02d7ec4","requestId":"req-1768078971692-qchq4vajh","query":"pizza in ashdod","mode":"sync","msg":"Search request validated"}
+{"level":"info","time":"2026-01-10T21:02:51.693Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","requestId":"req-1768078971692-qchq4vajh","query":"pizza in ashdod","hasUserLocation":false,"msg":"search_started"}
+{"level":"info","time":"2026-01-10T21:02:51.694Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","requestLanguage":"en","googleLanguage":"en","uiLanguage":"en","msg":"Language detected"}
+{"level":"info","time":"2026-01-10T21:02:51.695Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","query":"pizza in ashdod","durationMs":1,"reason":"fast_path_cuisine_city","msg":"[IntentService] FAST PATH HIT"}
+{"level":"info","time":"2026-01-10T21:02:51.695Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","confidence":"0.85","language":"en","durationMs":1,"msg":"[SearchOrchestrator] Intent parsed"}
+{"level":"warn","time":"2026-01-10T21:02:51.696Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","city":"ashdod","msg":"[SearchOrchestrator] City validation skipped (API unavailable), proceeding with LLM coordinates"}
+{"level":"info","time":"2026-01-10T21:02:51.700Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","displayName":"ashdod","durationMs":3,"msg":"[SearchOrchestrator] Location resolved"}
+{"level":"info","time":"2026-01-10T21:02:51.702Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"6e017131-af50-4b9f-a983-9672cf929893","query":"pizza","language":"en","region":null,"radius":3000,"requestLanguage":"en","useOriginalLanguage":false,"canonicalCategory":"pizza","canonicalLocation":"ashdod","msg":"Google Places API parameters"}
+{"level":"info","time":"2026-01-10T21:02:51.703Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","targetCity":"ashdod","radius":3000,"googleQuery":"pizza","language":"en","region":"none","msg":"[SearchOrchestrator] Search parameters"}
+{"level":"info","time":"2026-01-10T21:02:51.705Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","query":"pizza","durationMs":0,"resultCount":30,"cacheKeyPreview":"places:pizza:31.8044,34.6553:3000:en:false","msg":"[PlacesProviderService] Cache HIT"}
+{"level":"info","time":"2026-01-10T21:02:51.706Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","rawResultsCount":30,"durationMs":1,"msg":"[SearchOrchestrator] Raw results fetched"}
+{"level":"info","time":"2026-01-10T21:02:51.706Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"6e017131-af50-4b9f-a983-9672cf929893","candidatePoolSize":30,"googleResultsCount":30,"msg":"Fetched candidate pool"}
+{"level":"info","time":"2026-01-10T21:02:51.707Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","open":30,"closed":0,"unknown":0,"msg":"[SearchOrchestrator] Opening hours summary"}
+{"level":"info","time":"2026-01-10T21:02:51.708Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","city":"ashdod","msg":"[SearchOrchestrator] City filter STRICT mode enabled"}
+{"level":"info","time":"2026-01-10T21:02:51.708Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","kept":30,"dropped":0,"durationMs":0,"msg":"[SearchOrchestrator] City filter applied"}
+{"level":"info","time":"2026-01-10T21:02:51.710Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","durationMs":2,"msg":"[SearchOrchestrator] Results ranked"}
+{"level":"info","time":"2026-01-10T21:02:51.710Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"6e017131-af50-4b9f-a983-9672cf929893","scoredCandidatesCount":10,"displaySize":10,"top1Score":64.8,"top1PlaceId":"ChIJK5tXXfmiAhURu4iPQfc-SBo","msg":"Ranked and filtered candidates"}
+{"level":"info","time":"2026-01-10T21:02:51.712Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","finalCount":10,"strongCount":10,"weakCount":0,"totalRanked":10,"msg":"[SearchOrchestrator] Final result count"}
+{"level":"info","time":"2026-01-10T21:02:51.713Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"6e017131-af50-4b9f-a983-9672cf929893","intentConf":0.85,"resultsQuality":0.42950000000000005,"combinedConf":0.6818000000000001,"level":"medium","msg":"Calculated combined confidence"}
+{"level":"info","time":"2026-01-10T21:02:51.720Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","strategy":"CACHE","durationMs":4,"msg":"[SearchOrchestrator] Assistant response generated"}
+{"level":"info","time":"2026-01-10T21:02:51.721Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","requestId":"req-1768078971692-qchq4vajh","timings":{"intentMs":1,"geocodeMs":3,"providerMs":1,"rankingMs":2,"assistantMs":4,"totalMs":28},"failureReason":"NONE","mode":"NORMAL","resultCount":10,"usedLLMIntent":true,"usedLLMAssistant":false,"msg":"Search completed successfully"}
+{"level":"info","time":"2026-01-10T21:02:51.722Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","tookMs":28,"msg":"[SearchOrchestrator] Search complete"}
+{"level":"info","time":"2026-01-10T21:02:51.738Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"6e017131-af50-4b9f-a983-9672cf929893","sessionId":"sess_0a6a9323-dfaa-4864-836a-fbffe02d7ec4","requestId":"req-1768078971692-qchq4vajh","resultCount":10,"mode":"sync","msg":"Search completed (sync)"}
+{"level":"info","time":"2026-01-10T21:02:51.777Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"6e017131-af50-4b9f-a983-9672cf929893","sessionId":"sess_0a6a9323-dfaa-4864-836a-fbffe02d7ec4","method":"POST","path":"/api/v1/search","statusCode":200,"durationMs":86,"msg":"HTTP response"}
+{"level":"info","time":"2026-01-10T21:02:51.909Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"587c4ec3-fc88-4275-8acf-1e35806deab3","sessionId":"sess_0a6a9323-dfaa-4864-836a-fbffe02d7ec4","method":"POST","path":"/api/v1/analytics/events","query":{},"msg":"HTTP request"}
+{"level":"info","time":"2026-01-10T21:02:52.030Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"587c4ec3-fc88-4275-8acf-1e35806deab3","sessionId":"sess_0a6a9323-dfaa-4864-836a-fbffe02d7ec4","method":"POST","path":"/api/v1/analytics/events","statusCode":200,"durationMs":121,"msg":"HTTP response"}
+{"level":"info","time":"2026-01-10T21:02:52.033Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"484224c6-d043-43a0-9641-6fb01286b993","sessionId":"sess_0a6a9323-dfaa-4864-836a-fbffe02d7ec4","method":"POST","path":"/api/v1/analytics/events","query":{},"msg":"HTTP request"}
+{"level":"info","time":"2026-01-10T21:02:52.102Z","pid":1416,"hostname":"il-dev-win-lt-shahar-pot","traceId":"484224c6-d043-43a0-9641-6fb01286b993","sessionId":"sess_0a6a9323-dfaa-4864-836a-fbffe02d7ec4","method":"POST","path":"/api/v1/analytics/events","statusCode":200,"durationMs":68,"msg":"HTTP response"}
+{"level":"info","time":"2026-01-10T21:27:27.672Z","pid":9112,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T21:27:27.750Z","pid":9112,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T21:27:27.752Z","pid":9112,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T21:27:27.753Z","pid":9112,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T21:27:27.757Z","pid":9112,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T21:27:27.957Z","pid":9112,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T21:27:27.962Z","pid":9112,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T21:27:28.029Z","pid":9112,"hostname":"il-dev-win-lt-shahar-pot","path":"/ws","heartbeatMs":30000,"allowedOrigins":["*"],"hasStateStore":true,"msg":"WebSocketManager initialized"}
+{"level":"info","time":"2026-01-10T21:27:28.034Z","pid":9112,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T21:28:40.114Z","pid":30848,"hostname":"il-dev-win-lt-shahar-pot","msg":"Initializing SearchOrchestrator..."}
+{"level":"info","time":"2026-01-10T21:28:40.157Z","pid":30848,"hostname":"il-dev-win-lt-shahar-pot","msg":"🌍 Geocoding validation enabled (canonical coordinates)"}
+{"level":"info","time":"2026-01-10T21:28:40.162Z","pid":30848,"hostname":"il-dev-win-lt-shahar-pot","msg":"ℹ️  Strategy: Trust but verify - LLM intent + API canonicalization"}
+{"level":"info","time":"2026-01-10T21:28:40.165Z","pid":30848,"hostname":"il-dev-win-lt-shahar-pot","msg":"🤖 AI Assistant enabled (LLM Pass B)"}
+{"level":"info","time":"2026-01-10T21:28:40.170Z","pid":30848,"hostname":"il-dev-win-lt-shahar-pot","msg":"✅ SearchOrchestrator ready"}
+{"level":"info","time":"2026-01-10T21:28:40.546Z","pid":30848,"hostname":"il-dev-win-lt-shahar-pot","ttlSeconds":300,"cleanupIntervalMs":60000,"msg":"InMemoryRequestStore initialized"}
+{"level":"info","time":"2026-01-10T21:28:40.552Z","pid":30848,"hostname":"il-dev-win-lt-shahar-pot","googleApiKey":{"exists":true,"len":39,"last4":"fpMo"},"googleMapsApiKey":{"exists":false,"len":0,"last4":"----"},"msg":"[BOOT] API key status"}
+{"level":"info","time":"2026-01-10T21:28:40.587Z","pid":30848,"hostname":"il-dev-win-lt-shahar-pot","path":"/ws","heartbeatMs":30000,"allowedOrigins":["*"],"hasStateStore":true,"msg":"WebSocketManager initialized"}
+{"level":"info","time":"2026-01-10T21:28:40.592Z","pid":30848,"hostname":"il-dev-win-lt-shahar-pot","msg":"Server listening on http://localhost:3000"}
+{"level":"info","time":"2026-01-10T21:33:30.947Z","pid":30848,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768080810947-wsw5bl","origin":"http://localhost:4200","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36","msg":"websocket_connected"}
+{"level":"info","time":"2026-01-10T21:33:52.696Z","pid":30848,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768080810947-wsw5bl","msg":"websocket_disconnected"}
+{"level":"info","time":"2026-01-10T21:33:54.090Z","pid":30848,"hostname":"il-dev-win-lt-shahar-pot","clientId":"ws-1768080834089-idumng","origin":"http://localhost:4200","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36","msg":"websocket_connected"}

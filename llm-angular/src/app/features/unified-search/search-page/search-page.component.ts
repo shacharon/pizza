@@ -13,6 +13,8 @@ import { AssistantBottomSheetComponent } from '../components/assistant-bottom-sh
 import { AssistantDesktopPanelComponent } from '../components/assistant-desktop-panel/assistant-desktop-panel.component';
 import { ClarificationBlockComponent } from '../components/clarification-block/clarification-block.component';
 import { DisclosureBannerComponent } from '../components/disclosure-banner/disclosure-banner.component';
+import { AssistantSummaryComponent } from '../components/assistant-summary/assistant-summary.component';
+import { WsStatusBannerComponent } from '../../../shared/components/ws-status-banner/ws-status-banner.component';
 import type { Restaurant, ClarificationChoice } from '../../../domain/types/search.types';
 import type { ActionType, ActionLevel } from '../../../domain/types/action.types';
 
@@ -27,7 +29,9 @@ import type { ActionType, ActionLevel } from '../../../domain/types/action.types
     AssistantBottomSheetComponent,
     AssistantDesktopPanelComponent,
     ClarificationBlockComponent,
-    DisclosureBannerComponent
+    DisclosureBannerComponent,
+    AssistantSummaryComponent,
+    WsStatusBannerComponent
   ],
   providers: [SearchFacade],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -50,6 +54,13 @@ export class SearchPageComponent implements OnInit, OnDestroy {
 
   // Phase 7: Conditional assistant (UI/UX Contract - only show when needed)
   readonly showAssistant = computed(() => {
+    // Phase 6: Show async assistant if in async mode
+    if (this.facade.isAsyncMode()) {
+      const status = this.facade.assistantState();
+      return status !== 'idle';
+    }
+    
+    // Legacy sync mode assistant logic
     const response = this.response();
     if (!response) return false;
     
@@ -77,6 +88,17 @@ export class SearchPageComponent implements OnInit, OnDestroy {
     
     // Otherwise hide assistant (NORMAL mode = no assistant, chips only)
     return false;
+  });
+  
+  // Phase 6: Async assistant display
+  readonly asyncAssistantMessage = computed(() => {
+    const text = this.facade.assistantNarration();
+    // Truncate long messages (max 500 chars)
+    return text.length > 500 ? text.substring(0, 500) + '…' : text;
+  });
+  
+  readonly hasAsyncRecommendations = computed(() => {
+    return this.facade.recommendations().length > 0;
   });
 
   // NEW: Mobile-first UX - Bottom sheet and flattened results
@@ -172,6 +194,12 @@ export class SearchPageComponent implements OnInit, OnDestroy {
     if (this.cleanupInterval) {
       clearInterval(this.cleanupInterval);
     }
+  }
+  
+  // Phase 6: Recommendation click handler
+  onRecommendationClick(actionId: string): void {
+    console.log('[SearchPage] Recommendation clicked:', actionId);
+    // Future: Send action_clicked to WebSocket
   }
 
   onSearch(query: string): void {

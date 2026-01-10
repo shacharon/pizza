@@ -7,5 +7,9 @@ export const environment = {
   production: false,
   apiUrl: 'https://api.going2eat.food',
   apiBasePath: '/api/v1',
-  environmentName: 'dev'
+  wsBaseUrl: 'wss://api.going2eat.food', // Phase 6: WebSocket endpoint
+  environmentName: 'dev',
+  features: {
+    asyncSearch: true, // Phase 6: Enable async mode
+  }
 };

@@ -20,23 +20,36 @@ import { safeParseSearchRequest } from '../../services/search/types/search-reque
 import { createSearchError } from '../../services/search/types/search-response.dto.js';
 import { createLLMProvider } from '../../llm/factory.js';
 import { logger } from '../../lib/logger/structured-logger.js';
+import { AssistantJobService } from '../../services/search/assistant/assistant-job.service.js';
+import type { SearchContext } from '../../services/search/types/search.types.js';
+import type { RequestState } from '../../infra/state/request-state.store.js';
 
 const router = Router();
 
 // Singleton orchestrator (instantiate services once)
 const orchestrator = createSearchOrchestrator();
 
+// Phase 4: Assistant job service (lazy loaded when needed)
+let assistantJobService: AssistantJobService | null = null;
+
 /**
  * POST /search
  * Unified search endpoint
+ * 
+ * Phase 5: Supports both sync (default) and async modes
+ * - ?mode=sync (default): Returns full response with assistant (4-6s)
+ * - ?mode=async: Returns fast core result, assistant via WebSocket
  */
 router.post('/', async (req: Request, res: Response) => {
+  // Phase 1: Generate requestId once (source of truth)
+  const requestId = `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  
   try {
     // Validate request
     const validation = safeParseSearchRequest(req.body);
 
     if (!validation.success) {
-      req.log.warn({ error: validation.error }, 'Invalid search request');
+      req.log.warn({ requestId, error: validation.error }, 'Invalid search request');
       res.status(400).json(createSearchError(
         'Invalid request',
         'VALIDATION_ERROR',
@@ -45,19 +58,97 @@ router.post('/', async (req: Request, res: Response) => {
       return;
     }
 
-    req.log.info({ query: validation.data!.query }, 'Search request validated');
+    // Phase 5: Parse mode (sync or async)
+    const mode = (req.query.mode as 'sync' | 'async') || 'sync';
 
-    // Execute search (Phase 1: pass traceId for logging)
-    const response = await orchestrator.search(validation.data!, req.traceId);
+    req.log.info({ 
+      requestId, 
+      query: validation.data!.query, 
+      mode 
+    }, 'Search request validated');
+
+    // Phase 5: Async mode - fast core + fire-and-forget assistant
+    if (mode === 'async') {
+      // Import singletons dynamically to avoid circular dependency
+      const serverModule = await import('../../server.js');
+      const requestStateStore = (serverModule as any).requestStateStore;
+      const wsManager = (serverModule as any).wsManager;
+      
+      // Lazy init assistant job service
+      if (!assistantJobService) {
+        const llm = createLLMProvider();
+        assistantJobService = new AssistantJobService(llm, requestStateStore, wsManager);
+        logger.info('✅ AssistantJobService initialized (async mode)');
+      }
+
+      // Build search context
+      const ctx: SearchContext = {
+        requestId,
+        ...(validation.data!.sessionId !== undefined && { sessionId: validation.data!.sessionId }),
+        ...(req.traceId !== undefined && { traceId: req.traceId }),
+        startTime: Date.now(),
+        timings: {
+          intentMs: 0,
+          geocodeMs: 0,
+          providerMs: 0,
+          rankingMs: 0,
+          assistantMs: 0,
+          totalMs: 0
+        }
+      };
+
+      // Call searchCore (fast path, no LLM)
+      const coreResult = await orchestrator.searchCore(validation.data!, ctx);
+
+      // Create initial request state
+      const seed = Date.now() % 1000000; // Deterministic seed from timestamp
+      const now = Date.now();
+      const state: RequestState = {
+        requestId,
+        ...(validation.data!.sessionId !== undefined && { sessionId: validation.data!.sessionId }),
+        ...(req.traceId !== undefined && { traceId: req.traceId }),
+        coreResult,
+        assistantStatus: 'pending' as const,
+        seed,
+        createdAt: now,
+        updatedAt: now,
+        expiresAt: now + 300_000 // 5 minutes TTL
+      };
+
+      // Persist state
+      await requestStateStore.set(requestId, state, 300);
+
+      // Fire-and-forget assistant job
+      assistantJobService.startJob(requestId).catch(err => {
+        logger.error({ requestId, err }, 'assistant_job_failed');
+      });
+
+      logger.info({ requestId }, 'assistant_job_queued');
+
+      // Return fast core result (NO assist/proposedActions)
+      req.log.info({
+        requestId,
+        resultCount: coreResult.results.length,
+        mode: 'async'
+      }, 'Search core completed (async)');
+
+      res.json(coreResult);
+      return;
+    }
+
+    // Sync mode (default) - backward compatible
+    const response = await orchestrator.search(validation.data!, req.traceId, requestId);
 
     req.log.info({
+      requestId,
       resultCount: response.results.length,
-    }, 'Search completed');
+      mode: 'sync'
+    }, 'Search completed (sync)');
 
     res.json(response);
 
   } catch (error) {
-    req.log.error({ error }, 'Search error');
+    req.log.error({ requestId, error }, 'Search error');
 
     res.status(500).json(createSearchError(
       error instanceof Error ? error.message : 'Internal server error',

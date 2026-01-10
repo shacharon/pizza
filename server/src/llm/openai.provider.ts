@@ -216,4 +216,64 @@ export class OpenAiProvider implements LLMProvider {
             throw e;
         }
     }
+
+    /**
+     * Phase 4: Stream completion with chunk callback
+     * Streams text chunks via callback and returns full text when done
+     */
+    async completeStream(
+        messages: Message[],
+        onChunk: (text: string) => void,
+        opts?: { temperature?: number; timeout?: number; model?: string; traceId?: string; sessionId?: string; }
+    ): Promise<string> {
+        const temperature = opts?.temperature ?? 0.3;
+        const timeoutMs = opts?.timeout ?? LLM_COMPLETION_TIMEOUT_MS;
+        const model = opts?.model || DEFAULT_LLM_MODEL;
+
+        const controller = new AbortController();
+        const t = setTimeout(() => controller.abort(), timeoutMs);
+
+        try {
+            let fullText = '';
+
+            const stream = await traceProviderCall(
+                {
+                    ...(opts?.traceId !== undefined && { traceId: opts.traceId }),
+                    ...(opts?.sessionId !== undefined && { sessionId: opts.sessionId }),
+                    provider: 'openai',
+                    operation: 'completeStream',
+                    retryCount: 0,
+                },
+                async () => {
+                    return await openai.chat.completions.create({
+                        model,
+                        messages: toInput(messages) as any,
+                        temperature,
+                        stream: true
+                    }, { signal: controller.signal });
+                },
+                (event) => {
+                    event.model = model;
+                    // Token counts not available during streaming
+                    event.costUnknown = true;
+                }
+            );
+
+            for await (const chunk of stream) {
+                const delta = chunk.choices[0]?.delta?.content || '';
+                if (delta) {
+                    fullText += delta;
+                    onChunk(delta);
+                }
+            }
+
+            clearTimeout(t);
+            logger.debug({ lengthChars: fullText.length }, '[LLM] Stream completed');
+            return fullText;
+        } catch (e: any) {
+            clearTimeout(t);
+            logger.error({ error: e?.status ?? e?.code ?? e?.name }, '[LLM] Stream failed');
+            throw e;
+        }
+    }
 }

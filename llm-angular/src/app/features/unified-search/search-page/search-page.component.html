@@ -1,4 +1,7 @@
 <div class="search-page">
+  <!-- Phase 6: WebSocket Status Banner -->
+  <app-ws-status-banner />
+  
   <header class="search-header">
     <h1 class="page-title">Find Your Perfect Restaurant</h1>
     <app-search-bar
@@ -7,6 +10,15 @@
       (inputChange)="onInputChange($event)"
       (clear)="onClear()"
     />
+    
+    <!-- Phase 6: Async Assistant Summary (after search bar) -->
+    @if (facade.isAsyncMode() && showAssistant()) {
+      <app-assistant-summary
+        [text]="asyncAssistantMessage()"
+        [status]="facade.assistantState()"
+        [error]="facade.assistantError()"
+      />
+    }
   </header>
 
   <main class="search-content">

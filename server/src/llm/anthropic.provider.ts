@@ -16,6 +16,14 @@ export class AnthropicProvider implements LLMProvider {
     ): Promise<z.infer<T>> {
         throw new Error("AnthropicProvider is a placeholder; implementation not provided yet");
     }
+
+    async completeStream(
+        _messages: Message[],
+        _onChunk: (text: string) => void,
+        _opts?: { model?: string; temperature?: number; timeout?: number; traceId?: string; sessionId?: string; }
+    ): Promise<string> {
+        throw new Error("AnthropicProvider is a placeholder; implementation not provided yet");
+    }
 }
 
 

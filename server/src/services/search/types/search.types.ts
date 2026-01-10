@@ -500,6 +500,91 @@ export interface ISessionService {
 }
 
 // ============================================================================
+// Phase 1: Async Assistant - Core Search Types
+// ============================================================================
+
+/**
+ * Search context passed through the orchestrator
+ * Contains request-level metadata and timing information
+ */
+export interface SearchContext {
+  requestId: string;
+  sessionId?: string;
+  traceId?: string;
+  startTime: number;
+  timings: {
+    intentMs: number;
+    geocodeMs: number;
+    providerMs: number;
+    rankingMs: number;
+    assistantMs: number;
+    totalMs: number;
+  };
+}
+
+/**
+ * Core search result - fast response without LLM assistant
+ * Returned by searchCore() in ~500ms
+ */
+export interface CoreSearchResult {
+  requestId: string;
+  sessionId: string;
+  query: {
+    original: string;
+    parsed: ParsedIntent;
+    language: string;
+  };
+  results: RestaurantResult[];
+  groups?: ResultGroup[];
+  chips: RefinementChip[];
+  truthState: import('./truth-state.types.js').TruthState;
+  meta: CoreSearchMetadata;
+}
+
+/**
+ * Metadata for core search (before assistant)
+ */
+export interface CoreSearchMetadata {
+  tookMs: number;
+  mode: SearchMode;
+  appliedFilters: string[];
+  confidence: number;
+  source: string;
+  failureReason: FailureReason;
+  timings: {
+    intentMs: number;
+    geocodeMs: number;
+    providerMs: number;
+    rankingMs: number;
+  };
+  liveData?: LiveDataVerification;
+  cityFilter?: {
+    enabled: boolean;
+    targetCity?: string;
+    resultsRaw: number;
+    resultsFiltered: number;
+    dropped: number;
+    dropReasons: Record<string, number>;
+  };
+  performance?: {
+    total: number;
+    googleCall: number;
+    cityFilter: number;
+  };
+  openNowSummary?: {
+    open: number;
+    closed: number;
+    unknown: number;
+    total: number;
+  };
+  capabilities?: {
+    openNowApiSupported: boolean;
+    closedNowApiSupported: boolean;
+    closedNowIsDerived: boolean;
+  };
+}
+
+// ============================================================================
 // Response Plan Types (RSE → ChatBack Communication)
 // ============================================================================
 
