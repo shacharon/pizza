@@ -3,7 +3,8 @@
  * Tests for Phase 8: Honest "closed now" filtering
  */
 
-import { describe, it, expect } from '@jest/globals';
+import { describe, it } from 'node:test';
+import assert from 'node:assert';
 import { calculateOpenNowSummary } from '../utils/opening-hours-summary.js';
 import type { RestaurantResult } from '../types/search.types.js';
 
@@ -20,10 +21,10 @@ describe('Search Orchestrator - Derived Closed Filter', () => {
 
       const summary = calculateOpenNowSummary(results as RestaurantResult[]);
 
-      expect(summary.open).toBe(2);
-      expect(summary.closed).toBe(1);
-      expect(summary.unknown).toBe(2);
-      expect(summary.total).toBe(5);
+      assert.strictEqual(summary.open, 2);
+      assert.strictEqual(summary.closed, 1);
+      assert.strictEqual(summary.unknown, 2);
+      assert.strictEqual(summary.total, 5);
     });
 
     it('should handle all-open results', () => {
@@ -34,10 +35,10 @@ describe('Search Orchestrator - Derived Closed Filter', () => {
 
       const summary = calculateOpenNowSummary(results as RestaurantResult[]);
 
-      expect(summary.open).toBe(2);
-      expect(summary.closed).toBe(0);
-      expect(summary.unknown).toBe(0);
-      expect(summary.total).toBe(2);
+      assert.strictEqual(summary.open, 2);
+      assert.strictEqual(summary.closed, 0);
+      assert.strictEqual(summary.unknown, 0);
+      assert.strictEqual(summary.total, 2);
     });
 
     it('should handle all-closed results', () => {
@@ -48,10 +49,10 @@ describe('Search Orchestrator - Derived Closed Filter', () => {
 
       const summary = calculateOpenNowSummary(results as RestaurantResult[]);
 
-      expect(summary.open).toBe(0);
-      expect(summary.closed).toBe(2);
-      expect(summary.unknown).toBe(0);
-      expect(summary.total).toBe(2);
+      assert.strictEqual(summary.open, 0);
+      assert.strictEqual(summary.closed, 2);
+      assert.strictEqual(summary.unknown, 0);
+      assert.strictEqual(summary.total, 2);
     });
 
     it('should handle all-unknown results', () => {
@@ -62,10 +63,10 @@ describe('Search Orchestrator - Derived Closed Filter', () => {
 
       const summary = calculateOpenNowSummary(results as RestaurantResult[]);
 
-      expect(summary.open).toBe(0);
-      expect(summary.closed).toBe(0);
-      expect(summary.unknown).toBe(2);
-      expect(summary.total).toBe(2);
+      assert.strictEqual(summary.open, 0);
+      assert.strictEqual(summary.closed, 0);
+      assert.strictEqual(summary.unknown, 2);
+      assert.strictEqual(summary.total, 2);
     });
 
     it('should handle empty results', () => {
@@ -73,10 +74,10 @@ describe('Search Orchestrator - Derived Closed Filter', () => {
 
       const summary = calculateOpenNowSummary(results);
 
-      expect(summary.open).toBe(0);
-      expect(summary.closed).toBe(0);
-      expect(summary.unknown).toBe(0);
-      expect(summary.total).toBe(0);
+      assert.strictEqual(summary.open, 0);
+      assert.strictEqual(summary.closed, 0);
+      assert.strictEqual(summary.unknown, 0);
+      assert.strictEqual(summary.total, 0);
     });
   });
 
@@ -99,8 +100,8 @@ describe('Search Orchestrator - Derived Closed Filter', () => {
         postFilter: (results: RestaurantResult[]) => results.filter(r => r.openNow === false)
       };
 
-      expect(expectedBehavior.googleApiCall.openNow).toBeUndefined();
-      expect(expectedBehavior.needsClosedFiltering).toBe(true);
+      assert.strictEqual(expectedBehavior.googleApiCall.openNow, undefined);
+      assert.strictEqual(expectedBehavior.needsClosedFiltering, true);
     });
 
     it('should calculate summary BEFORE applying derived filter', () => {
@@ -114,19 +115,19 @@ describe('Search Orchestrator - Derived Closed Filter', () => {
       // Step 1: Calculate summary (BEFORE filtering)
       const summary = calculateOpenNowSummary(rawResults as RestaurantResult[]);
       
-      expect(summary.total).toBe(3);
-      expect(summary.open).toBe(1);
-      expect(summary.closed).toBe(1);
-      expect(summary.unknown).toBe(1);
+      assert.strictEqual(summary.total, 3);
+      assert.strictEqual(summary.open, 1);
+      assert.strictEqual(summary.closed, 1);
+      assert.strictEqual(summary.unknown, 1);
 
       // Step 2: Apply derived filter
       const filtered = (rawResults as RestaurantResult[]).filter(r => r.openNow === false);
       
-      expect(filtered.length).toBe(1);
-      expect(filtered[0].id).toBe('2');
+      assert.strictEqual(filtered.length, 1);
+      assert.strictEqual(filtered[0].id, '2');
 
       // Summary must reflect BEFORE filtering
-      expect(summary.total).toBe(3); // Not 1!
+      assert.strictEqual(summary.total, 3); // Not 1!
     });
 
     it('should add capabilities metadata to response', () => {
@@ -136,9 +137,9 @@ describe('Search Orchestrator - Derived Closed Filter', () => {
         closedNowIsDerived: true,
       };
 
-      expect(expectedCapabilities.openNowApiSupported).toBe(true);
-      expect(expectedCapabilities.closedNowApiSupported).toBe(false);
-      expect(expectedCapabilities.closedNowIsDerived).toBe(true);
+      assert.strictEqual(expectedCapabilities.openNowApiSupported, true);
+      assert.strictEqual(expectedCapabilities.closedNowApiSupported, false);
+      assert.strictEqual(expectedCapabilities.closedNowIsDerived, true);
     });
   });
 
@@ -154,14 +155,14 @@ describe('Search Orchestrator - Derived Closed Filter', () => {
 
       // Step 2: Calculate summary BEFORE filtering
       const summary = calculateOpenNowSummary(googleResults as RestaurantResult[]);
-      expect(summary.total).toBe(4);
-      expect(summary.open).toBe(2);
-      expect(summary.closed).toBe(2);
+      assert.strictEqual(summary.total, 4);
+      assert.strictEqual(summary.open, 2);
+      assert.strictEqual(summary.closed, 2);
 
       // Step 3: Apply derived filter (backend)
       const closedOnly = (googleResults as RestaurantResult[]).filter(r => r.openNow === false);
-      expect(closedOnly.length).toBe(2);
-      expect(closedOnly.every(r => r.openNow === false)).toBe(true);
+      assert.strictEqual(closedOnly.length, 2);
+      assert.strictEqual(closedOnly.every(r => r.openNow === false), true);
 
       // Step 4: Response includes transparency metadata
       const responseMeta = {
@@ -173,13 +174,13 @@ describe('Search Orchestrator - Derived Closed Filter', () => {
         }
       };
 
-      expect(responseMeta.openNowSummary.closed).toBe(2);
-      expect(responseMeta.capabilities.closedNowIsDerived).toBe(true);
+      assert.strictEqual(responseMeta.openNowSummary.closed, 2);
+      assert.strictEqual(responseMeta.capabilities.closedNowIsDerived, true);
 
       // Step 5: UI shows disclosure banner
       // "מציג רק מקומות סגורים (2 מתוך 4 תוצאות)"
       const expectedDisclosure = `מציג רק מקומות סגורים (${summary.closed} מתוך ${summary.total} תוצאות)`;
-      expect(expectedDisclosure).toBe('מציג רק מקומות סגורים (2 מתוך 4 תוצאות)');
+      assert.strictEqual(expectedDisclosure, 'מציג רק מקומות סגורים (2 מתוך 4 תוצאות)');
     });
   });
 });

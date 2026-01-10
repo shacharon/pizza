@@ -11,6 +11,7 @@
  */
 
 import type { RestaurantResult } from '../types/search.types.js';
+import { logger } from '../../../lib/logger/structured-logger.js';
 
 export interface CityFilterResult {
   kept: RestaurantResult[];
@@ -46,12 +47,14 @@ export class CityFilterService {
    * @param results - Raw restaurant results from provider
    * @param targetCity - Target city name (for logging only)
    * @param targetCoords - Target city center coordinates
+   * @param strictMode - If true, only keep WITHIN_CITY results (no suburbs). Default false for backward compatibility.
    * @returns Filtered results with statistics
    */
   filter(
     results: RestaurantResult[],
     targetCity: string | undefined,
-    targetCoords?: { lat: number; lng: number }
+    targetCoords?: { lat: number; lng: number },
+    strictMode: boolean = false
   ): CityFilterResult {
     // If no target coordinates specified, return all results (no filtering)
     if (!targetCoords) {
@@ -82,9 +85,12 @@ export class CityFilterService {
 
       // Keep results that are:
       // - Within city radius (definitely in city)
-      // - In suburbs/nearby (benefit of the doubt)
-      // Drop only results that are too far away
-      if (matchInfo.cityMatch || matchInfo.cityMatchReason === 'NEARBY_SUBURBS') {
+      // - In suburbs/nearby (benefit of the doubt) - ONLY if not in strict mode
+      // In strict mode: drop all results outside city radius (used for explicit city queries)
+      if (
+        matchInfo.cityMatch ||
+        (!strictMode && matchInfo.cityMatchReason === 'NEARBY_SUBURBS')
+      ) {
         kept.push(result);
       } else {
         dropped.push(result);
@@ -94,13 +100,14 @@ export class CityFilterService {
     }
 
     // Fallback: if too few kept, add some dropped marked as nearby
-    if (kept.length < this.MIN_CITY_RESULTS && dropped.length > 0) {
+    // Skip fallback in strict mode (user explicitly wants ONLY this city)
+    if (!strictMode && kept.length < this.MIN_CITY_RESULTS && dropped.length > 0) {
       const neededCount = Math.min(
         this.MIN_CITY_RESULTS - kept.length,
         dropped.length
       );
       
-      console.log(`[CityFilterService] ⚠️ Fallback triggered: adding ${neededCount} nearby results`);
+      logger.warn({ neededCount, targetCity }, '[CityFilterService] Fallback triggered - adding nearby results');
       
       for (let i = 0; i < neededCount; i++) {
         const fallbackResult = dropped[i];

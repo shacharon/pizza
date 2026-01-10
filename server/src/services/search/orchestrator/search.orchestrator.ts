@@ -502,9 +502,9 @@ export class SearchOrchestrator {
             const googleCallStart = Date.now();
 
             if (streetDetection.isStreet) {
-                logger.info({ 
-                    streetName: streetDetection.streetName, 
-                    detectionMethod: streetDetection.detectionMethod 
+                logger.info({
+                    streetName: streetDetection.streetName,
+                    detectionMethod: streetDetection.detectionMethod
                 }, '[SearchOrchestrator] Street query detected');
 
                 // Dual search: exact (200m) + nearby (400m)
@@ -519,9 +519,9 @@ export class SearchOrchestrator {
                 googleCallTime = Date.now() - googleCallStart;
                 timings.providerMs = googleCallTime;
 
-                logger.info({ 
-                    exactCount: exactResults.length, 
-                    nearbyCount: nearbyResults.length 
+                logger.info({
+                    exactCount: exactResults.length,
+                    nearbyCount: nearbyResults.length
                 }, '[SearchOrchestrator] Street search results - Exact (200m) + Nearby (400m)');
 
                 // Filter out duplicates (exact results already in nearby)
@@ -556,10 +556,10 @@ export class SearchOrchestrator {
                 ];
 
                 allResults = [...exactResults, ...uniqueNearby];
-                logger.info({ 
-                    exactCount: exactResults.length, 
-                    nearbyCount: uniqueNearby.length, 
-                    totalCount: allResults.length 
+                logger.info({
+                    exactCount: exactResults.length,
+                    nearbyCount: uniqueNearby.length,
+                    totalCount: allResults.length
                 }, '[SearchOrchestrator] Results grouped');
 
                 // Phase 1: Log candidate pool metrics
@@ -574,9 +574,9 @@ export class SearchOrchestrator {
                 googleCallTime = Date.now() - googleCallStart;
                 timings.providerMs = googleCallTime;
 
-                logger.info({ 
-                    rawResultsCount: rawResults.length, 
-                    durationMs: googleCallTime 
+                logger.info({
+                    rawResultsCount: rawResults.length,
+                    durationMs: googleCallTime
                 }, '[SearchOrchestrator] Raw results fetched');
 
                 // Phase 1: Log candidate pool metrics
@@ -599,10 +599,10 @@ export class SearchOrchestrator {
 
             // Phase 8: Calculate opening hours summary BEFORE filtering (for transparency)
             const openNowSummary = calculateOpenNowSummary(allResults);
-            logger.info({ 
-                open: openNowSummary.open, 
-                closed: openNowSummary.closed, 
-                unknown: openNowSummary.unknown 
+            logger.info({
+                open: openNowSummary.open,
+                closed: openNowSummary.closed,
+                unknown: openNowSummary.unknown
             }, '[SearchOrchestrator] Opening hours summary');
 
             // Phase 8: Apply derived filter for "closed now" (Google API doesn't support opennow=false)
@@ -627,17 +627,25 @@ export class SearchOrchestrator {
             // Step 4.5: Apply city filter to all results (coordinate-based)
             const rankingStart = Date.now();
             const filterStartTime = Date.now();
+
+            // Enable strict mode for explicit city searches (only keep results within city radius)
+            const isExplicitCityQuery = Boolean(intent.location?.city) && granularity === 'CITY';
+            if (isExplicitCityQuery) {
+                logger.info({ city: intent.location?.city }, '[SearchOrchestrator] City filter STRICT mode enabled');
+            }
+
             const filterResult = this.cityFilter.filter(
                 allResults,
                 intent.location?.city,
-                location.coords  // Pass city center coordinates for distance calculation
+                location.coords,  // Pass city center coordinates for distance calculation
+                isExplicitCityQuery  // Strict mode for city queries
             );
             const filterTime = Date.now() - filterStartTime;
 
-            logger.info({ 
-                kept: filterResult.kept.length, 
-                dropped: filterResult.dropped.length, 
-                durationMs: filterTime 
+            logger.info({
+                kept: filterResult.kept.length,
+                dropped: filterResult.dropped.length,
+                durationMs: filterTime
             }, '[SearchOrchestrator] City filter applied');
             if (Object.keys(filterResult.stats.dropReasons).length > 0) {
                 logger.debug({ dropReasons: filterResult.stats.dropReasons }, '[SearchOrchestrator] City filter drop reasons');
@@ -678,11 +686,11 @@ export class SearchOrchestrator {
             const { strong, weak } = this.detectWeakMatches(rankedResults);
 
             if (weak.length > 0) {
-                logger.warn({ 
-                    weakMatchCount: weak.length, 
-                    threshold: SearchConfig.ranking.thresholds.weakMatch 
+                logger.warn({
+                    weakMatchCount: weak.length,
+                    threshold: SearchConfig.ranking.thresholds.weakMatch
                 }, '[SearchOrchestrator] Detected weak matches');
-                logger.debug({ 
+                logger.debug({
                     weakMatches: weak.map(r => ({
                         name: r.name,
                         score: r.score?.toFixed(1),
@@ -693,11 +701,11 @@ export class SearchOrchestrator {
 
             // Step 6: Use strong results (or all if no weak matches)
             const topResults = strong.length > 0 ? strong.slice(0, 10) : rankedResults.slice(0, 10);
-            logger.info({ 
-                finalCount: topResults.length, 
-                strongCount: strong.length, 
-                weakCount: weak.length, 
-                totalRanked: rankedResults.length 
+            logger.info({
+                finalCount: topResults.length,
+                strongCount: strong.length,
+                weakCount: weak.length,
+                totalRanked: rankedResults.length
             }, '[SearchOrchestrator] Final result count');
 
             // Phase 1: Calculate combined confidence (intent + results quality)
@@ -800,9 +808,9 @@ export class SearchOrchestrator {
 
             // Step 8.5: Generate proposed actions (Human-in-the-Loop pattern)
             const proposedActions = this.generateProposedActions();
-            logger.debug({ 
-                quickActionsCount: proposedActions.perResult.length, 
-                detailedActionsCount: proposedActions.selectedItem.length 
+            logger.debug({
+                quickActionsCount: proposedActions.perResult.length,
+                detailedActionsCount: proposedActions.selectedItem.length
             }, '[SearchOrchestrator] Proposed actions generated');
 
             // Step 9: Update session with current state
@@ -941,19 +949,19 @@ export class SearchOrchestrator {
 
             logger.info({ tookMs }, '[SearchOrchestrator] Search complete');
             if (diagnostics) {
-                logger.debug({ 
-                    intentMs: timings.intentMs, 
-                    geocodeMs: timings.geocodeMs, 
-                    providerMs: timings.providerMs, 
-                    rankingMs: timings.rankingMs, 
-                    assistantMs: timings.assistantMs 
+                logger.debug({
+                    intentMs: timings.intentMs,
+                    geocodeMs: timings.geocodeMs,
+                    providerMs: timings.providerMs,
+                    rankingMs: timings.rankingMs,
+                    assistantMs: timings.assistantMs
                 }, '[SearchOrchestrator] Diagnostics timing breakdown');
             }
 
             // Phase 8: Log cache stats periodically
             if (Math.random() < 0.1) { // 10% of requests
                 const { caches } = await import('../../../lib/cache/cache-manager.js');
-                logger.debug({ 
+                logger.debug({
                     cacheStats: {
                         places: caches.placesSearch.getStats(),
                         geocoding: caches.geocoding.getStats()
