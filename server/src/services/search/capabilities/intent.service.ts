@@ -79,14 +79,14 @@ export class IntentService implements IIntentService {
       uiLanguage
     }, 'Language detected');
     
-    console.log(`[IntentService] 🌐 Language: request=${requestLanguage}, ui=${uiLanguage}, google=${googleLanguage}`);
+    logger.debug({ requestLanguage, uiLanguage, googleLanguage }, '[IntentService] Language context');
     
     // PHASE 1: Try Fast Path (no LLM)
     if (CacheConfig.intentParsing.fastPathEnabled) {
       const fastResult = tryFastIntent(text, googleLanguage, context);
       if (fastResult.ok) {
         const fastTime = Date.now() - parseStart;
-        console.log(`[IntentService] ⚡ FAST PATH HIT for "${text}" (${fastTime}ms, ${fastResult.reason})`);
+        logger.info({ query: text, durationMs: fastTime, reason: fastResult.reason }, '[IntentService] FAST PATH HIT');
         
         // Convert PlacesIntent to ParsedIntent
         const intent = this.convertToParseIntent(fastResult.intent, text, languageContext);
@@ -106,7 +106,7 @@ export class IntentService implements IIntentService {
         
         return { intent, confidence: fastResult.confidence };
       }
-      console.log(`[IntentService] ⚠️ Fast path miss: ${fastResult.reason}`);
+      logger.debug({ reason: fastResult.reason }, '[IntentService] Fast path miss');
     }
     
     // PHASE 2: Check intent cache
@@ -120,21 +120,21 @@ export class IntentService implements IIntentService {
       
       if (cached) {
         const cacheTime = Date.now() - parseStart;
-        console.log(`[IntentService] ✅ INTENT CACHE HIT for "${text}" (${cacheTime}ms)`);
+        logger.info({ query: text, durationMs: cacheTime }, '[IntentService] Intent cache HIT');
         
         // Update language context (might have changed)
         cached.intent.languageContext = languageContext;
         
         return cached;
       }
-      console.log(`[IntentService] ❌ Intent cache MISS for "${text}"`);
+      logger.debug({ query: text }, '[IntentService] Intent cache MISS');
     }
     
     // PHASE 3: LLM fallback
     const llmStart = Date.now();
     const placesIntent = await this.placesIntentService.resolve(text, googleLanguage);
     const llmTime = Date.now() - llmStart;
-    console.log(`[IntentService] 🤖 LLM call completed (${llmTime}ms)`);
+    logger.info({ durationMs: llmTime }, '[IntentService] LLM call completed');
 
     // Convert to ParsedIntent format
     const intent = this.convertToParseIntent(placesIntent, text, languageContext);
@@ -161,7 +161,7 @@ export class IntentService implements IIntentService {
           if (sessionId && this.sessionService) {
             validationResult = await this.sessionService.getValidatedCity(sessionId, geocodeQuery);
             if (validationResult) {
-              console.log(`[IntentService] 📦 Location cache hit: "${geocodeQuery}"`);
+              logger.debug({ geocodeQuery }, '[IntentService] Location cache hit');
               
               // Apply cached data
               if (validationResult.status === 'VERIFIED') {
@@ -182,7 +182,7 @@ export class IntentService implements IIntentService {
           
           // If not in cache, call geocoding API
           if (!validationResult) {
-            console.log(`[IntentService] 🌍 Geocoding location for region: "${geocodeQuery}"`);
+            logger.debug({ geocodeQuery }, '[IntentService] Geocoding location for region');
             
             try {
               // Use general geocode() for broader coverage (handles cities, places, streets)
@@ -200,7 +200,7 @@ export class IntentService implements IIntentService {
                     displayName: geocodeResult.displayName
                   }, 'Location canonicalized with region');
                   
-                  console.log(`[IntentService] 🌍 Region set: ${loc.region}`);
+                  logger.debug({ region: loc.region }, '[IntentService] Region set');
                 }
                 
                 // Update coordinates (ALWAYS use canonical coords from geocoding)
@@ -213,7 +213,7 @@ export class IntentService implements IIntentService {
                   loc.cityValidation = 'VERIFIED';
                 }
                 
-                console.log(`[IntentService] ✅ Location verified: ${geocodeResult.displayName}`);
+                logger.info({ displayName: geocodeResult.displayName }, '[IntentService] Location verified');
                 
                 // Store in session cache for future queries
                 if (sessionId && this.sessionService && geocodeResult.displayName) {
@@ -225,7 +225,7 @@ export class IntentService implements IIntentService {
                   } as any);
                 }
               } else {
-                console.log(`[IntentService] ⚠️ Location geocoding failed: "${geocodeQuery}"`);
+                logger.warn({ geocodeQuery }, '[IntentService] Location geocoding failed');
                 
                 // Legacy: set cityValidation for cities
                 if (loc.city) {
@@ -233,16 +233,16 @@ export class IntentService implements IIntentService {
                 }
               }
             } catch (error: any) {
-              console.error(`[IntentService] Geocoding error:`, error.message);
+              logger.error({ error: error.message }, '[IntentService] Geocoding error');
               // Graceful degradation: proceed without region
-              console.log(`[IntentService] ⚠️ Geocoding API unavailable, proceeding without region`);
+              logger.warn('[IntentService] Geocoding API unavailable, proceeding without region');
             }
           }
         } else {
-          console.log(`[IntentService] ℹ️ No location to geocode for region extraction`);
+          logger.debug('[IntentService] No location to geocode for region extraction');
         }
       } else {
-        console.log(`[IntentService] ℹ️ Region already set: ${loc.region}, skipping geocoding`);
+        logger.debug({ region: loc.region }, '[IntentService] Region already set, skipping geocoding');
       }
     }
 
@@ -263,7 +263,7 @@ export class IntentService implements IIntentService {
           strategy: 'use_original_language'
         }, 'Using French language for French query in France');
         
-        console.log(`[IntentService] 🇫🇷 Using French language for French query in France`);
+        logger.debug('[IntentService] Using French language for French query in France');
       }
       // Hebrew query in Israel → use Hebrew
       else if (requestLanguage === 'he' && region === 'il') {
@@ -276,7 +276,7 @@ export class IntentService implements IIntentService {
           strategy: 'use_original_language'
         }, 'Using Hebrew language for Hebrew query in Israel');
         
-        console.log(`[IntentService] 🇮🇱 Using Hebrew language for Hebrew query in Israel`);
+        logger.debug('[IntentService] Using Hebrew language for Hebrew query in Israel');
       }
       
       // If using original language, flag it so orchestrator can use original query
@@ -324,10 +324,13 @@ export class IntentService implements IIntentService {
     const usedCache = false; // Would be set earlier if cache hit
     const usedLLM = !usedFastPath && !usedCache;
     
-    console.log(
-      `[IntentService] ✅ Complete: fast=${usedFastPath} cache=${usedCache} llm=${usedLLM} ` +
-      `totalMs=${totalTime} confidence=${confidence.toFixed(2)}`
-    );
+    logger.info({ 
+      usedFastPath, 
+      usedCache, 
+      usedLLM, 
+      totalMs: totalTime, 
+      confidence: confidence.toFixed(2) 
+    }, '[IntentService] Intent parsing complete');
 
     return result;
   }

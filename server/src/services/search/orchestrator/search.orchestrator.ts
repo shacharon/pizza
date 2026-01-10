@@ -131,19 +131,19 @@ export class SearchOrchestrator {
             hasUserLocation: !!request.userLocation
         }, 'Search request received');
 
-        console.log(`[SearchOrchestrator] Starting search: "${request.query}"`);
+        logger.debug({ query: request.query }, '[SearchOrchestrator] Starting search');
 
         try {
             // Step 1: Get or create session (generate ID if not provided)
             const sessionId = request.sessionId || `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             const session = await this.sessionService.getOrCreate(sessionId);
-            console.log(`[SearchOrchestrator] Session: ${session.id}`);
+            logger.debug({ sessionId: session.id }, '[SearchOrchestrator] Session created/retrieved');
 
             // Step 1.5: Clear context if requested (intent reset)
             if (request.clearContext) {
                 // Clear context by resetting the session context
                 await this.sessionService.update(session.id, { context: {} as any });
-                console.log(`[SearchOrchestrator] 🔄 Context cleared (intent reset)`);
+                logger.info({ sessionId: session.id }, '[SearchOrchestrator] Context cleared (intent reset)');
             }
 
             // Step 2: Parse intent with confidence scoring
@@ -179,14 +179,18 @@ export class SearchOrchestrator {
              */
             if (!intent.language || intent.language.length === 0) {
                 intent.language = this.resolveLanguage(request, session as any);
-                console.warn(`[SearchOrchestrator] Language not set by intent, using fallback: ${intent.language}`);
+                logger.warn({ language: intent.language }, '[SearchOrchestrator] Language not set by intent, using fallback');
             }
 
-            console.log(`[SearchOrchestrator] Intent parsed (confidence: ${confidence.toFixed(2)}, language: ${intent.language}, ${timings.intentMs}ms)`);
+            logger.info({
+                confidence: confidence.toFixed(2),
+                language: intent.language,
+                durationMs: timings.intentMs
+            }, '[SearchOrchestrator] Intent parsed');
 
             // Step 2.5: Check for ambiguous city (requires clarification)
             if (intent.location?.cityValidation === 'AMBIGUOUS') {
-                console.log(`[SearchOrchestrator] ⚠️ Ambiguous city - returning clarification`);
+                logger.warn({ city: intent.location.city }, '[SearchOrchestrator] Ambiguous city - returning clarification');
                 const clarification = this.clarificationService.generateConstraintClarification(
                     intent.location.city || 'location',
                     intent.language
@@ -226,7 +230,7 @@ export class SearchOrchestrator {
 
                 // Log strategy
                 const strategy = assist.usedTemplate ? 'TEMPLATE' : (assist.fromCache ? 'CACHE' : 'LLM');
-                console.log(`[SearchOrchestrator] Assistant: strategy=${strategy} duration=${timings.assistantMs}ms`);
+                logger.info({ strategy, durationMs: timings.assistantMs }, '[SearchOrchestrator] Assistant response generated');
 
                 return createSearchResponse({
                     sessionId,
@@ -253,7 +257,7 @@ export class SearchOrchestrator {
             // If cityValidation is undefined, it means validation was skipped (API unavailable)
             // In that case, proceed with search using LLM-extracted coordinates
             if (intent.location?.cityValidation === 'FAILED' && intent.location?.city) {
-                console.log(`[SearchOrchestrator] ❌ City not found: "${intent.location.city}" - showing clarification`);
+                logger.warn({ city: intent.location.city }, '[SearchOrchestrator] City not found - showing clarification');
                 const clarification = this.clarificationService.generateConstraintClarification(
                     intent.location.city!,  // Safe: we checked it exists above
                     intent.language
@@ -293,7 +297,7 @@ export class SearchOrchestrator {
 
                 // Log strategy
                 const strategy = assist.usedTemplate ? 'TEMPLATE' : (assist.fromCache ? 'CACHE' : 'LLM');
-                console.log(`[SearchOrchestrator] Assistant: strategy=${strategy} duration=${timings.assistantMs}ms`);
+                logger.info({ strategy, durationMs: timings.assistantMs }, '[SearchOrchestrator] Assistant response generated');
 
                 return createSearchResponse({
                     sessionId,
@@ -314,7 +318,7 @@ export class SearchOrchestrator {
                     }
                 });
             } else if (intent.location?.city && !intent.location?.cityValidation) {
-                console.log(`[SearchOrchestrator] ⚠️ City validation skipped (API unavailable), proceeding with LLM coordinates`);
+                logger.warn({ city: intent.location.city }, '[SearchOrchestrator] City validation skipped (API unavailable), proceeding with LLM coordinates');
             }
 
             // Step 2.7: Check for single-token ambiguous queries
@@ -323,15 +327,15 @@ export class SearchOrchestrator {
             // Step 2.7.1: Check for "open/closed now" keywords and set filter
             if (tokenDetection.constraintType === 'openNow') {
                 intent.filters.openNow = true;
-                console.log(`[SearchOrchestrator] 🟢 Open keyword detected ("${request.query}"), setting openNow: true`);
+                logger.info({ query: request.query }, '[SearchOrchestrator] Open keyword detected, setting openNow: true');
             } else if (tokenDetection.constraintType === 'closedNow') {
                 intent.filters.openNow = false;
-                console.log(`[SearchOrchestrator] 🔴 Closed keyword detected ("${request.query}"), setting openNow: false`);
+                logger.info({ query: request.query }, '[SearchOrchestrator] Closed keyword detected, setting openNow: false');
             }
 
             if (tokenDetection.requiresClarification && tokenDetection.constraintType &&
                 tokenDetection.constraintType !== 'openNow' && tokenDetection.constraintType !== 'closedNow') {
-                console.log(`[SearchOrchestrator] 🤔 Single-token query detected: "${request.query}" (${tokenDetection.tokenType})`);
+                logger.info({ query: request.query, tokenType: tokenDetection.tokenType }, '[SearchOrchestrator] Single-token query detected');
 
                 const clarification = this.clarificationService.generateTokenClarification(
                     request.query,
@@ -373,7 +377,7 @@ export class SearchOrchestrator {
 
                 // Log strategy
                 const strategy = assist.usedTemplate ? 'TEMPLATE' : (assist.fromCache ? 'CACHE' : 'LLM');
-                console.log(`[SearchOrchestrator] Assistant: strategy=${strategy} duration=${timings.assistantMs}ms`);
+                logger.info({ strategy, durationMs: timings.assistantMs }, '[SearchOrchestrator] Assistant response generated');
 
                 return createSearchResponse({
                     sessionId,
@@ -399,7 +403,7 @@ export class SearchOrchestrator {
             const geocodeStart = Date.now();
             const location = await this.resolveLocation(intent, request);
             timings.geocodeMs = Date.now() - geocodeStart;
-            console.log(`[SearchOrchestrator] Location resolved: ${location.displayName} (${timings.geocodeMs}ms)`);
+            logger.info({ displayName: location.displayName, durationMs: timings.geocodeMs }, '[SearchOrchestrator] Location resolved');
 
             // Step 4: Search for places
             const filters: SearchParams['filters'] = {};
@@ -432,18 +436,18 @@ export class SearchOrchestrator {
             if (useOriginalLanguage && intent.originalQuery) {
                 // Use original query for language-matched searches (e.g., French in France)
                 queryForGoogle = intent.originalQuery;
-                console.log(`[SearchOrchestrator] 🌍 Using original language query: "${queryForGoogle}"`);
+                logger.debug({ queryForGoogle }, '[SearchOrchestrator] Using original language query');
             } else if (intent.canonical?.category) {
                 // Canonical category is always English - ensures consistent cross-language results
                 queryForGoogle = intent.canonical.category;
-                console.log(`[SearchOrchestrator] 🔎 Using canonical category: "${queryForGoogle}"`);
+                logger.debug({ queryForGoogle }, '[SearchOrchestrator] Using canonical category');
             } else {
                 // Fallback to composed query (legacy path)
                 queryForGoogle = QueryComposer.composeCityQuery(
                     intent.query,
                     intent.location?.city
                 );
-                console.log(`[SearchOrchestrator] ⚠️ Fallback to composed query: "${queryForGoogle}"`);
+                logger.warn({ queryForGoogle }, '[SearchOrchestrator] Fallback to composed query');
             }
 
             const searchParams: SearchParams = {
@@ -475,14 +479,13 @@ export class SearchOrchestrator {
             }, 'Google Places API parameters');
 
             // Enhanced logging: query details with language context
-            console.log(`[SearchOrchestrator] 📍 Target city: ${intent.location?.city || 'none'}`);
-            console.log(`[SearchOrchestrator] 📏 Radius: ${searchParams.radius || 'default'}m`);
-            console.log(
-                `[SearchOrchestrator] 🌐 Google API params: ` +
-                `query="${queryForGoogle}", ` +
-                `language=${intent.languageContext.googleLanguage}, ` +
-                `region=${searchParams.region || 'none'}`
-            );
+            logger.info({
+                targetCity: intent.location?.city || 'none',
+                radius: searchParams.radius || 'default',
+                googleQuery: queryForGoogle,
+                language: intent.languageContext.googleLanguage,
+                region: searchParams.region || 'none'
+            }, '[SearchOrchestrator] Search parameters');
 
             // Step 4: Detect if this is a street-level query
             const streetDetection = this.streetDetector.detect(intent, request.query);
@@ -490,7 +493,7 @@ export class SearchOrchestrator {
             // Step 4.1: Classify search granularity for grouping behavior
             const granularity = this.granularityClassifier.classify(intent, streetDetection);
             intent.granularity = granularity;
-            console.log(`[SearchOrchestrator] 🎯 Search granularity: ${granularity}`);
+            logger.debug({ granularity }, '[SearchOrchestrator] Search granularity determined');
 
             let groups: ResultGroup[];
             let allResults: RestaurantResult[];
@@ -499,7 +502,10 @@ export class SearchOrchestrator {
             const googleCallStart = Date.now();
 
             if (streetDetection.isStreet) {
-                console.log(`[SearchOrchestrator] 🛣️ Street query detected: "${streetDetection.streetName}" (${streetDetection.detectionMethod})`);
+                logger.info({ 
+                    streetName: streetDetection.streetName, 
+                    detectionMethod: streetDetection.detectionMethod 
+                }, '[SearchOrchestrator] Street query detected');
 
                 // Dual search: exact (200m) + nearby (400m)
                 const exactParams = { ...searchParams, radius: 200 };
@@ -513,7 +519,10 @@ export class SearchOrchestrator {
                 googleCallTime = Date.now() - googleCallStart;
                 timings.providerMs = googleCallTime;
 
-                console.log(`[SearchOrchestrator] 📊 Exact (200m): ${exactResults.length}, Nearby (400m): ${nearbyResults.length}`);
+                logger.info({ 
+                    exactCount: exactResults.length, 
+                    nearbyCount: nearbyResults.length 
+                }, '[SearchOrchestrator] Street search results - Exact (200m) + Nearby (400m)');
 
                 // Filter out duplicates (exact results already in nearby)
                 const exactIds = new Set(exactResults.map(r => r.placeId));
@@ -547,7 +556,11 @@ export class SearchOrchestrator {
                 ];
 
                 allResults = [...exactResults, ...uniqueNearby];
-                console.log(`[SearchOrchestrator] ✅ Grouped: ${exactResults.length} exact + ${uniqueNearby.length} nearby = ${allResults.length} total`);
+                logger.info({ 
+                    exactCount: exactResults.length, 
+                    nearbyCount: uniqueNearby.length, 
+                    totalCount: allResults.length 
+                }, '[SearchOrchestrator] Results grouped');
 
                 // Phase 1: Log candidate pool metrics
                 logger.info({
@@ -561,7 +574,10 @@ export class SearchOrchestrator {
                 googleCallTime = Date.now() - googleCallStart;
                 timings.providerMs = googleCallTime;
 
-                console.log(`[SearchOrchestrator] 🔍 Raw results: ${rawResults.length} (took ${googleCallTime}ms)`);
+                logger.info({ 
+                    rawResultsCount: rawResults.length, 
+                    durationMs: googleCallTime 
+                }, '[SearchOrchestrator] Raw results fetched');
 
                 // Phase 1: Log candidate pool metrics
                 logger.info({
@@ -583,14 +599,18 @@ export class SearchOrchestrator {
 
             // Phase 8: Calculate opening hours summary BEFORE filtering (for transparency)
             const openNowSummary = calculateOpenNowSummary(allResults);
-            console.log(`[SearchOrchestrator] 📊 Opening hours summary: ${openNowSummary.open} open, ${openNowSummary.closed} closed, ${openNowSummary.unknown} unknown`);
+            logger.info({ 
+                open: openNowSummary.open, 
+                closed: openNowSummary.closed, 
+                unknown: openNowSummary.unknown 
+            }, '[SearchOrchestrator] Opening hours summary');
 
             // Phase 8: Apply derived filter for "closed now" (Google API doesn't support opennow=false)
             if (needsClosedFiltering) {
-                console.log(`[SearchOrchestrator] 🔴 Applying derived "closed now" filter (Google API limitation)`);
+                logger.info('[SearchOrchestrator] Applying derived closed now filter (Google API limitation)');
                 const beforeCount = allResults.length;
                 allResults = allResults.filter(r => r.openNow === false);
-                console.log(`[SearchOrchestrator] 🔴 Closed filter: ${beforeCount} → ${allResults.length} results`);
+                logger.info({ beforeCount, afterCount: allResults.length }, '[SearchOrchestrator] Closed filter applied');
 
                 // Update groups with closed-only results
                 if (streetDetection.isStreet) {
@@ -614,9 +634,13 @@ export class SearchOrchestrator {
             );
             const filterTime = Date.now() - filterStartTime;
 
-            console.log(`[SearchOrchestrator] ✂️ City filter: ${filterResult.kept.length} kept, ${filterResult.dropped.length} dropped (took ${filterTime}ms)`);
+            logger.info({ 
+                kept: filterResult.kept.length, 
+                dropped: filterResult.dropped.length, 
+                durationMs: filterTime 
+            }, '[SearchOrchestrator] City filter applied');
             if (Object.keys(filterResult.stats.dropReasons).length > 0) {
-                console.log(`[SearchOrchestrator] 📊 Drop reasons:`, filterResult.stats.dropReasons);
+                logger.debug({ dropReasons: filterResult.stats.dropReasons }, '[SearchOrchestrator] City filter drop reasons');
             }
 
             // Update groups with filtered results
@@ -639,7 +663,7 @@ export class SearchOrchestrator {
                 intent
             );
             timings.rankingMs = Date.now() - rankingStart;
-            console.log(`[SearchOrchestrator] Results ranked (${timings.rankingMs}ms)`);
+            logger.info({ durationMs: timings.rankingMs }, '[SearchOrchestrator] Results ranked');
 
             // Phase 1: Log ranking metrics
             logger.info({
@@ -654,17 +678,27 @@ export class SearchOrchestrator {
             const { strong, weak } = this.detectWeakMatches(rankedResults);
 
             if (weak.length > 0) {
-                console.log(`[SearchOrchestrator] ⚠️ Detected ${weak.length} weak matches (score < ${SearchConfig.ranking.thresholds.weakMatch})`);
-                console.log(`[SearchOrchestrator] 📉 Weak matches dropped:`, weak.map(r => ({
-                    name: r.name,
-                    score: r.score?.toFixed(1),
-                    rating: r.rating
-                })));
+                logger.warn({ 
+                    weakMatchCount: weak.length, 
+                    threshold: SearchConfig.ranking.thresholds.weakMatch 
+                }, '[SearchOrchestrator] Detected weak matches');
+                logger.debug({ 
+                    weakMatches: weak.map(r => ({
+                        name: r.name,
+                        score: r.score?.toFixed(1),
+                        rating: r.rating
+                    }))
+                }, '[SearchOrchestrator] Weak matches dropped');
             }
 
             // Step 6: Use strong results (or all if no weak matches)
             const topResults = strong.length > 0 ? strong.slice(0, 10) : rankedResults.slice(0, 10);
-            console.log(`[SearchOrchestrator] 📊 Final result count: ${topResults.length} (${strong.length} strong, ${weak.length} weak from ${rankedResults.length} ranked)`);
+            logger.info({ 
+                finalCount: topResults.length, 
+                strongCount: strong.length, 
+                weakCount: weak.length, 
+                totalRanked: rankedResults.length 
+            }, '[SearchOrchestrator] Final result count');
 
             // Phase 1: Calculate combined confidence (intent + results quality)
             const confidenceFactors = this.confidenceService.calculateConfidence(
@@ -717,16 +751,16 @@ export class SearchOrchestrator {
                 intent
             );
 
-            console.log(`[SearchOrchestrator] Failure reason: ${failureReason}`);
+            logger.debug({ failureReason }, '[SearchOrchestrator] Failure reason determined');
 
             // Step 7.5: Compute mode (Phase 5: before chip generation)
             // Phase 5: Pass weak match flag to mode computation
             const mode = computeResponseMode(failureReason, weak.length > 0);
-            console.log(`[SearchOrchestrator] Response mode: ${mode}`);
+            logger.debug({ mode }, '[SearchOrchestrator] Response mode computed');
 
             // Step 8: Generate mode-aware suggestion chips
             const chips = this.suggestionService.generate(intent, topResults);
-            console.log(`[SearchOrchestrator] Generated ${chips.length} suggestion chips`);
+            logger.debug({ chipCount: chips.length }, '[SearchOrchestrator] Suggestion chips generated');
 
             // Step 8.5: Build TruthState (Phase 2: Lock all deterministic decisions)
             const truthState: TruthState = {
@@ -747,7 +781,7 @@ export class SearchOrchestrator {
                 }),
             };
 
-            console.log(`[SearchOrchestrator] TruthState built: mode=${mode}, failureReason=${failureReason}`);
+            logger.debug({ mode, failureReason }, '[SearchOrchestrator] TruthState built');
 
             // Step 9: Generate assistant message (Performance Policy: Template/Cache/LLM)
             const assistStart = Date.now();
@@ -762,11 +796,14 @@ export class SearchOrchestrator {
 
             // Log strategy
             const strategy = assist.usedTemplate ? 'TEMPLATE' : (assist.fromCache ? 'CACHE' : 'LLM');
-            console.log(`[SearchOrchestrator] Assistant: strategy=${strategy} duration=${timings.assistantMs}ms`);
+            logger.info({ strategy, durationMs: timings.assistantMs }, '[SearchOrchestrator] Assistant response generated');
 
             // Step 8.5: Generate proposed actions (Human-in-the-Loop pattern)
             const proposedActions = this.generateProposedActions();
-            console.log(`[SearchOrchestrator] Generated proposed actions (${proposedActions.perResult.length} quick, ${proposedActions.selectedItem.length} detailed)`);
+            logger.debug({ 
+                quickActionsCount: proposedActions.perResult.length, 
+                detailedActionsCount: proposedActions.selectedItem.length 
+            }, '[SearchOrchestrator] Proposed actions generated');
 
             // Step 9: Update session with current state
             await this.sessionService.update(session.id, {
@@ -902,18 +939,26 @@ export class SearchOrchestrator {
                 usedLLMAssistant: flags.usedLLMAssistant
             }, 'Search completed successfully');
 
-            console.log(`[SearchOrchestrator] ✅ Search complete in ${tookMs}ms`);
+            logger.info({ tookMs }, '[SearchOrchestrator] Search complete');
             if (diagnostics) {
-                console.log(`[SearchOrchestrator] 📊 Diagnostics: Intent(${timings.intentMs}ms) + Geocode(${timings.geocodeMs}ms) + Provider(${timings.providerMs}ms) + Ranking(${timings.rankingMs}ms) + Assistant(${timings.assistantMs}ms)`);
+                logger.debug({ 
+                    intentMs: timings.intentMs, 
+                    geocodeMs: timings.geocodeMs, 
+                    providerMs: timings.providerMs, 
+                    rankingMs: timings.rankingMs, 
+                    assistantMs: timings.assistantMs 
+                }, '[SearchOrchestrator] Diagnostics timing breakdown');
             }
 
             // Phase 8: Log cache stats periodically
             if (Math.random() < 0.1) { // 10% of requests
                 const { caches } = await import('../../../lib/cache/cache-manager.js');
-                console.log(`[SearchOrchestrator] 📈 Cache Stats:`, {
-                    places: caches.placesSearch.getStats(),
-                    geocoding: caches.geocoding.getStats()
-                });
+                logger.debug({ 
+                    cacheStats: {
+                        places: caches.placesSearch.getStats(),
+                        geocoding: caches.geocoding.getStats()
+                    }
+                }, '[SearchOrchestrator] Cache statistics');
             }
 
             return response;
@@ -926,7 +971,7 @@ export class SearchOrchestrator {
                 timings
             }, 'Search failed');
 
-            console.error('[SearchOrchestrator] ❌ Search failed:', error);
+            logger.error({ error: error instanceof Error ? error.message : error }, '[SearchOrchestrator] Search failed');
             throw error;
         }
     }
@@ -959,7 +1004,7 @@ export class SearchOrchestrator {
         }
 
         // Fallback: return default location
-        console.warn('[SearchOrchestrator] No location found, using fallback');
+        logger.warn('[SearchOrchestrator] No location found, using fallback');
         return await this.geoResolver.resolve({ lat: 0, lng: 0 });
     }
 

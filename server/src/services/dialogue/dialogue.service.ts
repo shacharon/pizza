@@ -1,6 +1,7 @@
 import type { LLMProvider, Message } from '../../llm/types.js';
 import { createLLMProvider } from '../../llm/factory.js';
 import { TranslationService } from '../places/translation/translation.service.js';
+import { logger } from '../../lib/logger/structured-logger.js';
 // EXPERIMENTAL: Moved to server/experimental/ folder
 // import { PlacesLangGraph } from '../places/orchestrator/places.langgraph.js';
 import {
@@ -57,7 +58,7 @@ export class DialogueService {
         results: PlaceItem[];
         meta?: any;
     }> {
-        console.log('[DialogueService] handleMessage', { sessionId, userMessage });
+        logger.info({ sessionId, userMessage }, '[DialogueService] Handling message');
 
         // 1. Get or create context
         let context = this.sessions.get(sessionId);
@@ -81,14 +82,14 @@ export class DialogueService {
             } else {
                 llmResponse = await this.generateResponseSingleCall(context, userMessage);
             }
-            console.log('[DialogueService] LLM response', {
+            logger.debug({ 
                 shouldSearch: llmResponse.shouldSearch,
                 filters: llmResponse.filters,
                 suggestionsCount: llmResponse.suggestions.length,
                 isRefinement: llmResponse.isRefinement
-            });
+            }, '[DialogueService] LLM response received');
         } catch (error) {
-            console.error('[DialogueService] LLM generation failed', error);
+            logger.error({ error: error instanceof Error ? error.message : error }, '[DialogueService] LLM generation failed');
             // Fallback response
             llmResponse = this.createFallbackResponse(context);
         }
@@ -105,11 +106,11 @@ export class DialogueService {
                 if (llmResponse.isRefinement && context.baseQuery) {
                     // REFINEMENT: Use previous base query
                     queryToUse = context.baseQuery;
-                    console.log('[DialogueService] Refinement detected, using base query:', queryToUse);
+                    logger.info({ queryToUse }, '[DialogueService] Refinement detected, using base query');
                 } else if (!llmResponse.isRefinement) {
                     // NEW SEARCH: Update base query
                     context.baseQuery = userMessage;
-                    console.log('[DialogueService] New search, updating base query:', userMessage);
+                    logger.info({ baseQuery: userMessage }, '[DialogueService] New search, updating base query');
                 }
 
                 const searchResult = await this.executeSearch(
@@ -130,10 +131,10 @@ export class DialogueService {
                     ];
                 }
 
-                console.log('[DialogueService] Search complete', {
+                logger.info({ 
                     resultsCount: results.length,
                     filters: context.appliedFilters
-                });
+                }, '[DialogueService] Search complete');
 
                 // Fix message if LLM was pessimistic but we got results
                 if (results.length > 0) {
@@ -158,13 +159,13 @@ export class DialogueService {
                             ? `Found ${results.length} ${foodType} spots in ${location}! 🍕`
                             : `Found ${results.length} great ${foodType} places! 🍕`;
 
-                        console.log('[DialogueService] Fixed pessimistic message', {
+                        logger.debug({ 
                             newMessage: llmResponse.text
-                        });
+                        }, '[DialogueService] Fixed pessimistic message');
                     }
                 }
             } catch (error) {
-                console.error('[DialogueService] Search failed', error);
+                logger.error({ error: error instanceof Error ? error.message : error }, '[DialogueService] Search failed');
 
                 // Clear results on error (don't show stale data)
                 results = [];
@@ -173,7 +174,7 @@ export class DialogueService {
                 // Update message to reflect error
                 llmResponse.text = "Sorry, I had trouble searching. Could you try rephrasing your request?";
 
-                console.log('[DialogueService] Cleared results due to search error');
+                logger.warn('[DialogueService] Cleared results due to search error');
             }
         }
 
@@ -304,7 +305,7 @@ Analyze this message and generate your response.`;
             // Fallback 1: Use first filter as query
             if (filters && filters.length > 0 && filters[0]) {
                 effectiveQuery = filters[0];
-                console.log('[DialogueService] Empty query, using filter:', effectiveQuery);
+                logger.debug({ effectiveQuery }, '[DialogueService] Empty query, using filter');
             }
             // Fallback 2: Use previous search query from last message
             else if (context.messages.length > 0) {
@@ -313,18 +314,18 @@ Analyze this message and generate your response.`;
                     .pop();
                 if (lastUserMessage && lastUserMessage.content) {
                     effectiveQuery = lastUserMessage.content;
-                    console.log('[DialogueService] Empty query, using previous message:', effectiveQuery);
+                    logger.debug({ effectiveQuery }, '[DialogueService] Empty query, using previous message');
                 }
             }
             // Fallback 3: Use applied filters
             if (!effectiveQuery && context.appliedFilters.length > 0 && context.appliedFilters[0]) {
                 effectiveQuery = context.appliedFilters[0];
-                console.log('[DialogueService] Empty query, using applied filter:', effectiveQuery);
+                logger.debug({ effectiveQuery }, '[DialogueService] Empty query, using applied filter');
             }
             // Fallback 4: Generic search
             if (!effectiveQuery) {
                 effectiveQuery = 'food';
-                console.log('[DialogueService] Empty query, using generic: food');
+                logger.debug('[DialogueService] Empty query, using generic: food');
             }
         }
 
@@ -340,16 +341,16 @@ Analyze this message and generate your response.`;
 
             if (refinementKeywords.length > 0) {
                 effectiveQuery += ' ' + refinementKeywords.join(' ');
-                console.log('[DialogueService] Appended refinement filters to query:', refinementKeywords);
+                logger.debug({ refinementKeywords }, '[DialogueService] Appended refinement filters to query');
             }
         }
 
-        console.log('[DialogueService] executeSearch', {
+        logger.info({ 
             originalQuery: query,
             effectiveQuery,
             filters,
             hasLocation: !!userLocation
-        });
+        }, '[DialogueService] Executing search');
 
         // EXPERIMENTAL: PlacesLangGraph is disabled (experimental feature)
         // Use /api/search endpoint instead
@@ -395,7 +396,7 @@ Analyze this message and generate your response.`;
      */
     clearSession(sessionId: string): void {
         this.sessions.delete(sessionId);
-        console.log('[DialogueService] Session cleared', { sessionId });
+        logger.info({ sessionId }, '[DialogueService] Session cleared');
     }
 
     /**
@@ -453,7 +454,7 @@ Analyze this message and generate your response.`;
             // Simple heuristic: check if message contains Hebrew characters
             const hasHebrew = /[\u0590-\u05FF]/.test(userMessage);
             context.detectedInputLanguage = hasHebrew ? 'he' : 'en';
-            console.log('[DialogueService] Detected input language:', context.detectedInputLanguage);
+            logger.debug({ detectedLanguage: context.detectedInputLanguage }, '[DialogueService] Detected input language');
         }
 
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -555,7 +556,7 @@ Return ONLY valid JSON:
             this.llm.completeJSON(formatMessages, DialogueResponseSchema, { temperature: 0.7 })
         ]);
 
-        console.log('[DialogueService] Call 1 - Intent Analysis:', analysis.substring(0, 300));
+        logger.debug({ analysisPreview: analysis.substring(0, 300) }, '[DialogueService] Call 1 - Intent Analysis');
 
         const parsed = DialogueResponseSchema.parse(response) as DialogueResponse;
 
@@ -563,12 +564,12 @@ Return ONLY valid JSON:
         const isRefinement = analysis.includes('Intent: B') ||
             analysis.toLowerCase().includes('refinement');
 
-        console.log('[DialogueService] Call 2 - UI Response:', {
+        logger.debug({ 
             shouldSearch: parsed.shouldSearch,
             filters: parsed.filters,
             suggestionsCount: parsed.suggestions.length,
             isRefinement
-        });
+        }, '[DialogueService] Call 2 - UI Response');
 
         return {
             ...parsed,

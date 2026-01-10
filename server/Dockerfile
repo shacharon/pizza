@@ -12,11 +12,11 @@ WORKDIR /build
 
 # Copy package files from server directory
 COPY server/package*.json ./server/
-COPY shared/package*.json ./shared/
+COPY llm-angular/shared/package*.json ./llm-angular/shared/
 
 # Install dependencies in shared folder first
-WORKDIR /build/shared
-RUN npm install --legacy-peer-deps || echo "No dependencies to install in shared"
+WORKDIR /build/llm-angular/shared
+RUN npm install || echo "No dependencies to install in shared"
 
 # Install all dependencies in server (including devDependencies for TypeScript build)
 WORKDIR /build/server
@@ -27,7 +27,8 @@ WORKDIR /build
 COPY tsconfig.base.json ./
 COPY server/tsconfig.json ./server/
 COPY server/src/ ./server/src/
-COPY shared/ ./shared/
+COPY llm-angular/shared/ ./llm-angular/shared/
+ 
 
 # Build TypeScript - outputs to server/dist/
 WORKDIR /build/server

@@ -9,6 +9,7 @@ import {
     LLM_COMPLETION_TIMEOUT_MS
 } from "../config/index.js";
 import { traceProviderCall, calculateOpenAICost } from "../lib/telemetry/providerTrace.js";
+import { logger } from "../lib/logger/structured-logger.js";
 
 function sleep(ms: number) { return new Promise(res => setTimeout(res, ms)); }
 
@@ -103,14 +104,13 @@ export class OpenAiProvider implements LLMProvider {
                 try {
                     const parsed1 = JSON.parse(raw);
                     const validated = schema.parse(parsed1);
-                    // eslint-disable-next-line no-console
-                    console.log(`[llm] ok attempts=${attempt + 1} durMs=${Date.now() - tStart}`);
+                    logger.debug({ attempts: attempt + 1, durationMs: Date.now() - tStart }, '[LLM] Completion successful');
                     return validated;
                 } catch {
                     const loose = extractJsonLoose(raw);
                     const validated = schema.parse(loose);
                     // eslint-disable-next-line no-console
-                    console.log(`[llm] ok(loose) attempts=${attempt + 1} durMs=${Date.now() - tStart}`);
+                    logger.debug({ attempts: attempt + 1, durationMs: Date.now() - tStart, mode: 'loose_json' }, '[LLM] Completion successful (loose JSON fallback)');
                     return validated as any;
                 }
             } catch (e: any) {
@@ -128,8 +128,7 @@ export class OpenAiProvider implements LLMProvider {
                 
                 // Parse errors: try ONE repair attempt
                 if (isParseError && attempt === 0) {
-                    // eslint-disable-next-line no-console
-                    console.warn(`[llm] Parse error on attempt 1, will try repair on attempt 2`);
+                    logger.warn('[LLM] Parse error on attempt 1, will try repair on attempt 2');
                     // Next attempt will use same prompt (no special repair logic for now)
                     continue;
                 }
@@ -137,16 +136,16 @@ export class OpenAiProvider implements LLMProvider {
                 // For parse errors on 2nd+ attempt OR non-retriable errors: fail fast
                 if (isParseError || !isTransportError) {
                     // eslint-disable-next-line no-console
-                    console.error(`[llm] Non-retriable error, failing fast: ${status}`);
+                    logger.error({ status }, '[LLM] Non-retriable error, failing fast');
                     throw e;
                 }
                 
                 // Transport errors: retry if attempts remaining
                 // eslint-disable-next-line no-console
-                console.warn(`[llm] Retriable transport error, attempt ${attempt + 1}/${maxAttempts}: ${status}`);
+                logger.warn({ attempt: attempt + 1, maxAttempts, status }, '[LLM] Retriable transport error');
                 if (attempt === maxAttempts - 1) {
                     // eslint-disable-next-line no-console
-                    console.error(`[llm] failed attempts=${attempt + 1} durMs=${Date.now() - tStart}`);
+                    logger.error({ attempts: attempt + 1, durationMs: Date.now() - tStart }, '[LLM] All attempts failed');
                     throw e;
                 }
             }
@@ -213,7 +212,7 @@ export class OpenAiProvider implements LLMProvider {
             return resp.output_text || '';
         } catch (e: any) {
             clearTimeout(t);
-            console.error('[llm] simple complete failed', e?.status ?? e?.code ?? e?.name);
+            logger.error({ error: e?.status ?? e?.code ?? e?.name }, '[LLM] Simple complete failed');
             throw e;
         }
     }

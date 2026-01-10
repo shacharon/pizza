@@ -9,8 +9,11 @@ function maskKey(k?: string) {
     return { exists: true, len: k.length, last4: k.slice(-4) };
 }
 
-console.log('[BOOT] process.env.GOOGLE_API_KEY:', maskKey(process.env.GOOGLE_API_KEY));
-console.log('[BOOT] process.env.GOOGLE_MAPS_API_KEY:', maskKey(process.env.GOOGLE_MAPS_API_KEY));
+// Log API key status at boot
+logger.info({
+    googleApiKey: maskKey(process.env.GOOGLE_API_KEY),
+    googleMapsApiKey: maskKey(process.env.GOOGLE_MAPS_API_KEY),
+}, '[BOOT] API key status');
 
 const { port, openaiApiKey, googleApiKey } = getConfig();
 
@@ -19,11 +22,6 @@ if (!openaiApiKey) {
 }
 if (!googleApiKey) {
     logger.warn('GOOGLE_API_KEY is not set. Google search will fail until it is provided.');
-}
-
-
-if (!openaiApiKey) {
-    logger.warn('OPENAI_API_KEY is not set. /api/chat will fail until it is provided.');
 }
 
 const app = createApp();

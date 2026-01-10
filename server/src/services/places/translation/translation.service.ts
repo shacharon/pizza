@@ -2,6 +2,7 @@ import type { LLMProvider, Message } from '../../../llm/types.js';
 import { createLLMProvider } from '../../../llm/factory.js';
 import { TranslationAnalysisSchema, BatchTranslationSchema, type TranslationResult, type TranslationAnalysis, type PlaceItem, type Language } from './translation.types.js';
 import { GooglePlacesClient } from '../client/google-places.client.js';
+import { logger } from '../../../lib/logger/structured-logger.js';
 
 /**
  * TranslationService
@@ -103,7 +104,7 @@ export class TranslationService {
                     skipTranslation: false
                 };
             } catch (error) {
-                console.warn('[TranslationService] LLM failed, using fallback', (error as Error)?.message);
+                logger.warn({ error: (error as Error)?.message }, '[TranslationService] LLM failed, using fallback');
             }
         }
 
@@ -206,7 +207,7 @@ Examples:
                         regionSource = 'textCity';
                     }
                 } catch (error) {
-                    console.warn('[TranslationService] Geocoding failed for city:', cityMatch, (error as Error)?.message);
+                    logger.warn({ city: cityMatch, error: (error as Error)?.message }, '[TranslationService] Geocoding failed for city');
                 }
             }
 
@@ -258,7 +259,7 @@ Examples:
 
         // Skip if no LLM
         if (!this.llm) {
-            console.warn('[TranslationService] LLM not available for category translation');
+            logger.warn('[TranslationService] LLM not available for category translation');
             return category;
         }
 
@@ -280,10 +281,10 @@ Examples:
             ]);
 
             const translated = response.trim();
-            console.log(`[TranslationService] Category: "${category}" → "${translated}" (${fromLang}→${toLang})`);
+            logger.debug({ category, translated, fromLang, toLang }, '[TranslationService] Category translated');
             return translated;
         } catch (error) {
-            console.warn('[TranslationService] Category translation failed:', (error as Error)?.message);
+            logger.warn({ error: (error as Error)?.message }, '[TranslationService] Category translation failed');
             return category; // Fallback to original
         }
     }
@@ -309,7 +310,7 @@ Examples:
 
         // Skip if no LLM
         if (!this.llm) {
-            console.warn('[TranslationService] LLM not available for result translation');
+            logger.warn('[TranslationService] LLM not available for result translation');
             return places;
         }
 
@@ -327,7 +328,7 @@ Examples:
                 batches.push(places.slice(i, i + BATCH_SIZE));
             }
 
-            console.log(`[TranslationService] Translating ${places.length} places in ${batches.length} batch(es)`);
+            logger.info({ placeCount: places.length, batchCount: batches.length }, '[TranslationService] Translating places');
 
             // Translate all batches in parallel
             const translatedBatches = await Promise.all(
@@ -344,7 +345,7 @@ Examples:
                 address: allTranslations[index]?.address || place.address
             }));
         } catch (error) {
-            console.warn('[TranslationService] Result translation failed', (error as Error)?.message);
+            logger.warn({ error: (error as Error)?.message }, '[TranslationService] Result translation failed');
             // Return original results if translation fails
             return places;
         }
@@ -396,13 +397,13 @@ Return a JSON array of objects with "name" and "address" fields.`;
 
             // Validate we got the same number of items
             if (parsed.length !== items.length) {
-                console.warn(`[TranslationService] Expected ${items.length} translations, got ${parsed.length}`);
+                logger.warn({ expected: items.length, received: parsed.length }, '[TranslationService] Translation count mismatch');
                 return items; // Return originals if count mismatch
             }
 
             return parsed;
         } catch (error) {
-            console.warn('[TranslationService] Batch translation failed:', (error as Error)?.message);
+            logger.warn({ error: (error as Error)?.message }, '[TranslationService] Batch translation failed');
             // Fallback: return original items
             return items;
         }

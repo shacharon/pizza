@@ -21,6 +21,7 @@ import { SearchConfig, type PlacesConfig } from '../config/search.config.js';
 import { caches } from '../../../lib/cache/cache-manager.js';
 import { CacheConfig, buildPlacesSearchCacheKey, getPlacesSearchTTL } from '../config/cache.config.js';
 import { getRankingPoolConfig } from '../config/ranking.config.js';
+import { logger } from '../../../lib/logger/structured-logger.js';
 
 export class PlacesProviderService implements IPlacesProviderService {
   private googlePlacesClient: GooglePlacesClient;
@@ -56,18 +57,16 @@ export class PlacesProviderService implements IPlacesProviderService {
       const cached = caches.placesSearch.get(cacheKey);
       if (cached) {
         const cacheTime = Date.now() - searchStart;
-        console.log(`[PlacesProviderService] ✅ CACHE HIT for "${params.query}" (${cacheTime}ms, ${cached.length} results)`);
-        console.log(`[PlacesProviderService] 🔑 Cache key: ${cacheKey.substring(0, 80)}...`);
+        logger.info({ query: params.query, durationMs: cacheTime, resultCount: cached.length, cacheKeyPreview: cacheKey.substring(0, 80) }, '[PlacesProviderService] Cache HIT');
         return cached;
       }
-      console.log(`[PlacesProviderService] ❌ CACHE MISS for "${params.query}"`);
-      console.log(`[PlacesProviderService] 🔑 Cache key: ${cacheKey.substring(0, 80)}...`);
+      logger.debug({ query: params.query, cacheKeyPreview: cacheKey.substring(0, 80) }, '[PlacesProviderService] Cache MISS');
     }
 
     const mode = params.mode ?? 'textsearch';
     const targetSize = this.poolConfig.candidatePoolSize;
 
-    console.log(`[PlacesProviderService] Searching with mode: ${mode}, target: ${targetSize} results`);
+    logger.info({ mode, targetSize }, '[PlacesProviderService] Starting search');
 
     // Multi-page fetching
     const allResults: RestaurantResult[] = [];
@@ -96,12 +95,12 @@ export class PlacesProviderService implements IPlacesProviderService {
     nextPageToken = response.next_page_token ?? null;
     pageCount++;
 
-    console.log(`[PlacesProviderService] 📄 Page ${pageCount}: ${firstPageResults.length} results`);
+    logger.debug({ page: pageCount, resultCount: firstPageResults.length }, '[PlacesProviderService] Page fetched');
 
     // Fetch additional pages if needed
     while (allResults.length < targetSize && nextPageToken && pageCount < maxPages) {
       // Google requires 2-second delay before using next_page_token
-      console.log(`[PlacesProviderService] ⏳ Waiting 2s for next page...`);
+      logger.debug('[PlacesProviderService] Waiting 2s for next page token');
       await this.delay(2000);
 
       try {
@@ -116,9 +115,9 @@ export class PlacesProviderService implements IPlacesProviderService {
         nextPageToken = nextPageResponse.next_page_token ?? null;
         pageCount++;
         
-        console.log(`[PlacesProviderService] 📄 Page ${pageCount}: ${nextPageResults.length} results (total: ${allResults.length})`);
+        logger.debug({ page: pageCount, pageResults: nextPageResults.length, totalResults: allResults.length }, '[PlacesProviderService] Page fetched');
       } catch (error) {
-        console.error(`[PlacesProviderService] ⚠️ Failed to fetch page ${pageCount + 1}:`, error);
+        logger.error({ page: pageCount + 1, error: error instanceof Error ? error.message : error }, '[PlacesProviderService] Failed to fetch page');
         break; // Stop fetching on error
       }
     }
@@ -127,7 +126,7 @@ export class PlacesProviderService implements IPlacesProviderService {
     const results = allResults.slice(0, targetSize);
     
     const totalTime = Date.now() - searchStart;
-    console.log(`[PlacesProviderService] ✅ Found ${results.length} results across ${pageCount} pages (${totalTime}ms total)`);
+    logger.info({ resultCount: results.length, pageCount, totalMs: totalTime }, '[PlacesProviderService] Search complete');
 
     // Phase 8: Cache the results
     if (CacheConfig.placesSearch.enabled && params.location) {
@@ -141,7 +140,7 @@ export class PlacesProviderService implements IPlacesProviderService {
       
       const ttl = getPlacesSearchTTL(params.filters.openNow ?? false);
       caches.placesSearch.set(cacheKey, results, ttl);
-      console.log(`[PlacesProviderService] 💾 Cached ${results.length} results (TTL: ${ttl / 1000}s)`);
+      logger.debug({ resultCount: results.length, ttlSeconds: ttl / 1000 }, '[PlacesProviderService] Results cached');
     }
 
     return results;

@@ -4,6 +4,7 @@ import { textSearch, fetchDetails } from "./google/places.service.js";
 import { findCity } from './google/places.service.js';
 import { InMemoryCache } from './cache.js';
 import config from '../config/index.js';
+import { logger } from '../lib/logger/structured-logger.js';
 
 
 const cache = new InMemoryCache();
@@ -230,21 +231,22 @@ export async function getRestaurantsV2(dto: FoodQueryDTO): Promise<RestaurantsRe
     const ENRICH_TOP_N = Math.min(wantDietary ? 40 : 12, list.length);
     const top = list.slice(0, ENRICH_TOP_N);
     if (ENRICH_TOP_N > 0) {
-        console.log(`🔍 ENRICHING ${ENRICH_TOP_N} restaurants with dietary info...`);
+        logger.info({ count: ENRICH_TOP_N }, '[RestaurantV2] Enriching restaurants with dietary info');
         // Fetch details with a per-request timeout guard
         const settled = await Promise.allSettled(top.map(r => fetchDetails(r.placeId, lang)));
         settled.forEach((s, i) => {
             const target = top[i]; if (!target) return;
-            console.log(`📋 Processing ${target.name}:`, s.status);
+            logger.debug({ restaurantName: target.name, status: s.status }, '[RestaurantV2] Processing restaurant');
 
             if (s.status === "fulfilled" && s.value) {
                 const d = s.value as any;
-                console.log(`✅ Details for ${target.name}:`, {
+                logger.debug({ 
+                    restaurantName: target.name,
                     hasEditorialSummary: !!d?.editorial_summary?.overview,
                     reviewsCount: Array.isArray(d?.reviews) ? d.reviews.length : 0,
                     website: !!d?.website,
                     types: d?.types?.slice(0, 3) || []
-                });
+                }, '[RestaurantV2] Restaurant details fetched');
 
                 // enrich core fields if missing
                 if ((target as any).priceLevel == null && d?.price_level != null) (target as any).priceLevel = d.price_level;
@@ -268,13 +270,14 @@ export async function getRestaurantsV2(dto: FoodQueryDTO): Promise<RestaurantsRe
                     for (const rv of (d.reviews as any[]).slice(0, 3)) if (rv?.text) texts.push(String(rv.text));
                 }
                 const blob = texts.join(' ').toLowerCase();
-                console.log(`📝 Text analysis for ${target.name}:`, {
+                logger.debug({ 
+                    restaurantName: target.name,
                     textLength: blob.length,
                     hasVeganKeyword: /\bvegan\b|טבעוני/.test(blob),
                     hasGlutenFreeKeyword: /gluten[- ]?free|ללא גלוטן/.test(blob),
                     hasKosherKeyword: /\bkosher\b|כשר|מהדרין/.test(blob),
                     sampleText: blob.substring(0, 100) + '...'
-                });
+                }, '[RestaurantV2] Text analysis completed');
 
                 // Detect dietary preferences from text
                 if (/\bvegan\b|טבעוני/.test(blob)) dietary.vegan = true;
@@ -293,9 +296,9 @@ export async function getRestaurantsV2(dto: FoodQueryDTO): Promise<RestaurantsRe
 
                 (target as any).dietary = dietary;
 
-                console.log(`🥗 Final dietary for ${target.name}:`, dietary);
+                logger.info({ restaurantName: target.name, dietary }, '[RestaurantV2] Dietary info determined');
             } else {
-                console.log(`❌ Failed to get details for ${target.name}:`, s.status === "rejected" ? s.reason : "No value");
+                logger.warn({ restaurantName: target.name, reason: s.status === "rejected" ? s.reason : "No value" }, '[RestaurantV2] Failed to get restaurant details');
             }
         });
     }
@@ -309,14 +312,14 @@ export async function getRestaurantsV2(dto: FoodQueryDTO): Promise<RestaurantsRe
     // Apply dietary filtering if requested
     if (dto.constraints?.dietary && dto.constraints.dietary.length > 0) {
         const requiredDietary = dto.constraints.dietary;
-        console.log(`🥗 FILTERING for dietary requirements:`, requiredDietary);
+        logger.info({ requiredDietary }, '[RestaurantV2] Filtering for dietary requirements');
 
         const filteredRestaurants = out.restaurants.filter((restaurant: any) => {
             const dietary = restaurant.dietary;
-            console.log(`🔍 Checking ${restaurant.name}: dietary =`, dietary);
+            logger.debug({ restaurantName: restaurant.name, dietary }, '[RestaurantV2] Checking restaurant dietary info');
 
             if (!dietary) {
-                console.log(`❌ ${restaurant.name} has no dietary info`);
+                logger.debug({ restaurantName: restaurant.name }, '[RestaurantV2] Restaurant has no dietary info');
                 return false;
             }
 
@@ -331,30 +334,30 @@ export async function getRestaurantsV2(dto: FoodQueryDTO): Promise<RestaurantsRe
                     case 'halal': meets = dietary.halal === true; break;
                     default: meets = false;
                 }
-                console.log(`  ${requirement}: ${meets ? '✅' : '❌'} (${dietary[requirement === 'gluten_free' ? 'glutenFree' : requirement]})`);
+                logger.debug({ requirement, meets, value: dietary[requirement === 'gluten_free' ? 'glutenFree' : requirement] }, '[RestaurantV2] Dietary requirement check');
                 return meets;
             });
 
             if (meetsRequirements) {
-                console.log(`✅ ${restaurant.name} PASSES all requirements`);
+                logger.debug({ restaurantName: restaurant.name }, '[RestaurantV2] Restaurant PASSES all dietary requirements');
             } else {
-                console.log(`❌ ${restaurant.name} FAILS requirements`);
+                logger.debug({ restaurantName: restaurant.name }, '[RestaurantV2] Restaurant FAILS dietary requirements');
             }
 
             return meetsRequirements;
         });
 
-        console.log(`🔍 Filtered from ${out.restaurants.length} to ${filteredRestaurants.length} restaurants`);
+        logger.info({ before: out.restaurants.length, after: filteredRestaurants.length }, '[RestaurantV2] Dietary filtering complete');
         out.restaurants = filteredRestaurants;
     } else {
-        console.log(`🔍 No dietary filtering requested`);
+        logger.debug('[RestaurantV2] No dietary filtering requested');
     }
 
     // Log final dietary info for debugging
-    console.log(`🍽️ FINAL RESPONSE - Dietary info summary:`);
+    logger.info('[RestaurantV2] Final response with dietary info summary');
     out.restaurants.forEach((r, i) => {
         if (i < ENRICH_TOP_N) {
-            console.log(`  ${r.name}: dietary =`, (r as any).dietary);
+            logger.debug({ restaurantName: r.name, dietary: (r as any).dietary }, '[RestaurantV2] Restaurant dietary summary');
         }
     });
 

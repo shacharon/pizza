@@ -8,6 +8,7 @@
 
 import { caches } from '../../../lib/cache/cache-manager.js';
 import { CacheConfig, buildGeocodingCacheKey } from '../config/cache.config.js';
+import { logger } from '../../../lib/logger/structured-logger.js';
 
 export interface Coordinates {
   lat: number;
@@ -65,12 +66,12 @@ export class GeocodingService {
     if (CacheConfig.geocoding.enabled) {
       const cached = caches.geocoding.get(cacheKey);
       if (cached) {
-        console.log(`[GeocodingService] Cache hit for "${cityCandidate}"`);
+        logger.debug({ city: cityCandidate }, '[GeocodingService] Cache hit for city');
         return { ...cached, cacheHit: true };
       }
     }
 
-    console.log(`[GeocodingService] Validating city: "${cityCandidate}" (country: ${countryHint || 'any'})`);
+    logger.info({ city: cityCandidate, country: countryHint || 'any' }, '[GeocodingService] Validating city');
 
     try {
       const result = await this.geocodeCity(cityCandidate, countryHint);
@@ -82,7 +83,7 @@ export class GeocodingService {
 
       return result;
     } catch (error) {
-      console.error(`[GeocodingService] Validation failed:`, error);
+      logger.error({ error: error instanceof Error ? error.message : error }, '[GeocodingService] Validation failed');
       
       // Don't cache API errors (REQUEST_DENIED, OVER_QUERY_LIMIT, etc.)
       // This allows the system to retry when the API becomes available
@@ -122,7 +123,7 @@ export class GeocodingService {
 
       // Handle API errors gracefully
       if (data.status === 'REQUEST_DENIED') {
-        console.warn(`[GeocodingService] ⚠️ Geocoding API key invalid or missing`);
+        logger.warn('[GeocodingService] Geocoding API key invalid or missing');
         throw new Error('Geocoding API key invalid - proceeding without validation');
       }
 
@@ -186,12 +187,12 @@ export class GeocodingService {
     if (CacheConfig.geocoding.enabled) {
       const cached = caches.geocoding.get(cacheKey);
       if (cached) {
-        console.log(`[GeocodingService] Cache hit for address: "${address}"`);
+        logger.debug({ address }, '[GeocodingService] Cache hit for address');
         return { ...cached, cacheHit: true };
       }
     }
 
-    console.log(`[GeocodingService] Geocoding address: "${address}"`);
+    logger.info({ address }, '[GeocodingService] Geocoding address');
 
     try {
       const url = new URL(this.baseUrl);
@@ -233,7 +234,7 @@ export class GeocodingService {
 
       return result;
     } catch (error) {
-      console.error(`[GeocodingService] Geocoding failed:`, error);
+      logger.error({ error: error instanceof Error ? error.message : error }, '[GeocodingService] Geocoding failed');
       return {
         status: 'FAILED',
         confidence: 0
@@ -253,7 +254,7 @@ export class GeocodingService {
    */
   clearCache(): void {
     caches.geocoding.cleanup();
-    console.log(`[GeocodingService] Cache cleared`);
+    logger.info('[GeocodingService] Cache cleared');
   }
 }
 

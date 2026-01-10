@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { DialogueService } from '../../services/dialogue/dialogue.service.js';
+import { logger } from '../../lib/logger/structured-logger.js';
 
 /**
  * Request body validation schema
@@ -55,7 +56,7 @@ export async function dialogueHandler(req: Request, res: Response) {
         res.setHeader('X-API-Alternative', 'POST /api/search');
         res.setHeader('Deprecation', 'true'); // RFC 8594 standard header
         
-        console.warn('[DEPRECATED] /api/dialogue called - migrate to POST /api/search');
+        logger.warn('[DialogueController] DEPRECATED endpoint /api/dialogue called - migrate to POST /api/search');
 
         // Validate request body
         const parsed = RequestSchema.safeParse(req.body);
@@ -72,11 +73,11 @@ export async function dialogueHandler(req: Request, res: Response) {
         const sessionId = (req.headers['x-session-id'] as string) || 
             `dialogue-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-        console.log('[DialogueController] Request', { 
+        req.log.info({ 
             sessionId, 
             text: text.substring(0, 50),
             hasLocation: !!userLocation 
-        });
+        }, '[DialogueController] Request received');
 
         // Call DialogueService
         const result = await dialogueService.handleMessage(
@@ -86,7 +87,7 @@ export async function dialogueHandler(req: Request, res: Response) {
         );
 
         const tookMs = Date.now() - t0;
-        console.log('[DialogueController] Response', { 
+        req.log.info({ 
             sessionId, 
             tookMs,
             resultsCount: result.results.length,
@@ -106,7 +107,7 @@ export async function dialogueHandler(req: Request, res: Response) {
         });
 
     } catch (e: any) {
-        console.error('[DialogueController] Error:', e);
+        req.log.error({ error: e instanceof Error ? e.message : e }, '[DialogueController] Request handling error');
         return res.status(500).json({ 
             error: 'Unexpected error',
             message: e?.message || 'Internal server error'
@@ -128,7 +129,7 @@ export async function clearSessionHandler(req: Request, res: Response) {
 
         dialogueService.clearSession(sessionId);
 
-        console.log('[DialogueController] Session cleared', { sessionId });
+        req.log.info({ sessionId }, '[DialogueController] Session cleared');
 
         return res.json({ 
             success: true, 
@@ -137,7 +138,7 @@ export async function clearSessionHandler(req: Request, res: Response) {
         });
 
     } catch (e: any) {
-        console.error('[DialogueController] Clear session error:', e);
+        req.log.error({ error: e instanceof Error ? e.message : e }, '[DialogueController] Clear session error');
         return res.status(500).json({ error: 'Unexpected error' });
     }
 }
@@ -157,7 +158,7 @@ export async function statsHandler(req: Request, res: Response) {
         });
 
     } catch (e: any) {
-        console.error('[DialogueController] Stats error:', e);
+        req.log.error({ error: e instanceof Error ? e.message : e }, '[DialogueController] Stats error');
         return res.status(500).json({ error: 'Unexpected error' });
     }
 }

@@ -1,0 +1,46 @@
+feat: implement structured logging with traceId + sessionId
+
+Phase 1: Infrastructure + Search Orchestrator
+
+INFRASTRUCTURE CHANGES:
+✅ Enhanced requestContext middleware with sessionId support
+  - Extracts x-session-id header
+  - Creates child logger: req.log = logger.child({ traceId, sessionId })
+  - Added RequestContext interface
+
+✅ Fixed HTTP logging middleware
+  - Changed from req.path to req.originalUrl for consistency
+  - Structured field names (method, path, statusCode, durationMs)
+
+✅ Boot logging (server.ts)
+  - Replaced 2 console.* with structured logger.info
+
+CODE REFACTORING:
+✅ Search Orchestrator (100% complete)
+  - Replaced ALL 46 console.* calls
+  - 43 console.log → logger.info/debug/warn
+  - 2 console.warn → logger.warn  
+  - 1 console.error → logger.error
+  - All use structured JSON fields
+
+CLOUDWATCH READY:
+✅ Every HTTP request now has:
+  - traceId (auto-generated or from x-trace-id header)
+  - sessionId (from x-session-id header)
+  - Structured JSON logs searchable in CloudWatch Logs Insights
+
+REMAINING WORK:
+⏳ ~200 console.* calls in 44 other files (see LOGGING_REFACTOR_SUMMARY.md)
+
+FILES MODIFIED:
+- server/src/middleware/requestContext.middleware.ts
+- server/src/middleware/httpLogging.middleware.ts  
+- server/src/server.ts
+- server/src/services/search/orchestrator/search.orchestrator.ts
+- server/LOGGING_REFACTOR_SUMMARY.md (new)
+
+VERIFICATION:
+See LOGGING_REFACTOR_SUMMARY.md for:
+- CloudWatch query examples
+- Pattern reference for remaining work
+- Full inventory of remaining console.* calls
