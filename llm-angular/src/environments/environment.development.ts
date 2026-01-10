@@ -5,7 +5,7 @@
 
 export const environment = {
   production: false,
-  apiUrl: 'http://food-alb-1712335919.eu-north-1.elb.amazonaws.com',
+  apiUrl: 'https://api.going2eat.food',
   apiBasePath: '/api/v1',
   environmentName: 'dev'
 };

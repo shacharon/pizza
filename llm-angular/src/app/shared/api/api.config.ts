@@ -4,8 +4,8 @@
  * 
  * Environment-based configuration:
  * - Local: http://localhost:3000/api/v1
- * - Dev: http://food-alb-1712335919.eu-north-1.elb.amazonaws.com/api/v1
- * - Prod: https://api.yourdomain.com/api/v1
+ * - Dev: https://api.going2eat.food/api/v1
+ * - Prod: https://api.going2eat.food/api/v1
  */
 
 import { environment } from '../../../environments/environment';

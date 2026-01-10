@@ -7,8 +7,8 @@ Your app now supports 3 environments with automatic API URL switching:
 | Environment | API URL | Usage |
 |-------------|---------|-------|
 | **Local** | `http://localhost:3000` | Default development |
-| **Dev** | `http://food-alb-1712335919.eu-north-1.elb.amazonaws.com` | AWS development server |
-| **Prod** | `https://api.yourdomain.com` | Production (TODO: Update URL) |
+| **Dev** | `https://api.going2eat.food` | AWS development server |
+| **Prod** | `https://api.going2eat.food` | Production |
 
 ---
 
@@ -29,7 +29,7 @@ npm run aws
 # or
 npm run dev
 ```
-**API:** http://food-alb-1712335919.eu-north-1.elb.amazonaws.com/api/v1  
+**API:** https://api.going2eat.food/api/v1  
 **Frontend:** http://localhost:4201
 
 ### Production Build
@@ -38,7 +38,7 @@ npm run build
 # or
 npm run build:prod
 ```
-**API:** https://api.yourdomain.com/api/v1 *(Update in environment.production.ts)*
+**API:** https://api.going2eat.food/api/v1
 
 ---
 
@@ -103,8 +103,8 @@ The console will show which environment you're using:
 🌍 API Environment: DEV
 [API Config] ✅ Initialized: {
   environment: 'dev',
-  apiUrl: 'http://food-alb-1712335919.eu-north-1.elb.amazonaws.com',
-  fullBase: 'http://food-alb-1712335919.eu-north-1.elb.amazonaws.com/api/v1',
+  apiUrl: 'https://api.going2eat.food',
+  fullBase: 'https://api.going2eat.food/api/v1',
   endpointCount: 10
 }
 ```
