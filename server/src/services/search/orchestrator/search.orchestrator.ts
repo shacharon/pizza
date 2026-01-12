@@ -50,6 +50,17 @@ import { SearchConfig } from '../config/search.config.js';
 import { ConfidenceService } from '../capabilities/confidence.service.js';
 import { getRankingPoolConfig } from '../config/ranking.config.js';
 
+// Phase 2: Search Truth Model imports
+import { mapParsedIntentToSearchIntent } from '../mappers/intent-mapper.js';
+import type { SearchIntent } from '../types/intent.dto.js';
+import { safeValidateIntent } from '../types/intent.dto.js';
+import { resolveSearchMode } from '../resolvers/search-mode.resolver.js';
+import type { SearchModeResult } from '../resolvers/search-mode.resolver.js';
+import { resolveCenter } from '../resolvers/center.resolver.js';
+import type { CenterResult } from '../resolvers/center.resolver.js';
+import { resolveRadiusMeters } from '../resolvers/radius.resolver.js';
+import type { RadiusResult } from '../resolvers/radius.resolver.js';
+
 /**
  * SearchOrchestrator
  * Implements the Backend-for-Frontend pattern for unified search
@@ -117,12 +128,12 @@ export class SearchOrchestrator {
         try {
             // Phase 1.5: Call search() with skipAssistant flag to avoid 3-4s LLM delay
             const fullResponse = await this.search(request, traceId, requestId, true);
-            
+
             const coreMs = Date.now() - startTime;
-            
-            logger.info({ 
-                requestId, 
-                coreMs, 
+
+            logger.info({
+                requestId,
+                coreMs,
                 resultCount: fullResponse.results.length,
                 mode: fullResponse.query.parsed.searchMode
             }, 'search_core_completed');
@@ -259,6 +270,127 @@ export class SearchOrchestrator {
                 language: intent.language,
                 durationMs: timings.intentMs
             }, '[SearchOrchestrator] Intent parsed');
+
+            // ═══════════════════════════════════════════════════════════
+            // PHASE 2: MAP TO NEW SCHEMA & DETERMINISTIC RESOLUTION
+            // ═══════════════════════════════════════════════════════════
+
+            // Step 2.1: Map legacy ParsedIntent to SearchIntent (temporary)
+            const searchIntent = mapParsedIntentToSearchIntent(
+                intent,
+                confidence,
+                request.query
+            );
+
+            logger.debug({
+                foodPresent: searchIntent.foodAnchor.present,
+                locationPresent: searchIntent.locationAnchor.present,
+                nearMe: searchIntent.nearMe
+            }, '[SearchOrchestrator] Mapped to SearchIntent');
+
+            // Step 2.2: Validate SearchIntent with Zod
+            const validation = safeValidateIntent(searchIntent);
+            if (!validation.success) {
+                logger.warn({
+                    zodError: validation.error.issues
+                }, '[SearchOrchestrator] SearchIntent validation failed');
+
+                return this.buildClarifyResponse({
+                    sessionId,
+                    reason: 'invalid_intent_schema',
+                    originalQuery: request.query,
+                    transparency: {
+                        searchMode: 'CLARIFY',
+                        searchModeReason: 'invalid_intent_schema',
+                        locationUsed: { text: '', source: 'unknown', coords: null },
+                        radiusUsedMeters: 0,
+                        radiusSource: 'fallback'
+                    },
+                    zodError: validation.error
+                });
+            }
+
+            // Step 2.3: Resolve search mode (FULL / ASSISTED / CLARIFY)
+            const modeResult: SearchModeResult = resolveSearchMode(searchIntent, {
+                gpsAvailable: Boolean(request.userLocation)
+            });
+
+            logger.info({
+                searchMode: modeResult.mode,
+                reason: modeResult.reason,
+                explanation: modeResult.explanation
+            }, '[SearchOrchestrator] Search mode resolved');
+
+            // Step 2.4: CLARIFY early return (NO Google call)
+            if (modeResult.mode === 'CLARIFY') {
+                logger.info('[SearchOrchestrator] CLARIFY mode - returning early without Google call');
+
+                return this.buildClarifyResponse({
+                    sessionId,
+                    reason: modeResult.reason,
+                    searchIntent,
+                    originalQuery: request.query,
+                    transparency: {
+                        searchMode: 'CLARIFY',
+                        searchModeReason: modeResult.reason,
+                        locationUsed: { text: '', source: 'unknown', coords: null },
+                        radiusUsedMeters: 0,
+                        radiusSource: 'fallback'
+                    }
+                });
+            }
+
+            // Step 2.5: Resolve center coordinates
+            const centerResolverContext: import('../resolvers/center.resolver.js').CenterResolverContext = {
+                ...(request.userLocation && { gpsCoords: request.userLocation }),
+                geocode: async (text: string) => {
+                    const resolved = await this.geoResolver.resolve(text);
+                    return resolved ? { lat: resolved.coords.lat, lng: resolved.coords.lng } : null;
+                }
+            };
+            const centerResult: CenterResult = await resolveCenter(searchIntent, centerResolverContext);
+
+            logger.info({
+                centerResolved: centerResult.center !== null,
+                source: centerResult.source,
+                locationText: centerResult.locationText
+            }, '[SearchOrchestrator] Center resolved');
+
+            // Step 2.6: Center resolution failed → CLARIFY
+            if (!centerResult.center) {
+                logger.warn('[SearchOrchestrator] Center resolution failed - returning CLARIFY');
+
+                return this.buildClarifyResponse({
+                    sessionId,
+                    reason: 'location_resolution_failed',
+                    searchIntent,
+                    originalQuery: request.query,
+                    transparency: {
+                        searchMode: 'CLARIFY',
+                        searchModeReason: 'location_resolution_failed',
+                        locationUsed: {
+                            text: centerResult.locationText,
+                            source: centerResult.source,
+                            coords: null
+                        },
+                        radiusUsedMeters: 0,
+                        radiusSource: 'fallback'
+                    }
+                });
+            }
+
+            // Step 2.7: Resolve radius (hard filter)
+            const radiusResult: RadiusResult = resolveRadiusMeters(searchIntent);
+
+            logger.info({
+                radiusMeters: radiusResult.radiusMeters,
+                source: radiusResult.source,
+                explanation: radiusResult.explanation
+            }, '[SearchOrchestrator] Radius resolved');
+
+            // ═══════════════════════════════════════════════════════════
+            // END PHASE 2 - Continue with existing flow
+            // ═══════════════════════════════════════════════════════════
 
             // Step 2.5: Check for ambiguous city (requires clarification)
             if (intent.location?.cityValidation === 'AMBIGUOUS') {
@@ -471,11 +603,16 @@ export class SearchOrchestrator {
                 });
             }
 
-            // Step 3: Resolve location to coordinates
-            const geocodeStart = Date.now();
-            const location = await this.resolveLocation(intent, request);
-            timings.geocodeMs = Date.now() - geocodeStart;
-            logger.info({ displayName: location.displayName, durationMs: timings.geocodeMs }, '[SearchOrchestrator] Location resolved');
+            // Step 3: Use resolved center from Phase 2 (no legacy resolveLocation)
+            // Phase 2: centerResult already contains the resolved coordinates
+            const location = {
+                coords: centerResult.center!,  // Safe: we already checked it's not null
+                displayName: centerResult.locationText,
+                source: centerResult.source === 'gps' ? 'user' as const : 'geocode' as const,
+                region: undefined  // TODO: Add region to centerResult if needed
+            };
+            // Note: geocodeMs already tracked in Phase 2 center resolution
+            logger.info({ displayName: location.displayName, source: location.source }, '[SearchOrchestrator] Using Phase 2 resolved center');
 
             // Step 4: Search for places
             const filters: SearchParams['filters'] = {};
@@ -530,12 +667,8 @@ export class SearchOrchestrator {
                 filters,
                 mode: intent.searchMode,
                 pageSize: 10,
+                radius: radiusResult.radiusMeters  // Phase 2: Use deterministic radius (HARD FILTER)
             };
-
-            // Only add radius if it exists
-            if (intent.location?.radius !== undefined) {
-                searchParams.radius = intent.location.radius;
-            }
 
             // Structured logging: Google Places API parameters
             logger.info({
@@ -573,74 +706,18 @@ export class SearchOrchestrator {
 
             const googleCallStart = Date.now();
 
+            // Phase 2: Disabled street dual-search (use single deterministic radius)
+            // Street queries now use the same single-call flow with radiusResult.radiusMeters
             if (streetDetection.isStreet) {
                 logger.info({
                     streetName: streetDetection.streetName,
-                    detectionMethod: streetDetection.detectionMethod
-                }, '[SearchOrchestrator] Street query detected');
+                    detectionMethod: streetDetection.detectionMethod,
+                    radius: radiusResult.radiusMeters
+                }, '[SearchOrchestrator] Street query detected - using single call with deterministic radius');
+            }
 
-                // Dual search: exact (200m) + nearby (400m)
-                const exactParams = { ...searchParams, radius: 200 };
-                const nearbyParams = { ...searchParams, radius: 400 };
-
-                const [exactResults, nearbyResults] = await Promise.all([
-                    this.placesProvider.search(exactParams),
-                    this.placesProvider.search(nearbyParams)
-                ]);
-
-                googleCallTime = Date.now() - googleCallStart;
-                timings.providerMs = googleCallTime;
-
-                logger.info({
-                    exactCount: exactResults.length,
-                    nearbyCount: nearbyResults.length
-                }, '[SearchOrchestrator] Street search results - Exact (200m) + Nearby (400m)');
-
-                // Filter out duplicates (exact results already in nearby)
-                const exactIds = new Set(exactResults.map(r => r.placeId));
-                const uniqueNearby = nearbyResults.filter(r => !exactIds.has(r.placeId));
-
-                // Mark group kind and distance
-                exactResults.forEach(r => {
-                    r.groupKind = 'EXACT';
-                    r.distanceMeters = 200;
-                });
-                uniqueNearby.forEach(r => {
-                    r.groupKind = 'NEARBY';
-                    r.distanceMeters = 400;
-                });
-
-                // Create groups
-                groups = [
-                    {
-                        kind: 'EXACT',
-                        label: streetDetection.streetName || 'ברחוב',
-                        results: exactResults,
-                        radiusMeters: 200
-                    },
-                    {
-                        kind: 'NEARBY',
-                        label: 'באיזור',
-                        results: uniqueNearby,
-                        distanceLabel: '5 דקות הליכה',
-                        radiusMeters: 400
-                    }
-                ];
-
-                allResults = [...exactResults, ...uniqueNearby];
-                logger.info({
-                    exactCount: exactResults.length,
-                    nearbyCount: uniqueNearby.length,
-                    totalCount: allResults.length
-                }, '[SearchOrchestrator] Results grouped');
-
-                // Phase 1: Log candidate pool metrics
-                logger.info({
-                    traceId,
-                    candidatePoolSize: this.poolConfig.candidatePoolSize,
-                    googleResultsCount: allResults.length
-                }, 'Fetched candidate pool (street query)');
-            } else {
+            // Single search call for ALL queries (including streets)
+            {
                 // Single search (existing flow)
                 const rawResults = await this.placesProvider.search(searchParams);
                 googleCallTime = Date.now() - googleCallStart;
@@ -660,12 +737,16 @@ export class SearchOrchestrator {
 
                 allResults = rawResults;
 
-                // Single group for non-street queries
+                // Single group for all queries (Phase 2: including streets)
+                const groupLabel = streetDetection.isStreet && streetDetection.streetName
+                    ? streetDetection.streetName
+                    : 'תוצאות';
+
                 groups = [{
                     kind: 'EXACT',
-                    label: 'תוצאות',
+                    label: groupLabel,
                     results: allResults,
-                    radiusMeters: searchParams.radius || 3000
+                    radiusMeters: radiusResult.radiusMeters  // Phase 2: Use deterministic radius
                 }];
             }
 
@@ -684,14 +765,8 @@ export class SearchOrchestrator {
                 allResults = allResults.filter(r => r.openNow === false);
                 logger.info({ beforeCount, afterCount: allResults.length }, '[SearchOrchestrator] Closed filter applied');
 
-                // Update groups with closed-only results
-                if (streetDetection.isStreet) {
-                    const closedIds = new Set(allResults.map(r => r.placeId));
-                    groups = groups.map(group => ({
-                        ...group,
-                        results: group.results.filter(r => closedIds.has(r.placeId))
-                    }));
-                } else if (groups.length > 0 && groups[0]) {
+                // Phase 2: Update single group with closed-only results
+                if (groups.length > 0 && groups[0]) {
                     groups[0].results = allResults;
                 }
             }
@@ -879,7 +954,7 @@ export class SearchOrchestrator {
                 flags.usedTemplateAssistant = assist.usedTemplate || false;
                 flags.usedCachedAssistant = assist.fromCache || false;
                 flags.usedLLMAssistant = !assist.usedTemplate && !assist.fromCache;
-                
+
                 // Log strategy
                 const strategy = assist.usedTemplate ? 'TEMPLATE' : (assist.fromCache ? 'CACHE' : 'LLM');
                 logger.info({ strategy, durationMs: timings.assistantMs }, '[SearchOrchestrator] Assistant response generated');
@@ -959,7 +1034,7 @@ export class SearchOrchestrator {
                 results: topResults,
                 groups,  // NEW: Grouped results
                 chips,
-                ...(assist !== undefined && { assist }),  // Phase 1.5: Optional in async mode
+                assist: assist || { type: 'suggest', message: '', mode: 'NORMAL' },  // Phase 1.5: Fallback for async mode
                 ...(proposedActions !== undefined && { proposedActions }),  // Phase 1.5: Optional in async mode
                 ...(diagnostics !== undefined && { diagnostics }),  // NEW: Diagnostics
                 meta: {
@@ -993,16 +1068,16 @@ export class SearchOrchestrator {
                         googleCall: googleCallTime,
                         cityFilter: filterTime,
                     },
-                    // Street grouping stats (only if street detected)
+                    // Street grouping stats (Phase 2: simplified for single-call)
                     ...(streetDetection.isStreet ? {
                         streetGrouping: {
                             enabled: true,
                             ...(streetDetection.streetName ? { streetName: streetDetection.streetName } : {}),
                             detectionMethod: streetDetection.detectionMethod,
                             exactCount: groups[0]?.results.length || 0,
-                            nearbyCount: groups[1]?.results.length || 0,
-                            exactRadius: 200,
-                            nearbyRadius: 400,
+                            nearbyCount: 0,  // Phase 2: No dual search, so nearbyCount is 0
+                            exactRadius: radiusResult.radiusMeters,
+                            nearbyRadius: 0,  // Phase 2: No dual search
                         }
                     } : {}),
                     // Phase 8: Opening hours summary (for transparency)
@@ -1012,6 +1087,18 @@ export class SearchOrchestrator {
                         openNowApiSupported: true,
                         closedNowApiSupported: false,
                         closedNowIsDerived: true,
+                    },
+                    // Phase 2: Transparency metadata (Search Truth Model)
+                    transparency: {
+                        searchMode: modeResult.mode,
+                        searchModeReason: modeResult.reason,
+                        locationUsed: {
+                            text: centerResult.locationText,
+                            source: centerResult.source,
+                            coords: centerResult.center
+                        },
+                        radiusUsedMeters: radiusResult.radiusMeters,
+                        radiusSource: radiusResult.source
                     },
                 },
             };
@@ -1192,6 +1279,115 @@ export class SearchOrchestrator {
         ];
 
         return { perResult, selectedItem };
+    }
+
+    /**
+     * Phase 2: Build CLARIFY response when search cannot proceed
+     * 
+     * Used when:
+     * - Intent validation fails
+     * - Missing required anchors
+     * - Center resolution fails
+     * 
+     * @param params - Clarification parameters
+     * @returns SearchResponse with CLARIFY mode and transparency
+     */
+    private buildClarifyResponse(params: {
+        sessionId?: string;
+        reason: string;
+        searchIntent?: SearchIntent;
+        originalQuery?: string;
+        transparency: {
+            searchMode: 'CLARIFY';
+            searchModeReason: string;
+            locationUsed: {
+                text: string;
+                source: 'explicit' | 'gps' | 'geocoded' | 'unknown';
+                coords: { lat: number; lng: number } | null;
+            };
+            radiusUsedMeters: number;
+            radiusSource: 'explicit' | 'default_near_me' | 'default_city' | 'default_street' | 'default_poi' | 'fallback';
+        };
+        zodError?: import('zod').ZodError;
+    }): SearchResponse {
+
+        // Determine what's missing
+        const missingAnchor = params.reason.includes('food')
+            ? 'food'
+            : params.reason.includes('location')
+                ? 'location'
+                : 'unknown';
+
+        // Get language from intent or default
+        const language = params.searchIntent?.language || 'en';
+
+        // Build clarification message
+        const clarificationMessage = this.getClarificationMessage(missingAnchor, language);
+
+        // Generate session ID if not provided
+        const sessionId = params.sessionId || `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+        return createSearchResponse({
+            sessionId,
+            originalQuery: params.originalQuery || '',
+            intent: {} as any, // Minimal intent for CLARIFY mode
+            results: [],
+            chips: [],
+            assist: {
+                type: 'clarify',
+                mode: 'CLARIFY',
+                message: clarificationMessage,
+                failureReason: 'LOW_CONFIDENCE'
+            },
+            meta: {
+                tookMs: 0,
+                mode: 'textsearch',  // Use a valid SearchMode (Google API type)
+                appliedFilters: [],
+                confidence: 0.3,
+                source: 'none',
+                failureReason: 'LOW_CONFIDENCE',
+                transparency: params.transparency
+            }
+        });
+    }
+
+    /**
+     * Phase 2: Get clarification message based on missing anchor
+     * 
+     * @param missing - Which anchor is missing ('food' | 'location' | 'unknown')
+     * @param language - User's language
+     * @returns Localized clarification message
+     */
+    private getClarificationMessage(
+        missing: 'food' | 'location' | 'unknown',
+        language: string
+    ): string {
+        // i18n messages
+        const messages = {
+            food: {
+                en: 'What type of food are you looking for?',
+                he: 'איזה סוג אוכל אתה מחפש?',
+                ar: 'ما نوع الطعام الذي تبحث عنه؟',
+                ru: 'Какую еду вы ищете?'
+            },
+            location: {
+                en: 'Where would you like to search?',
+                he: 'איפה תרצה לחפש?',
+                ar: 'أين تريد البحث؟',
+                ru: 'Где вы хотите искать?'
+            },
+            unknown: {
+                en: 'Could you provide more details about what you\'re looking for?',
+                he: 'תוכל לספק פרטים נוספים על מה שאתה מחפש?',
+                ar: 'هل يمكنك تقديم المزيد من التفاصيل حول ما تبحث عنه؟',
+                ru: 'Не могли бы вы предоставить более подробную информацию о том, что вы ищете?'
+            }
+        };
+
+        const normalizedLang = language.toLowerCase().slice(0, 2);
+        const langKey = ['he', 'ar', 'ru'].includes(normalizedLang) ? normalizedLang : 'en';
+
+        return messages[missing][langKey as 'en' | 'he' | 'ar' | 'ru'] || messages[missing].en;
     }
 
     /**

@@ -9,9 +9,11 @@
     "build": "tsc -p . && npx tsc-alias -p tsconfig.json",
     "start": "node dist/server.js",
     "test": "node --test --import tsx tests/intent.test.ts tests/agent.reducer.test.ts tests/places/phase1-services.test.ts tests/city-filter.test.ts tests/street-grouping.test.ts tests/spec-compliance.test.ts",
+    "test:resolvers": "node --test --import tsx tests/resolvers.test.ts",
+    "test:resolvers:verbose": "node --test --test-reporter=spec --import tsx tests/resolvers.test.ts",
     "test:integration": "node --test --import tsx tests/places-search-integration.test.ts",
     "test:unified": "node --test --import tsx tests/unified-search-integration.test.ts",
-    "test:all": "npm test && npm run test:integration && npm run test:unified",
+    "test:all": "npm test && npm run test:resolvers && npm run test:integration && npm run test:unified",
     "qa": "tsx src/services/search/qa/run-qa.ts",
     "qa:watch": "tsx watch src/services/search/qa/run-qa.ts"
   },

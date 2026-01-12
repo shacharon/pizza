@@ -36,6 +36,18 @@ export interface SearchResponseMeta {
   originalQuery?: string;
   failureReason: import('./search.types.js').FailureReason;  // REQUIRED: Always computed
   liveData?: import('./search.types.js').LiveDataVerification;
+  // PHASE 1: Transparency metadata (deterministic resolution)
+  transparency?: {
+    searchMode: 'FULL' | 'ASSISTED' | 'CLARIFY';  // Resolved search mode
+    searchModeReason: string;  // Why this mode was selected
+    locationUsed: {
+      text: string;  // Location text (e.g., "Tel Aviv", "near me")
+      source: 'explicit' | 'gps' | 'geocoded' | 'unknown';  // Where location came from
+      coords: { lat: number; lng: number } | null;  // Resolved coordinates
+    };
+    radiusUsedMeters: number;  // Radius applied (hard filter)
+    radiusSource: 'explicit' | 'default_near_me' | 'default_city' | 'default_street' | 'default_poi' | 'fallback';  // Where radius came from
+  };
   // City filter statistics (optional)
   cityFilter?: {
     enabled: boolean;
@@ -148,6 +160,18 @@ export function createSearchResponse(params: {
     cached?: boolean;
     originalQuery?: string;
     liveData?: import('./search.types.js').LiveDataVerification;
+    // PHASE 1: Transparency metadata
+    transparency?: {
+      searchMode: 'FULL' | 'ASSISTED' | 'CLARIFY';
+      searchModeReason: string;
+      locationUsed: {
+        text: string;
+        source: 'explicit' | 'gps' | 'geocoded' | 'unknown';
+        coords: { lat: number; lng: number } | null;
+      };
+      radiusUsedMeters: number;
+      radiusSource: 'explicit' | 'default_near_me' | 'default_city' | 'default_street' | 'default_poi' | 'fallback';
+    };
     cityFilter?: {
       enabled: boolean;
       targetCity?: string;
