@@ -456,6 +456,12 @@ export interface SearchParams {
  */
 export interface IIntentService {
   parse(text: string, context?: SessionContext): Promise<IntentParseResult>;
+  // Phase 3: Direct SearchIntent extraction (optional - requires LLM)
+  parseSearchIntent?(
+    query: string,
+    context?: SessionContext,
+    llm?: import('../../../llm/types.js').LLMProvider | null
+  ): Promise<{ intent: import('./intent.dto.js').SearchIntent; confidence: number }>;
 }
 
 /**

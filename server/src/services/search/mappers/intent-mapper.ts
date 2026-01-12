@@ -70,23 +70,27 @@ export function mapParsedIntentToSearchIntent(
   // ═══════════════════════════════════════════════════════════
   // PREFERENCES EXTRACTION
   // ═══════════════════════════════════════════════════════════
-  const preferences = {
-    ...(parsed.filters.dietary && parsed.filters.dietary.length > 0
-      ? { dietary: parsed.filters.dietary }
-      : {}),
-    ...(parsed.filters.priceLevel !== undefined
-      ? { priceLevel: parsed.filters.priceLevel as 1 | 2 | 3 | 4 }
-      : {}),
-    ...(parsed.filters.openNow !== undefined
-      ? { openNow: parsed.filters.openNow }
-      : {}),
-    ...(parsed.filters.mustHave?.includes('delivery')
-      ? { delivery: true }
-      : {}),
-    ...(parsed.filters.mustHave?.includes('takeout')
-      ? { takeout: true }
-      : {})
-  };
+  // ═══════════════════════════════════════════════════════════
+  // PREFERENCES EXTRACTION
+  // ═══════════════════════════════════════════════════════════
+  const preferences: import('../types/intent.dto.js').Preferences = {};
+  
+  if (parsed.filters.dietary && parsed.filters.dietary.length > 0) {
+    // Cast to DietaryType array (assume legacy parser provides valid values)
+    preferences.dietary = parsed.filters.dietary as import('../types/intent.dto.js').DietaryType[];
+  }
+  if (parsed.filters.priceLevel !== undefined) {
+    preferences.priceLevel = parsed.filters.priceLevel as 1 | 2 | 3 | 4;
+  }
+  if (parsed.filters.openNow !== undefined) {
+    preferences.openNow = parsed.filters.openNow;
+  }
+  if (parsed.filters.mustHave?.includes('delivery')) {
+    preferences.delivery = true;
+  }
+  if (parsed.filters.mustHave?.includes('takeout')) {
+    preferences.takeout = true;
+  }
   
   // ═══════════════════════════════════════════════════════════
   // LANGUAGE NORMALIZATION
@@ -101,7 +105,7 @@ export function mapParsedIntentToSearchIntent(
     locationAnchor,
     nearMe,
     explicitDistance,
-    preferences: Object.keys(preferences).length > 0 ? preferences : undefined,
+    preferences,
     language,
     confidence: Math.max(0, Math.min(1, confidence)),
     originalQuery: parsed.originalQuery || originalQuery

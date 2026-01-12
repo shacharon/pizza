@@ -272,15 +272,92 @@ export class SearchOrchestrator {
             }, '[SearchOrchestrator] Intent parsed');
 
             // ═══════════════════════════════════════════════════════════
+            // PHASE 3: PARALLEL LLM INTENT EXTRACTION (Validation)
+            // ═══════════════════════════════════════════════════════════
+            // TEMPORARILY DISABLED: Adds 4+ seconds to every request
+            // TODO: Move to background/async logging or add proper feature flag
+
+            let directSearchIntent: SearchIntent | null = null;
+            let directConfidence: number = 0;
+            let comparisonResult: import('../comparison/intent-comparator.js').IntentComparison | null = null;
+
+            const ENABLE_PHASE3_VALIDATION = process.env.ENABLE_PHASE3_VALIDATION === 'true';
+
+            if (ENABLE_PHASE3_VALIDATION && this.llm && this.intentService.parseSearchIntent) {
+                // Only if explicitly enabled via env var
+                try {
+                    const directStart = Date.now();
+                    const result = await this.intentService.parseSearchIntent(
+                        request.query,
+                        contextWithSession,
+                        this.llm
+                    );
+                    directSearchIntent = result.intent;
+                    directConfidence = result.confidence;
+                    const directTime = Date.now() - directStart;
+
+                    logger.info({
+                        requestId: finalRequestId,
+                        directTime,
+                        directConfidence: directConfidence.toFixed(2),
+                        foodPresent: directSearchIntent.foodAnchor.present,
+                        locationPresent: directSearchIntent.locationAnchor.present
+                    }, '[Phase 3] Direct SearchIntent extracted');
+
+                } catch (error) {
+                    logger.warn({
+                        requestId: finalRequestId,
+                        error: error instanceof Error ? error.message : 'unknown'
+                    }, '[Phase 3] Direct intent extraction failed, using legacy mapper');
+                }
+            }
+
+            // ═══════════════════════════════════════════════════════════
             // PHASE 2: MAP TO NEW SCHEMA & DETERMINISTIC RESOLUTION
             // ═══════════════════════════════════════════════════════════
 
             // Step 2.1: Map legacy ParsedIntent to SearchIntent (temporary)
-            const searchIntent = mapParsedIntentToSearchIntent(
+            const mappedSearchIntent = mapParsedIntentToSearchIntent(
                 intent,
                 confidence,
                 request.query
             );
+
+            // Step 2.1.5: Compare mapped vs direct (Phase 3)
+            if (directSearchIntent !== null) {
+                const { compareSearchIntents } = await import('../comparison/intent-comparator.js');
+                const { comparisonMetrics } = await import('../comparison/comparison-metrics.js');
+
+                comparisonResult = compareSearchIntents(mappedSearchIntent, directSearchIntent);
+
+                // Record for metrics
+                comparisonMetrics.record(comparisonResult);
+
+                // Log comparison
+                logger.info({
+                    requestId: finalRequestId,
+                    matched: comparisonResult.matched,
+                    differences: comparisonResult.differences.length,
+                    confidenceDelta: comparisonResult.confidence.delta.toFixed(3),
+                    metrics: comparisonResult.metrics
+                }, '[Phase 3] Intent comparison');
+
+                // Log differences if any
+                if (comparisonResult.differences.length > 0) {
+                    logger.debug({
+                        requestId: finalRequestId,
+                        differences: comparisonResult.differences.map(d => ({
+                            field: d.field,
+                            mapped: d.mapped,
+                            direct: d.direct,
+                            severity: d.severity
+                        }))
+                    }, '[Phase 3] Intent differences detected');
+                }
+            }
+
+            // Step 2.1.6: Choose which intent to use (Phase 3 validation: prefer direct)
+            const searchIntent = directSearchIntent || mappedSearchIntent;
 
             logger.debug({
                 foodPresent: searchIntent.foodAnchor.present,
@@ -728,6 +805,16 @@ export class SearchOrchestrator {
                     durationMs: googleCallTime
                 }, '[SearchOrchestrator] Raw results fetched');
 
+                // DEBUG: Check for duplicates in raw Google results
+                const uniqueRawResults = new Set(rawResults.map(r => r.placeId));
+                if (uniqueRawResults.size !== rawResults.length) {
+                    logger.warn({
+                        total: rawResults.length,
+                        unique: uniqueRawResults.size,
+                        duplicates: rawResults.length - uniqueRawResults.size
+                    }, '[DEBUG] Duplicates in RAW Google results!');
+                }
+
                 // Phase 1: Log candidate pool metrics
                 logger.info({
                     traceId,
@@ -813,12 +900,37 @@ export class SearchOrchestrator {
             }
 
             // Step 5: Rank filtered results by relevance (Phase 3: with distance scoring)
+
+            // DEBUG: Check for duplicates BEFORE ranking
+            const uniqueBeforeRanking = new Set(filterResult.kept.map(r => r.placeId));
+            if (uniqueBeforeRanking.size !== filterResult.kept.length) {
+                logger.warn({
+                    total: filterResult.kept.length,
+                    unique: uniqueBeforeRanking.size,
+                    duplicates: filterResult.kept.length - uniqueBeforeRanking.size
+                }, '[DEBUG] Duplicates detected BEFORE ranking!');
+            }
+
             const rankedResults = this.rankingService.rank(
                 filterResult.kept,
                 intent
             );
             timings.rankingMs = Date.now() - rankingStart;
             logger.info({ durationMs: timings.rankingMs }, '[SearchOrchestrator] Results ranked');
+
+            // DEBUG: Check for duplicates AFTER ranking
+            const uniqueAfterRanking = new Set(rankedResults.map(r => r.placeId));
+            if (uniqueAfterRanking.size !== rankedResults.length) {
+                logger.warn({
+                    total: rankedResults.length,
+                    unique: uniqueAfterRanking.size,
+                    duplicates: rankedResults.length - uniqueAfterRanking.size,
+                    duplicatePlaceIds: rankedResults
+                        .map(r => r.placeId)
+                        .filter((id, idx, arr) => arr.indexOf(id) !== idx)
+                        .slice(0, 5)
+                }, '[DEBUG] Duplicates detected AFTER ranking!');
+            }
 
             // Phase 1: Log ranking metrics
             logger.info({
@@ -829,8 +941,33 @@ export class SearchOrchestrator {
                 top1PlaceId: rankedResults[0]?.placeId,
             }, 'Ranked and filtered candidates');
 
+            // CRITICAL FIX: Deduplicate rankedResults before processing
+            // Defensive deduplication: Google API sometimes returns the same place multiple times
+            // (e.g., across multiple pages, or matching different internal criteria)
+            const seenPlaceIds = new Set<string>();
+            const deduplicatedResults = rankedResults.filter(r => {
+                if (seenPlaceIds.has(r.placeId)) {
+                    logger.warn({
+                        placeId: r.placeId,
+                        name: r.name,
+                        rank: r.rank
+                    }, '[Deduplication] Removing duplicate result');
+                    return false;
+                }
+                seenPlaceIds.add(r.placeId);
+                return true;
+            });
+
+            if (deduplicatedResults.length !== rankedResults.length) {
+                logger.warn({
+                    original: rankedResults.length,
+                    deduplicated: deduplicatedResults.length,
+                    removed: rankedResults.length - deduplicatedResults.length
+                }, '[Deduplication] Removed duplicate results from ranked set (expected when Google API returns duplicates)');
+            }
+
             // Phase 3: Detect weak matches
-            const { strong, weak } = this.detectWeakMatches(rankedResults);
+            const { strong, weak } = this.detectWeakMatches(deduplicatedResults);
 
             if (weak.length > 0) {
                 logger.warn({
@@ -847,18 +984,32 @@ export class SearchOrchestrator {
             }
 
             // Step 6: Use strong results (or all if no weak matches)
-            const topResults = strong.length > 0 ? strong.slice(0, 10) : rankedResults.slice(0, 10);
+            const topResults = strong.length > 0 ? strong.slice(0, 10) : deduplicatedResults.slice(0, 10);
+
+            // DEBUG: Check for duplicates in topResults
+            const uniqueTopResults = new Set(topResults.map(r => r.placeId));
+            if (uniqueTopResults.size !== topResults.length) {
+                logger.error({
+                    total: topResults.length,
+                    unique: uniqueTopResults.size,
+                    duplicates: topResults.length - uniqueTopResults.size,
+                    duplicatePlaceIds: topResults
+                        .map(r => r.placeId)
+                        .filter((id, idx, arr) => arr.indexOf(id) !== idx)
+                }, '[DEBUG] DUPLICATES IN topResults! This is the bug!');
+            }
+
             logger.info({
                 finalCount: topResults.length,
                 strongCount: strong.length,
                 weakCount: weak.length,
-                totalRanked: rankedResults.length
+                totalRanked: deduplicatedResults.length
             }, '[SearchOrchestrator] Final result count');
 
             // Phase 1: Calculate combined confidence (intent + results quality)
             const confidenceFactors = this.confidenceService.calculateConfidence(
                 confidence || 0.7,
-                rankedResults
+                deduplicatedResults
             );
 
             logger.info({
@@ -1016,14 +1167,24 @@ export class SearchOrchestrator {
                 // Phase 1: Candidate pool debug info
                 candidatePoolSize: this.poolConfig.candidatePoolSize,
                 googleResultsCount: allResults.length,
-                scoredCandidatesCount: rankedResults.length,
+                scoredCandidatesCount: deduplicatedResults.length,
                 // Include top scores in DEV only
                 ...(this.poolConfig.debugIncludeScore && {
-                    topScores: rankedResults.slice(0, 5).map(r => ({
+                    topScores: deduplicatedResults.slice(0, 5).map(r => ({
                         placeId: r.placeId,
                         ...(r.score !== undefined && { score: r.score }),
                         ...(r.rank !== undefined && { rank: r.rank }),
                     })),
+                }),
+                // Phase 3: Intent comparison
+                ...(comparisonResult && {
+                    intentComparison: {
+                        usedDirectIntent: directSearchIntent !== null,
+                        matched: comparisonResult.matched,
+                        differences: comparisonResult.differences.length,
+                        confidenceDelta: comparisonResult.confidence.delta,
+                        metrics: comparisonResult.metrics
+                    }
                 }),
             } : undefined;
 

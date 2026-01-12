@@ -59,5 +59,19 @@ export interface Diagnostics {
     score?: number;
     rank?: number;
   }>;
+  
+  // Phase 3: Intent comparison (parallel LLM extraction validation)
+  intentComparison?: {
+    usedDirectIntent: boolean;       // Whether direct LLM extraction was used
+    matched: boolean;                 // Whether mapped and direct intents matched
+    differences: number;              // Number of differences found
+    confidenceDelta: number;          // Confidence difference (direct - mapped)
+    metrics: {
+      foodAnchorMatch: boolean;
+      locationAnchorMatch: boolean;
+      nearMeMatch: boolean;
+      preferencesMatch: boolean;
+    };
+  };
 }
 

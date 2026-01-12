@@ -275,6 +275,25 @@ User: "pizza near me"
         ];
 
         const raw = await this.llm.completeJSON(messages, PromptSchema, { temperature: 0 });
+        
+        // FIX: Sometimes LLM returns arrays instead of strings for literal fields
+        // e.g., intent: ["find_food"] instead of intent: "find_food"
+        let fixedArrays = false;
+        if (Array.isArray((raw as any).intent) && (raw as any).intent.length === 1) {
+            console.warn('[PlacesIntentService] LLM returned intent as array, unwrapping:', (raw as any).intent);
+            (raw as any).intent = (raw as any).intent[0];
+            fixedArrays = true;
+        }
+        if (Array.isArray((raw as any).provider) && (raw as any).provider.length === 1) {
+            console.warn('[PlacesIntentService] LLM returned provider as array, unwrapping:', (raw as any).provider);
+            (raw as any).provider = (raw as any).provider[0];
+            fixedArrays = true;
+        }
+        
+        if (fixedArrays) {
+            console.warn('[PlacesIntentService] Fixed LLM array output - this should not happen regularly');
+        }
+        
         let intent = PlacesIntentSchema.parse(raw);
 
         // GUARD: Enforce no opennow:false (Google Places API doesn't support closed filtering)

@@ -447,6 +447,77 @@ export class IntentService implements IIntentService {
   }
 
   // ============================================================================
+  // PHASE 3: Direct SearchIntent Extraction (LLM-based)
+  // ============================================================================
+
+  /**
+   * Parse query directly into SearchIntent using LLM (Phase 3)
+   * 
+   * This is the future path - bypasses legacy ParsedIntent and mapper.
+   * Once validated, this will replace the parse() method.
+   * 
+   * @param query - User's search query
+   * @param context - Optional session context
+   * @param llm - LLM provider (required for this method)
+   * @returns SearchIntent with confidence
+   * @throws Error if LLM is not available or extraction fails
+   */
+  async parseSearchIntent(
+    query: string,
+    context?: SessionContext,
+    llm?: import('../../../llm/types.js').LLMProvider | null
+  ): Promise<{ intent: import('../types/intent.dto.js').SearchIntent; confidence: number }> {
+    const startTime = Date.now();
+    
+    if (!llm) {
+      throw new Error('LLM provider required for direct SearchIntent extraction');
+    }
+    
+    try {
+      // Import the extractor
+      const { extractSearchIntentFromLLM, createClarifyIntent } = await import('../llm/search-intent-extractor.js');
+      
+      // Extract intent using LLM
+      const intent = await extractSearchIntentFromLLM(query, llm, 
+        context?.sessionId ? { sessionId: context.sessionId } : undefined
+      );
+      
+      const duration = Date.now() - startTime;
+      
+      logger.info({
+        sessionId: context?.sessionId,
+        duration,
+        confidence: intent.confidence,
+        foodPresent: intent.foodAnchor.present,
+        locationPresent: intent.locationAnchor.present
+      }, '[IntentService] Direct SearchIntent extracted');
+      
+      return {
+        intent,
+        confidence: intent.confidence
+      };
+      
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      
+      logger.error({
+        sessionId: context?.sessionId,
+        duration,
+        error: error instanceof Error ? error.message : 'unknown'
+      }, '[IntentService] Direct SearchIntent extraction failed');
+      
+      // Fallback: create minimal CLARIFY intent
+      const { createClarifyIntent } = await import('../llm/search-intent-extractor.js');
+      const fallbackIntent = createClarifyIntent(query);
+      
+      return {
+        intent: fallbackIntent,
+        confidence: 0.1
+      };
+    }
+  }
+
+  // ============================================================================
   // NEW: AI Assistant Helper Methods
   // ============================================================================
 
