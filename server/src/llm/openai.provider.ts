@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { zodToJsonSchema } from "zod-to-json-schema";
+import { createHash } from "crypto";
 import type { LLMProvider, Message } from "./types.js";
 import { openai } from "../services/openai.client.js";
 import {
@@ -11,34 +13,53 @@ import {
 import { traceProviderCall, calculateOpenAICost } from "../lib/telemetry/providerTrace.js";
 import { logger } from "../lib/logger/structured-logger.js";
 
+/**
+ * Schema version for Structured Outputs - increment when schema generation changes
+ */
+const SCHEMA_VERSION = "v1";
+
 function sleep(ms: number) { return new Promise(res => setTimeout(res, ms)); }
 
 function toInput(messages: Message[]) {
     return messages.map(m => ({ role: m.role, content: m.content }));
 }
 
-function extractJsonLoose(text: string): unknown | null {
-    if (!text) return null;
-    const raw = text.trim();
-    const fence = raw.match(/```(?:json)?\n([\s\S]*?)```/i);
-    const candidate = fence?.[1]?.trim() ?? raw;
-    try { return JSON.parse(candidate); } catch { }
-    const s = candidate; let depth = 0; let start = -1; let inStr = false; let esc = false;
-    for (let i = 0; i < s.length; i++) {
-        const ch = s[i];
-        if (inStr) { if (esc) { esc = false; } else if (ch === '\\') { esc = true; } else if (ch === '"') { inStr = false; } continue; }
-        if (ch === '"') { inStr = true; continue; }
-        if (ch === '{') { if (depth === 0) start = i; depth++; }
-        else if (ch === '}') { if (depth > 0) depth--; if (depth === 0 && start !== -1) { const slice = s.slice(start, i + 1); try { return JSON.parse(slice); } catch { } start = -1; } }
-    }
-    return null;
+/**
+ * Generate a stable hash of a JSON schema for correlation/debugging
+ * Used to track which schema version caused issues
+ */
+function generateSchemaHash(schema: any): string {
+    const schemaString = JSON.stringify(schema, Object.keys(schema).sort());
+    return createHash('sha256').update(schemaString).digest('hex').substring(0, 12);
 }
 
 export class OpenAiProvider implements LLMProvider {
+    /**
+     * Complete with strict JSON Schema validation using OpenAI Structured Outputs
+     * 
+     * This replaces the previous text-based JSON approach with OpenAI's Structured Outputs API
+     * which guarantees JSON conformance to the provided schema. This eliminates parse errors
+     * like arrays-instead-of-strings (e.g. ["find_food"] vs "find_food").
+     * 
+     * Key changes:
+     * - Converts Zod schema to JSON Schema using zod-to-json-schema
+     * - Uses OpenAI's beta.chat.completions.parse with strict:true
+     * - Removes extractJsonLoose fallback (no longer needed)
+     * - Only retries transport errors (429, 5xx, timeouts) - NOT parse errors
+     * - Parse errors now fail fast (they shouldn't happen with strict schema)
+     */
     async completeJSON<T extends z.ZodTypeAny>(
         messages: Message[],
         schema: T,
-        opts?: { temperature?: number; timeout?: number; traceId?: string; sessionId?: string }
+        opts?: {
+            temperature?: number;
+            timeout?: number;
+            traceId?: string;
+            sessionId?: string;
+            promptVersion?: string;
+            promptHash?: string;
+            promptLength?: number;
+        }
     ): Promise<z.infer<T>> {
         const temperature = opts?.temperature ?? 0;
         const timeoutMs = opts?.timeout ?? LLM_JSON_TIMEOUT_MS;
@@ -47,14 +68,19 @@ export class OpenAiProvider implements LLMProvider {
         const tStart = Date.now();
         let lastErr: any;
 
+        // Convert Zod schema to JSON Schema for OpenAI Structured Outputs
+        // Cast schema to avoid type issues with zod v4
+        const jsonSchema = zodToJsonSchema(schema as any, "response") as any;
+        const schemaHash = generateSchemaHash(jsonSchema);
+
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
             if ((backoffs[attempt] ?? 0) > 0) await sleep(backoffs[attempt] ?? 0);
             const controller = new AbortController();
             const t = setTimeout(() => controller.abort(), timeoutMs);
             try {
                 const model = (opts as any)?.model || DEFAULT_LLM_MODEL;
-                
-                // Wrap OpenAI call with tracing
+
+                // Use OpenAI Structured Outputs with strict JSON Schema enforcement
                 const resp = await traceProviderCall(
                     {
                         ...(opts?.traceId !== undefined && { traceId: opts.traceId }),
@@ -64,25 +90,50 @@ export class OpenAiProvider implements LLMProvider {
                         ...(attempt !== undefined && { retryCount: attempt }),
                     },
                     async () => {
-                        return await openai.responses.create({
+                        return await openai.chat.completions.create({
                             model,
-                            input: toInput(messages),
-                            temperature
+                            messages: toInput(messages) as any,
+                            temperature,
+                            response_format: {
+                                type: "json_schema",
+                                json_schema: {
+                                    name: "response",
+                                    schema: jsonSchema,
+                                    strict: true  // Guarantees schema conformance
+                                }
+                            } as any  // Type cast for OpenAI SDK compatibility
                         }, { signal: controller.signal });
                     },
                     (event, result) => {
-                        // Robust token extraction - check multiple possible locations
+                        // Extract token usage
                         const usage = (result as any)?.usage;
                         const tokensIn = usage?.prompt_tokens ?? usage?.input_tokens ?? 0;
                         const tokensOut = usage?.completion_tokens ?? usage?.output_tokens ?? 0;
                         const totalTokens = usage?.total_tokens ?? (tokensIn + tokensOut);
-                        
+
                         event.model = model;
                         event.tokensIn = tokensIn;
                         event.tokensOut = tokensOut;
                         event.totalTokens = totalTokens;
-                        
-                        // Safe cost calculation
+
+                        // Add Structured Outputs metadata for debugging
+                        (event as any).schemaName = "response";
+                        (event as any).schemaStrict = true;
+                        (event as any).schemaHash = schemaHash;
+                        (event as any).schemaVersion = SCHEMA_VERSION;
+
+                        // Add prompt metadata for observability (if provided)
+                        if (opts?.promptVersion) {
+                            (event as any).promptVersion = opts.promptVersion;
+                        }
+                        if (opts?.promptHash) {
+                            (event as any).promptHash = opts.promptHash;
+                        }
+                        if (opts?.promptLength) {
+                            (event as any).promptLength = opts.promptLength;
+                        }
+
+                        // Calculate cost
                         if (tokensIn > 0 || tokensOut > 0) {
                             const cost = calculateOpenAICost(model, tokensIn, tokensOut);
                             if (cost !== null) {
@@ -92,65 +143,98 @@ export class OpenAiProvider implements LLMProvider {
                                 event.costUnknown = true;
                             }
                         } else {
-                            // No token data available
                             event.costUnknown = true;
                         }
                     }
                 );
-                
+
                 clearTimeout(t);
-                const raw = resp.output_text || '';
-                // Strict parse first via Zod
-                try {
-                    const parsed1 = JSON.parse(raw);
-                    const validated = schema.parse(parsed1);
-                    logger.debug({ attempts: attempt + 1, durationMs: Date.now() - tStart }, '[LLM] Completion successful');
-                    return validated;
-                } catch {
-                    const loose = extractJsonLoose(raw);
-                    const validated = schema.parse(loose);
-                    // eslint-disable-next-line no-console
-                    logger.debug({ attempts: attempt + 1, durationMs: Date.now() - tStart, mode: 'loose_json' }, '[LLM] Completion successful (loose JSON fallback)');
-                    return validated as any;
+
+                // Extract JSON content from OpenAI's response
+                const content = resp.choices[0]?.message?.content;
+
+                if (!content) {
+                    // This should be extremely rare with Structured Outputs
+                    logger.error({
+                        traceId: opts?.traceId,
+                        refusal: (resp.choices[0]?.message as any)?.refusal,
+                        finishReason: resp.choices[0]?.finish_reason
+                    }, '[LLM] Structured Outputs returned no content');
+                    throw new Error('OpenAI Structured Outputs returned no content');
                 }
+
+                // Parse JSON and validate with Zod (should always pass with strict schema)
+                let parsed: any;
+                try {
+                    parsed = JSON.parse(content);
+                } catch (parseErr: any) {
+                    logger.error({
+                        traceId: opts?.traceId,
+                        schemaHash,
+                        error: parseErr?.message
+                    }, '[LLM] Failed to parse JSON from Structured Outputs response');
+                    throw new Error(`JSON parse failed despite Structured Outputs: ${parseErr?.message}`);
+                }
+
+                const validated = schema.parse(parsed);
+
+                logger.debug({
+                    attempts: attempt + 1,
+                    durationMs: Date.now() - tStart,
+                    schemaHash
+                }, '[LLM] Structured Outputs completion successful');
+
+                return validated;
             } catch (e: any) {
                 clearTimeout(t);
                 lastErr = e;
                 const status = e?.status ?? e?.code ?? e?.name;
-                
-                // Only retry transport/server errors (NOT JSON/Zod validation errors)
-                const isTransportError = status === 429 || 
-                                          (typeof status === 'number' && status >= 500) || 
-                                          e?.name === 'AbortError';
-                const isParseError = e?.name === 'ZodError' || 
-                                     e?.name === 'SyntaxError' || 
-                                     e?.message?.includes('JSON');
-                
-                // Parse errors: try ONE repair attempt
-                if (isParseError && attempt === 0) {
-                    logger.warn('[LLM] Parse error on attempt 1, will try repair on attempt 2');
-                    // Next attempt will use same prompt (no special repair logic for now)
-                    continue;
-                }
-                
-                // For parse errors on 2nd+ attempt OR non-retriable errors: fail fast
-                if (isParseError || !isTransportError) {
-                    // eslint-disable-next-line no-console
-                    logger.error({ status }, '[LLM] Non-retriable error, failing fast');
+
+                // Only retry transport/server errors - NOT validation errors
+                const isTransportError = status === 429 ||
+                    (typeof status === 'number' && status >= 500) ||
+                    e?.name === 'AbortError';
+                const isParseError = e?.name === 'ZodError' ||
+                    e?.name === 'SyntaxError' ||
+                    e?.message?.includes('JSON') ||
+                    e?.message?.includes('parsed content');
+
+                // Parse errors with Structured Outputs = fail fast (shouldn't happen)
+                if (isParseError) {
+                    logger.error({
+                        status,
+                        traceId: opts?.traceId,
+                        schemaHash,
+                        errorType: e?.name
+                    }, '[LLM] Structured Outputs parse error - failing fast (schema mismatch should not occur)');
                     throw e;
                 }
-                
+
+                // Non-retriable errors: fail fast
+                if (!isTransportError) {
+                    logger.error({ status, traceId: opts?.traceId }, '[LLM] Non-retriable error, failing fast');
+                    throw e;
+                }
+
                 // Transport errors: retry if attempts remaining
-                // eslint-disable-next-line no-console
-                logger.warn({ attempt: attempt + 1, maxAttempts, status }, '[LLM] Retriable transport error');
+                logger.warn({
+                    attempt: attempt + 1,
+                    maxAttempts,
+                    status,
+                    traceId: opts?.traceId
+                }, '[LLM] Retriable transport error');
+
                 if (attempt === maxAttempts - 1) {
-                    // eslint-disable-next-line no-console
-                    logger.error({ attempts: attempt + 1, durationMs: Date.now() - tStart }, '[LLM] All attempts failed');
+                    logger.error({
+                        attempts: attempt + 1,
+                        durationMs: Date.now() - tStart,
+                        traceId: opts?.traceId
+                    }, '[LLM] All retry attempts exhausted');
                     throw e;
                 }
             }
         }
-        throw lastErr ?? new Error('LLM failed');
+        throw lastErr ?? new Error('LLM failed after all attempts');
     }
 
     async complete(
@@ -174,25 +258,25 @@ export class OpenAiProvider implements LLMProvider {
                     retryCount: 0,
                 },
                 async () => {
-                    return await openai.responses.create({
+                    return await openai.chat.completions.create({
                         model,
-                        input: toInput(messages),
+                        messages: toInput(messages) as any,
                         temperature
                     }, { signal: controller.signal });
                 },
                 (event, result) => {
-                    // Robust token extraction - check multiple possible locations
+                    // Extract token usage
                     const usage = (result as any)?.usage;
                     const tokensIn = usage?.prompt_tokens ?? usage?.input_tokens ?? 0;
                     const tokensOut = usage?.completion_tokens ?? usage?.output_tokens ?? 0;
                     const totalTokens = usage?.total_tokens ?? (tokensIn + tokensOut);
-                    
+
                     event.model = model;
                     event.tokensIn = tokensIn;
                     event.tokensOut = tokensOut;
                     event.totalTokens = totalTokens;
-                    
-                    // Safe cost calculation
+
+                    // Calculate cost
                     if (tokensIn > 0 || tokensOut > 0) {
                         const cost = calculateOpenAICost(model, tokensIn, tokensOut);
                         if (cost !== null) {
@@ -202,17 +286,16 @@ export class OpenAiProvider implements LLMProvider {
                             event.costUnknown = true;
                         }
                     } else {
-                        // No token data available
                         event.costUnknown = true;
                     }
                 }
             );
-            
+
             clearTimeout(t);
-            return resp.output_text || '';
+            return resp.choices[0]?.message?.content || '';
         } catch (e: any) {
             clearTimeout(t);
-            logger.error({ error: e?.status ?? e?.code ?? e?.name }, '[LLM] Simple complete failed');
+            logger.error({ error: e?.status ?? e?.code ?? e?.name, traceId: opts?.traceId }, '[LLM] Simple complete failed');
             throw e;
         }
     }

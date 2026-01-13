@@ -94,12 +94,13 @@ export class WebSocketManager {
 
     // Initialize ping/pong
     (ws as any).isAlive = true;
+    (ws as any).clientId = clientId; // Store for heartbeat logging
     ws.on('pong', () => {
       (ws as any).isAlive = true;
     });
 
     ws.on('message', (data) => this.handleMessage(ws, data, clientId));
-    ws.on('close', () => this.handleClose(ws, clientId));
+    ws.on('close', (code, reason) => this.handleClose(ws, clientId, code, reason));
     ws.on('error', (err) => this.handleError(ws, err, clientId));
   }
 
@@ -136,17 +137,22 @@ export class WebSocketManager {
     }
   }
 
-  private handleClientMessage(
+  private async handleClientMessage(
     ws: WebSocket,
     message: WSClientMessage,
     clientId: string
-  ): void {
+  ): Promise<void> {
     switch (message.type) {
       case 'subscribe':
         this.subscribe(message.requestId, ws);
+        
+        // Check request state for enhanced logging
+        const requestStatus = await this.getRequestStatus(message.requestId);
+        
         logger.info({
           clientId,
-          requestId: message.requestId
+          requestId: message.requestId,
+          status: requestStatus
         }, 'websocket_subscribed');
         
         // Phase 3: Late-subscriber replay
@@ -169,6 +175,40 @@ export class WebSocketManager {
         }, 'websocket_ui_state_changed');
         // TODO Phase 4: Handle UI state changes
         break;
+    }
+  }
+
+  /**
+   * Get request status for logging
+   */
+  private async getRequestStatus(requestId: string): Promise<string> {
+    if (!this.requestStateStore) {
+      return 'unknown'; // No state store available
+    }
+
+    try {
+      const state = await this.requestStateStore.get(requestId);
+      
+      if (!state) {
+        return 'not_found'; // Request doesn't exist or expired
+      }
+      
+      // Map assistant status to subscribe log status
+      switch (state.assistantStatus) {
+        case 'pending':
+          return 'pending';
+        case 'streaming':
+          return 'streaming';
+        case 'completed':
+          return 'completed';
+        case 'failed':
+          return 'failed';
+        default:
+          return 'unknown';
+      }
+    } catch (error) {
+      logger.debug({ requestId, error }, 'Failed to get request status');
+      return 'error';
     }
   }
 
@@ -234,9 +274,19 @@ export class WebSocketManager {
     }
   }
 
-  private handleClose(ws: WebSocket, clientId: string): void {
+  private handleClose(ws: WebSocket, clientId: string, code: number, reasonBuffer: Buffer): void {
     this.cleanup(ws);
-    logger.info({ clientId }, 'websocket_disconnected');
+    
+    const reason = reasonBuffer?.toString() || '';
+    const wasClean = code === 1000 || code === 1001;
+    
+    logger.info({
+      clientId,
+      code,
+      reason: reason || 'none',
+      wasClean,
+      ...(((ws as any).terminatedBy) && { terminatedBy: (ws as any).terminatedBy })
+    }, 'websocket_disconnected');
   }
 
   private handleError(ws: WebSocket, err: Error, clientId: string): void {
@@ -346,9 +396,19 @@ export class WebSocketManager {
 
       this.wss.clients.forEach((ws: any) => {
         if (ws.isAlive === false) {
+          // Mark termination source for disconnect logging
+          ws.terminatedBy = 'server_heartbeat';
           this.cleanup(ws);
           ws.terminate();
           terminatedCount++;
+          
+          // Log individual heartbeat termination with clientId
+          if (ws.clientId) {
+            logger.info({
+              clientId: ws.clientId,
+              reason: 'heartbeat_timeout'
+            }, 'WebSocket heartbeat: terminating unresponsive connection');
+          }
           return;
         }
 

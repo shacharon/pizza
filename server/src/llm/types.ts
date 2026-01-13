@@ -13,6 +13,11 @@ export interface LLMProvider {
             model?: string;
             temperature?: number;
             timeout?: number;
+            traceId?: string;
+            sessionId?: string;
+            promptVersion?: string;
+            promptHash?: string;
+            promptLength?: number;
         }
     ): Promise<z.infer<T>>;
 
