@@ -984,7 +984,21 @@ export class SearchOrchestrator {
             }
 
             // Step 6: Use strong results (or all if no weak matches)
-            const topResults = strong.length > 0 ? strong.slice(0, 10) : deduplicatedResults.slice(0, 10);
+            // Smart display sizing: show all results if we got few, otherwise limit to 10
+            const availableResults = strong.length > 0 ? strong : deduplicatedResults;
+            const dynamicDisplaySize = availableResults.length < 15 
+                ? availableResults.length  // Show all if we got <15 results
+                : this.poolConfig.displayResultsSize;  // Otherwise use configured limit (10)
+            
+            const topResults = availableResults.slice(0, dynamicDisplaySize);
+            
+            if (availableResults.length < 15 && availableResults.length > this.poolConfig.displayResultsSize) {
+                logger.info({
+                    available: availableResults.length,
+                    displaying: dynamicDisplaySize,
+                    normalLimit: this.poolConfig.displayResultsSize
+                }, '[SearchOrchestrator] Showing all results (fewer than 15 available)');
+            }
 
             // DEBUG: Check for duplicates in topResults
             const uniqueTopResults = new Set(topResults.map(r => r.placeId));

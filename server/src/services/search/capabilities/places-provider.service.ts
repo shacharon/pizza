@@ -98,6 +98,19 @@ export class PlacesProviderService implements IPlacesProviderService {
     logger.debug({ page: pageCount, resultCount: firstPageResults.length }, '[PlacesProviderService] Page fetched');
 
     // Fetch additional pages if needed
+    if (!nextPageToken) {
+        logger.info({ 
+            currentResults: allResults.length, 
+            targetSize,
+            reason: 'no_next_page_token'
+        }, '[PlacesProviderService] Cannot fetch more pages - Google returned no next_page_token');
+    } else if (allResults.length >= targetSize) {
+        logger.info({ 
+            currentResults: allResults.length, 
+            targetSize 
+        }, '[PlacesProviderService] Target size reached, skipping additional pages');
+    }
+    
     while (allResults.length < targetSize && nextPageToken && pageCount < maxPages) {
       // Google requires 2-second delay before using next_page_token
       logger.debug('[PlacesProviderService] Waiting 2s for next page token');
