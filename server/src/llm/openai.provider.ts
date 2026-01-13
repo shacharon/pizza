@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { createHash } from "crypto";
+import { performance } from "node:perf_hooks";
 import type { LLMProvider, Message } from "./types.js";
 import { openai } from "../services/openai.client.js";
 import {
@@ -59,7 +60,10 @@ export class OpenAiProvider implements LLMProvider {
             promptVersion?: string;
             promptHash?: string;
             promptLength?: number;
-        }
+            requestId?: string;  // For timing correlation
+            stage?: string;       // For stage identification (e.g., "intent_gate")
+        },
+        staticJsonSchema?: any  // Optional static JSON Schema (bypasses Zod conversion)
     ): Promise<z.infer<T>> {
         const temperature = opts?.temperature ?? 0;
         const timeoutMs = opts?.timeout ?? LLM_JSON_TIMEOUT_MS;
@@ -68,17 +72,70 @@ export class OpenAiProvider implements LLMProvider {
         const tStart = Date.now();
         let lastErr: any;
 
-        // Convert Zod schema to JSON Schema for OpenAI Structured Outputs
-        // Cast schema to avoid type issues with zod v4
-        const jsonSchema = zodToJsonSchema(schema as any, "response") as any;
+        // Timing instrumentation: t0 = start (before prompt construction)
+        const t0 = performance.now();
+
+        // Use static JSON Schema if provided, otherwise convert from Zod
+        let jsonSchema: any;
+
+        if (staticJsonSchema) {
+            // Use provided static schema (preferred for critical paths)
+            jsonSchema = staticJsonSchema;
+        } else {
+            // Convert Zod schema to JSON Schema for OpenAI Structured Outputs
+            jsonSchema = zodToJsonSchema(schema as any, {
+                target: 'openApi3',
+                $refStrategy: 'none'
+            }) as any;
+        }
+
+        // Validate schema BEFORE calling OpenAI
+        if (!jsonSchema || typeof jsonSchema !== 'object') {
+            logger.error({
+                traceId: opts?.traceId,
+                schemaType: typeof jsonSchema,
+                schemaValue: jsonSchema,
+                promptVersion: opts?.promptVersion
+            }, '[LLM] Invalid JSON Schema: schema is null or not an object');
+            throw new Error('Invalid JSON Schema generated from Zod schema');
+        }
+
+        if (jsonSchema.type !== 'object') {
+            logger.error({
+                traceId: opts?.traceId,
+                schemaType: jsonSchema.type,
+                hasProperties: !!jsonSchema.properties,
+                promptVersion: opts?.promptVersion
+            }, '[LLM] Invalid JSON Schema: root type must be "object"');
+            throw new Error(`Invalid JSON Schema: root type is "${jsonSchema.type}", expected "object"`);
+        }
+
+        // Ensure additionalProperties is false for strict mode
+        if (jsonSchema.additionalProperties !== false) {
+            jsonSchema.additionalProperties = false;
+        }
+
         const schemaHash = generateSchemaHash(jsonSchema);
+
+        // Timing instrumentation: t1 = after schema prepared
+        const t1 = performance.now();
 
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
             if ((backoffs[attempt] ?? 0) > 0) await sleep(backoffs[attempt] ?? 0);
             const controller = new AbortController();
             const t = setTimeout(() => controller.abort(), timeoutMs);
+
+            // Calculate prompt size
+            const promptChars = messages.reduce((sum, m) => sum + (m.content?.length || 0), 0);
+
+            // Timing instrumentation: t2 = immediately before OpenAI call (declare outside try for error access)
+            let t2 = performance.now();
+
             try {
                 const model = (opts as any)?.model || DEFAULT_LLM_MODEL;
+
+                // Update t2 right before OpenAI call
+                t2 = performance.now();
 
                 // Use OpenAI Structured Outputs with strict JSON Schema enforcement
                 const resp = await traceProviderCall(
@@ -150,6 +207,9 @@ export class OpenAiProvider implements LLMProvider {
 
                 clearTimeout(t);
 
+                // Timing instrumentation: t3 = immediately after OpenAI returns
+                const t3 = performance.now();
+
                 // Extract JSON content from OpenAI's response
                 const content = resp.choices[0]?.message?.content;
 
@@ -178,6 +238,43 @@ export class OpenAiProvider implements LLMProvider {
 
                 const validated = schema.parse(parsed);
 
+                // Timing instrumentation: t4 = after parse/validate complete
+                const t4 = performance.now();
+
+                // Extract token usage for detailed logging
+                const usage = (resp as any)?.usage;
+                const inputTokens = usage?.prompt_tokens ?? usage?.input_tokens ?? null;
+                const outputTokens = usage?.completion_tokens ?? usage?.output_tokens ?? null;
+
+                // Compute timing metrics
+                const buildPromptMs = Math.round((t1 - t0) * 100) / 100;
+                const networkMs = Math.round((t3 - t2) * 100) / 100;
+                const parseMs = Math.round((t4 - t3) * 100) / 100;
+                const totalMs = Math.round((t4 - t0) * 100) / 100;
+
+                // Log detailed timing once per attempt
+                logger.info({
+                    msg: 'llm_gate_timing',
+                    stage: opts?.stage || 'unknown',
+                    promptVersion: opts?.promptVersion || 'unknown',
+                    requestId: opts?.requestId,
+                    traceId: opts?.traceId,
+                    sessionId: opts?.sessionId,
+                    attempt: attempt + 1,
+                    model,
+                    timeoutMs,
+                    timeoutHit: false,
+                    buildPromptMs,
+                    networkMs,
+                    parseMs,
+                    totalMs,
+                    promptChars,
+                    inputTokens,
+                    outputTokens,
+                    retriesCount: attempt,
+                    success: true
+                }, 'llm_gate_timing');
+
                 logger.debug({
                     attempts: attempt + 1,
                     durationMs: Date.now() - tStart,
@@ -190,14 +287,75 @@ export class OpenAiProvider implements LLMProvider {
                 lastErr = e;
                 const status = e?.status ?? e?.code ?? e?.name;
 
-                // Only retry transport/server errors - NOT validation errors
+                // Timing instrumentation: t3_error = when error occurred
+                const t3Error = performance.now();
+
+                // Categorize errors
+                const isAbortError = e?.name === 'AbortError' ||
+                    e?.message?.includes('aborted') ||
+                    e?.message?.includes('timeout');
                 const isTransportError = status === 429 ||
-                    (typeof status === 'number' && status >= 500) ||
-                    e?.name === 'AbortError';
+                    (typeof status === 'number' && status >= 500);
                 const isParseError = e?.name === 'ZodError' ||
                     e?.name === 'SyntaxError' ||
                     e?.message?.includes('JSON') ||
                     e?.message?.includes('parsed content');
+
+                // Determine error type/reason
+                let errorType = 'unknown';
+                let errorReason = e?.message || 'unknown';
+                if (isAbortError) {
+                    errorType = 'abort_timeout';
+                    errorReason = 'Request aborted or timeout';
+                } else if (isTransportError) {
+                    errorType = 'transport_error';
+                    errorReason = `HTTP ${status}`;
+                } else if (isParseError) {
+                    errorType = 'parse_error';
+                    errorReason = e?.message || 'Parse failed';
+                }
+
+                // Compute timing metrics for failed attempt
+                const buildPromptMs = Math.round((t1 - t0) * 100) / 100;
+                const networkMs = Math.round((t3Error - t2) * 100) / 100;
+                const totalMs = Math.round((t3Error - t0) * 100) / 100;
+
+                // Log detailed timing for failed attempt
+                logger.warn({
+                    msg: 'llm_gate_timing',
+                    stage: opts?.stage || 'unknown',
+                    promptVersion: opts?.promptVersion || 'unknown',
+                    requestId: opts?.requestId,
+                    traceId: opts?.traceId,
+                    sessionId: opts?.sessionId,
+                    attempt: attempt + 1,
+                    model: (opts as any)?.model || DEFAULT_LLM_MODEL,
+                    timeoutMs,
+                    timeoutHit: isAbortError,
+                    buildPromptMs,
+                    networkMs,
+                    parseMs: 0,
+                    totalMs,
+                    promptChars,
+                    inputTokens: null,
+                    outputTokens: null,
+                    retriesCount: attempt,
+                    success: false,
+                    errorType,
+                    errorReason,
+                    statusCode: typeof status === 'number' ? status : null
+                }, 'llm_gate_timing');
+
+                // Abort/Timeout errors: fail fast, let caller handle (gate can fallback)
+                if (isAbortError) {
+                    logger.warn({
+                        traceId: opts?.traceId,
+                        durationMs: Date.now() - tStart,
+                        timeoutMs,
+                        promptVersion: opts?.promptVersion
+                    }, '[LLM] Request aborted/timeout - failing fast for caller to handle');
+                    throw e;
+                }
 
                 // Parse errors with Structured Outputs = fail fast (shouldn't happen)
                 if (isParseError) {
@@ -216,7 +374,7 @@ export class OpenAiProvider implements LLMProvider {
                     throw e;
                 }
 
-                // Transport errors: retry if attempts remaining
+                // Transport errors (429, 5xx): retry if attempts remaining
                 logger.warn({
                     attempt: attempt + 1,
                     maxAttempts,

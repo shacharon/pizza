@@ -61,7 +61,16 @@ router.post('/', async (req: Request, res: Response) => {
     // Phase 5: Parse mode (sync or async)
     const mode = (req.query.mode as 'sync' | 'async') || 'sync';
 
-    req.log.info({ 
+    // Phase 8: Log search_started ONCE (single source of truth)
+    logger.info({ 
+      requestId, 
+      query: validation.data!.query, 
+      mode,
+      hasUserLocation: !!validation.data!.userLocation,
+      sessionId: validation.data!.sessionId || 'new'
+    }, 'search_started');
+
+    req.log.debug({ 
       requestId, 
       query: validation.data!.query, 
       mode 

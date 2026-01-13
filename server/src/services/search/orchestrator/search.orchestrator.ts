@@ -39,6 +39,17 @@ import { FailureDetectorService, AssistantNarrationService } from '../assistant/
 import type { ResultGroup, LiveDataVerification } from '../types/search.types.js';
 import { calculateOpenNowSummary } from '../utils/opening-hours-summary.js';
 
+// Phase 8: Intent Gate Routing imports
+import { IntentGateService } from '../../intent/intent-gate.service.js';
+import { IntentFullService } from '../../intent/intent-full.service.js';
+import type { IntentGateResult } from '../../intent/intent-gate.types.js';
+import type { IntentFullResult } from '../../intent/intent-full.types.js';
+import { 
+    INTENT_GATE_ENABLED, 
+    INTENT_FORCE_FULL_LLM,
+    INTENT_DISABLE_FAST_PATH 
+} from '../../../config/intent-flags.js';
+
 // Phase 7: Production hardening imports
 import { logger } from '../../../lib/logger/structured-logger.js';
 import { withTimeout, isTimeoutError as isTimeout } from '../../../lib/reliability/timeout-guard.js';
@@ -79,6 +90,9 @@ export class SearchOrchestrator {
     // Phase 1: Candidate pool ranking
     private confidenceService = new ConfidenceService();
     private poolConfig = getRankingPoolConfig();
+    // Phase 8: Intent Gate Routing services
+    private intentGateService: IntentGateService;
+    private intentFullService: IntentFullService;
 
     constructor(
         private intentService: IIntentService,
@@ -99,6 +113,9 @@ export class SearchOrchestrator {
         // NEW: AI Assistant services
         this.failureDetector = new FailureDetectorService();
         this.assistantNarration = new AssistantNarrationService(llm || null);
+        // Phase 8: Intent Gate Routing services
+        this.intentGateService = new IntentGateService(llm || null);
+        this.intentFullService = new IntentFullService(llm || null);
 
         // Wire up session service to intent service for city caching
         if ('setSessionService' in this.intentService) {
@@ -123,7 +140,7 @@ export class SearchOrchestrator {
     async searchCore(request: SearchRequest, ctx: import('../types/search.types.js').SearchContext): Promise<import('../types/search.types.js').CoreSearchResult> {
         const { requestId, traceId, startTime } = ctx;
 
-        logger.info({ requestId, query: request.query }, 'search_started');
+        // NOTE: search_started log moved to controller (single source of truth)
 
         try {
             // Phase 1.5: Call search() with skipAssistant flag to avoid 3-4s LLM delay
@@ -207,13 +224,8 @@ export class SearchOrchestrator {
             liveDataRequested: false,
         };
 
-        // Phase 1: Structured logging at entry point
-        logger.info({
-            requestId: finalRequestId,
-            query: request.query,
-            hasUserLocation: !!request.userLocation
-        }, 'search_started');
-
+        // NOTE: search_started log moved to controller (single source of truth)
+        
         logger.debug({ query: request.query }, '[SearchOrchestrator] Starting search');
 
         try {
@@ -229,26 +241,213 @@ export class SearchOrchestrator {
                 logger.info({ sessionId: session.id }, '[SearchOrchestrator] Context cleared (intent reset)');
             }
 
-            // Step 2: Parse intent with confidence scoring
-            // Step 2: Parse intent with confidence scoring
-            // NOTE: Intent is parsed ONCE per search request.
-            // Chip interactions/refinements apply on top of this intent WITHOUT re-parsing.
-            // This prevents unnecessary LLM calls and maintains consistency.
-            // Intent Performance Policy: Fast Path → Cache → LLM fallback
-
             // Add sessionId to context for city caching
             const contextWithSession = {
                 ...session.context,
                 sessionId: session.id,
             };
+
+            // ═══════════════════════════════════════════════════════════
+            // PHASE 8: INTENT GATE ROUTING LAYER
+            // ═══════════════════════════════════════════════════════════
+            
+            // Step 2A: Check for categoryHint from UI (skip gate entirely)
+            if ((request as any).categoryHint && !INTENT_DISABLE_FAST_PATH) {
+                logger.info({ 
+                    requestId: finalRequestId, 
+                    categoryHint: (request as any).categoryHint 
+                }, 'search_context_resolved: using_ui_hint');
+                flags.usedLLMIntent = false;
+                
+                // Build minimal intent from UI hint and continue to legacy flow
+                // (Legacy flow will still work with existing intentService)
+            }
+            
+            // Step 2B: Intent Gate (if enabled and no UI hint)
+            let gateResult: IntentGateResult | null = null;
+            let fullIntentResult: IntentFullResult | null = null;
+            
+            if (INTENT_GATE_ENABLED && !INTENT_FORCE_FULL_LLM && !(request as any).categoryHint) {
+                const gateStart = Date.now();
+                
+                try {
+                    gateResult = await this.intentGateService.analyze(request.query, {
+                        requestId: finalRequestId,
+                        ...(traceId && { traceId }),
+                        sessionId
+                    });
+                    const gateMs = Date.now() - gateStart;
+                    
+                    logger.info({
+                        requestId: finalRequestId,
+                        route: gateResult.route,
+                        confidence: gateResult.confidence,
+                        hasFood: gateResult.hasFood,
+                        hasLocation: gateResult.hasLocation,
+                        hasModifiers: gateResult.hasModifiers,
+                        language: gateResult.language,
+                        durationMs: gateMs
+                    }, 'intent_gate_completed');
+                    
+                    // Route: ASK_CLARIFY → early return
+                    if (gateResult.route === 'ASK_CLARIFY') {
+                        logger.info({ requestId: finalRequestId }, '[SearchOrchestrator] Gate routed to CLARIFY');
+                        return this.buildClarifyResponse({
+                            sessionId,
+                            reason: gateResult.routeReason,
+                            originalQuery: request.query,
+                            transparency: {
+                                searchMode: 'CLARIFY',
+                                searchModeReason: gateResult.routeReason,
+                                locationUsed: { text: '', source: 'unknown', coords: null },
+                                radiusUsedMeters: 0,
+                                radiusSource: 'fallback'
+                            }
+                        });
+                    }
+                    
+                    // Route: CORE → skip full intent LLM
+                    if (gateResult.route === 'CORE' && !INTENT_FORCE_FULL_LLM) {
+                        logger.info({ requestId: finalRequestId }, '[SearchOrchestrator] Gate routed to CORE (fast path)');
+                        flags.usedLLMIntent = false; // Gate alone doesn't count as full intent
+                        
+                        // Continue to legacy flow, but it will be fast since we have gate data
+                    }
+                    
+                    // Route: FULL_LLM → run full intent extraction (or skip for simple queries)
+                    if (gateResult.route === 'FULL_LLM' || INTENT_FORCE_FULL_LLM) {
+                        // Check if this is a fallback due to gate timeout/failure
+                        const isGateTimeout = gateResult.routeReason === 'gate_timeout' || 
+                                            gateResult.routeReason === 'timeout';
+                        const isGateError = gateResult.routeReason === 'invalid_schema' ||
+                                          gateResult.routeReason === 'parse_error';
+                        
+                        if (isGateTimeout || isGateError) {
+                            logger.info({
+                                requestId: finalRequestId,
+                                traceId,
+                                fallbackReason: gateResult.routeReason,
+                                confidence: gateResult.confidence
+                            }, 'intent_gate_fallback_used');
+                            
+                            // Smart skip: If gate timed out AND query looks simple, skip full intent
+                            // Simple patterns: "X in Y", "X ב Y" (Hebrew city pattern)
+                            const simpleQueryPattern = /\bin\b/i.test(request.query) || 
+                                                      /\sב/.test(request.query);
+                            
+                            if (isGateTimeout && simpleQueryPattern) {
+                                logger.info({
+                                    requestId: finalRequestId,
+                                    traceId,
+                                    query: request.query,
+                                    reason: 'gate_timeout_simple_query'
+                                }, 'intent_full_skipped');
+                                
+                                // Skip full intent, continue to CORE with legacy parsing
+                                flags.usedLLMIntent = false;
+                                // Let flow continue to legacy parsing below
+                            } else {
+                                // Not simple or not timeout - run full intent
+                                const fullStart = Date.now();
+                                
+                                try {
+                                    fullIntentResult = await this.intentFullService.extract(
+                                        request.query,
+                                        contextWithSession,
+                                        {
+                                            requestId: finalRequestId,
+                                            ...(traceId && { traceId }),
+                                            sessionId
+                                        }
+                                    );
+                                    timings.intentMs = Date.now() - fullStart;
+                                    flags.usedLLMIntent = true; // ONLY set true when full intent runs
+                                    
+                                    logger.info({
+                                        requestId: finalRequestId,
+                                        confidence: fullIntentResult.confidence,
+                                        durationMs: timings.intentMs
+                                    }, 'intent_full_completed');
+                                    
+                                } catch (error) {
+                                    logger.error({ 
+                                        requestId: finalRequestId, 
+                                        error: error instanceof Error ? error.message : 'unknown' 
+                                    }, '[SearchOrchestrator] Full intent extraction failed, falling back to legacy');
+                                    
+                                    // Fallback to legacy intent service
+                                    fullIntentResult = null;
+                                }
+                            }
+                        } else {
+                            // Normal FULL_LLM route (not from fallback)
+                            const fullStart = Date.now();
+                            
+                            try {
+                                fullIntentResult = await this.intentFullService.extract(
+                                    request.query,
+                                    contextWithSession,
+                                    {
+                                        requestId: finalRequestId,
+                                        ...(traceId && { traceId }),
+                                        sessionId
+                                    }
+                                );
+                                timings.intentMs = Date.now() - fullStart;
+                                flags.usedLLMIntent = true; // ONLY set true when full intent runs
+                                
+                                logger.info({
+                                    requestId: finalRequestId,
+                                    confidence: fullIntentResult.confidence,
+                                    durationMs: timings.intentMs
+                                }, 'intent_full_completed');
+                                
+                            } catch (error) {
+                                logger.error({ 
+                                    requestId: finalRequestId, 
+                                    error: error instanceof Error ? error.message : 'unknown' 
+                                }, '[SearchOrchestrator] Full intent extraction failed, falling back to legacy');
+                                
+                                // Fallback to legacy intent service
+                                fullIntentResult = null;
+                            }
+                        }
+                    }
+                    
+                } catch (error) {
+                    logger.error({ 
+                        requestId: finalRequestId, 
+                        error: error instanceof Error ? error.message : 'unknown' 
+                    }, '[SearchOrchestrator] Gate failed, falling back to legacy intent');
+                    
+                    // Fallback: continue to legacy intent parsing
+                    gateResult = null;
+                }
+            }
+            
+            // Step 2C: Legacy intent parsing (fallback or if gate disabled)
+            // This runs if:
+            // - Gate disabled (INTENT_GATE_ENABLED=false)
+            // - Gate failed
+            // - Gate routed to CORE (we still need legacy ParsedIntent for compatibility)
+            // - No gate result available
             const intentStart = Date.now();
             const { intent, confidence: intentConfidence } = await this.intentService.parse(
                 request.query,
                 contextWithSession
             );
-            let confidence = intentConfidence; // Phase 1: Allow reassignment for combined confidence
-            timings.intentMs = Date.now() - intentStart;
-            flags.usedLLMIntent = true;
+            let confidence = intentConfidence;
+            
+            // Only update timing if we didn't already time full intent
+            if (!fullIntentResult) {
+                timings.intentMs = Date.now() - intentStart;
+            }
+            
+            // Set usedLLMIntent flag only if no gate/full intent was used
+            if (!gateResult && !fullIntentResult) {
+                flags.usedLLMIntent = true;
+            }
+            
             flags.liveDataRequested = intent.requiresLiveData || false;
 
             // Chips/refinements are deterministic operations on the base intent.

@@ -18,7 +18,10 @@ export interface LLMProvider {
             promptVersion?: string;
             promptHash?: string;
             promptLength?: number;
-        }
+            requestId?: string;  // For timing correlation
+            stage?: string;       // For stage identification (e.g., "intent_gate")
+        },
+        staticJsonSchema?: any  // Optional static JSON Schema (bypasses Zod conversion)
     ): Promise<z.infer<T>>;
 
     complete(
