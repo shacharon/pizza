@@ -11,13 +11,13 @@ export class QueryBuilderService {
                 if (intent.search.target.kind === 'city' && intent.search.target.city) {
                     coords = await client.geocodeAddress(
                         intent.search.target.city,
-                        filters.language,
+                        filters.language ?? undefined,
                         filters.region ?? PlacesConfig.defaultRegion
                     ) ?? undefined;
                 } else if (intent.search.target.kind === 'place' && intent.search.target.place) {
                     coords = await client.geocodeAddress(
                         intent.search.target.place,
-                        filters.language,
+                        filters.language ?? undefined,
                         filters.region ?? PlacesConfig.defaultRegion
                     ) ?? undefined;
                 }
@@ -36,13 +36,13 @@ export class QueryBuilderService {
                 if (intent.search.target.kind === 'city' && intent.search.target.city) {
                     coords = await client.geocodeAddress(
                         intent.search.target.city,
-                        filters.language,
+                        filters.language ?? undefined,
                         filters.region ?? PlacesConfig.defaultRegion
                     ) ?? undefined;
                 } else if (intent.search.target.kind === 'place' && intent.search.target.place) {
                     coords = await client.geocodeAddress(
                         intent.search.target.place,
-                        filters.language,
+                        filters.language ?? undefined,
                         filters.region ?? PlacesConfig.defaultRegion
                     ) ?? undefined;
                 }

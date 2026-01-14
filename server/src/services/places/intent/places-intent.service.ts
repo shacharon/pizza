@@ -9,33 +9,156 @@ const PromptSchema = z.object({
   provider: z.literal('google_places'),
   search: z.object({
     mode: z.enum(['textsearch', 'nearbysearch', 'findplace']),
-    query: z.string().optional(),  // English canonical category
+    query: z.string().nullable(),  // Changed to nullable to match JSON schema
     target: z.object({
       kind: z.enum(['city', 'place', 'coords', 'me']),
-      city: z.string().optional(),
-      place: z.string().optional(),
-      coords: z.object({ lat: z.number(), lng: z.number() }).optional()
-    }),
+      city: z.string().nullable(),  // Changed to nullable
+      place: z.string().nullable(),  // Changed to nullable
+      coords: z.object({ lat: z.number(), lng: z.number() }).nullable()  // Changed to nullable
+    }).nullable(),  // Changed to nullable to match JSON schema
     filters: z.object({
-      type: z.string().optional(),
-      keyword: z.string().optional(),
-      price: z.object({ min: z.number(), max: z.number() }).optional(),
-      opennow: z.boolean().optional(),
-      radius: z.number().optional(),
-      rankby: z.enum(['prominence', 'distance']).optional()
+      type: z.string().nullable(),  // Changed to nullable
+      keyword: z.string().nullable(),  // Changed to nullable
+      price: z.object({ min: z.number(), max: z.number() }).nullable(),  // Changed to nullable
+      opennow: z.boolean().nullable(),  // Changed to nullable
+      radius: z.number().nullable(),  // Changed to nullable
+      rankby: z.enum(['prominence', 'distance']).nullable()  // Changed to nullable
       // NOTE: language and region removed - will be set by orchestrator based on LanguageContext
-    }).optional()
+    }).nullable()  // Changed to nullable
   }),
   // NEW: Canonical fields for consistent query building across languages
   canonical: z.object({
-    category: z.string().optional(),     // English: "italian restaurant", "sushi", "pizza"
-    locationText: z.string().optional()  // Original: "Paris", "תל אביב", "Champs-Élysées"
-  }).optional(),
+    category: z.string().nullable(),  // Changed to nullable
+    locationText: z.string().nullable()  // Changed to nullable
+  }).nullable(),  // Changed to nullable
   output: z.object({
-    fields: z.array(z.string()).optional(),
-    page_size: z.number().optional()
-  }).optional()
+    fields: z.array(z.string()).nullable(),  // Changed to nullable
+    page_size: z.number().nullable()  // Changed to nullable
+  }).nullable()  // Changed to nullable
 });
+
+/**
+ * Static JSON Schema for PlacesIntent (Legacy Intent Service)
+ * Used directly with OpenAI Structured Outputs instead of converting from Zod
+ * This ensures we always have a valid root type "object"
+ * 
+ * Note: OpenAI Structured Outputs with strict: true requires all properties 
+ * to be in 'required'. For optional fields, we use nullable types.
+ */
+const PLACES_INTENT_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    intent: { type: "string", enum: ["find_food"] },
+    provider: { type: "string", enum: ["google_places"] },
+    search: {
+      type: "object",
+      properties: {
+        mode: { type: "string", enum: ["textsearch", "nearbysearch", "findplace"] },
+        query: { type: ["string", "null"] },  // Optional, so nullable (must be in required)
+        target: {
+          type: "object",
+          properties: {
+            kind: { type: "string", enum: ["city", "place", "coords", "me"] },
+            city: { type: ["string", "null"] },  // Optional, so nullable
+            place: { type: ["string", "null"] },  // Optional, so nullable
+            coords: {
+              anyOf: [
+                {
+                  type: "object",
+                  properties: {
+                    lat: { type: "number" },
+                    lng: { type: "number" }
+                  },
+                  required: ["lat", "lng"],
+                  additionalProperties: false
+                },
+                { type: "null" }
+              ]
+            }
+          },
+          required: ["kind", "city", "place", "coords"],  // All must be in required, use null for missing
+          additionalProperties: false
+        },
+        filters: {
+          anyOf: [
+            {
+              type: "object",
+              properties: {
+                type: { type: ["string", "null"] },
+                keyword: { type: ["string", "null"] },
+                price: {
+                  anyOf: [
+                    {
+                      type: "object",
+                      properties: {
+                        min: { type: "number" },
+                        max: { type: "number" }
+                      },
+                      required: ["min", "max"],
+                      additionalProperties: false
+                    },
+                    { type: "null" }
+                  ]
+                },
+                opennow: { type: ["boolean", "null"] },
+                radius: { type: ["number", "null"] },
+                rankby: {
+                  anyOf: [
+                    { type: "string", enum: ["prominence", "distance"] },
+                    { type: "null" }
+                  ]
+                }
+              },
+              required: ["type", "keyword", "price", "opennow", "radius", "rankby"],
+              additionalProperties: false
+            },
+            { type: "null" }
+          ]
+        }
+      },
+      required: ["mode", "query", "target", "filters"],  // All properties must be in required
+      additionalProperties: false
+    },
+    canonical: {
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            category: { type: ["string", "null"] },
+            locationText: { type: ["string", "null"] }
+          },
+          required: ["category", "locationText"],
+          additionalProperties: false
+        },
+        { type: "null" }
+      ]
+    },
+    output: {
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            fields: {
+              anyOf: [
+                {
+                  type: "array",
+                  items: { type: "string" }
+                },
+                { type: "null" }
+              ]
+            },
+            page_size: { type: ["number", "null"] }
+          },
+          required: ["fields", "page_size"],
+          additionalProperties: false
+        },
+        { type: "null" }
+      ]
+    }
+  },
+  required: ["intent", "provider", "search", "canonical", "output"],
+  additionalProperties: false
+} as const;
 
 /**
  * Intent Resolver System Prompt - v3
@@ -257,12 +380,20 @@ User: "pizza near me"
       { role: 'user', content: user }
     ];
 
-    const raw = await this.llm.completeJSON(messages, PromptSchema, {
-      temperature: 0,
-      promptVersion: INTENT_PROMPT_VERSION,
-      promptHash: INTENT_PROMPT_HASH,
-      promptLength: INTENT_SYSTEM_PROMPT.length
-    });
+    // Use static JSON Schema instead of converting from Zod
+    // This ensures we always have a valid root type "object"
+    const raw = await this.llm.completeJSON(
+      messages,
+      PromptSchema,
+      {
+        temperature: 0,
+        promptVersion: INTENT_PROMPT_VERSION,
+        promptHash: INTENT_PROMPT_HASH,
+        promptLength: INTENT_SYSTEM_PROMPT.length,
+        stage: 'places_intent'  // For timing correlation
+      },
+      PLACES_INTENT_JSON_SCHEMA  // Pass static schema to avoid zod-to-json-schema issues
+    );
 
     // FIX: Sometimes LLM returns arrays instead of strings for literal fields
     // e.g., intent: ["find_food"] instead of intent: "find_food"
@@ -327,7 +458,7 @@ User: "pizza near me"
       extracted.place ? [extracted.place] : [],
       extracted.city ? [extracted.city] : []
     );
-    const cleanedQuery = this.stripLocationFromQuery(intent.search.query, tokens);
+    const cleanedQuery = this.stripLocationFromQuery(intent.search.query ?? undefined, tokens);
     const cleanedFilters = intent.search.filters ? { ...intent.search.filters } : undefined;
     if (cleanedFilters && cleanedFilters.keyword) {
       cleanedFilters.keyword = this.stripLocationFromQuery(cleanedFilters.keyword, tokens);

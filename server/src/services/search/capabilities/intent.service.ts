@@ -352,7 +352,7 @@ export class IntentService implements IIntentService {
       query: search.query ?? originalText,
       searchMode: search.mode as SearchMode,
       filters: {
-        ...(filters.opennow !== undefined && { openNow: filters.opennow }),  // Don't default to false - undefined means no filter
+        ...(filters.opennow === true && { openNow: true }),  // Only include if explicitly true (filter out null/undefined)
       },
       languageContext,  // NEW: Use LanguageContext
       originalQuery: originalText,  // REQUIRED field
