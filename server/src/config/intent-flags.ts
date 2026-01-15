@@ -27,6 +27,12 @@ export const INTENT_FULL_TIMEOUT_MS = parseInt(
   10
 );
 
+/** Timeout for V2 pipeline INTENT_LITE stage in milliseconds (default: 10000) */
+export const INTENT_LITE_TIMEOUT_MS = parseInt(
+  process.env.INTENT_LITE_TIMEOUT_MS || "10000",
+  10
+);
+
 /** Export all flags as a single object for convenience */
 export const intentFlags = {
   INTENT_GATE_ENABLED,
@@ -34,4 +40,5 @@ export const intentFlags = {
   INTENT_DISABLE_FAST_PATH,
   INTENT_GATE_TIMEOUT_MS,
   INTENT_FULL_TIMEOUT_MS,
+  INTENT_LITE_TIMEOUT_MS,
 };

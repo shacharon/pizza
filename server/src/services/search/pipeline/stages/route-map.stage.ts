@@ -1,19 +1,14 @@
 /**
- * Route Map Stage
+ * Route Map Stage - V2 Pipeline
  * 
- * Placeholder for future query routing logic
+ * Deterministic routing logic to determine search mode
  * 
- * Current behavior:
- * - Accept IntentLiteResult
- * - Log stage timing
- * - Pass through data (no routing logic)
+ * Behavior:
+ * - Use nearbysearch if ANY of: user coords, isRelative location, or explicit radius
+ * - Otherwise use textsearch
+ * - No LLM calls, pure deterministic logic
  * 
- * Future behavior (not implemented yet):
- * - Determine optimal search strategy
- * - Map query to provider-specific parameters
- * - Decide on radius, filters, query composition
- * 
- * Phase: Structural Scaffold (placeholder only)
+ * Phase: V2 Pipeline Real Implementation
  */
 
 import type { IntentLiteResult, SearchPlan, PipelineContext } from '../types.js';
@@ -22,9 +17,11 @@ import { logger } from '../../../../lib/logger/structured-logger.js';
 /**
  * Execute ROUTE_MAP stage
  * 
+ * Determines optimal search mode based on intent and available data
+ * 
  * @param intentLiteResult Output from INTENT_LITE stage
  * @param context Pipeline context
- * @returns SearchPlan (currently just passes through data)
+ * @returns SearchPlan with mode and radius
  */
 export async function executeRouteMapStage(
   intentLiteResult: IntentLiteResult,
@@ -42,12 +39,46 @@ export async function executeRouteMapStage(
   }, 'stage_started');
   
   try {
-    // Placeholder: Just pass through data
-    // No routing or mapping logic yet
+    // Deterministic routing logic
+    // Rule: Use nearbysearch if ANY of these conditions:
+    // 1. Request has user coords
+    // 2. Location is relative (near me, closest, etc.)
+    // 3. Intent specifies radius
+    const hasUserCoords = !!context.request.userLocation;
+    const isRelativeLocation = intentLiteResult.location.isRelative;
+    const hasExplicitRadius = !!intentLiteResult.radiusMeters;
+    
+    let mode: 'nearbysearch' | 'textsearch';
+    
+    if (hasUserCoords || isRelativeLocation || hasExplicitRadius) {
+      mode = 'nearbysearch';
+      logger.debug({
+        requestId,
+        hasUserCoords,
+        isRelativeLocation,
+        hasExplicitRadius,
+        decision: 'nearbysearch'
+      }, '[RouteMap] Routing to nearbysearch');
+    } else {
+      mode = 'textsearch';
+      logger.debug({
+        requestId,
+        hasUserCoords,
+        isRelativeLocation,
+        hasExplicitRadius,
+        decision: 'textsearch'
+      }, '[RouteMap] Routing to textsearch');
+    }
+    
+    // Determine radius
+    // Use explicit radius if provided, otherwise use default (2000m as per spec)
+    const radius = intentLiteResult.radiusMeters ?? 2000;
+    
     const result: SearchPlan = {
+      mode,
+      radius,
       intentLiteResult,
-      skipped: false,
-      reason: 'placeholder_implementation'
+      skipped: false
     };
     
     const durationMs = Date.now() - startTime;
@@ -59,7 +90,11 @@ export async function executeRouteMapStage(
       stage: 'route_map',
       event: 'stage_completed',
       durationMs,
-      skipped: result.skipped
+      mode,
+      radius,
+      hasUserCoords,
+      isRelativeLocation,
+      hasExplicitRadius
     }, 'stage_completed');
     
     return result;

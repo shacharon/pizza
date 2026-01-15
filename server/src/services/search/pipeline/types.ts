@@ -9,6 +9,7 @@
 
 import type { SearchRequest } from '../types/search-request.dto.js';
 import type { SearchResponse } from '../types/search-response.dto.js';
+import type { ISessionService, Coordinates } from '../types/search.types.js';
 
 // ============================================================================
 // Pipeline Context
@@ -24,6 +25,10 @@ export interface PipelineContext {
   sessionId: string;
   startTime: number;
   skipAssistant: boolean;
+  // NEW: Access to request for userLocation coords
+  request: SearchRequest;
+  // NEW: Session service for cached region
+  sessionService?: ISessionService;
 }
 
 // ============================================================================
@@ -37,6 +42,9 @@ export interface PipelineContext {
 export interface GateResult {
   // Language detection
   language: 'he' | 'en' | 'ru' | 'ar' | 'fr' | 'es' | 'other';
+  
+  // Food-related classification (NEW)
+  isFoodRelated: boolean;
   
   // Food anchor
   hasFood: boolean;
@@ -68,13 +76,22 @@ export interface GateResult {
     exclude: string[];
   };
   
-  // Confidence and routing
+  // Confidence
   confidence: number; // 0-1
-  route: 'CORE' | 'FULL_LLM' | 'ASK_CLARIFY';
+  
+  // Routing decision (UPDATED)
+  route: 'INTENT_LITE' | 'ASK_CLARIFY' | 'BYPASS';
   routeReason: string;
   
-  // Pipeline-specific: region from language/config
-  region: string | null; // ISO country code (e.g., 'il', 'us', 'fr')
+  // Region code (UPDATED)
+  regionCode: string; // ISO-2 uppercase (e.g., "IL", "US", "FR")
+  
+  // Debug info (NEW, optional)
+  debug?: {
+    hasFoodAnchor: boolean;
+    hasLocationAnchor: boolean;
+    regionSource: 'device_coords' | 'session_cache' | 'default_config';
+  };
 }
 
 // ============================================================================
@@ -83,21 +100,34 @@ export interface GateResult {
 
 /**
  * INTENT_LITE stage output
- * Placeholder: Currently just passes through gate data
- * Future: Lightweight heuristics for common patterns
+ * LLM-based lightweight intent extraction
  */
 export interface IntentLiteResult {
-  // Passed through from gate
-  gateResult: GateResult;
+  // Core extracted intent
+  food: { raw?: string; canonical: string }; // canonical MUST be English
+  location: { text?: string; isRelative: boolean }; // Required, text is optional
+  radiusMeters?: number;
+  targetType: 'EXACT' | 'COORDS' | 'FREE';
+  confidence: number; // 0-1
+  virtual?: {
+    dairy?: boolean;
+    meat?: boolean;
+    kosher?: boolean;
+    vegan?: boolean;
+    vegetarian?: boolean;
+    glutenFree?: boolean;
+    openNow?: boolean;
+    cheap?: boolean;
+    delivery?: boolean;
+  };
   
-  // Placeholder fields (not used yet)
-  refinedFood?: string | null;
-  refinedLocation?: string | null;
-  detectedPatterns?: string[];
+  // Reference to gate result
+  gateResult: GateResult;
   
   // Metadata
   skipped: boolean; // If stage was skipped
   reason?: string; // Why it was skipped
+  fallback?: boolean; // True if timeout fallback was used
 }
 
 // ============================================================================
@@ -106,27 +136,25 @@ export interface IntentLiteResult {
 
 /**
  * ROUTE_MAP stage output (Search Plan)
- * Placeholder: Currently just passes through data
- * Future: Determines optimal search strategy
+ * Determines optimal search strategy
  */
 export interface SearchPlan {
+  // Search mode
+  mode: 'nearbysearch' | 'textsearch';
+  
+  // Radius in meters
+  radius: number;
+  
   // Input context
   intentLiteResult: IntentLiteResult;
-  
-  // Placeholder: Route decision (not used yet)
-  routeType?: 'GOOGLE_PLACES' | 'FALLBACK' | 'CLARIFY';
-  
-  // Placeholder: Query strategy (not used yet)
-  queryStrategy?: 'CANONICAL' | 'ORIGINAL' | 'COMPOSED';
-  
-  // Placeholder: Search parameters (not used yet)
-  suggestedRadius?: number;
-  suggestedFilters?: Record<string, unknown>;
   
   // Metadata
   skipped: boolean;
   reason?: string;
 }
+
+// Re-export Coordinates for convenience
+export type { Coordinates };
 
 // ============================================================================
 // Pipeline Result

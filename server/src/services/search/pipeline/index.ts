@@ -17,6 +17,8 @@ export type {
 export {
   runSearchPipelineV2,
   createPipelineDependencies,
+  buildBypassResponse,
+  buildClarifyResponse,
   type PipelineDependencies
 } from './pipeline.js';
 
@@ -26,3 +28,7 @@ export { GateAdapter } from './adapters/gate-adapter.js';
 // Stages
 export { executeIntentLiteStage } from './stages/intent-lite.stage.js';
 export { executeRouteMapStage } from './stages/route-map.stage.js';
+export { executeGoogleExecuteStage } from './stages/google-execute.stage.js';
+
+// Utils
+export { resolveRegionCode } from './utils/region-resolver.js';

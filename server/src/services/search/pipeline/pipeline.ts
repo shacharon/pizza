@@ -15,10 +15,12 @@
 
 import type { SearchRequest } from '../types/search-request.dto.js';
 import type { SearchResponse } from '../types/search-response.dto.js';
-import type { PipelineContext, PipelineResult } from './types.js';
+import type { PipelineContext, PipelineResult, GateResult, IntentLiteResult, SearchPlan } from './types.js';
+import type { ParsedIntent, LanguageContext, RestaurantResult } from '../types/search.types.js';
 import { GateAdapter } from './adapters/gate-adapter.js';
 import { executeIntentLiteStage } from './stages/intent-lite.stage.js';
 import { executeRouteMapStage } from './stages/route-map.stage.js';
+import { executeGoogleExecuteStage } from './stages/google-execute.stage.js';
 import { logger } from '../../../lib/logger/structured-logger.js';
 
 /**
@@ -27,6 +29,7 @@ import { logger } from '../../../lib/logger/structured-logger.js';
  */
 export interface PipelineDependencies {
   gateAdapter: GateAdapter;
+  sessionService?: import('../types/search.types.js').ISessionService; // NEW
   // Delegate function to call existing V1 flow
   delegateToExistingFlow: (
     request: SearchRequest,
@@ -74,14 +77,64 @@ export async function runSearchPipelineV2(
       requestId,
       stage: 'gate',
       route: gateResult.route,
+      routeReason: gateResult.routeReason,
+      isFoodRelated: gateResult.isFoodRelated,
       confidence: gateResult.confidence,
-      region: gateResult.region,
+      regionCode: gateResult.regionCode,
+      regionSource: gateResult.debug?.regionSource,
       hasFood: gateResult.hasFood,
       hasLocation: gateResult.hasLocation
     }, '[V2 Pipeline] Gate stage completed');
     
     // ========================================================================
-    // STAGE 2: INTENT_LITE (Placeholder)
+    // CHECK FOR EARLY EXITS
+    // ========================================================================
+    if (gateResult.route === 'BYPASS') {
+      logger.info({
+        requestId,
+        pipelineVersion: 'v2',
+        route: 'BYPASS',
+        reason: gateResult.routeReason
+      }, '[V2 Pipeline] Gate routed to BYPASS - returning empty results');
+      
+      const response = buildBypassResponse(request, gateResult, context);
+      const totalPipelineMs = Date.now() - pipelineStartTime;
+      
+      logger.info({
+        requestId,
+        pipelineVersion: 'v2',
+        event: 'pipeline_completed',
+        totalPipelineMs,
+        route: 'BYPASS'
+      }, 'pipeline_completed');
+      
+      return response;
+    }
+    
+    if (gateResult.route === 'ASK_CLARIFY') {
+      logger.info({
+        requestId,
+        pipelineVersion: 'v2',
+        route: 'ASK_CLARIFY',
+        reason: gateResult.routeReason
+      }, '[V2 Pipeline] Gate routed to ASK_CLARIFY - requesting clarification');
+      
+      const response = buildClarifyResponse(request, gateResult, context);
+      const totalPipelineMs = Date.now() - pipelineStartTime;
+      
+      logger.info({
+        requestId,
+        pipelineVersion: 'v2',
+        event: 'pipeline_completed',
+        totalPipelineMs,
+        route: 'ASK_CLARIFY'
+      }, 'pipeline_completed');
+      
+      return response;
+    }
+    
+    // ========================================================================
+    // STAGE 2: INTENT_LITE
     // ========================================================================
     const intentLiteStartTime = Date.now();
     const intentLiteResult = await executeIntentLiteStage(gateResult, context);
@@ -90,11 +143,13 @@ export async function runSearchPipelineV2(
     logger.debug({
       requestId,
       stage: 'intent_lite',
-      skipped: intentLiteResult.skipped
+      targetType: intentLiteResult.targetType,
+      confidence: intentLiteResult.confidence,
+      fallback: intentLiteResult.fallback
     }, '[V2 Pipeline] Intent Lite stage completed');
     
     // ========================================================================
-    // STAGE 3: ROUTE_MAP (Placeholder)
+    // STAGE 3: ROUTE_MAP
     // ========================================================================
     const routeMapStartTime = Date.now();
     const searchPlan = await executeRouteMapStage(intentLiteResult, context);
@@ -103,49 +158,50 @@ export async function runSearchPipelineV2(
     logger.debug({
       requestId,
       stage: 'route_map',
-      skipped: searchPlan.skipped
+      mode: searchPlan.mode
     }, '[V2 Pipeline] Route Map stage completed');
     
     // ========================================================================
-    // STAGE 4: DELEGATE TO EXISTING FLOW
+    // STAGE 4: GOOGLE EXECUTE
     // ========================================================================
-    // All placeholder stages complete - now delegate to existing V1 logic
-    // This ensures we return the EXACT same response as V1
-    logger.debug({
-      requestId,
-      message: 'Delegating to existing V1 flow'
-    }, '[V2 Pipeline] Delegating to V1 flow');
-    
-    const delegateStartTime = Date.now();
-    const response = await deps.delegateToExistingFlow(
-      request,
-      traceId,
-      requestId,
-      skipAssistant
+    const googleExecuteStartTime = Date.now();
+    const results = await executeGoogleExecuteStage(
+      intentLiteResult,
+      searchPlan,
+      gateResult,
+      context
     );
-    const delegateDurationMs = Date.now() - delegateStartTime;
+    const googleExecuteDurationMs = Date.now() - googleExecuteStartTime;
+    
+    // Build SearchResponse from results
+    const response = buildSearchResponseFromResults(
+      results,
+      intentLiteResult,
+      searchPlan,
+      gateResult,
+      context,
+      startTime
+    );
     
     // ========================================================================
     // PIPELINE COMPLETE
     // ========================================================================
     const totalPipelineMs = Date.now() - pipelineStartTime;
-    const pipelineOverheadMs = totalPipelineMs - delegateDurationMs;
     
     logger.info({
       requestId,
       pipelineVersion: 'v2',
       event: 'pipeline_completed',
       totalPipelineMs,
-      pipelineOverheadMs,
-      delegateDurationMs,
+      resultCount: response.results.length,
       stages: {
         gateDurationMs,
         intentLiteDurationMs,
-        routeMapDurationMs
+        routeMapDurationMs,
+        googleExecuteDurationMs
       }
     }, 'pipeline_completed');
     
-    // Return the response from V1 flow (no modifications)
     return response;
     
   } catch (error) {
@@ -169,10 +225,210 @@ export async function runSearchPipelineV2(
  */
 export function createPipelineDependencies(
   gateAdapter: GateAdapter,
+  sessionService: import('../types/search.types.js').ISessionService | undefined,
   delegateToExistingFlow: PipelineDependencies['delegateToExistingFlow']
 ): PipelineDependencies {
   return {
     gateAdapter,
+    ...(sessionService && { sessionService }),
     delegateToExistingFlow
+  };
+}
+
+/**
+ * Build SearchResponse from Google Places results
+ * 
+ * Creates a complete SearchResponse structure from the pipeline stages
+ */
+function buildSearchResponseFromResults(
+  results: RestaurantResult[],
+  intentLiteResult: IntentLiteResult,
+  searchPlan: SearchPlan,
+  gateResult: GateResult,
+  context: PipelineContext,
+  startTime: number
+): SearchResponse {
+  const { sessionId } = context;
+  
+  // Build minimal ParsedIntent
+  const languageContext: LanguageContext = {
+    uiLanguage: gateResult.language === 'he' ? 'he' : 'en',
+    requestLanguage: gateResult.language as any,
+    googleLanguage: gateResult.language === 'he' ? 'he' : 'en'
+  };
+  
+  const parsedIntent: ParsedIntent = {
+    query: intentLiteResult.food.canonical,
+    originalQuery: context.request.query,
+    searchMode: searchPlan.mode,
+    filters: {
+      ...(intentLiteResult.virtual?.openNow !== undefined && { openNow: intentLiteResult.virtual.openNow }),
+      dietary: []
+    },
+    languageContext,
+    language: languageContext.googleLanguage,
+    ...(intentLiteResult.location.text && context.request.userLocation && {
+      location: {
+        place: intentLiteResult.location.text,
+        coords: context.request.userLocation
+      }
+    }),
+    ...(intentLiteResult.food.canonical && {
+      canonical: {
+        category: intentLiteResult.food.canonical,
+        ...(intentLiteResult.location.text && { locationText: intentLiteResult.location.text })
+      }
+    })
+  };
+  
+  // Determine failure reason
+  const failureReason = results.length === 0 ? 'NO_RESULTS' : 'NONE';
+  
+  // Calculate total time
+  const tookMs = Date.now() - startTime;
+  
+  // Build response (V2 skips assistant for now)
+  const response: SearchResponse = {
+    sessionId,
+    query: {
+      original: context.request.query,
+      parsed: parsedIntent,
+      language: gateResult.language
+    },
+    results,
+    chips: [], // Empty for now
+    assist: null as any, // V2 skips assistant
+    meta: {
+      tookMs,
+      mode: parsedIntent.searchMode,
+      appliedFilters: [],
+      confidence: intentLiteResult.confidence,
+      source: 'google_places',
+      failureReason,
+      transparency: {
+        searchMode: 'FULL',
+        searchModeReason: 'v2_pipeline',
+        locationUsed: {
+          text: intentLiteResult.location.text || '',
+          source: context.request.userLocation ? 'gps' : 'unknown',
+          coords: context.request.userLocation || null
+        },
+        radiusUsedMeters: searchPlan.radius,
+        radiusSource: intentLiteResult.radiusMeters ? 'explicit' : 
+                     (searchPlan.mode === 'nearbysearch' ? 'default_near_me' : 'fallback')
+      }
+    }
+  };
+  
+  return response;
+}
+
+/**
+ * Build BYPASS response (non-food query)
+ * Returns empty results with appropriate reason
+ */
+export function buildBypassResponse(
+  request: SearchRequest,
+  gateResult: import('./types.js').GateResult,
+  context: PipelineContext
+): import('../types/search-response.dto.js').SearchResponse {
+  const { sessionId, startTime } = context;
+  
+  // Build minimal intent
+  const languageContext: import('../types/search.types.js').LanguageContext = {
+    uiLanguage: gateResult.language === 'he' ? 'he' : 'en',
+    requestLanguage: gateResult.language as any,
+    googleLanguage: gateResult.language === 'he' ? 'he' : 'en'
+  };
+  
+  const parsedIntent: import('../types/search.types.js').ParsedIntent = {
+    query: request.query,
+    originalQuery: request.query,
+    searchMode: 'textsearch',
+    filters: {},
+    languageContext,
+    language: languageContext.googleLanguage
+  };
+  
+  const tookMs = Date.now() - startTime;
+  
+  return {
+    sessionId,
+    query: {
+      original: request.query,
+      parsed: parsedIntent,
+      language: gateResult.language
+    },
+    results: [],
+    chips: [],
+    assist: null as any,
+    meta: {
+      tookMs,
+      mode: 'textsearch',
+      appliedFilters: [],
+      confidence: gateResult.confidence,
+      source: 'bypass',
+      failureReason: 'NO_RESULTS' // Closest match for non-food related
+    }
+  };
+}
+
+/**
+ * Build ASK_CLARIFY response (missing anchors)
+ * Returns empty results indicating clarification needed
+ */
+export function buildClarifyResponse(
+  request: SearchRequest,
+  gateResult: import('./types.js').GateResult,
+  context: PipelineContext
+): import('../types/search-response.dto.js').SearchResponse {
+  const { sessionId, startTime } = context;
+  
+  // Build minimal intent
+  const languageContext: import('../types/search.types.js').LanguageContext = {
+    uiLanguage: gateResult.language === 'he' ? 'he' : 'en',
+    requestLanguage: gateResult.language as any,
+    googleLanguage: gateResult.language === 'he' ? 'he' : 'en'
+  };
+  
+  const parsedIntent: import('../types/search.types.js').ParsedIntent = {
+    query: request.query,
+    originalQuery: request.query,
+    searchMode: 'textsearch',
+    filters: {},
+    languageContext,
+    language: languageContext.googleLanguage
+  };
+  
+  const tookMs = Date.now() - startTime;
+  
+  // Build clarification message based on language
+  const clarificationText = gateResult.language === 'he' 
+    ? 'אנא ספק פרטים נוספים על מה שאתה מחפש'
+    : 'Please provide more details about what you\'re looking for';
+  
+  return {
+    sessionId,
+    query: {
+      original: request.query,
+      parsed: parsedIntent,
+      language: gateResult.language
+    },
+    results: [],
+    chips: [],
+    assist: null as any,
+    requiresClarification: true,
+    clarification: {
+      question: clarificationText,
+      choices: [] // Empty choices for now
+    },
+    meta: {
+      tookMs,
+      mode: 'textsearch',
+      appliedFilters: [],
+      confidence: gateResult.confidence,
+      source: 'clarify',
+      failureReason: 'LOW_CONFIDENCE' // Closest match for missing info
+    }
   };
 }

@@ -399,6 +399,9 @@ export interface SessionContext {
     status: 'VERIFIED' | 'FAILED' | 'AMBIGUOUS';
     timestamp: number;
   }>;
+  
+  // NEW: Cached region code from device/geocoding
+  regionCode?: string; // ISO-2 uppercase (e.g., "IL")
 }
 
 export interface SearchSession {
