@@ -3,6 +3,7 @@ import type { LLMProvider, Message } from '../../llm/types.js';
 import { IntentGateSchema, type IntentGateResult } from './intent-gate.types.js';
 import { INTENT_GATE_TIMEOUT_MS } from '../../config/intent-flags.js';
 import { logger } from '../../lib/logger/structured-logger.js';
+import { applyFoodTypeFallback } from './food-type-fallback.js';
 
 /**
  * Static JSON Schema for Intent Gate
@@ -99,6 +100,14 @@ Your job:
    - FULL_LLM: Has modifiers OR confidence < 0.85 but has at least one anchor
    - ASK_CLARIFY: Missing both food and location
 
+Canonical food mapping (multi-language):
+- Meat: he="בשרים"/"מסעדת בשרים"/"סטייק"/"על האש", en="meat restaurant"/"steakhouse"/"grill"/"bbq", ru="мясной ресторан"/"стейкхаус"/"гриль" → food.canonical="meat restaurant"
+- Dairy: he="חלבי"/"מסעדה חלבית", en="dairy restaurant", ru="молочный ресторан" → food.canonical="dairy restaurant"
+- Hummus: he="חומוס"/"חומוסיה"/"חומוסייה", en="hummus"/"hummus place", ru="хумус"/"хумусия" → food.canonical="hummus restaurant"
+- Vegetarian: he="צמחוני"/"מסעדה צמחונית", en="vegetarian restaurant", ru="вегетарианский ресторан" → food.canonical="vegetarian restaurant"
+
+Classification: These are CATEGORIES, not modifiers.
+
 Rules:
 - food.canonical MUST be English (e.g., "pizza", "sushi", "italian restaurant")
 - location.canonical MUST keep original language (e.g., "תל אביב", "Paris")
@@ -164,6 +173,14 @@ Return JSON with your analysis and routing decision.`;
             );
 
             const durationMs = Date.now() - startTime;
+
+            // Apply deterministic fallback for common food types
+            result.food.canonical = applyFoodTypeFallback(
+                query,
+                result.food.canonical,
+                result.confidence,
+                0.7
+            );
 
             logger.debug({
                 requestId,

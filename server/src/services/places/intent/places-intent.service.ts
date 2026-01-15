@@ -3,6 +3,7 @@ import { createHash } from 'crypto';
 import { PlacesIntentSchema, type PlacesIntent } from './places-intent.schema.js';
 import { createLLMProvider } from '../../../llm/factory.js';
 import type { LLMProvider, Message } from '../../../llm/types.js';
+import { applyFoodTypeFallback } from '../../intent/food-type-fallback.js';
 
 const PromptSchema = z.object({
   intent: z.literal('find_food'),
@@ -374,6 +375,55 @@ User: "pizza near me"
   "canonical": {
     "category": "pizza"
   }
+}
+
+User: "מסעדת בשרים בגדרה" (Hebrew meat)
+→ { 
+  "search": { 
+    "mode": "textsearch", 
+    "query": "meat restaurant",
+    "target": { "kind": "city", "city": "גדרה" }
+  },
+  "canonical": {
+    "category": "meat restaurant",
+    "locationText": "גדרה"
+  }
+}
+
+User: "מסעדה חלבית לידיי" (Hebrew dairy)
+→ { 
+  "search": { 
+    "mode": "nearbysearch", 
+    "query": "dairy restaurant",
+    "target": { "kind": "me" }
+  },
+  "canonical": {
+    "category": "dairy restaurant"
+  }
+}
+
+User: "חומוסיה" (Hebrew hummus slang)
+→ { 
+  "search": { 
+    "mode": "nearbysearch", 
+    "query": "hummus restaurant",
+    "target": { "kind": "me" }
+  },
+  "canonical": {
+    "category": "hummus restaurant"
+  }
+}
+
+User: "мясной ресторан рядом со мной" (Russian meat)
+→ { 
+  "search": { 
+    "mode": "nearbysearch", 
+    "query": "meat restaurant",
+    "target": { "kind": "me" }
+  },
+  "canonical": {
+    "category": "meat restaurant"
+  }
 }`;
     const messages: Message[] = [
       { role: 'system', content: system },
@@ -414,6 +464,16 @@ User: "pizza near me"
     }
 
     let intent = PlacesIntentSchema.parse(raw);
+
+    // Apply deterministic fallback for common food types
+    if (intent.canonical?.category) {
+      intent.canonical.category = applyFoodTypeFallback(
+        text,
+        intent.canonical.category,
+        0.8, // Assume high confidence after LLM validation
+        0.7
+      ) || intent.canonical.category;
+    }
 
     // GUARD: Enforce no opennow:false (Google Places API doesn't support closed filtering)
     // Note: Schema now only allows opennow: true, but we keep this guard for safety

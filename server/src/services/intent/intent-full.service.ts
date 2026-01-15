@@ -3,6 +3,7 @@ import type { LLMProvider, Message } from '../../llm/types.js';
 import { IntentFullSchema, type IntentFullResult } from './intent-full.types.js';
 import { INTENT_FULL_TIMEOUT_MS } from '../../config/intent-flags.js';
 import { logger } from '../../lib/logger/structured-logger.js';
+import { applyFoodTypeFallback } from './food-type-fallback.js';
 
 /**
  * Static JSON Schema for Full Intent
@@ -82,6 +83,17 @@ Your job:
    - takeaway: "טייק אווי", "takeaway", "à emporter"
    - exclude: list of items to exclude
 
+Canonical food mapping (multi-language):
+- Meat: he="בשרים"/"מסעדת בשרים"/"סטייק", en="meat restaurant"/"steakhouse"/"grill", ru="мясной ресторан" → canonicalCategory="meat restaurant"
+- Dairy: he="חלבי"/"מסעדה חלבית", en="dairy restaurant", ru="молочный ресторан" → canonicalCategory="dairy restaurant"
+- Hummus: he="חומוס"/"חומוסיה", en="hummus"/"hummus place", ru="хумус"/"хумусия" → canonicalCategory="hummus restaurant"
+- Vegetarian: he="צמחוני", en="vegetarian restaurant", ru="вегетарианский" → canonicalCategory="vegetarian restaurant"
+
+Special cases:
+- Query only contains "חלבי" without explicit food → canonicalCategory="dairy restaurant"
+- Query only contains "בשרים" → canonicalCategory="meat restaurant"
+- Query only contains "חומוסיה" → canonicalCategory="hummus restaurant"
+
 Rules:
 - canonicalCategory MUST be English only
 - locationText MUST keep original language
@@ -89,6 +101,9 @@ Rules:
 - requiresUserLocation = true if no specific location OR relative location
 - Be conservative: if no location mentioned, set locationText = null and requiresUserLocation = true
 - Never hallucinate food or location
+- glutenFree is a MODIFIER (modifiers.glutenFree=true), not a category
+- luxury/upscale is a MODIFIER (modifiers.cheap=false or note in explanation), not a category
+- meat/dairy/hummus/vegetarian are CATEGORIES, not modifiers
 - Provide brief explanation of your extraction`;
 
 const FULL_INTENT_PROMPT_HASH = createHash('sha256')
@@ -156,6 +171,14 @@ Return JSON with complete intent extraction.`;
             );
 
             const durationMs = Date.now() - startTime;
+
+            // Apply deterministic fallback for common food types
+            result.canonicalCategory = applyFoodTypeFallback(
+                query,
+                result.canonicalCategory,
+                result.confidence,
+                0.7
+            );
 
             logger.debug({ 
                 requestId, 
