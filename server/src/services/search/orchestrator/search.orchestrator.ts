@@ -45,10 +45,10 @@ import { IntentGateService } from '../../intent/intent-gate.service.js';
 import { IntentFullService } from '../../intent/intent-full.service.js';
 import type { IntentGateResult } from '../../intent/intent-gate.types.js';
 import type { IntentFullResult } from '../../intent/intent-full.types.js';
-import { 
-    INTENT_GATE_ENABLED, 
+import {
+    INTENT_GATE_ENABLED,
     INTENT_FORCE_FULL_LLM,
-    INTENT_DISABLE_FAST_PATH 
+    INTENT_DISABLE_FAST_PATH
 } from '../../../config/intent-flags.js';
 
 // V2 Pipeline imports
@@ -211,11 +211,11 @@ export class SearchOrchestrator {
      * @param skipGate If true, skip IntentGateService (used when delegated from V2)
      */
     async search(
-        request: SearchRequest, 
-        traceId?: string, 
-        requestId?: string, 
-        skipAssistant = false, 
-        forceV1 = false, 
+        request: SearchRequest,
+        traceId?: string,
+        requestId?: string,
+        skipAssistant = false,
+        forceV1 = false,
         skipGate = false
     ): Promise<SearchResponse> {
         const startTime = Date.now();
@@ -240,7 +240,7 @@ export class SearchOrchestrator {
         };
 
         // NOTE: search_started log moved to controller (single source of truth)
-        
+
         logger.debug({ query: request.query }, '[SearchOrchestrator] Starting search');
 
         // ═══════════════════════════════════════════════════════════
@@ -249,14 +249,14 @@ export class SearchOrchestrator {
         // If V2 pipeline is enabled and not forced to V1, delegate to new pipeline
         // Otherwise, continue with V1 flow below
         if (SEARCH_PIPELINE_V2 && !forceV1) {
-            logger.info({ 
-                requestId: finalRequestId, 
-                pipelineVersion: 'v2' 
+            logger.info({
+                requestId: finalRequestId,
+                pipelineVersion: 'v2'
             }, 'pipeline_selected');
-            
+
             // Create session ID early for V2 pipeline
             const sessionId = request.sessionId || `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-            
+
             // Create pipeline dependencies
             const gateAdapter = new GateAdapter(this.intentGateService);
             const deps = createPipelineDependencies(
@@ -265,7 +265,7 @@ export class SearchOrchestrator {
                 // Delegate function that calls V1 flow (force V1 to avoid recursion, skip gate)
                 (req, tid, rid, skip) => this.search(req, tid, rid, skip, true, true)
             );
-            
+
             // Run V2 pipeline
             return runSearchPipelineV2(
                 request,
@@ -281,10 +281,10 @@ export class SearchOrchestrator {
                 deps
             );
         }
-        
+
         // V1 flow: Log pipeline selection
-        logger.info({ 
-            requestId: finalRequestId, 
+        logger.info({
+            requestId: finalRequestId,
             pipelineVersion: 'v1',
             ...(skipGate && { delegatedFrom: 'v2' })
         }, 'pipeline_selected');
@@ -311,33 +311,33 @@ export class SearchOrchestrator {
             // ═══════════════════════════════════════════════════════════
             // PHASE 8: INTENT GATE ROUTING LAYER
             // ═══════════════════════════════════════════════════════════
-            
+
             // Step 2A: Check for categoryHint from UI (skip gate entirely)
             if ((request as any).categoryHint && !INTENT_DISABLE_FAST_PATH) {
-                logger.info({ 
-                    requestId: finalRequestId, 
-                    categoryHint: (request as any).categoryHint 
+                logger.info({
+                    requestId: finalRequestId,
+                    categoryHint: (request as any).categoryHint
                 }, 'search_context_resolved: using_ui_hint');
                 flags.usedLLMIntent = false;
-                
+
                 // Build minimal intent from UI hint and continue to legacy flow
                 // (Legacy flow will still work with existing intentService)
             }
-            
+
             // Step 2B: Intent Gate (if enabled and no UI hint)
             let gateResult: IntentGateResult | null = null;
             let fullIntentResult: IntentFullResult | null = null;
-            
+
             // Skip gate if delegated from V2 (gate already ran in V2 pipeline)
             if (skipGate) {
-                logger.debug({ 
+                logger.debug({
                     requestId: finalRequestId,
-                    reason: 'delegated_from_v2' 
+                    reason: 'delegated_from_v2'
                 }, '[SearchOrchestrator] Skipping gate (already ran in V2)');
                 // Continue to legacy intent parsing below
             } else if (INTENT_GATE_ENABLED && !INTENT_FORCE_FULL_LLM && !(request as any).categoryHint) {
                 const gateStart = Date.now();
-                
+
                 try {
                     gateResult = await this.intentGateService.analyze(request.query, {
                         requestId: finalRequestId,
@@ -345,7 +345,7 @@ export class SearchOrchestrator {
                         sessionId
                     });
                     const gateMs = Date.now() - gateStart;
-                    
+
                     logger.info({
                         requestId: finalRequestId,
                         route: gateResult.route,
@@ -356,7 +356,7 @@ export class SearchOrchestrator {
                         language: gateResult.language,
                         durationMs: gateMs
                     }, 'intent_gate_completed');
-                    
+
                     // Route: ASK_CLARIFY → early return
                     if (gateResult.route === 'ASK_CLARIFY') {
                         logger.info({ requestId: finalRequestId }, '[SearchOrchestrator] Gate routed to CLARIFY');
@@ -373,23 +373,23 @@ export class SearchOrchestrator {
                             }
                         });
                     }
-                    
+
                     // Route: CORE → skip full intent LLM
                     if (gateResult.route === 'CORE' && !INTENT_FORCE_FULL_LLM) {
                         logger.info({ requestId: finalRequestId }, '[SearchOrchestrator] Gate routed to CORE (fast path)');
                         flags.usedLLMIntent = false; // Gate alone doesn't count as full intent
-                        
+
                         // Continue to legacy flow, but it will be fast since we have gate data
                     }
-                    
+
                     // Route: FULL_LLM → run full intent extraction (or skip for simple queries)
                     if (gateResult.route === 'FULL_LLM' || INTENT_FORCE_FULL_LLM) {
                         // Check if this is a fallback due to gate timeout/failure
-                        const isGateTimeout = gateResult.routeReason === 'gate_timeout' || 
-                                            gateResult.routeReason === 'timeout';
+                        const isGateTimeout = gateResult.routeReason === 'gate_timeout' ||
+                            gateResult.routeReason === 'timeout';
                         const isGateError = gateResult.routeReason === 'invalid_schema' ||
-                                          gateResult.routeReason === 'parse_error';
-                        
+                            gateResult.routeReason === 'parse_error';
+
                         if (isGateTimeout || isGateError) {
                             logger.info({
                                 requestId: finalRequestId,
@@ -397,12 +397,12 @@ export class SearchOrchestrator {
                                 fallbackReason: gateResult.routeReason,
                                 confidence: gateResult.confidence
                             }, 'intent_gate_fallback_used');
-                            
+
                             // Smart skip: If gate timed out AND query looks simple, skip full intent
                             // Simple patterns: "X in Y", "X ב Y" (Hebrew city pattern)
-                            const simpleQueryPattern = /\bin\b/i.test(request.query) || 
-                                                      /\sב/.test(request.query);
-                            
+                            const simpleQueryPattern = /\bin\b/i.test(request.query) ||
+                                /\sב/.test(request.query);
+
                             if (isGateTimeout && simpleQueryPattern) {
                                 logger.info({
                                     requestId: finalRequestId,
@@ -410,14 +410,14 @@ export class SearchOrchestrator {
                                     query: request.query,
                                     reason: 'gate_timeout_simple_query'
                                 }, 'intent_full_skipped');
-                                
+
                                 // Skip full intent, continue to CORE with legacy parsing
                                 flags.usedLLMIntent = false;
                                 // Let flow continue to legacy parsing below
                             } else {
                                 // Not simple or not timeout - run full intent
                                 const fullStart = Date.now();
-                                
+
                                 try {
                                     fullIntentResult = await this.intentFullService.extract(
                                         request.query,
@@ -430,19 +430,19 @@ export class SearchOrchestrator {
                                     );
                                     timings.intentMs = Date.now() - fullStart;
                                     flags.usedLLMIntent = true; // ONLY set true when full intent runs
-                                    
+
                                     logger.info({
                                         requestId: finalRequestId,
                                         confidence: fullIntentResult.confidence,
                                         durationMs: timings.intentMs
                                     }, 'intent_full_completed');
-                                    
+
                                 } catch (error) {
-                                    logger.error({ 
-                                        requestId: finalRequestId, 
-                                        error: error instanceof Error ? error.message : 'unknown' 
+                                    logger.error({
+                                        requestId: finalRequestId,
+                                        error: error instanceof Error ? error.message : 'unknown'
                                     }, '[SearchOrchestrator] Full intent extraction failed, falling back to legacy');
-                                    
+
                                     // Fallback to legacy intent service
                                     fullIntentResult = null;
                                 }
@@ -450,7 +450,7 @@ export class SearchOrchestrator {
                         } else {
                             // Normal FULL_LLM route (not from fallback)
                             const fullStart = Date.now();
-                            
+
                             try {
                                 fullIntentResult = await this.intentFullService.extract(
                                     request.query,
@@ -463,36 +463,36 @@ export class SearchOrchestrator {
                                 );
                                 timings.intentMs = Date.now() - fullStart;
                                 flags.usedLLMIntent = true; // ONLY set true when full intent runs
-                                
+
                                 logger.info({
                                     requestId: finalRequestId,
                                     confidence: fullIntentResult.confidence,
                                     durationMs: timings.intentMs
                                 }, 'intent_full_completed');
-                                
+
                             } catch (error) {
-                                logger.error({ 
-                                    requestId: finalRequestId, 
-                                    error: error instanceof Error ? error.message : 'unknown' 
+                                logger.error({
+                                    requestId: finalRequestId,
+                                    error: error instanceof Error ? error.message : 'unknown'
                                 }, '[SearchOrchestrator] Full intent extraction failed, falling back to legacy');
-                                
+
                                 // Fallback to legacy intent service
                                 fullIntentResult = null;
                             }
                         }
                     }
-                    
+
                 } catch (error) {
-                    logger.error({ 
-                        requestId: finalRequestId, 
-                        error: error instanceof Error ? error.message : 'unknown' 
+                    logger.error({
+                        requestId: finalRequestId,
+                        error: error instanceof Error ? error.message : 'unknown'
                     }, '[SearchOrchestrator] Gate failed, falling back to legacy intent');
-                    
+
                     // Fallback: continue to legacy intent parsing
                     gateResult = null;
                 }
             }
-            
+
             // Step 2C: Legacy intent parsing (fallback or if gate disabled)
             // This runs if:
             // - Gate disabled (INTENT_GATE_ENABLED=false)
@@ -505,17 +505,17 @@ export class SearchOrchestrator {
                 contextWithSession
             );
             let confidence = intentConfidence;
-            
+
             // Only update timing if we didn't already time full intent
             if (!fullIntentResult) {
                 timings.intentMs = Date.now() - intentStart;
             }
-            
+
             // Set usedLLMIntent flag only if no gate/full intent was used
             if (!gateResult && !fullIntentResult) {
                 flags.usedLLMIntent = true;
             }
-            
+
             flags.liveDataRequested = intent.requiresLiveData || false;
 
             // Chips/refinements are deterministic operations on the base intent.
@@ -543,16 +543,16 @@ export class SearchOrchestrator {
              * If Gate routed to CORE and provided English canonical, prefer it over fast-path
              */
             if (gateResult && gateResult.route === 'CORE' && gateResult.food.canonical) {
-                const shouldOverride = 
-                    gateResult.hasFood && 
+                const shouldOverride =
+                    gateResult.hasFood &&
                     gateResult.confidence >= 0.85 &&
                     gateResult.food.canonical.trim().length > 0;
-                
+
                 if (shouldOverride) {
                     const fromCategory = intent.canonical?.category;
                     intent.canonical = intent.canonical || {};
                     intent.canonical.category = gateResult.food.canonical;
-                    
+
                     logger.info({
                         requestId: finalRequestId,
                         fromCategory,
@@ -560,7 +560,7 @@ export class SearchOrchestrator {
                         gateConfidence: gateResult.confidence,
                         reason: 'gate_canonical_override'
                     }, '[CanonicalOverride] Using gate canonical over fast-path');
-                    
+
                     // Optionally sync location if Gate has better data
                     if (gateResult.location.canonical && !intent.canonical.locationText) {
                         intent.canonical.locationText = gateResult.location.canonical;
@@ -1023,14 +1023,14 @@ export class SearchOrchestrator {
             } else if (intent.canonical?.category) {
                 // Canonical category is always English - ensures consistent cross-language results
                 const rawCanonical = intent.canonical.category;
-                
+
                 // Apply deterministic normalization: canonical → optimal Google query
                 queryForGoogle = normalizeToGoogleQuery(rawCanonical, finalRequestId);
-                
-                logger.debug({ 
-                    rawCanonical, 
+
+                logger.debug({
+                    rawCanonical,
                     queryForGoogle,
-                    normalized: rawCanonical !== queryForGoogle 
+                    normalized: rawCanonical !== queryForGoogle
                 }, '[SearchOrchestrator] Using normalized canonical category');
             } else {
                 // Fallback to composed query (legacy path)
@@ -1291,12 +1291,12 @@ export class SearchOrchestrator {
             // Step 6: Use strong results (or all if no weak matches)
             // Smart display sizing: show all results if we got few, otherwise limit to 10
             const availableResults = strong.length > 0 ? strong : deduplicatedResults;
-            const dynamicDisplaySize = availableResults.length < 15 
+            const dynamicDisplaySize = availableResults.length < 15
                 ? availableResults.length  // Show all if we got <15 results
                 : this.poolConfig.displayResultsSize;  // Otherwise use configured limit (10)
-            
+
             const topResults = availableResults.slice(0, dynamicDisplaySize);
-            
+
             if (availableResults.length < 15 && availableResults.length > this.poolConfig.displayResultsSize) {
                 logger.info({
                     available: availableResults.length,
@@ -1624,9 +1624,9 @@ export class SearchOrchestrator {
             // Check if request was aborted by client
             const errorMessage = error instanceof Error ? error.message : String(error);
             const isClientAbort = errorMessage.toLowerCase().includes('request aborted') ||
-                                  errorMessage.toLowerCase().includes('aborted') ||
-                                  errorMessage.includes('ECONNRESET');
-            
+                errorMessage.toLowerCase().includes('aborted') ||
+                errorMessage.includes('ECONNRESET');
+
             if (isClientAbort) {
                 // Log as warning, not error - this is expected when clients cancel
                 logger.warn({
@@ -1635,12 +1635,12 @@ export class SearchOrchestrator {
                     reason: 'client_aborted_request',
                     timings
                 }, 'client_aborted_request');
-                
+
                 // Don't throw, just return gracefully (or throw a specific error)
                 // The controller should handle this appropriately
                 throw error;
             }
-            
+
             // Phase 7: Structured error logging
             logger.error({
                 requestId: finalRequestId,

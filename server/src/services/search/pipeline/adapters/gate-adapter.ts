@@ -35,7 +35,7 @@ function determineRoute(gateResult: IntentGateResult): {
   // Check if query is food-related
   // Food-related = has food anchor OR has modifiers (modifiers imply food context)
   const isFoodRelated = gateResult.hasFood || gateResult.hasModifiers;
-  
+
   // Rule 1: Not food-related → BYPASS
   if (!isFoodRelated) {
     return {
@@ -44,7 +44,7 @@ function determineRoute(gateResult: IntentGateResult): {
       isFoodRelated: false
     };
   }
-  
+
   // Rule 2: Food-related but missing BOTH anchors → ASK_CLARIFY
   if (!gateResult.hasFood && !gateResult.hasLocation) {
     return {
@@ -53,7 +53,7 @@ function determineRoute(gateResult: IntentGateResult): {
       isFoodRelated: true
     };
   }
-  
+
   // Rule 3: Has at least one anchor → INTENT_LITE
   return {
     route: 'INTENT_LITE',
@@ -72,7 +72,7 @@ function mapToGateResult(
   regionSource: 'device_coords' | 'session_cache' | 'default_config'
 ): GateResult {
   const routing = determineRoute(gateResult);
-  
+
   return {
     language: gateResult.language,
     isFoodRelated: routing.isFoodRelated,
@@ -117,8 +117,8 @@ function mapToGateResult(
  * Wraps IntentGateService for use in V2 pipeline
  */
 export class GateAdapter {
-  constructor(private readonly gateService: IntentGateService) {}
-  
+  constructor(private readonly gateService: IntentGateService) { }
+
   /**
    * Execute GATE stage
    * 
@@ -129,7 +129,7 @@ export class GateAdapter {
   async execute(query: string, context: PipelineContext): Promise<GateResult> {
     const { requestId, traceId, sessionId, request, sessionService } = context;
     const startTime = Date.now();
-    
+
     // Log stage start
     logger.info({
       requestId,
@@ -137,7 +137,7 @@ export class GateAdapter {
       stage: 'gate',
       event: 'stage_started'
     }, 'stage_started');
-    
+
     try {
       // Call existing IntentGateService
       const gateResult = await this.gateService.analyze(query, {
@@ -145,19 +145,19 @@ export class GateAdapter {
         ...(traceId && { traceId }),
         sessionId
       });
-      
+
       // Resolve region code with priority order
       const { regionCode, source } = await resolveRegionCode(
         request.userLocation,
         sessionId,
         sessionService
       );
-      
+
       // Map to GateResult with routing and region
       const result = mapToGateResult(gateResult, regionCode, source);
-      
+
       const durationMs = Date.now() - startTime;
-      
+
       // Enhanced logging with real routing and region
       logger.info({
         requestId,
@@ -175,12 +175,12 @@ export class GateAdapter {
         hasLocation: result.hasLocation,
         hasModifiers: result.hasModifiers
       }, 'stage_completed');
-      
+
       return result;
-      
+
     } catch (error) {
       const durationMs = Date.now() - startTime;
-      
+
       logger.error({
         requestId,
         pipelineVersion: 'v2',
@@ -189,7 +189,7 @@ export class GateAdapter {
         durationMs,
         error: error instanceof Error ? error.message : 'unknown'
       }, 'stage_failed');
-      
+
       throw error;
     }
   }

@@ -13,9 +13,10 @@
 import { Router } from 'express';
 import searchRouter from '../../controllers/search/search.controller.js';
 import analyticsRouter from '../../controllers/analytics/analytics.controller.js';
-import { chatRouter } from '../chat.routes.js';
-import { placesRouter } from '../places.routes.js';
-import { dialogueRouter } from '../dialogue.routes.js';
+// OBSOLETE: Legacy routes removed
+// import { chatRouter } from '../chat.routes.js';
+// import { placesRouter } from '../places.routes.js';
+// import { dialogueRouter } from '../dialogue.routes.js';
 
 export function createV1Router(): Router {
   const router = Router();
@@ -30,20 +31,12 @@ export function createV1Router(): Router {
   // Exposed as: POST /analytics/events, etc.
   router.use('/analytics', analyticsRouter);
 
-  // Legacy chat endpoints (already have full paths internally)
-  // Internal routes: POST /chat, POST /restaurants/search, POST /nlu/parse, etc.
-  // Exposed as-is: POST /chat, POST /restaurants/search, etc.
-  router.use(chatRouter);
-
-  // Legacy places endpoint (already has full path internally)
-  // Internal routes: POST /places/search
-  // Exposed as-is: POST /places/search
-  router.use(placesRouter);
-
-  // Dialogue endpoint (already has full path internally)
-  // Internal routes: POST /dialogue, DELETE /dialogue/session/:id, GET /dialogue/stats
-  // Exposed as-is: POST /dialogue, etc.
-  router.use(dialogueRouter);
+  // OBSOLETE: Legacy endpoints removed
+  // These endpoints are no longer supported:
+  // - POST /chat, POST /restaurants/search, POST /nlu/parse
+  // - POST /places/search
+  // - POST /dialogue
+  // Use POST /search with proper request format instead
 
   return router;
 }

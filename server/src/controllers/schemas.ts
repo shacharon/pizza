@@ -1,7 +1,10 @@
 import { z } from 'zod';
 import type { ChatAction } from '@api';
-import type { UiHint } from '../agent/reducer.js';
-import type { AgentState } from '../agent/states.js';
+// OBSOLETE: Agent types removed
+// import type { UiHint } from '../agent/reducer.js';
+// import type { AgentState } from '../agent/states.js';
+type UiHint = any;
+type AgentState = any;
 
 export type ChatReply = { reply: string; action?: ChatAction | undefined; uiHints?: UiHint[] | undefined; state?: AgentState };
 

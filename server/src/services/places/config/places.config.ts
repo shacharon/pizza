@@ -20,60 +20,75 @@ const EnvSchema = z.object({
     ALLOWED_LANGUAGES: z.string().default('he,en'),
 });
 
-const parsed = EnvSchema.safeParse({
-    GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
-    DEFAULT_REGION: process.env.DEFAULT_REGION,
-    PLACES_TEXTSEARCH_TIMEOUT_MS: process.env.PLACES_TEXTSEARCH_TIMEOUT_MS,
-    PLACES_NEARBY_TIMEOUT_MS: process.env.PLACES_NEARBY_TIMEOUT_MS,
-    PLACES_FINDPLACE_TIMEOUT_MS: process.env.PLACES_FINDPLACE_TIMEOUT_MS,
-    PLACES_RETRY_ATTEMPTS: process.env.PLACES_RETRY_ATTEMPTS,
-    PLACES_RETRY_BACKOFF_MS: process.env.PLACES_RETRY_BACKOFF_MS,
-    PLACES_DEFAULT_RADIUS_METERS: process.env.PLACES_DEFAULT_RADIUS_METERS,
-    PLACES_DEFAULT_CITY_RADIUS_METERS: process.env.PLACES_DEFAULT_CITY_RADIUS_METERS,
-    PLACES_MAX_RADIUS_METERS: process.env.PLACES_MAX_RADIUS_METERS,
-    PLACES_PAGE_SIZE: process.env.PLACES_PAGE_SIZE,
-    ALLOWED_TYPES: process.env.ALLOWED_TYPES,
-    ALLOWED_LANGUAGES: process.env.ALLOWED_LANGUAGES,
-});
+// Lazy-initialized config to avoid validating env vars at module load time
+let cachedConfig: ReturnType<typeof buildPlacesConfig> | null = null;
 
-if (!parsed.success) {
-    const issues = parsed.error.flatten().fieldErrors;
-    const message = `Invalid Places config: ${JSON.stringify(issues)}`;
-    throw new Error(message);
+function buildPlacesConfig() {
+    const parsed = EnvSchema.safeParse({
+        GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
+        DEFAULT_REGION: process.env.DEFAULT_REGION,
+        PLACES_TEXTSEARCH_TIMEOUT_MS: process.env.PLACES_TEXTSEARCH_TIMEOUT_MS,
+        PLACES_NEARBY_TIMEOUT_MS: process.env.PLACES_NEARBY_TIMEOUT_MS,
+        PLACES_FINDPLACE_TIMEOUT_MS: process.env.PLACES_FINDPLACE_TIMEOUT_MS,
+        PLACES_RETRY_ATTEMPTS: process.env.PLACES_RETRY_ATTEMPTS,
+        PLACES_RETRY_BACKOFF_MS: process.env.PLACES_RETRY_BACKOFF_MS,
+        PLACES_DEFAULT_RADIUS_METERS: process.env.PLACES_DEFAULT_RADIUS_METERS,
+        PLACES_DEFAULT_CITY_RADIUS_METERS: process.env.PLACES_DEFAULT_CITY_RADIUS_METERS,
+        PLACES_MAX_RADIUS_METERS: process.env.PLACES_MAX_RADIUS_METERS,
+        PLACES_PAGE_SIZE: process.env.PLACES_PAGE_SIZE,
+        ALLOWED_TYPES: process.env.ALLOWED_TYPES,
+        ALLOWED_LANGUAGES: process.env.ALLOWED_LANGUAGES,
+    });
+
+    if (!parsed.success) {
+        const issues = parsed.error.flatten().fieldErrors;
+        const message = `Invalid Places config: ${JSON.stringify(issues)}`;
+        throw new Error(message);
+    }
+
+    const allowedTypes = new Set(
+        parsed.data.ALLOWED_TYPES.split(',')
+            .map((s) => s.trim())
+            .filter((s) => s.length > 0)
+    );
+
+    const allowedLanguages = new Set(
+        parsed.data.ALLOWED_LANGUAGES.split(',')
+            .map((s) => s.trim()) as Array<'he' | 'en'>
+    );
+
+    return {
+        apiKey: parsed.data.GOOGLE_API_KEY,
+        defaultRegion: parsed.data.DEFAULT_REGION,
+        timeouts: {
+            textsearchMs: parsed.data.PLACES_TEXTSEARCH_TIMEOUT_MS,
+            nearbyMs: parsed.data.PLACES_NEARBY_TIMEOUT_MS,
+            findplaceMs: parsed.data.PLACES_FINDPLACE_TIMEOUT_MS,
+        },
+        retry: {
+            attempts: parsed.data.PLACES_RETRY_ATTEMPTS,
+            backoffMs: parsed.data.PLACES_RETRY_BACKOFF_MS as number[],
+        },
+        radius: {
+            defaultMeters: parsed.data.PLACES_DEFAULT_RADIUS_METERS,
+            cityDefaultMeters: parsed.data.PLACES_DEFAULT_CITY_RADIUS_METERS,
+            maxMeters: parsed.data.PLACES_MAX_RADIUS_METERS,
+        },
+        pageSize: parsed.data.PLACES_PAGE_SIZE,
+        allowedTypes,
+        allowedLanguages,
+    } as const;
 }
 
-const allowedTypes = new Set(
-    parsed.data.ALLOWED_TYPES.split(',')
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0)
-);
-
-const allowedLanguages = new Set(
-    parsed.data.ALLOWED_LANGUAGES.split(',')
-        .map((s) => s.trim()) as Array<'he' | 'en'>
-);
-
-export const PlacesConfig = {
-    apiKey: parsed.data.GOOGLE_API_KEY,
-    defaultRegion: parsed.data.DEFAULT_REGION,
-    timeouts: {
-        textsearchMs: parsed.data.PLACES_TEXTSEARCH_TIMEOUT_MS,
-        nearbyMs: parsed.data.PLACES_NEARBY_TIMEOUT_MS,
-        findplaceMs: parsed.data.PLACES_FINDPLACE_TIMEOUT_MS,
-    },
-    retry: {
-        attempts: parsed.data.PLACES_RETRY_ATTEMPTS,
-        backoffMs: parsed.data.PLACES_RETRY_BACKOFF_MS as number[],
-    },
-    radius: {
-        defaultMeters: parsed.data.PLACES_DEFAULT_RADIUS_METERS,
-        cityDefaultMeters: parsed.data.PLACES_DEFAULT_CITY_RADIUS_METERS,
-        maxMeters: parsed.data.PLACES_MAX_RADIUS_METERS,
-    },
-    pageSize: parsed.data.PLACES_PAGE_SIZE,
-    allowedTypes,
-    allowedLanguages,
-} as const;
+// Export a getter that lazily builds and caches the config
+export const PlacesConfig = new Proxy({} as ReturnType<typeof buildPlacesConfig>, {
+    get(target, prop) {
+        if (!cachedConfig) {
+            cachedConfig = buildPlacesConfig();
+        }
+        return (cachedConfig as any)[prop];
+    }
+});
 
 export type AllowedLanguage = 'he' | 'en';
 

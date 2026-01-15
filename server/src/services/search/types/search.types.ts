@@ -81,7 +81,7 @@ export interface ResolvedLocation {
 export interface ParsedIntent {
   // What the user wants
   query: string;  // Normalized query (e.g., "pizza")
-  
+
   // Where to search
   location?: {
     city?: string;
@@ -92,10 +92,10 @@ export interface ParsedIntent {
     radius?: number;
     region?: string;  // NEW: Country code from geocoding (e.g., 'fr', 'il', 'us')
   };
-  
+
   // Search mode
   searchMode: SearchMode;
-  
+
   // Filters
   filters: {
     openNow?: boolean;
@@ -103,31 +103,31 @@ export interface ParsedIntent {
     dietary?: string[];   // ['kosher', 'vegan', 'gluten_free']
     mustHave?: string[];  // ['parking', 'wifi', 'outdoor_seating']
   };
-  
+
   // Context
   occasion?: Occasion;
   vibe?: string[];  // ['romantic', 'quiet', 'casual', 'local']
   cuisine?: string[];  // ['pizza', 'sushi', 'italian']
-  
+
   // Language (NEW: Separated into three distinct concepts)
   languageContext: LanguageContext;
-  
+
   // DEPRECATED (kept for backward compatibility):
   language?: string;  // Use languageContext.googleLanguage instead
   regionLanguage?: string;  // Use languageContext.requestLanguage instead
-  
+
   // NEW: Semantic header for AI assistant (non-breaking additions)
   intent?: 'search_food' | 'refine' | 'check_opening_status';
   confidenceLevel?: 'high' | 'medium' | 'low';  // Derived from numeric confidence
   requiresLiveData?: boolean;  // True if user asked about open/close/hours
   originalQuery: string;  // Immutable, for assistant context (REQUIRED)
-  
+
   // NEW: Canonical extraction for consistent query building across languages
   canonical?: {
     category?: string;      // English: "italian restaurant", "sushi", "pizza"
     locationText?: string;  // Original: "Paris", "תל אביב", "Champs-Élysées"
   };
-  
+
   // NEW: Search granularity (determines grouping behavior)
   granularity?: SearchGranularity;
 }
@@ -146,48 +146,48 @@ export interface RestaurantResult {
   id: string;  // Internal ID
   placeId: string;  // Provider's place ID
   source: RestaurantSource;
-  
+
   // Basic info
   name: string;
   address: string;
   location: Coordinates;
-  
+
   // Ratings & reviews
   rating?: number;
   userRatingsTotal?: number;
   priceLevel?: number;  // 1-4
-  
+
   // Status (using VerifiableBoolean for data quality)
   openNow?: VerifiableBoolean;  // true | false | 'UNKNOWN'
-  
+
   // Contact
   phoneNumber?: string;
   website?: string;
   googleMapsUrl?: string;
-  
+
   // Media
   photoUrl?: string;
   photos?: string[];
-  
+
   // Enrichment
   tags?: string[];  // ['pizza', 'romantic', 'fast-food']
   matchReasons?: string[];  // Why this matches the query (REQUIRED after ranking)
-  
+
   // Scoring (added by RankingService)
   score?: number;  // 0-100 (REQUIRED after ranking)
   rank?: number;  // Phase 1: 1-based ranking position (1 = best)
   isWeakMatch?: boolean;  // Phase 3: True if score < weakMatchThreshold
   distanceScore?: number;  // Phase 3: 0-100 based on distance from center
-  
+
   // City matching (added by CityFilterService)
   cityMatch?: boolean;  // Does this result match the target city?
   cityMatchReason?: 'LOCALITY' | 'FORMATTED_ADDRESS' | 'UNKNOWN';
   isNearbyFallback?: boolean;  // Was this added as a fallback result?
-  
+
   // Grouping metadata (added by SearchOrchestrator)
   groupKind?: 'EXACT' | 'NEARBY';  // Which group this result belongs to
   distanceMeters?: number;  // Distance from search point
-  
+
   // Metadata
   metadata?: {
     lastUpdated?: Date;
@@ -261,7 +261,7 @@ export interface RefinementChip {
 // ============================================================================
 
 // Deterministic failure reasons (computed by code, not LLM)
-export type FailureReason = 
+export type FailureReason =
   | 'NONE'
   | 'NO_RESULTS'
   | 'LOW_CONFIDENCE'
@@ -292,15 +292,15 @@ export interface AssistPayload {
   type: AssistType;
   mode?: 'NORMAL' | 'RECOVERY' | 'CLARIFY';  // Phase 5: Added CLARIFY mode
   message: string;  // LLM-generated, multilingual
-  
+
   // NEW: Reference chip IDs instead of inline actions
   primaryActionId?: string;     // Highlighted chip (most important next step)
   secondaryActionIds?: string[]; // Up to 4 additional chips (optional for backward compat)
-  
+
   // NEW: Debug metadata
   reasoning?: string;            // Why these actions were chosen (debug only)
   failureReason?: FailureReason; // If something went wrong
-  
+
   // DEPRECATED: Use chip IDs instead
   suggestedActions?: {
     label: string;
@@ -391,7 +391,7 @@ export interface SessionContext {
     intent: ParsedIntent;
     timestamp: Date;
   }[];
-  
+
   // Session-level city cache (avoid redundant geocoding calls)
   validatedCities?: Map<string, {
     displayName: string;
@@ -399,7 +399,7 @@ export interface SessionContext {
     status: 'VERIFIED' | 'FAILED' | 'AMBIGUOUS';
     timestamp: number;
   }>;
-  
+
   // NEW: Cached region code from device/geocoding
   regionCode?: string; // ISO-2 uppercase (e.g., "IL")
 }
@@ -409,15 +409,15 @@ export interface SearchSession {
   context: SessionContext;
   createdAt: Date;
   updatedAt: Date;
-  
+
   // Current search
   currentIntent?: ParsedIntent;
   currentResults?: RestaurantResult[];
-  
+
   // User preferences (future)
   userLanguage?: string;
   userLocation?: Coordinates;
-  
+
   // ChatBack memory (RSE + ChatBack Layer)
   chatBackHistory?: {
     turnIndex: number;
@@ -438,14 +438,14 @@ export interface SearchParams {
   radius?: number;
   language: string;  // Google Places API language (he or en)
   region?: string;    // Country code for biasing results (e.g., 'fr', 'il', 'us')
-  
+
   filters: {
     openNow?: boolean;
     priceLevel?: number;
     dietary?: string[];
     mustHave?: string[];
   };
-  
+
   mode?: SearchMode;
   pageSize?: number;
 }

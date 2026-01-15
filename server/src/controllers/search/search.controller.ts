@@ -23,6 +23,9 @@ import { logger } from '../../lib/logger/structured-logger.js';
 import { AssistantJobService } from '../../services/search/assistant/assistant-job.service.js';
 import type { SearchContext } from '../../services/search/types/search.types.js';
 import type { RequestState } from '../../infra/state/request-state.store.js';
+import { ROUTE2_ENABLED } from '../../config/route2.flags.js';
+import { searchRoute2 } from '../../services/search/route2/index.js';
+import type { Route2Context } from '../../services/search/route2/index.js';
 
 const router = Router();
 
@@ -76,6 +79,29 @@ router.post('/', async (req: Request, res: Response) => {
       mode 
     }, 'Search request validated');
 
+    // ROUTE2: New clean pipeline (default enabled)
+    if (ROUTE2_ENABLED) {
+      const route2Context: Route2Context = {
+        requestId,
+        ...(req.traceId !== undefined && { traceId: req.traceId }),
+        ...(validation.data!.sessionId !== undefined && { sessionId: validation.data!.sessionId }),
+        startTime: Date.now(),
+        ...(validation.data!.userLocation !== undefined && { userLocation: validation.data!.userLocation })
+      };
+
+      const response = await searchRoute2(validation.data!, route2Context);
+
+      req.log.info({
+        requestId,
+        resultCount: response.results.length,
+        pipeline: 'route2'
+      }, 'Search completed (ROUTE2)');
+
+      res.json(response);
+      return;
+    }
+
+    // V1 Flow (only when ROUTE2_ENABLED=false)
     // Phase 5: Async mode - fast core + fire-and-forget assistant
     if (mode === 'async') {
       // Import singletons dynamically to avoid circular dependency

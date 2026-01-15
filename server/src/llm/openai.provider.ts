@@ -3,7 +3,7 @@ import { zodToJsonSchema } from "zod-to-json-schema";
 import { createHash } from "crypto";
 import { performance } from "node:perf_hooks";
 import type { LLMProvider, Message } from "./types.js";
-import { openai } from "../services/openai.client.js";
+import OpenAI from "openai";
 import {
     DEFAULT_LLM_MODEL,
     LLM_JSON_TIMEOUT_MS,
@@ -13,6 +13,24 @@ import {
 } from "../config/index.js";
 import { traceProviderCall, calculateOpenAICost } from "../lib/telemetry/providerTrace.js";
 import { logger } from "../lib/logger/structured-logger.js";
+
+// Lazy-initialized OpenAI client
+let openaiClient: OpenAI | null = null;
+
+function getOpenAIClient(): OpenAI {
+    if (!openaiClient) {
+        const apiKey = process.env.OPENAI_API_KEY;
+        if (!apiKey) {
+            throw new Error('OPENAI_API_KEY environment variable is required');
+        }
+        openaiClient = new OpenAI({
+            apiKey,
+            timeout: LLM_JSON_TIMEOUT_MS,
+            maxRetries: 0
+        });
+    }
+    return openaiClient;
+}
 
 /**
  * Schema version for Structured Outputs - increment when schema generation changes
@@ -147,7 +165,8 @@ export class OpenAiProvider implements LLMProvider {
                         ...(attempt !== undefined && { retryCount: attempt }),
                     },
                     async () => {
-                        return await openai.chat.completions.create({
+                        const client = getOpenAIClient();
+                        return await client.chat.completions.create({
                             model,
                             messages: toInput(messages) as any,
                             temperature,
@@ -416,7 +435,8 @@ export class OpenAiProvider implements LLMProvider {
                     retryCount: 0,
                 },
                 async () => {
-                    return await openai.chat.completions.create({
+                    const client = getOpenAIClient();
+                    return await client.chat.completions.create({
                         model,
                         messages: toInput(messages) as any,
                         temperature
@@ -486,7 +506,8 @@ export class OpenAiProvider implements LLMProvider {
                     retryCount: 0,
                 },
                 async () => {
-                    return await openai.chat.completions.create({
+                    const client = getOpenAIClient();
+                    return await client.chat.completions.create({
                         model,
                         messages: toInput(messages) as any,
                         temperature,
