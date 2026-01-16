@@ -5,7 +5,7 @@
  * All food/location/language detection from LLM JSON
  * Routing rules applied deterministically AFTER LLM returns
  * 
- * Target: <600ms with timeout enforcement
+ * Target: <1200ms with timeout enforcement
  */
 
 import { z } from 'zod';
@@ -13,16 +13,12 @@ import { createHash } from 'crypto';
 import type { SearchRequest } from '../../types/search-request.dto.js';
 import type { Route2Context, Gate2StageOutput, Gate2Result } from '../types.js';
 import type { Message } from '../../../../llm/types.js';
-import { resolveRegionCode } from '../utils/region-resolver.js';
 import { logger } from '../../../../lib/logger/structured-logger.js';
 
 // Gate2 Zod Schema for LLM output (before routing logic)
 const Gate2LLMSchema = z.object({
   isFoodRelated: z.boolean(),
   language: z.enum(['he', 'en', 'ru', 'ar', 'fr', 'es', 'other']),
-  hasFoodAnchor: z.boolean(),
-  hasLocationAnchor: z.boolean(),
-  hasModifiers: z.boolean(),
   confidence: z.number().min(0).max(1)
 });
 
@@ -32,17 +28,19 @@ const GATE2_JSON_SCHEMA = {
   properties: {
     isFoodRelated: { type: 'boolean' },
     language: { type: 'string', enum: ['he', 'en', 'ru', 'ar', 'fr', 'es', 'other'] },
-    hasFoodAnchor: { type: 'boolean' },
-    hasLocationAnchor: { type: 'boolean' },
-    hasModifiers: { type: 'boolean' },
     confidence: { type: 'number', minimum: 0, maximum: 1 }
   },
-  required: ['isFoodRelated', 'language', 'hasFoodAnchor', 'hasLocationAnchor', 'hasModifiers', 'confidence'],
+  required: ['isFoodRelated', 'language', 'confidence'],
   additionalProperties: false
 } as const;
 
-const GATE2_PROMPT_VERSION = 'gate2_v1';
-const GATE2_SYSTEM_PROMPT = `You are Gate2 for food search. Return ONLY JSON. Detect: language, isFoodRelated, hasFoodAnchor, hasLocationAnchor, hasModifiers, confidence (0..1).`;
+const GATE2_PROMPT_VERSION = 'gate2_v4';
+const GATE2_SYSTEM_PROMPT = `You are Gate2 for food search. Return ONLY JSON.
+
+Detect:
+- language: he/en/ru/ar/fr/es/other
+- isFoodRelated: boolean
+- confidence: 0..1`;
 
 const GATE2_PROMPT_HASH = createHash('sha256')
   .update(GATE2_SYSTEM_PROMPT, 'utf8')
@@ -55,10 +53,7 @@ function createFallbackResult(): Gate2Result {
   return {
     isFoodRelated: true,
     language: 'other',
-    hasFoodAnchor: false,
-    hasLocationAnchor: false,
-    hasModifiers: false,
-    route: 'ASK_CLARIFY',
+    route: 'CONTINUE',
     confidence: 0.1
   };
 }
@@ -68,21 +63,7 @@ function createFallbackResult(): Gate2Result {
  * NO heuristics - pure logic based on LLM flags
  */
 function applyDeterministicRouting(llmResult: z.infer<typeof Gate2LLMSchema>): Gate2Result {
-  let route: 'BYPASS' | 'ASK_CLARIFY' | 'CONTINUE';
-
-  // Rule 1: Not food-related => BYPASS
-  if (!llmResult.isFoodRelated) {
-    route = 'BYPASS';
-  }
-  // Rule 2: Food but missing both anchors => ASK_CLARIFY
-  else if (!llmResult.hasFoodAnchor && !llmResult.hasLocationAnchor) {
-    route = 'ASK_CLARIFY';
-  }
-  // Rule 3: Has at least one anchor => CONTINUE
-  else {
-    route = 'CONTINUE';
-  }
-
+  const route = llmResult.isFoodRelated ? 'CONTINUE' : 'BYPASS';
   return {
     ...llmResult,
     route
@@ -112,9 +93,6 @@ export async function executeGate2Stage(
   }, '[ROUTE2] gate2 started');
 
   try {
-    // Resolve region (independent of LLM)
-    const { regionCode, source: regionSource } = await resolveRegionCode(context);
-
     // Call LLM for classification
     const messages: Message[] = [
       { role: 'system', content: GATE2_SYSTEM_PROMPT },
@@ -126,7 +104,7 @@ export async function executeGate2Stage(
       Gate2LLMSchema,
       {
         temperature: 0,
-        timeout: 600, // 600ms max
+        timeout: 1300,
         promptVersion: GATE2_PROMPT_VERSION,
         promptHash: GATE2_PROMPT_HASH,
         promptLength: GATE2_SYSTEM_PROMPT.length,
@@ -152,14 +130,10 @@ export async function executeGate2Stage(
       route: gate.route,
       confidence: gate.confidence,
       language: gate.language,
-      hasFoodAnchor: gate.hasFoodAnchor,
-      hasLocationAnchor: gate.hasLocationAnchor,
-      hasModifiers: gate.hasModifiers,
-      regionCode,
-      regionSource
+      isFoodRelated: gate.isFoodRelated
     }, '[ROUTE2] gate2 completed');
 
-    return { gate, regionCode, regionSource };
+    return { gate };
 
   } catch (error) {
     const durationMs = Date.now() - startTime;
@@ -176,10 +150,9 @@ export async function executeGate2Stage(
       isTimeout
     }, '[ROUTE2] gate2 failed');
 
-    // Fallback with region resolution
-    const { regionCode, source: regionSource } = await resolveRegionCode(context);
+    // Fallback
     const gate = createFallbackResult();
 
-    return { gate, regionCode, regionSource };
+    return { gate };
   }
 }

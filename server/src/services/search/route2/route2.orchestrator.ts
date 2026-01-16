@@ -18,6 +18,7 @@ import { executeGate2Stage } from './stages/gate2.stage.js';
 import { executeIntent2Stage } from './stages/intent2.stage.js';
 import { executeRouteLLMStage } from './stages/route-llm.stage.js';
 import { executeGoogleMapsStage } from './stages/google-maps.stage.js';
+import { resolveUserRegionCode } from './utils/region-resolver.js';
 import { logger } from '../../../lib/logger/structured-logger.js';
 
 /**
@@ -42,6 +43,10 @@ export async function searchRoute2(
   }, '[ROUTE2] Pipeline selected');
 
   try {
+    // Resolve user region from device
+    const { userRegionCode, source: userRegionSource } = await resolveUserRegionCode(ctx);
+    ctx.userRegionCode = userRegionCode;
+
     // STAGE 1: GATE2
     const gateResult = await executeGate2Stage(request, ctx);
 
@@ -88,51 +93,6 @@ export async function searchRoute2(
       };
     }
 
-    // Handle ASK_CLARIFY route
-    if (gateResult.gate.route === 'ASK_CLARIFY') {
-      logger.info({
-        requestId,
-        pipelineVersion: 'route2',
-        event: 'pipeline_clarify',
-        reason: 'missing_anchors'
-      }, '[ROUTE2] Pipeline asking for clarification');
-
-      return {
-        sessionId: request.sessionId || 'route2-session',
-        query: {
-          original: request.query,
-          parsed: {
-            query: request.query,
-            searchMode: 'textsearch' as const,
-            filters: {},
-            languageContext: {
-              uiLanguage: gateResult.gate.language === 'he' ? 'he' as const : 'en' as const,
-              requestLanguage: gateResult.gate.language,
-              googleLanguage: gateResult.gate.language === 'he' ? 'he' as const : 'en' as const
-            },
-            originalQuery: request.query
-          },
-          language: gateResult.gate.language
-        },
-        results: [],
-        chips: [],
-        assist: {
-          type: 'clarify' as const,
-          message: gateResult.gate.language === 'he'
-            ? 'אנא הוסף פרטים נוספים - איזה אוכל? באיזה מיקום?'
-            : 'Please add more details - what food? which location?'
-        },
-        meta: {
-          tookMs: Date.now() - startTime,
-          mode: 'textsearch' as const,
-          appliedFilters: [],
-          confidence: 0,
-          source: 'route2_gate',
-          failureReason: 'LOW_CONFIDENCE'
-        }
-      };
-    }
-
     // CONTINUE - proceed to Intent2
     logger.info({
       requestId,
@@ -141,7 +101,25 @@ export async function searchRoute2(
     }, '[ROUTE2] Proceeding to intent2');
 
     // STAGE 2: INTENT2
-    const intentResult = await executeIntent2Stage(gateResult, request, ctx);
+    const intentResult = await executeIntent2Stage(gateResult.gate, request, ctx);
+
+    // Compute final region (query overrides user)
+    if (intentResult.queryRegionCode) {
+      ctx.queryRegionCode = intentResult.queryRegionCode;
+    }
+    ctx.regionCodeFinal = intentResult.queryRegionCode ?? userRegionCode;
+
+    logger.info({
+      requestId,
+      pipelineVersion: 'route2',
+      event: 'region_resolved',
+      userRegionCode,
+      userRegionSource,
+      queryRegionCode: ctx.queryRegionCode,
+      regionCodeFinal: ctx.regionCodeFinal,
+      mode: intentResult.mode,
+      reason: intentResult.reason
+    }, '[ROUTE2] Region and mode resolved');
 
     // STAGE 3: ROUTE_LLM
     const routePlan = await executeRouteLLMStage(intentResult, request, ctx);
@@ -157,7 +135,7 @@ export async function searchRoute2(
       query: {
         original: request.query,
         parsed: {
-          query: intentResult.food?.canonical || 'restaurant',
+          query: intentResult.food.canonicalEn || 'restaurant',
           searchMode: routePlan.mode,
           filters: {},
           languageContext: {
@@ -167,7 +145,7 @@ export async function searchRoute2(
           },
           originalQuery: request.query
         },
-        language: gateResult.gate.language || 'he'
+        language: intentResult.language || 'he'
       },
       results: [], // Empty for skeleton
       chips: [],

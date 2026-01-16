@@ -28,47 +28,59 @@ export interface Route2Context {
     lat: number;
     lng: number;
   };
+  // Region tracking: user (device) vs query (LLM-detected)
+  userRegionCode?: 'IL' | 'OTHER';
+  queryRegionCode?: 'IL' | 'OTHER';
+  regionCodeFinal?: 'IL' | 'OTHER';
 }
 
 // Gate2 specific types
 export type Gate2Language = 'he' | 'en' | 'ru' | 'ar' | 'fr' | 'es' | 'other';
-export type Gate2Route = 'CONTINUE' | 'ASK_CLARIFY' | 'BYPASS';
-export type RegionSource = 'device' | 'session' | 'config';
+export type Gate2Route = 'CONTINUE' | 'BYPASS';
 
 /**
  * GATE2 Stage Result
- * Determines if request should bypass, ask for clarification, or continue
+ * Minimal food/language classifier - anchors/modifiers handled by Intent2
  */
 export interface Gate2Result {
   isFoodRelated: boolean;
   language: Gate2Language;
-  hasFoodAnchor: boolean;
-  hasLocationAnchor: boolean;
-  hasModifiers: boolean;
   route: Gate2Route;
   confidence: number;
 }
 
 export interface Gate2StageOutput {
   gate: Gate2Result;
-  regionCode: string;
-  regionSource: RegionSource;
 }
+
+// Intent2 specific types
+export type Intent2Mode = 'nearby' | 'landmark' | 'textsearch';
+export type Intent2Reason = 'near_me_phrase' | 'explicit_distance_from_me' | 'landmark_detected' | 'default_textsearch' | 'ambiguous';
+export type LandmarkType = 'address' | 'poi' | 'street' | 'neighborhood' | 'area' | 'unknown' | null;
+export type RadiusSource = 'explicit' | 'default' | null;
 
 /**
  * INTENT2 Stage Result
- * Extracts food and location intent from query
+ * Extracts food and location intent from query with mode classification
  */
 export interface Intent2Result {
-  food?: {
-    raw?: string;
-    canonical?: string;
+  language: Gate2Language;
+  mode: Intent2Mode;
+  reason: Intent2Reason;
+  food: {
+    raw: string | null;
+    canonicalEn: string | null;
   };
-  location?: {
-    text?: string;
-    isRelative?: boolean;
-    radiusMeters?: number;
+  location: {
+    isRelative: boolean;
+    text: string | null;
+    landmarkText: string | null;
+    landmarkType: LandmarkType;
   };
+  radiusMeters: number | null;
+  radiusSource: RadiusSource;
+  queryRegionCode: 'IL' | 'OTHER' | null;
+  confidence: number;
 }
 
 /**

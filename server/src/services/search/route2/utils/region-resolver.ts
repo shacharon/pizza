@@ -7,11 +7,16 @@
  * 3. DEFAULT_REGION from config
  * 
  * NO language/text heuristics - only geographic bounds
+ * 
+ * NOTE: This utility is NOT used by Gate2 anymore. Gate2 now gets regionCode from LLM.
+ * This file remains for potential future use by other stages.
  */
 
-import type { Route2Context, RegionSource } from '../types.js';
+import type { Route2Context } from '../types.js';
 import { PlacesConfig } from '../../../places/config/places.config.js';
 import { logger } from '../../../../lib/logger/structured-logger.js';
+
+type RegionSource = 'device' | 'session' | 'config';
 
 // Israel bounding box (hardcoded constants)
 const IL_BBOX = {
@@ -30,27 +35,28 @@ function isInIsraelBBox(lat: number, lng: number): boolean {
 }
 
 /**
- * Resolve region code with priority order
+ * Resolve user region code with priority order
+ * Based on device coordinates only, NOT query content
  * 
  * @param context Route2 pipeline context
- * @returns Region code and source
+ * @returns User region code and source
  */
-export async function resolveRegionCode(
+export async function resolveUserRegionCode(
   context: Route2Context
-): Promise<{ regionCode: string; source: RegionSource }> {
+): Promise<{ userRegionCode: 'IL' | 'OTHER'; source: RegionSource }> {
   const { userLocation, sessionId, sessionService, requestId } = context;
 
   // Priority 1: Device coordinates
   if (userLocation) {
-    const regionCode = isInIsraelBBox(userLocation.lat, userLocation.lng) ? 'IL' : 'OTHER';
+    const userRegionCode = isInIsraelBBox(userLocation.lat, userLocation.lng) ? 'IL' : 'OTHER';
 
-    // Cache in session
+    // Cache in session (using 'regionCode' key for compatibility)
     if (sessionService && sessionId) {
       try {
         const session = await sessionService.get(sessionId);
         if (session) {
           await sessionService.update(sessionId, {
-            context: { ...session.context, regionCode }
+            context: { ...session.context, regionCode: userRegionCode }
           });
         }
       } catch (error) {
@@ -58,11 +64,11 @@ export async function resolveRegionCode(
           requestId,
           sessionId,
           error: error instanceof Error ? error.message : 'unknown'
-        }, '[RegionResolver] Failed to cache region in session');
+        }, '[RegionResolver] Failed to cache user region in session');
       }
     }
 
-    return { regionCode, source: 'device' };
+    return { userRegionCode, source: 'device' };
   }
 
   // Priority 2: Session cache
@@ -70,7 +76,7 @@ export async function resolveRegionCode(
     try {
       const session = await sessionService.get(sessionId);
       if (session?.context.regionCode) {
-        return { regionCode: session.context.regionCode, source: 'session' };
+        return { userRegionCode: session.context.regionCode as 'IL' | 'OTHER', source: 'session' };
       }
     } catch (error) {
       logger.warn({
@@ -82,9 +88,9 @@ export async function resolveRegionCode(
   }
 
   // Priority 3: Default from config
-  const defaultRegion = PlacesConfig.defaultRegion?.toUpperCase() || 'IL';
+  const defaultRegion = (PlacesConfig.defaultRegion?.toUpperCase() || 'IL') as 'IL' | 'OTHER';
 
-  // Cache in session
+  // Cache in session (using 'regionCode' key for compatibility)
   if (sessionService && sessionId) {
     try {
       const session = await sessionService.get(sessionId);
@@ -98,9 +104,9 @@ export async function resolveRegionCode(
         requestId,
         sessionId,
         error: error instanceof Error ? error.message : 'unknown'
-      }, '[RegionResolver] Failed to cache default region');
+      }, '[RegionResolver] Failed to cache default user region');
     }
   }
 
-  return { regionCode: defaultRegion, source: 'config' };
+  return { userRegionCode: defaultRegion, source: 'config' };
 }
