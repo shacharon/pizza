@@ -1,8 +1,0 @@
-<div class="smart-chips" *ngIf="chips.length">
-    <div class="chip" *ngFor="let chip of chips" [class.suggested]="chip.state === 'suggested'"
-        [class.active]="chip.state === 'active'" (click)="onChipClick(chip)">
-        <span class="label">{{ chip.label }}</span>
-        <button class="dismiss" *ngIf="chip.state === 'suggested'" (click)="onDismiss($event, chip.id)"
-            aria-label="Dismiss">×</button>
-    </div>
-</div>
