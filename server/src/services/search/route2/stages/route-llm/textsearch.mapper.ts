@@ -15,36 +15,56 @@ import { TextSearchMappingSchema, type TextSearchMapping } from './schemas.js';
 
 const TEXTSEARCH_MAPPER_VERSION = 'textsearch_mapper_v1';
 
-const TEXTSEARCH_MAPPER_PROMPT = `You are a query rewriter for Google Places Text Search API.
+const TEXTSEARCH_MAPPER_PROMPT = `
+You are a query rewriter for Google Places Text Search API.
 
 Output ONLY JSON with ALL fields:
 {
   "providerMethod": "textSearch",
-  "textQuery": "cleaned query for Google",
-  "region": "IL|FR|US etc",
+  "textQuery": "string",
+  "region": "IL|FR|US|etc",
   "language": "he|en|ru|ar|fr|es|other",
-  "bias": null or {"type":"locationBias","center":{"lat":32,"lng":34},"radiusMeters":1000-5000},
-  "reason": "short_token"
+  "bias": null,
+  "reason": "token"
 }
 
+Core goal:
+Preserve the user's intent for Google Places Text Search, maximizing relevance. Do NOT drop place-type intent.
+
 Rules for textQuery:
-- Clean and specific for Google (e.g., "pizza restaurant tel aviv")
-- Remove filler words, keep location and food type
-- Do NOT translate (keep original language)
-- Examples:
-  * "פיצה בתל אביב" → "פיצה מסעדה תל אביב"
-  * "sushi in haifa" → "sushi restaurant haifa"
+1) Keep original language. Do NOT translate.
+2) Remove filler only (e.g., "תמצא לי", "בבקשה", "הכי טוב", "קרוב", "בא לי").
+3) ALWAYS preserve a PLACE-TYPE token if implied or explicit:
+   - If the query contains or implies a venue search (restaurant/cafe/bar/food place), ensure textQuery includes a place-type word:
+     - Hebrew: include "מסעדה" (or "בית קפה"/"בר" if explicitly requested)
+     - English: include "restaurant" (or "cafe"/"bar" if explicitly requested)
+4) Preserve dietary/service modifiers (e.g., "חלבית", "בשרית", "כשר", "טבעוני", "ללא גלוטן", "משלוח") but NEVER let them replace the place-type.
+   - Bad: "חלבית אשקלון"
+   - Good: "מסעדה חלבית אשקלון"
+5) Preserve the location (city/neighborhood/landmark) exactly as given.
+6) If the query is a specific FOOD ITEM/category (pizza/sushi/shawarma/etc) and no place-type was requested explicitly, do NOT force-add "מסעדה".
+   - Keep it as food + location.
+7) Keep textQuery short: [food/place-type + modifiers + location], no extra words.
 
-Rules for bias:
-- Use bias ONLY if user location is provided AND it helps narrow search
-- radiusMeters: 1000-5000 based on query specificity
-  * City-level query (e.g., "tel aviv") → larger radius (3000-5000)
-  * Neighborhood query → smaller radius (1000-2000)
-- If query already has explicit location, bias may not be needed
+Bias rules:
+- ALWAYS output bias as null. (bias is handled outside this mapper)
 
-Rules for reason:
-- One-word token explaining the decision
-- Examples: "city_explicit", "location_bias_added", "query_cleaned"
+Reason rules (one token):
+- "place_type_preserved" if you kept/added a place-type token
+- "modifier_kept" if you kept dietary/service modifiers
+- "query_cleaned" if you mainly removed filler
+- "food_only" if it is food-item search without place-type
+
+Examples (must follow exactly):
+- "פיצה בגדרה" -> {"providerMethod":"textSearch","textQuery":"פיצה גדרה","region":"IL","language":"he","bias":null,"reason":"food_only"}
+- "מסעדה בשרית באשקלון" -> {"providerMethod":"textSearch","textQuery":"מסעדה בשרית אשקלון","region":"IL","language":"he","bias":null,"reason":"place_type_preserved"}
+- "מסעדה חלבית באשקלון" -> {"providerMethod":"textSearch","textQuery":"מסעדה חלבית אשקלון","region":"IL","language":"he","bias":null,"reason":"place_type_preserved"}
+- "מסעדה כשרה בגדרה" -> {"providerMethod":"textSearch","textQuery":"מסעדה כשרה גדרה","region":"IL","language":"he","bias":null,"reason":"place_type_preserved"}
+- "sushi in haifa" -> {"providerMethod":"textSearch","textQuery":"sushi haifa","region":"IL","language":"en","bias":null,"reason":"food_only"}
+- "kosher restaurant in haifa" -> {"providerMethod":"textSearch","textQuery":"kosher restaurant haifa","region":"IL","language":"en","bias":null,"reason":"place_type_preserved"}
+
+Return ONLY the JSON object.
+
 `;
 
 const TEXTSEARCH_MAPPER_PROMPT_HASH = createHash('sha256')
@@ -103,6 +123,38 @@ export async function executeTextSearchMapper(
       },
       TEXTSEARCH_JSON_SCHEMA
     );
+
+    // DEV-ONLY: dump mapper inputs/outputs for debugging
+    if (process.env.NODE_ENV !== 'production') {
+      logger.info({
+        requestId,
+        pipelineVersion: 'route2',
+        stage: 'textsearch_mapper',
+        event: 'debug_dump',
+        // what the LLM saw
+        originalQuery: request.query,
+        userPrompt,
+        intent: {
+          region: intent.region,
+          language: intent.language,
+          route: intent.route,
+          confidence: intent.confidence,
+        },
+        // what the LLM returned
+        mapping,
+      }, '[ROUTE2] textsearch_mapper debug_dump');
+    }
+    if (mapping.bias !== null) {
+      logger.warn({
+        requestId,
+        pipelineVersion: 'route2',
+        stage: 'textsearch_mapper',
+        event: 'bias_forced_null',
+        receivedBias: mapping.bias,
+      }, '[ROUTE2] textsearch_mapper bias_forced_null');
+
+      mapping.bias = null as any;
+    }
 
     const durationMs = Date.now() - startTime;
 
