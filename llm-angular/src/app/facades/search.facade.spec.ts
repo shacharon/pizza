@@ -5,10 +5,12 @@
 
 import { TestBed } from '@angular/core/testing';
 import { SearchFacade } from './search.facade';
-import { UnifiedSearchService } from '../services/unified-search.service';
+import { SearchApiClient } from '../api/search.api';
 import { ActionService } from '../services/action.service';
 import { InputStateMachine } from '../services/input-state-machine.service';
 import { RecentSearchesService } from '../services/recent-searches.service';
+import { LocationService } from '../services/location.service';
+import { WsClientService } from '../core/services/ws-client.service';
 import { SearchStore } from '../state/search.store';
 import { SessionStore } from '../state/session.store';
 import { ActionsStore } from '../state/actions.store';
@@ -17,7 +19,7 @@ import { of } from 'rxjs';
 describe('SearchFacade - State Management (UI/UX Contract)', () => {
   let facade: SearchFacade;
   let searchStore: jasmine.SpyObj<SearchStore>;
-  let searchService: jasmine.SpyObj<UnifiedSearchService>;
+  let searchApiClient: jasmine.SpyObj<SearchApiClient>;
 
   beforeEach(() => {
     const searchStoreSpy = jasmine.createSpyObj('SearchStore', ['reset'], {
@@ -40,13 +42,25 @@ describe('SearchFacade - State Management (UI/UX Contract)', () => {
       requiresClarification: jasmine.createSpy('requiresClarification').and.returnValue(false)
     });
 
-    const searchServiceSpy = jasmine.createSpyObj('UnifiedSearchService', ['search']);
-    searchServiceSpy.search.and.returnValue(of(null));
+    const searchApiClientSpy = jasmine.createSpyObj('SearchApiClient', ['search']);
+    searchApiClientSpy.search.and.returnValue(of({ requestId: 'test', results: [], groups: [], chips: [], meta: {} }));
+
+    const wsClientSpy = jasmine.createSpyObj('WsClientService', ['connect', 'subscribe'], {
+      messages$: of(),
+      connectionStatus: jasmine.createSpy('connectionStatus').and.returnValue('connected')
+    });
+
+    const locationServiceSpy = jasmine.createSpyObj('LocationService', ['getLocation'], {
+      location: jasmine.createSpy('location').and.returnValue(null),
+      state: jasmine.createSpy('state').and.returnValue('OFF')
+    });
 
     TestBed.configureTestingModule({
       providers: [
         SearchFacade,
-        { provide: UnifiedSearchService, useValue: searchServiceSpy },
+        { provide: SearchApiClient, useValue: searchApiClientSpy },
+        { provide: WsClientService, useValue: wsClientSpy },
+        { provide: LocationService, useValue: locationServiceSpy },
         { provide: ActionService, useValue: jasmine.createSpyObj('ActionService', ['proposeAction']) },
         { provide: InputStateMachine, useValue: jasmine.createSpyObj('InputStateMachine', ['input'], {
           state: jasmine.createSpy('state').and.returnValue('IDLE'),
@@ -76,7 +90,7 @@ describe('SearchFacade - State Management (UI/UX Contract)', () => {
 
     facade = TestBed.inject(SearchFacade);
     searchStore = TestBed.inject(SearchStore) as jasmine.SpyObj<SearchStore>;
-    searchService = TestBed.inject(UnifiedSearchService) as jasmine.SpyObj<UnifiedSearchService>;
+    searchApiClient = TestBed.inject(SearchApiClient) as jasmine.SpyObj<SearchApiClient>;
   });
 
   describe('Sort State (Single-Select)', () => {

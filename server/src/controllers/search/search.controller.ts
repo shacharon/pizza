@@ -85,7 +85,7 @@ router.post('/', async (req: Request, res: Response) => {
       ...(validation.data!.sessionId !== undefined && { sessionId: validation.data!.sessionId }),
       startTime: Date.now(),
       llmProvider: llm,
-      ...(validation.data!.userLocation !== undefined && { userLocation: validation.data!.userLocation })
+      userLocation: validation.data!.userLocation ?? null
     };
 
     const response = await searchRoute2(validation.data!, route2Context);

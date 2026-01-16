@@ -12,6 +12,75 @@
   z-index: 100;
 }
 
+// Location Controls
+.location-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding: 0.75rem 0;
+}
+
+.location-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  background: #fff;
+  border: 1.5px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+
+  &:hover:not(:disabled) {
+    background: #f9fafb;
+    border-color: #3b82f6;
+    box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  &.location-on {
+    background: #dcfce7;
+    border-color: #22c55e;
+    color: #166534;
+
+    &:hover {
+      background: #bbf7d0;
+    }
+  }
+
+  &.location-requesting {
+    background: #fef3c7;
+    border-color: #f59e0b;
+    color: #92400e;
+  }
+
+  &.location-denied,
+  &.location-error {
+    background: #fee2e2;
+    border-color: #ef4444;
+    color: #991b1b;
+  }
+
+  .location-icon {
+    font-size: 1.125rem;
+  }
+}
+
+.location-status {
+  font-size: 0.875rem;
+  color: #6b7280;
+  font-weight: 500;
+}
+
 .page-title {
   text-align: center;
   margin: 0 0 2.5rem 0;

@@ -21,7 +21,7 @@ Output ONLY JSON with ALL fields:
 {
   "providerMethod": "nearbySearch",
   "location": {"lat": number, "lng": number},
-  "radiusMeters": 500-3000,
+  "radiusMeters": number,
   "keyword": "food keyword",
   "region": "IL|FR|US etc",
   "language": "he|en|ru|ar|fr|es|other",
@@ -29,9 +29,10 @@ Output ONLY JSON with ALL fields:
 }
 
 Rules for radiusMeters:
-- 500-800: "very close", "right here", "100m from me"
-- 1000-1500: default "near me", "close", "לידי"
-- 2000-3000: broader area, "around here", "in the area"
+- If query contains explicit distance (e.g., "200 מטר", "300m", "100 meters", "500m"):
+  → Use that EXACT numeric value (e.g., 200, 300, 100, 500)
+- If NO explicit distance in query:
+  → Use default 500
 
 Rules for keyword:
 - Short food term (1-3 words max)
@@ -44,7 +45,7 @@ Rules for location:
 - Do NOT invent or modify coordinates
 
 Rules for reason:
-- One-word token: "near_me_explicit", "distance_specified", "proximity_request"
+- One-word token: "distance_explicit" (if distance in query), "distance_default" (if no distance)
 `;
 
 const NEARBY_MAPPER_PROMPT_HASH = createHash('sha256')
@@ -91,7 +92,7 @@ export async function executeNearbyMapper(
     event: 'stage_started',
     region: intent.region,
     language: intent.language,
-    userLocation
+    hasUserLocation: true
   }, '[ROUTE2] nearby_mapper started');
 
   try {

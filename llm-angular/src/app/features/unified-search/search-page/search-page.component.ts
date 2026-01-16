@@ -9,12 +9,11 @@ import { SearchFacade } from '../../../facades/search.facade';
 import { SearchBarComponent } from '../components/search-bar/search-bar.component';
 import { RestaurantCardComponent } from '../components/restaurant-card/restaurant-card.component';
 import { AssistantBottomSheetComponent } from '../components/assistant-bottom-sheet/assistant-bottom-sheet.component';
-import { AssistantDesktopPanelComponent } from '../components/assistant-desktop-panel/assistant-desktop-panel.component';
 import { ClarificationBlockComponent } from '../components/clarification-block/clarification-block.component';
-import { DisclosureBannerComponent } from '../components/disclosure-banner/disclosure-banner.component';
 import { AssistantSummaryComponent } from '../components/assistant-summary/assistant-summary.component';
 import { WsStatusBannerComponent } from '../../../shared/components/ws-status-banner/ws-status-banner.component';
-import type { Restaurant, ClarificationChoice } from '../../../domain/types/search.types';
+import { LocationService } from '../../../services/location.service';
+import type { Restaurant, ClarificationChoice, Coordinates } from '../../../domain/types/search.types';
 import type { ActionType, ActionLevel } from '../../../domain/types/action.types';
 
 @Component({
@@ -25,9 +24,7 @@ import type { ActionType, ActionLevel } from '../../../domain/types/action.types
     SearchBarComponent,
     RestaurantCardComponent,
     AssistantBottomSheetComponent,
-    AssistantDesktopPanelComponent,
     ClarificationBlockComponent,
-    DisclosureBannerComponent,
     AssistantSummaryComponent,
     WsStatusBannerComponent
   ],
@@ -38,8 +35,13 @@ import type { ActionType, ActionLevel } from '../../../domain/types/action.types
 })
 export class SearchPageComponent implements OnInit, OnDestroy {
   readonly facade = inject(SearchFacade);
-  
+  private readonly locationService = inject(LocationService);
+
   private cleanupInterval?: number;
+
+  // Location state
+  readonly locationState = this.locationService.state;
+  readonly locationCoords = this.locationService.location;
 
   // Phase 5: Mode indicators
   readonly response = this.facade.response;
@@ -50,61 +52,60 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   readonly isRecoveryMode = computed(() => this.currentMode() === 'RECOVERY');
   readonly isClarifyMode = computed(() => this.currentMode() === 'CLARIFY');
 
-  // Phase 7: Conditional assistant (UI/UX Contract - only show when needed)
+  // Conditional assistant (UI/UX Contract - only show when needed)
   readonly showAssistant = computed(() => {
-    // Phase 6: Show async assistant if in async mode
-    if (this.facade.isAsyncMode()) {
-      const status = this.facade.assistantState();
-      return status !== 'idle';
+    // Show assistant if WebSocket assistant is active
+    const status = this.facade.assistantState();
+    if (status !== 'idle') {
+      return true;
     }
-    
-    // Legacy sync mode assistant logic
+
     const response = this.response();
     if (!response) return false;
-    
+
     // Show assistant ONLY when:
     // 1. No results found (RECOVERY mode)
     if (!response.results || response.results.length === 0) {
       return true;
     }
-    
+
     // 2. Low confidence < 60% (RECOVERY mode)
     const confidence = response.meta?.confidence || 1;
     if (confidence < 0.6) {
       return true;
     }
-    
+
     // 3. Ambiguous query (CLARIFY mode)
     if (response.assist?.mode === 'CLARIFY') {
       return true;
     }
-    
+
     // 4. Explicit RECOVERY mode
     if (response.assist?.mode === 'RECOVERY') {
       return true;
     }
-    
+
     // Otherwise hide assistant (NORMAL mode = no assistant, chips only)
     return false;
   });
-  
+
   // Phase 6: Async assistant display
   readonly asyncAssistantMessage = computed(() => {
     const text = this.facade.assistantNarration();
     // Truncate long messages (max 500 chars)
     return text.length > 500 ? text.substring(0, 500) + '…' : text;
   });
-  
+
   readonly hasAsyncRecommendations = computed(() => {
     return this.facade.recommendations().length > 0;
   });
 
   // NEW: Mobile-first UX - Bottom sheet and flattened results
   readonly bottomSheetVisible = signal(false);
-  
+
   // Pagination: Display limit
   private displayLimit = signal(10);
-  
+
   readonly flatResults = computed(() => {
     const groups = this.response()?.groups;
     if (!groups) return [];
@@ -113,7 +114,7 @@ export class SearchPageComponent implements OnInit, OnDestroy {
     // Apply display limit
     return allResults.slice(0, this.displayLimit());
   });
-  
+
   readonly hasMoreResults = computed(() => {
     const groups = this.response()?.groups;
     if (!groups) return false;
@@ -124,12 +125,12 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   readonly highlightedResults = computed(() => {
     const results = this.flatResults();
     if (results.length === 0) return [];
-    
+
     // Pick 3: closest, highest rated, open now
     const closest = results[0]; // Already sorted by rank
     const topRated = results.slice().sort((a, b) => (b.rating || 0) - (a.rating || 0))[0];
     const openNow = results.find(r => r.openNow === true);
-    
+
     // De-duplicate and return max 3
     const unique = new Map<string, Restaurant>();
     [closest, topRated, openNow].filter(Boolean).forEach(r => {
@@ -142,33 +143,33 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   readonly showClosedDisclosure = computed(() => {
     const meta = this.facade.meta();
     if (!meta) return false;
-    
+
     // Show disclosure when:
     // 1. Capabilities indicate derived filter is used
     // 2. openNowSummary exists with closed restaurants
     return meta.capabilities?.closedNowIsDerived === true &&
-           meta.openNowSummary &&
-           meta.openNowSummary.closed > 0;
+      meta.openNowSummary &&
+      meta.openNowSummary.closed > 0;
   });
 
   readonly closedFilterActive = computed((): 'open' | 'closed' | null => {
     const response = this.response();
     if (!response) return null;
-    
+
     // Check if openNow filter is applied
     const appliedFilters = response.meta?.appliedFilters || [];
-    
+
     // If "open_now" is in applied filters, it's an open filter
     if (appliedFilters.includes('open_now')) {
       return 'open';
     }
-    
+
     // If "closed_now" is in applied filters OR capabilities indicate derived filter
-    if (appliedFilters.includes('closed_now') || 
-        (response.meta?.capabilities?.closedNowIsDerived && response.meta?.openNowSummary?.closed)) {
+    if (appliedFilters.includes('closed_now') ||
+      (response.meta?.capabilities?.closedNowIsDerived && response.meta?.openNowSummary?.closed)) {
       return 'closed';
     }
-    
+
     return null;
   });
 
@@ -193,7 +194,7 @@ export class SearchPageComponent implements OnInit, OnDestroy {
       clearInterval(this.cleanupInterval);
     }
   }
-  
+
   // Phase 6: Recommendation click handler
   onRecommendationClick(actionId: string): void {
     console.log('[SearchPage] Recommendation clicked:', actionId);
@@ -229,12 +230,22 @@ export class SearchPageComponent implements OnInit, OnDestroy {
     this.facade.selectRestaurant(restaurant);
   }
 
-  onActionClick(action: {type: ActionType; level: ActionLevel}, restaurant: Restaurant): void {
+  onActionClick(action: { type: ActionType; level: ActionLevel }, restaurant: Restaurant): void {
     this.facade.proposeAction(action.type, action.level, restaurant);
   }
 
   onPopularSearchClick(query: string): void {
     this.facade.search(query);
+  }
+
+  async onLocationToggle(): Promise<void> {
+    const currentState = this.locationState();
+
+    if (currentState === 'ON') {
+      this.locationService.disableLocation();
+    } else if (currentState === 'OFF' || currentState === 'DENIED' || currentState === 'ERROR') {
+      await this.locationService.requestLocation();
+    }
   }
 
   onChipClick(chipId: string): void {
@@ -269,7 +280,7 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   retry(): void {
     this.facade.retry();
   }
-  
+
   // NEW: Handle clarification choice
   onClarificationChoice(choice: ClarificationChoice): void {
     this.facade.onClarificationChoice(choice);

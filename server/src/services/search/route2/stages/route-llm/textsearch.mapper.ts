@@ -84,7 +84,7 @@ export async function executeTextSearchMapper(
   request: SearchRequest,
   context: Route2Context
 ): Promise<TextSearchMapping> {
-  const { requestId, traceId, sessionId, llmProvider, userLocation } = context;
+  const { requestId, traceId, sessionId, llmProvider } = context;
   const startTime = Date.now();
 
   logger.info({
@@ -93,13 +93,12 @@ export async function executeTextSearchMapper(
     stage: 'textsearch_mapper',
     event: 'stage_started',
     region: intent.region,
-    language: intent.language,
-    hasUserLocation: !!userLocation
+    language: intent.language
   }, '[ROUTE2] textsearch_mapper started');
 
   try {
     // Build context-aware prompt
-    const userPrompt = buildUserPrompt(request.query, intent, userLocation);
+    const userPrompt = buildUserPrompt(request.query, intent);
 
     const messages: Message[] = [
       { role: 'system', content: TEXTSEARCH_MAPPER_PROMPT },
@@ -195,18 +194,9 @@ export async function executeTextSearchMapper(
  */
 function buildUserPrompt(
   query: string,
-  intent: IntentResult,
-  userLocation?: { lat: number; lng: number }
+  intent: IntentResult
 ): string {
-  const parts = [
-    `Query: "${query}"`,
-    `Region: ${intent.region}`,
-    `Language: ${intent.language}`
-  ];
-
-  if (userLocation) {
-    parts.push(`User location: lat=${userLocation.lat}, lng=${userLocation.lng}`);
-  }
-
-  return parts.join('\n');
+  return `Query: "${query}"
+Region: ${intent.region}
+Language: ${intent.language}`;
 }

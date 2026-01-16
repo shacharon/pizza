@@ -7,8 +7,37 @@
     <app-search-bar [loading]="facade.loading()" (search)="onSearch($event)" (inputChange)="onInputChange($event)"
       (clear)="onClear()" />
 
-    <!-- Phase 6: Async Assistant Summary (after search bar) -->
-    @if (facade.isAsyncMode() && showAssistant()) {
+    <!-- Location Controls -->
+    <div class="location-controls">
+      <button class="location-btn" [class.location-on]="locationState() === 'ON'"
+        [class.location-requesting]="locationState() === 'REQUESTING'"
+        [class.location-denied]="locationState() === 'DENIED'" [class.location-error]="locationState() === 'ERROR'"
+        [disabled]="locationState() === 'REQUESTING'" (click)="onLocationToggle()">
+        @if (locationState() === 'REQUESTING') {
+        <span class="location-icon">⏳</span> Requesting...
+        } @else if (locationState() === 'ON') {
+        <span class="location-icon">📍</span> Location On
+        } @else if (locationState() === 'DENIED') {
+        <span class="location-icon">🚫</span> Location Denied
+        } @else if (locationState() === 'ERROR') {
+        <span class="location-icon">⚠️</span> Location Error
+        } @else {
+        <span class="location-icon">📍</span> Enable Location
+        }
+      </button>
+      <span class="location-status">
+        @if (locationState() === 'ON' && locationCoords()) {
+        Location: On ({{ locationCoords()!.lat.toFixed(2) }}, {{ locationCoords()!.lng.toFixed(2) }})
+        } @else if (locationState() === 'DENIED') {
+        Location: Denied
+        } @else {
+        Location: Off
+        }
+      </span>
+    </div>
+
+    <!-- Assistant Summary (after search bar) -->
+    @if (showAssistant()) {
     <app-assistant-summary [text]="asyncAssistantMessage()" [status]="facade.assistantState()"
       [error]="facade.assistantError()" />
     }

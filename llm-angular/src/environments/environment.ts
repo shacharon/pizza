@@ -7,9 +7,6 @@ export const environment = {
   production: false,
   apiUrl: 'http://localhost:3000',
   apiBasePath: '/api/v1',
-  wsBaseUrl: 'ws://localhost:3000', // Phase 6: WebSocket endpoint
-  environmentName: 'local',
-  features: {
-    asyncSearch: true, // Phase 6: Enable async mode by default
-  }
+  wsBaseUrl: 'ws://localhost:3000',
+  environmentName: 'local'
 };

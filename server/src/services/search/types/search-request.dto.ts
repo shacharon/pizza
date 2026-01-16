@@ -29,7 +29,7 @@ export const searchRequestSchema = z.object({
   sessionId: z.string().optional(),
   
   // Optional: user's location (for "near me" queries)
-  userLocation: coordinatesSchema.optional(),
+  userLocation: coordinatesSchema.nullish(),
   
   // Optional: explicit filters
   filters: filtersSchema,

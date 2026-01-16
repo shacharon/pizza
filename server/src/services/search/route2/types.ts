@@ -26,7 +26,7 @@ export interface Route2Context {
   userLocation?: {
     lat: number;
     lng: number;
-  };
+  } | null;
   // Region tracking: user (device) vs query (LLM-detected)
   userRegionCode?: 'IL' | 'OTHER';
   queryRegionCode?: 'IL' | 'OTHER';
