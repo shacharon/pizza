@@ -13,8 +13,10 @@
  */
 
 import type { Route2Context } from '../types.js';
-import { PlacesConfig } from '../../../places/config/places.config.js';
 import { logger } from '../../../../lib/logger/structured-logger.js';
+
+// Default region from environment or fallback to Israel
+const DEFAULT_REGION_CODE = (process.env.DEFAULT_REGION_CODE || 'IL') as 'IL' | 'OTHER';
 
 type RegionSource = 'device' | 'session' | 'config';
 
@@ -87,8 +89,8 @@ export async function resolveUserRegionCode(
     }
   }
 
-  // Priority 3: Default from config
-  const defaultRegion = (PlacesConfig.defaultRegion?.toUpperCase() || 'IL') as 'IL' | 'OTHER';
+  // Priority 3: Default from config/environment
+  const defaultRegion = DEFAULT_REGION_CODE;
 
   // Cache in session (using 'regionCode' key for compatibility)
   if (sessionService && sessionId) {

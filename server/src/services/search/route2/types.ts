@@ -7,7 +7,6 @@
 
 import type { SearchRequest } from '../types/search-request.dto.js';
 import type { SearchResponse } from '../types/search-response.dto.js';
-import type { SessionService } from '../capabilities/session.service.js';
 import type { LLMProvider } from '../../../llm/types.js';
 
 // Re-export for convenience
@@ -22,7 +21,7 @@ export interface Route2Context {
   traceId?: string;
   sessionId?: string;
   startTime: number;
-  sessionService?: SessionService;
+  sessionService?: any; // Optional session service for region caching
   llmProvider: LLMProvider;
   userLocation?: {
     lat: number;
