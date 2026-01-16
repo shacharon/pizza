@@ -46,7 +46,7 @@ let assistantJobService: AssistantJobService | null = null;
 router.post('/', async (req: Request, res: Response) => {
   // Phase 1: Generate requestId once (source of truth)
   const requestId = `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  
+
   try {
     // Validate request
     const validation = safeParseSearchRequest(req.body);
@@ -65,27 +65,35 @@ router.post('/', async (req: Request, res: Response) => {
     const mode = (req.query.mode as 'sync' | 'async') || 'sync';
 
     // Phase 8: Log search_started ONCE (single source of truth)
-    logger.info({ 
-      requestId, 
-      query: validation.data!.query, 
+    logger.info({
+      requestId,
+      query: validation.data!.query,
       mode,
       hasUserLocation: !!validation.data!.userLocation,
       sessionId: validation.data!.sessionId || 'new'
     }, 'search_started');
 
-    req.log.debug({ 
-      requestId, 
-      query: validation.data!.query, 
-      mode 
+    req.log.debug({
+      requestId,
+      query: validation.data!.query,
+      mode
     }, 'Search request validated');
 
     // ROUTE2: New clean pipeline (default enabled)
     if (ROUTE2_ENABLED) {
+      const llm = createLLMProvider();
+      if (!llm) {
+        logger.error({ requestId }, 'LLM provider not available for ROUTE2');
+        res.status(500).json(createSearchError('LLM not configured', 'CONFIG_ERROR'));
+        return;
+      }
+
       const route2Context: Route2Context = {
         requestId,
         ...(req.traceId !== undefined && { traceId: req.traceId }),
         ...(validation.data!.sessionId !== undefined && { sessionId: validation.data!.sessionId }),
         startTime: Date.now(),
+        llmProvider: llm,
         ...(validation.data!.userLocation !== undefined && { userLocation: validation.data!.userLocation })
       };
 
@@ -108,7 +116,7 @@ router.post('/', async (req: Request, res: Response) => {
       const serverModule = await import('../../server.js');
       const requestStateStore = (serverModule as any).requestStateStore;
       const wsManager = (serverModule as any).wsManager;
-      
+
       // Lazy init assistant job service
       if (!assistantJobService) {
         const llm = createLLMProvider();

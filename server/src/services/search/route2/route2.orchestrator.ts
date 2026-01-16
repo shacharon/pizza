@@ -45,6 +45,101 @@ export async function searchRoute2(
     // STAGE 1: GATE2
     const gateResult = await executeGate2Stage(request, ctx);
 
+    // Handle BYPASS route
+    if (gateResult.gate.route === 'BYPASS') {
+      logger.info({
+        requestId,
+        pipelineVersion: 'route2',
+        event: 'pipeline_bypassed',
+        reason: 'not_food_related'
+      }, '[ROUTE2] Pipeline bypassed');
+
+      return {
+        sessionId: request.sessionId || 'route2-session',
+        query: {
+          original: request.query,
+          parsed: {
+            query: request.query,
+            searchMode: 'textsearch' as const,
+            filters: {},
+            languageContext: {
+              uiLanguage: 'en' as const,
+              requestLanguage: 'en' as const,
+              googleLanguage: 'en' as const
+            },
+            originalQuery: request.query
+          },
+          language: gateResult.gate.language
+        },
+        results: [],
+        chips: [],
+        assist: {
+          type: 'guide' as const,
+          message: 'Not a food-related query. Try asking about restaurants or food.'
+        },
+        meta: {
+          tookMs: Date.now() - startTime,
+          mode: 'textsearch' as const,
+          appliedFilters: [],
+          confidence: 0,
+          source: 'route2_gate',
+          failureReason: 'LOW_CONFIDENCE'
+        }
+      };
+    }
+
+    // Handle ASK_CLARIFY route
+    if (gateResult.gate.route === 'ASK_CLARIFY') {
+      logger.info({
+        requestId,
+        pipelineVersion: 'route2',
+        event: 'pipeline_clarify',
+        reason: 'missing_anchors'
+      }, '[ROUTE2] Pipeline asking for clarification');
+
+      return {
+        sessionId: request.sessionId || 'route2-session',
+        query: {
+          original: request.query,
+          parsed: {
+            query: request.query,
+            searchMode: 'textsearch' as const,
+            filters: {},
+            languageContext: {
+              uiLanguage: gateResult.gate.language === 'he' ? 'he' as const : 'en' as const,
+              requestLanguage: gateResult.gate.language,
+              googleLanguage: gateResult.gate.language === 'he' ? 'he' as const : 'en' as const
+            },
+            originalQuery: request.query
+          },
+          language: gateResult.gate.language
+        },
+        results: [],
+        chips: [],
+        assist: {
+          type: 'clarify' as const,
+          message: gateResult.gate.language === 'he'
+            ? 'אנא הוסף פרטים נוספים - איזה אוכל? באיזה מיקום?'
+            : 'Please add more details - what food? which location?'
+        },
+        meta: {
+          tookMs: Date.now() - startTime,
+          mode: 'textsearch' as const,
+          appliedFilters: [],
+          confidence: 0,
+          source: 'route2_gate',
+          failureReason: 'LOW_CONFIDENCE'
+        }
+      };
+    }
+
+    // CONTINUE - proceed to Intent2
+    logger.info({
+      requestId,
+      pipelineVersion: 'route2',
+      event: 'next_stage_intent2'
+    }, '[ROUTE2] Proceeding to intent2');
+
     // STAGE 2: INTENT2
     const intentResult = await executeIntent2Stage(gateResult, request, ctx);
 
@@ -72,7 +167,7 @@ export async function searchRoute2(
           },
           originalQuery: request.query
         },
-        language: gateResult.language || 'he'
+        language: gateResult.gate.language || 'he'
       },
       results: [], // Empty for skeleton
       chips: [],
