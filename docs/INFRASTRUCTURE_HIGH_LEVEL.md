@@ -1,6 +1,7 @@
 # Infrastructure High-Level Architecture
 
 ## Table of Contents
+
 - [System Architecture](#system-architecture)
 - [Component Relationships](#component-relationships)
 - [Data Flow](#data-flow)
@@ -260,21 +261,25 @@ Stage → llmProvider.completeJSON()
 ## Service Layers
 
 ### Layer 1: HTTP & WebSocket
+
 - **Express Server**: HTTP request handling
 - **WebSocket Manager**: Real-time bidirectional communication
 - **Middleware Stack**: Request processing pipeline
 
 ### Layer 2: Controllers
+
 - **Search Controller**: Main search orchestration
 - **Analytics Controller**: Event tracking
 - **Request Validation**: Zod-based input validation
 
 ### Layer 3: Business Logic
+
 - **ROUTE2 Pipeline**: Multi-stage search processing
 - **Stage Execution**: Independent, testable stages
 - **Domain Logic**: Search-specific rules
 
 ### Layer 4: Infrastructure
+
 - **LLM Integration**: Provider abstraction
 - **Logging**: Structured observability
 - **Caching**: Performance optimization
@@ -287,6 +292,7 @@ Stage → llmProvider.completeJSON()
 ### External APIs
 
 #### OpenAI
+
 ```
 Endpoint: https://api.openai.com/v1/chat/completions
 Auth: Bearer token (OPENAI_API_KEY)
@@ -295,6 +301,7 @@ Features: Structured outputs, JSON schema
 ```
 
 #### Anthropic
+
 ```
 Endpoint: https://api.anthropic.com/v1/messages
 Auth: x-api-key header (ANTHROPIC_API_KEY)
@@ -303,6 +310,7 @@ Features: System prompts, tool use
 ```
 
 #### Google Places
+
 ```
 Endpoint: https://maps.googleapis.com/maps/api/place/
 Auth: API key (GOOGLE_API_KEY)
@@ -312,6 +320,7 @@ APIs: Text Search, Nearby Search, Find Place
 ### Internal Communication
 
 #### HTTP Routes
+
 ```
 POST /v1/search       → Search endpoint
 GET  /v1/search/stats → Pipeline statistics
@@ -319,6 +328,7 @@ POST /v1/analytics/events → Event tracking
 ```
 
 #### WebSocket Protocol
+
 ```
 Client → Server:
   { type: "subscribe", requestId: "..." }
@@ -433,21 +443,25 @@ Request Level:
 ## Security Considerations
 
 ### API Key Management
+
 - Environment variables only
 - Never committed to git
 - Redacted in logs
 
 ### Request Validation
+
 - Zod schema validation
 - Input sanitization
 - Type safety
 
 ### Error Handling
+
 - No stack traces in production
 - Safe error messages
 - Detailed logging server-side
 
 ### CORS & Origins
+
 - Configurable allowed origins
 - WebSocket origin validation
 - Production security checks
@@ -457,7 +471,9 @@ Request Level:
 ## Next Steps
 
 For detailed technical specifications:
+
 - [INFRASTRUCTURE_LOW_LEVEL.md](./INFRASTRUCTURE_LOW_LEVEL.md)
 
 For pipeline documentation:
+
 - [ROUTE2 README](../server/src/services/search/route2/README.md)

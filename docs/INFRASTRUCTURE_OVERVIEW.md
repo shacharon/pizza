@@ -58,12 +58,14 @@ The Piza search backend infrastructure is built on Node.js with TypeScript, feat
 ## Core Components
 
 ### 1. **ROUTE2 Pipeline**
+
 - Clean, staged architecture for search processing
 - LLM-driven classification and extraction
 - Deterministic routing logic
 - Observable with structured logging
 
 ### 2. **Infrastructure Services**
+
 - **Logger**: Pino-based structured logging with daily rotation
 - **Cache**: In-memory TTL-based caching
 - **LLM**: Pluggable providers (OpenAI, Anthropic)
@@ -72,6 +74,7 @@ The Piza search backend infrastructure is built on Node.js with TypeScript, feat
 - **Metrics**: Performance tracking and telemetry
 
 ### 3. **Request Flow**
+
 1. Request arrives at Express endpoint
 2. Validation and context setup
 3. ROUTE2 pipeline execution (4 stages)
@@ -81,23 +84,27 @@ The Piza search backend infrastructure is built on Node.js with TypeScript, feat
 ## Key Design Principles
 
 ### Observability First
+
 - Every pipeline stage logs: `stage_started`, `stage_completed`, `stage_failed`
 - Structured JSON logs with request IDs for tracing
 - Prompt versions and hashes for LLM calls
 
 ### Reliability
+
 - Configurable timeouts at each stage
 - Retry policies for transient failures
 - Graceful fallbacks for LLM unavailability
 - Backpressure handling for concurrent requests
 
 ### Performance
+
 - In-memory caching with TTL
 - Request deduplication for identical queries
 - Token-sparing LLM prompts
 - Fast pipeline stages (<2s total)
 
 ### Maintainability
+
 - TypeScript with strict types
 - Clean separation of concerns
 - Minimal dependencies between stages
@@ -106,21 +113,25 @@ The Piza search backend infrastructure is built on Node.js with TypeScript, feat
 ## Infrastructure Layers
 
 ### Layer 1: HTTP Server
+
 - Express.js application
 - Middleware stack (logging, context, error handling)
 - Route handlers
 
 ### Layer 2: Business Logic
+
 - Search controller (orchestration)
 - ROUTE2 pipeline (domain logic)
 - Validation and error transformation
 
 ### Layer 3: Services
+
 - LLM providers (abstracted interface)
 - State management (request store)
 - Real-time communication (WebSocket)
 
 ### Layer 4: Utilities
+
 - Structured logging
 - Caching
 - Reliability patterns (retry, timeout)
@@ -172,16 +183,19 @@ GOOGLE_API_KEY=...
 ## Deployment Considerations
 
 ### Horizontal Scaling
+
 - Stateless design (no in-process state)
 - WebSocket requires sticky sessions or Redis pub/sub
 - Cache can be replaced with Redis for multi-instance
 
 ### Monitoring
+
 - Structured logs to stdout (compatible with CloudWatch, DataDog)
 - Request IDs for distributed tracing
 - Performance metrics exposed via /stats endpoint
 
 ### Error Handling
+
 - All errors caught and transformed to client-safe messages
 - Stack traces never exposed in production
 - Detailed logging for debugging
@@ -189,8 +203,10 @@ GOOGLE_API_KEY=...
 ## Next Steps
 
 For detailed architecture documentation, see:
+
 - [INFRASTRUCTURE_HIGH_LEVEL.md](./INFRASTRUCTURE_HIGH_LEVEL.md) - Component relationships and data flow
 - [INFRASTRUCTURE_LOW_LEVEL.md](./INFRASTRUCTURE_LOW_LEVEL.md) - Technical specifications and implementation details
 
 For pipeline-specific documentation, see:
+
 - [ROUTE2 README](../server/src/services/search/route2/README.md) - Pipeline stages and contracts

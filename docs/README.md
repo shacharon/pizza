@@ -43,22 +43,22 @@ Structured Response
 
 ### 🎯 Infrastructure Documentation (Core)
 
-| Document | Purpose | Audience |
-|----------|---------|----------|
-| [**INFRASTRUCTURE_OVERVIEW.md**](./INFRASTRUCTURE_OVERVIEW.md) | Executive summary, system architecture, design principles | Everyone |
-| [**INFRASTRUCTURE_HIGH_LEVEL.md**](./INFRASTRUCTURE_HIGH_LEVEL.md) | Component relationships, data flow, integration points | Architects, Senior Engineers |
-| [**INFRASTRUCTURE_LOW_LEVEL.md**](./INFRASTRUCTURE_LOW_LEVEL.md) | Technical specs, implementation details, code examples | Engineers |
+| Document                                                           | Purpose                                                   | Audience                     |
+| ------------------------------------------------------------------ | --------------------------------------------------------- | ---------------------------- |
+| [**INFRASTRUCTURE_OVERVIEW.md**](./INFRASTRUCTURE_OVERVIEW.md)     | Executive summary, system architecture, design principles | Everyone                     |
+| [**INFRASTRUCTURE_HIGH_LEVEL.md**](./INFRASTRUCTURE_HIGH_LEVEL.md) | Component relationships, data flow, integration points    | Architects, Senior Engineers |
+| [**INFRASTRUCTURE_LOW_LEVEL.md**](./INFRASTRUCTURE_LOW_LEVEL.md)   | Technical specs, implementation details, code examples    | Engineers                    |
 
 ### 🔧 Pipeline Documentation
 
-| Document | Location | Purpose |
-|----------|----------|---------|
+| Document          | Location                                         | Purpose                                 |
+| ----------------- | ------------------------------------------------ | --------------------------------------- |
 | **ROUTE2 README** | `../server/src/services/search/route2/README.md` | Pipeline stages, contracts, LLM prompts |
 
 ### 🚀 CI/CD Documentation
 
-| Document | Purpose | Status |
-|----------|---------|--------|
+| Document                                     | Purpose                   | Status                   |
+| -------------------------------------------- | ------------------------- | ------------------------ |
 | [**CI_INTEGRATION.md**](./CI_INTEGRATION.md) | Bitbucket Pipelines setup | Legacy (may need update) |
 
 ---
@@ -68,6 +68,7 @@ Structured Response
 ### ROUTE2 Pipeline Stages
 
 #### 1. GATE2 - Classification Stage
+
 - **Purpose**: Fast food/non-food classification + language detection
 - **Input**: Raw query text
 - **Output**: `isFoodRelated`, `language`, `confidence`, `route` (CONTINUE/BYPASS)
@@ -75,6 +76,7 @@ Structured Response
 - **Prompt Version**: `gate2_v4`
 
 #### 2. INTENT2 - Extraction Stage
+
 - **Purpose**: Extract food type, location, and search mode
 - **Input**: Query text + Gate2 result
 - **Output**: Food, location, mode (nearby/landmark/textsearch), region
@@ -82,12 +84,14 @@ Structured Response
 - **Prompt Version**: `intent2_v2`
 
 #### 3. ROUTE_LLM - Strategy Stage
+
 - **Purpose**: Determine final search parameters
 - **Input**: Intent2 result
 - **Output**: Search mode, radius
 - **LLM**: No (pure logic)
 
 #### 4. GOOGLE_MAPS - Execution Stage
+
 - **Purpose**: Call Google Places API and return results
 - **Input**: Route decision + intent
 - **Output**: Restaurant results
@@ -168,9 +172,11 @@ WS_ALLOWED_ORIGINS=https://app.piza.co
 ### Key Backend Files
 
 **Controllers:**
+
 - `server/src/controllers/search/search.controller.ts` - Main search endpoint
 
 **ROUTE2 Pipeline:**
+
 - `server/src/services/search/route2/route2.orchestrator.ts` - Pipeline orchestrator
 - `server/src/services/search/route2/stages/gate2.stage.ts` - Stage 1
 - `server/src/services/search/route2/stages/intent2.stage.ts` - Stage 2
@@ -178,11 +184,13 @@ WS_ALLOWED_ORIGINS=https://app.piza.co
 - `server/src/services/search/route2/stages/google-maps.stage.ts` - Stage 4
 
 **LLM:**
+
 - `server/src/llm/factory.ts` - Provider factory
 - `server/src/llm/openai.provider.ts` - OpenAI implementation
 - `server/src/llm/anthropic.provider.ts` - Anthropic implementation
 
 **Infrastructure:**
+
 - `server/src/lib/logger/structured-logger.ts` - Logging system
 - `server/src/lib/cache/cache-manager.ts` - Cache manager
 - `server/src/lib/reliability/` - Retry policies, timeout guards
@@ -190,6 +198,7 @@ WS_ALLOWED_ORIGINS=https://app.piza.co
 - `server/src/infra/state/` - Request state store
 
 **Types:**
+
 - `server/src/services/search/route2/types.ts` - ROUTE2 types
 - `server/src/services/search/types/search-request.dto.ts` - Request DTOs
 - `server/src/services/search/types/search-response.dto.ts` - Response DTOs
@@ -199,21 +208,25 @@ WS_ALLOWED_ORIGINS=https://app.piza.co
 ## Design Principles
 
 ### 1. Observability First
+
 - Every stage logs: `stage_started`, `stage_completed`, `stage_failed`
 - Structured JSON logs with request IDs
 - LLM calls tracked with prompt versions and hashes
 
 ### 2. Reliability
+
 - Configurable timeouts per stage
 - Retry policies for transient failures
 - Graceful fallbacks for LLM unavailability
 
 ### 3. Performance
+
 - In-memory caching with TTL
 - Token-sparing LLM prompts
 - Fast pipeline (<4s total)
 
 ### 4. Maintainability
+
 - TypeScript with strict types
 - Clean separation of concerns
 - Minimal stage dependencies
@@ -259,11 +272,13 @@ WS_ALLOWED_ORIGINS=https://app.piza.co
 ## Architecture Evolution
 
 ### Previous Architecture (Removed)
+
 - **V1 Orchestrator**: Monolithic search orchestrator with multiple sub-services
 - **Async Mode**: WebSocket-based async assistant (removed, infra kept for future)
 - **Phase Documents**: Incremental implementation phases (all completed and archived)
 
 ### Current Architecture (Active)
+
 - **ROUTE2 Pipeline**: Clean 4-stage pipeline with clear contracts
 - **LLM-First**: Classification and extraction driven by LLMs
 - **Deterministic Routing**: Business logic in code, not in prompts
@@ -273,14 +288,17 @@ WS_ALLOWED_ORIGINS=https://app.piza.co
 ## Support & Questions
 
 ### Architecture Questions
+
 - See [INFRASTRUCTURE_HIGH_LEVEL.md](./INFRASTRUCTURE_HIGH_LEVEL.md)
 - See [INFRASTRUCTURE_OVERVIEW.md](./INFRASTRUCTURE_OVERVIEW.md)
 
 ### Implementation Questions
+
 - See [INFRASTRUCTURE_LOW_LEVEL.md](./INFRASTRUCTURE_LOW_LEVEL.md)
 - See [ROUTE2 README](../server/src/services/search/route2/README.md)
 
 ### Pipeline Questions
+
 - See [ROUTE2 README](../server/src/services/search/route2/README.md) for stage contracts
 - Check logs for stage execution details
 
@@ -290,17 +308,20 @@ WS_ALLOWED_ORIGINS=https://app.piza.co
 
 ### When to Update
 
-**INFRASTRUCTURE_*.md:**
+**INFRASTRUCTURE\_\*.md:**
+
 - When major architectural changes are made
 - When new infrastructure services are added
 - When technology stack changes
 
 **This README:**
+
 - When new documentation is added
 - When architecture evolves significantly
 - When key concepts change
 
 **ROUTE2 README:**
+
 - When pipeline stages change
 - When LLM prompts are updated
 - When contracts evolve
@@ -312,6 +333,7 @@ WS_ALLOWED_ORIGINS=https://app.piza.co
 ### Common Tasks
 
 **Start the server:**
+
 ```bash
 cd server
 npm install
@@ -319,16 +341,19 @@ npm run dev
 ```
 
 **Run tests:**
+
 ```bash
 npm test
 ```
 
 **Build for production:**
+
 ```bash
 npm run build
 ```
 
 **View logs:**
+
 ```bash
 tail -f server/logs/server.log
 ```
