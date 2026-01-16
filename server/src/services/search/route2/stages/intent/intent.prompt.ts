@@ -4,20 +4,42 @@
  */
 
 import { createHash } from 'crypto';
+import { buildLLMJsonSchema } from '../../../../../llm/types.js';
+import { IntentLLMSchema } from './intent.types.js';
 
-export const INTENT_PROMPT_VERSION = 'intent_v1';
+export const INTENT_PROMPT_VERSION = 'intent_v2';
 
 export const INTENT_SYSTEM_PROMPT = `You are a router for food search.
 
-Return ONLY JSON:
-{ "route": "TEXTSEARCH|NEARBY|LANDMARK", "confidence": 0-1, "reason": "short_reason" }
+Return ONLY JSON with ALL fields:
+{
+  "route": "TEXTSEARCH|NEARBY|LANDMARK",
+  "confidence": 0-1,
+  "reason": "short_reason",
+  "language": "he|en|ru|ar|fr|es|other",
+  "region": "IL|FR|US|etc (ISO-3166-1 alpha-2)",
+  "regionConfidence": 0-1,
+  "regionReason": "detected_from_X|default_IL|etc"
+}
 
-Choose route:
+Route rules:
 - NEARBY: phrases like "near me", "closest", "around here", "לידי", "ממני",
   or explicit distance from the user (e.g., "100m from me", "200 מטר ממני").
 - LANDMARK: a specific, named place or area that should be resolved to a point
   before searching (e.g., "Champs-Élysées", "Azrieli", "מרינה הרצליה").
 - TEXTSEARCH: city/area text suitable for direct search (default).
+
+Language detection:
+- Detect primary language from query text.
+- Use "other" if language is unclear or mixed.
+
+Region detection:
+- IL if no location mentioned or Hebrew location names (default).
+- FR if French location (Paris, Lyon, Marseille, etc.).
+- US if US location (NYC, LA, etc.).
+- Use uppercase ISO-3166-1 alpha-2 codes.
+- regionConfidence: 0.9+ if explicit location, 0.3-0.5 if inferred from language, 0.1 if default.
+- regionReason: explain how region was determined.
 
 Confidence rules:
 - NEARBY with explicit distance → confidence ≥ 0.85
@@ -32,20 +54,17 @@ Reason rules:
 - Do NOT use generic values like "token".
 
 Rules:
-- Output ONLY the 3 keys above.
+- Output ALL 7 keys.
 - If uncertain, choose TEXTSEARCH with lower confidence.
 `;
 
-export const INTENT_JSON_SCHEMA = {
-  type: 'object',
-  properties: {
-    route: { type: 'string', enum: ['TEXTSEARCH', 'NEARBY', 'LANDMARK'] },
-    confidence: { type: 'number', minimum: 0, maximum: 1 },
-    reason: { type: 'string' }
-  },
-  required: ['route', 'confidence', 'reason'],
-  additionalProperties: false
-} as const;
+// Generate JSON Schema from Zod (single source of truth)
+const { schema: INTENT_JSON_SCHEMA, schemaHash: INTENT_SCHEMA_HASH } = buildLLMJsonSchema(
+  IntentLLMSchema,
+  'IntentLLM'
+);
+
+export { INTENT_JSON_SCHEMA, INTENT_SCHEMA_HASH };
 
 export const INTENT_PROMPT_HASH = createHash('sha256')
   .update(INTENT_SYSTEM_PROMPT, 'utf8')

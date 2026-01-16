@@ -59,11 +59,16 @@ export type MappingRoute = 'TEXTSEARCH' | 'NEARBY' | 'LANDMARK';
 /**
  * INTENT Stage Result
  * Router-only decision without extraction
+ * Includes language and region detection
  */
 export interface IntentResult {
   route: MappingRoute;
   confidence: number;
   reason: string;
+  language: Gate2Language;
+  region: string; // ISO-3166-1 alpha-2 (e.g., "IL", "FR", "US")
+  regionConfidence: number;
+  regionReason: string;
 }
 
 // Intent2 specific types (DEPRECATED - will be removed)
@@ -98,12 +103,10 @@ export interface Intent2Result {
 
 /**
  * ROUTE_LLM Stage Result
- * Determines search mode and parameters
+ * Discriminated union of all route-specific mappings
+ * Imported from schemas.ts (Zod as source of truth)
  */
-export interface RouteLLMResult {
-  mode: 'textsearch' | 'nearbysearch';
-  radiusMeters: number;
-}
+export type { RouteLLMMapping } from './stages/route-llm/schemas.js';
 
 /**
  * GOOGLE_MAPS Stage Result
@@ -111,4 +114,6 @@ export interface RouteLLMResult {
  */
 export interface GoogleMapsResult {
   results: any[];
+  providerMethod: 'textSearch' | 'nearbySearch' | 'landmarkPlan';
+  durationMs: number;
 }

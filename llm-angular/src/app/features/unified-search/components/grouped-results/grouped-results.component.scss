@@ -58,7 +58,7 @@
 
   .group-header {
     color: #1E40AF;
-    
+
     .group-label {
       color: #1E3A8A;
     }
@@ -77,7 +77,7 @@
 
   .group-header {
     color: #4B5563;
-    
+
     .group-label {
       color: #1F2937;
     }
@@ -194,23 +194,12 @@
   }
 }
 
-// Desktop: Consider side-by-side layout for exact/nearby (optional)
+// Desktop: Single column layout for all results
 @media (min-width: 1024px) {
-  // If we have exactly 2 groups and both have results, show side by side
-  .grouped-results:has(.result-group:nth-child(2)) {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 2rem;
-
-    .result-group {
-      height: fit-content;
-    }
-  }
-
-  // Override for loading/empty states
-  .grouped-results:has(.loading-state),
-  .grouped-results:has(.empty-state) {
+  .grouped-results {
     display: flex;
+    flex-direction: column;
+    gap: 2rem;
   }
 }
 
@@ -229,15 +218,3 @@ app-restaurant-card {
     border-radius: 8px;
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-

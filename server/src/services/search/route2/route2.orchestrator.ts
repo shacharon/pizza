@@ -16,7 +16,7 @@ import type { SearchResponse } from '../types/search-response.dto.js';
 import type { Route2Context } from './types.js';
 import { executeGate2Stage } from './stages/gate2.stage.js';
 import { executeIntentStage } from './stages/intent/intent.stage.js';
-import { executeRouteLLMStage } from './stages/route-llm.stage.js';
+import { executeRouteLLM } from './stages/route-llm/route-llm.dispatcher.js';
 import { executeGoogleMapsStage } from './stages/google-maps.stage.js';
 import { resolveUserRegionCode } from './utils/region-resolver.js';
 import { logger } from '../../../lib/logger/structured-logger.js';
@@ -152,17 +152,28 @@ export async function searchRoute2(
     logger.info({
       requestId,
       pipelineVersion: 'route2',
-      event: 'intent_completed',
+      event: 'intent_decided',
       route: intentDecision.route,
+      region: intentDecision.region,
+      language: intentDecision.language,
       confidence: intentDecision.confidence,
       reason: intentDecision.reason
-    }, '[ROUTE2] Intent routing decision');
+    }, '[ROUTE2] Intent routing decided');
 
-    // STAGE 3: ROUTE_LLM
-    const routePlan = await executeRouteLLMStage(intentDecision, request, ctx);
+    // STAGE 3: ROUTE_LLM (dispatch to route-specific mapper)
+    const mapping = await executeRouteLLM(intentDecision, request, ctx);
+
+    logger.info({
+      requestId,
+      pipelineVersion: 'route2',
+      event: 'route_llm_mapped',
+      providerMethod: mapping.providerMethod,
+      region: mapping.region,
+      language: mapping.language
+    }, '[ROUTE2] Route-LLM mapping completed');
 
     // STAGE 4: GOOGLE_MAPS
-    const googleResult = await executeGoogleMapsStage(routePlan, intentDecision, request, ctx);
+    const googleResult = await executeGoogleMapsStage(mapping, request, ctx);
 
     // Build response (SKELETON: minimal valid response)
     const totalDurationMs = Date.now() - startTime;
@@ -178,8 +189,10 @@ export async function searchRoute2(
       query: {
         original: request.query,
         parsed: {
-          query: 'restaurant', // TODO: Will be extracted by ROUTE_LLM stage
-          searchMode: routePlan.mode,
+          query: mapping.providerMethod === 'textSearch' ? mapping.textQuery :
+            mapping.providerMethod === 'nearbySearch' ? mapping.keyword :
+              mapping.keyword, // landmark uses keyword too
+          searchMode: mapping.providerMethod === 'textSearch' ? 'textsearch' as const : 'nearbysearch' as const,
           filters: {},
           languageContext: {
             uiLanguage,
@@ -190,18 +203,18 @@ export async function searchRoute2(
         },
         language: detectedLanguage
       },
-      results: [], // Empty for skeleton
+      results: googleResult.results,
       chips: [],
       assist: {
         type: 'guide',
-        message: 'ROUTE2 skeleton - no results yet'
+        message: googleResult.results.length === 0 ? 'No results found (Google API stub)' : ''
       },
       meta: {
         tookMs: totalDurationMs,
-        mode: routePlan.mode,
+        mode: mapping.providerMethod === 'textSearch' ? 'textsearch' as const : 'nearbysearch' as const,
         appliedFilters: [],
         confidence: intentDecision.confidence,
-        source: 'route2_skeleton',
+        source: 'route2',
         failureReason: 'NONE'
       }
     };
@@ -212,7 +225,7 @@ export async function searchRoute2(
       pipelineVersion: 'route2',
       event: 'pipeline_completed',
       durationMs: totalDurationMs,
-      resultCount: 0
+      resultCount: googleResult.results.length
     }, '[ROUTE2] Pipeline completed');
 
     return response;

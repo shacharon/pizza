@@ -13,24 +13,20 @@ import { createHash } from 'crypto';
 import type { SearchRequest } from '../../types/search-request.dto.js';
 import type { Route2Context, Gate2StageOutput, Gate2Result } from '../types.js';
 import type { Message } from '../../../../llm/types.js';
+import { buildLLMJsonSchema } from '../../../../llm/types.js';
 import { logger } from '../../../../lib/logger/structured-logger.js';
 
-// Gate2 Zod Schema for LLM output (before routing logic)
+// Gate2 Zod Schema for LLM output (before routing logic) - SOURCE OF TRUTH
 const Gate2LLMSchema = z.object({
   foodSignal: z.enum(['NO', 'UNCERTAIN', 'YES']),
   confidence: z.number().min(0).max(1)
-});
+}).strict();
 
-// Static JSON Schema for completeJSON
-const GATE2_JSON_SCHEMA = {
-  type: 'object',
-  properties: {
-    foodSignal: { type: 'string', enum: ['NO', 'UNCERTAIN', 'YES'] },
-    confidence: { type: 'number', minimum: 0, maximum: 1 }
-  },
-  required: ['foodSignal', 'confidence'],
-  additionalProperties: false
-} as const;
+// Generate JSON Schema from Zod (single source of truth)
+const { schema: GATE2_JSON_SCHEMA, schemaHash: GATE2_SCHEMA_HASH } = buildLLMJsonSchema(
+  Gate2LLMSchema,
+  'Gate2LLM'
+);
 
 const GATE2_PROMPT_VERSION = 'gate2_v4';
 const GATE2_SYSTEM_PROMPT = `
@@ -150,6 +146,7 @@ export async function executeGate2Stage(
         promptVersion: GATE2_PROMPT_VERSION,
         promptHash: GATE2_PROMPT_HASH,
         promptLength: GATE2_SYSTEM_PROMPT.length,
+        schemaHash: GATE2_SCHEMA_HASH,
         ...(traceId && { traceId }),
         ...(sessionId && { sessionId }),
         ...(requestId && { requestId }),

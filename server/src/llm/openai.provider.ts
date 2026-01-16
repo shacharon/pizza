@@ -78,6 +78,7 @@ export class OpenAiProvider implements LLMProvider {
             promptVersion?: string;
             promptHash?: string;
             promptLength?: number;
+            schemaHash?: string;  // Hash of JSON Schema for observability
             requestId?: string;  // For timing correlation
             stage?: string;       // For stage identification (e.g., "intent_gate")
         },
@@ -276,6 +277,7 @@ export class OpenAiProvider implements LLMProvider {
                     msg: 'llm_gate_timing',
                     stage: opts?.stage || 'unknown',
                     promptVersion: opts?.promptVersion || 'unknown',
+                    schemaHash: opts?.schemaHash || schemaHash,
                     requestId: opts?.requestId,
                     traceId: opts?.traceId,
                     sessionId: opts?.sessionId,

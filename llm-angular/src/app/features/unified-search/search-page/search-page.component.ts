@@ -8,7 +8,6 @@ import { CommonModule } from '@angular/common';
 import { SearchFacade } from '../../../facades/search.facade';
 import { SearchBarComponent } from '../components/search-bar/search-bar.component';
 import { RestaurantCardComponent } from '../components/restaurant-card/restaurant-card.component';
-import { RankedResultsComponent } from '../components/ranked-results/ranked-results.component';
 import { AssistantBottomSheetComponent } from '../components/assistant-bottom-sheet/assistant-bottom-sheet.component';
 import { AssistantDesktopPanelComponent } from '../components/assistant-desktop-panel/assistant-desktop-panel.component';
 import { ClarificationBlockComponent } from '../components/clarification-block/clarification-block.component';
@@ -25,7 +24,6 @@ import type { ActionType, ActionLevel } from '../../../domain/types/action.types
     CommonModule,
     SearchBarComponent,
     RestaurantCardComponent,
-    RankedResultsComponent,
     AssistantBottomSheetComponent,
     AssistantDesktopPanelComponent,
     ClarificationBlockComponent,

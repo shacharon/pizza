@@ -15,6 +15,7 @@ import { IntentLLMSchema } from './intent.types.js';
 import {
   INTENT_SYSTEM_PROMPT,
   INTENT_JSON_SCHEMA,
+  INTENT_SCHEMA_HASH,
   INTENT_PROMPT_VERSION,
   INTENT_PROMPT_HASH
 } from './intent.prompt.js';
@@ -27,7 +28,11 @@ function createFallbackResult(): IntentResult {
   return {
     route: 'TEXTSEARCH',
     confidence: 0.3,
-    reason: 'fallback'
+    reason: 'fallback',
+    language: 'other',
+    region: 'IL',
+    regionConfidence: 0.1,
+    regionReason: 'fallback_default'
   };
 }
 
@@ -65,10 +70,11 @@ export async function executeIntentStage(
       IntentLLMSchema,
       {
         temperature: 0,
-        timeout: 1500,
+        timeout: 2100,
         promptVersion: INTENT_PROMPT_VERSION,
         promptHash: INTENT_PROMPT_HASH,
         promptLength: INTENT_SYSTEM_PROMPT.length,
+        schemaHash: INTENT_SCHEMA_HASH,
         ...(traceId && { traceId }),
         ...(sessionId && { sessionId }),
         ...(requestId && { requestId }),
@@ -80,7 +86,11 @@ export async function executeIntentStage(
     const result: IntentResult = {
       route: llmResult.route,
       confidence: llmResult.confidence,
-      reason: llmResult.reason
+      reason: llmResult.reason,
+      language: llmResult.language,
+      region: llmResult.region,
+      regionConfidence: llmResult.regionConfidence,
+      regionReason: llmResult.regionReason
     };
 
     const durationMs = Date.now() - startTime;

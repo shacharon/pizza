@@ -32,15 +32,15 @@
   display: flex;
   gap: 2rem;
   align-items: flex-start;
-  
+
   .results-primary {
     flex: 1;
     min-width: 0; // Allow flex shrink
   }
-  
+
   .assistant-desktop {
     display: none;
-    
+
     @media (min-width: 1024px) {
       display: block;
       width: 320px;
@@ -55,7 +55,7 @@
   gap: 0.5rem;
   margin-bottom: 1.5rem;
   overflow-x: auto;
-  
+
   // Visible on ALL breakpoints (single source of truth)
 
   .chip {
@@ -431,7 +431,7 @@
     color: white;
     border-color: #3b82f6;
     font-weight: 600;
-    
+
     // Subtle indicator for single-select (sort)
     &[data-action="sort"] {
       font-weight: 700;
@@ -466,18 +466,6 @@
   display: grid;
   gap: 1.5rem;
   grid-template-columns: 1fr;
-}
-
-@media (min-width: 1024px) {
-  .results-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-@media (min-width: 1440px) {
-  .results-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
 }
 
 // Pending Actions Panel
@@ -623,17 +611,17 @@
   cursor: pointer;
   transition: all 0.2s ease;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-  
+
   &:hover:not(:disabled) {
     background: #f9fafb;
     border-color: #d1d5db;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
   }
-  
+
   &:active:not(:disabled) {
     transform: translateY(1px);
   }
-  
+
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
