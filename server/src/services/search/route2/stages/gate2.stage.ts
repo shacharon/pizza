@@ -17,8 +17,7 @@ import { logger } from '../../../../lib/logger/structured-logger.js';
 
 // Gate2 Zod Schema for LLM output (before routing logic)
 const Gate2LLMSchema = z.object({
-  isFoodRelated: z.boolean(),
-  language: z.enum(['he', 'en', 'ru', 'ar', 'fr', 'es', 'other']),
+  foodSignal: z.enum(['NO', 'UNCERTAIN', 'YES']),
   confidence: z.number().min(0).max(1)
 });
 
@@ -26,47 +25,90 @@ const Gate2LLMSchema = z.object({
 const GATE2_JSON_SCHEMA = {
   type: 'object',
   properties: {
-    isFoodRelated: { type: 'boolean' },
-    language: { type: 'string', enum: ['he', 'en', 'ru', 'ar', 'fr', 'es', 'other'] },
+    foodSignal: { type: 'string', enum: ['NO', 'UNCERTAIN', 'YES'] },
     confidence: { type: 'number', minimum: 0, maximum: 1 }
   },
-  required: ['isFoodRelated', 'language', 'confidence'],
+  required: ['foodSignal', 'confidence'],
   additionalProperties: false
 } as const;
 
 const GATE2_PROMPT_VERSION = 'gate2_v4';
-const GATE2_SYSTEM_PROMPT = `You are Gate2 for food search. Return ONLY JSON.
+const GATE2_SYSTEM_PROMPT = `
+You are Gate2 for food search. Return ONLY JSON.
 
-Detect:
-- language: he/en/ru/ar/fr/es/other
-- isFoodRelated: boolean
-- confidence: 0..1`;
+Output schema:
+{"foodSignal":"NO|UNCERTAIN|YES","confidence":0..1}
 
+Rules:
+- YES: user is asking to find/order food, restaurants, cuisines, dishes, or places to eat.
+- UNCERTAIN: food-ish but missing clarity (no food category and no place/near-me intent).
+- NO: not about food/restaurants OR mainly profanity/insult without a food request.
+
+Confidence calibration:
+- YES clear: 0.85-0.95
+- UNCERTAIN: 0.35-0.65
+- NO clear: 0.85-1.0
+
+Examples:
+"pizza in tel aviv" -> {"foodSignal":"YES","confidence":0.9}
+"אני רעב מה יש לך להציע" -> {"foodSignal":"UNCERTAIN","confidence":0.55}
+"what is the weather?" -> {"foodSignal":"NO","confidence":0.95}
+"לך תזדיין" -> {"foodSignal":"NO","confidence":1.0}
+"מסעדה בתחת של אמא שלך" -> {"foodSignal":"UNCERTAIN","confidence":0.6}
+
+
+`;
+/*
+//Return ONLY JSON.
+
+foodSignal:
+NO = not food/restaurants
+UNCERTAIN = unclear
+YES = food/cuisine/eating
+
+If unsure: UNCERTAIN.
+
+{"foodSignal":"NO|UNCERTAIN|YES","confidence":0-1}
+
+//
+*/
 const GATE2_PROMPT_HASH = createHash('sha256')
   .update(GATE2_SYSTEM_PROMPT, 'utf8')
   .digest('hex');
 
 /**
  * Create fallback result when LLM fails
+ * Conservative fallback: treat as UNCERTAIN to ask for clarification
  */
 function createFallbackResult(): Gate2Result {
   return {
-    isFoodRelated: true,
+    foodSignal: 'UNCERTAIN',
     language: 'other',
-    route: 'CONTINUE',
-    confidence: 0.1
+    route: 'ASK_CLARIFY',
+    confidence: 0.3
   };
 }
 
 /**
  * Apply deterministic routing rules AFTER LLM classification
- * NO heuristics - pure logic based on LLM flags
+ * NO routing decisions inside LLM - pure mapping logic
  */
 function applyDeterministicRouting(llmResult: z.infer<typeof Gate2LLMSchema>): Gate2Result {
-  const route = llmResult.isFoodRelated ? 'CONTINUE' : 'BYPASS';
+  let route: 'CONTINUE' | 'ASK_CLARIFY' | 'STOP';
+
+  if (llmResult.foodSignal === 'NO') {
+    route = 'STOP';
+  } else if (llmResult.foodSignal === 'UNCERTAIN') {
+    route = 'ASK_CLARIFY';
+  } else {
+    route = 'CONTINUE';
+  }
+
   return {
-    ...llmResult,
-    route
+    foodSignal: llmResult.foodSignal,
+    language: 'other', // Language detection optional for now
+    route,
+    confidence: llmResult.confidence
   };
 }
 
@@ -104,7 +146,7 @@ export async function executeGate2Stage(
       Gate2LLMSchema,
       {
         temperature: 0,
-        timeout: 1300,
+        timeout: 1500,
         promptVersion: GATE2_PROMPT_VERSION,
         promptHash: GATE2_PROMPT_HASH,
         promptLength: GATE2_SYSTEM_PROMPT.length,
@@ -128,9 +170,8 @@ export async function executeGate2Stage(
       event: 'stage_completed',
       durationMs,
       route: gate.route,
-      confidence: gate.confidence,
-      language: gate.language,
-      isFoodRelated: gate.isFoodRelated
+      foodSignal: gate.foodSignal,
+      confidence: gate.confidence
     }, '[ROUTE2] gate2 completed');
 
     return { gate };

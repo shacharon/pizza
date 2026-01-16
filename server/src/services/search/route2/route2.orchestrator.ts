@@ -4,8 +4,8 @@
  * SKELETON: Clean new pipeline with no V1/V2 dependencies
  * 
  * Flow:
- * 1. GATE2: Pre-filter (bypass/clarify/continue)
- * 2. INTENT2: Extract food + location
+ * 1. GATE2: Pre-filter (stop/clarify/continue)
+ * 2. INTENT: Router (textsearch/nearby/landmark)
  * 3. ROUTE_LLM: Determine search mode
  * 4. GOOGLE_MAPS: Execute search
  * 5. Build response
@@ -15,7 +15,7 @@ import type { SearchRequest } from '../types/search-request.dto.js';
 import type { SearchResponse } from '../types/search-response.dto.js';
 import type { Route2Context } from './types.js';
 import { executeGate2Stage } from './stages/gate2.stage.js';
-import { executeIntent2Stage } from './stages/intent2.stage.js';
+import { executeIntentStage } from './stages/intent/intent.stage.js';
 import { executeRouteLLMStage } from './stages/route-llm.stage.js';
 import { executeGoogleMapsStage } from './stages/google-maps.stage.js';
 import { resolveUserRegionCode } from './utils/region-resolver.js';
@@ -50,14 +50,15 @@ export async function searchRoute2(
     // STAGE 1: GATE2
     const gateResult = await executeGate2Stage(request, ctx);
 
-    // Handle BYPASS route
-    if (gateResult.gate.route === 'BYPASS') {
+    // EARLY STOP: Not food-related
+    if (gateResult.gate.route === 'STOP') {
       logger.info({
         requestId,
         pipelineVersion: 'route2',
-        event: 'pipeline_bypassed',
-        reason: 'not_food_related'
-      }, '[ROUTE2] Pipeline bypassed');
+        event: 'pipeline_stopped',
+        reason: 'not_food_related',
+        foodSignal: gateResult.gate.foodSignal
+      }, '[ROUTE2] Pipeline stopped - not food related');
 
       return {
         sessionId: request.sessionId || 'route2-session',
@@ -68,9 +69,9 @@ export async function searchRoute2(
             searchMode: 'textsearch' as const,
             filters: {},
             languageContext: {
-              uiLanguage: 'en' as const,
-              requestLanguage: 'en' as const,
-              googleLanguage: 'en' as const
+              uiLanguage: 'he' as const,
+              requestLanguage: 'he' as const,
+              googleLanguage: 'he' as const
             },
             originalQuery: request.query
           },
@@ -80,72 +81,114 @@ export async function searchRoute2(
         chips: [],
         assist: {
           type: 'guide' as const,
-          message: 'Not a food-related query. Try asking about restaurants or food.'
+          message: "זה לא נראה כמו חיפוש אוכל/מסעדות. נסה למשל: 'פיצה בתל אביב'."
         },
         meta: {
           tookMs: Date.now() - startTime,
           mode: 'textsearch' as const,
           appliedFilters: [],
-          confidence: 0,
-          source: 'route2_gate',
+          confidence: gateResult.gate.confidence,
+          source: 'route2_gate_stop',
           failureReason: 'LOW_CONFIDENCE'
         }
       };
     }
 
-    // CONTINUE - proceed to Intent2
-    logger.info({
-      requestId,
-      pipelineVersion: 'route2',
-      event: 'next_stage_intent2'
-    }, '[ROUTE2] Proceeding to intent2');
+    // EARLY STOP: Uncertain/unclear query - ask for clarification
+    if (gateResult.gate.route === 'ASK_CLARIFY') {
+      logger.info({
+        requestId,
+        pipelineVersion: 'route2',
+        event: 'pipeline_clarify',
+        reason: 'uncertain_query',
+        foodSignal: gateResult.gate.foodSignal
+      }, '[ROUTE2] Pipeline asking for clarification');
 
-    // STAGE 2: INTENT2
-    const intentResult = await executeIntent2Stage(gateResult.gate, request, ctx);
-
-    // Compute final region (query overrides user)
-    if (intentResult.queryRegionCode) {
-      ctx.queryRegionCode = intentResult.queryRegionCode;
+      return {
+        sessionId: request.sessionId || 'route2-session',
+        query: {
+          original: request.query,
+          parsed: {
+            query: request.query,
+            searchMode: 'textsearch' as const,
+            filters: {},
+            languageContext: {
+              uiLanguage: 'he' as const,
+              requestLanguage: 'he' as const,
+              googleLanguage: 'he' as const
+            },
+            originalQuery: request.query
+          },
+          language: gateResult.gate.language
+        },
+        results: [],
+        chips: [],
+        assist: {
+          type: 'clarify' as const,
+          message: "כדי לחפש טוב צריך 2 דברים: מה אוכלים + איפה. לדוגמה: 'סושי באשקלון' או 'פיצה ליד הבית'."
+        },
+        meta: {
+          tookMs: Date.now() - startTime,
+          mode: 'textsearch' as const,
+          appliedFilters: [],
+          confidence: gateResult.gate.confidence,
+          source: 'route2_gate_clarify',
+          failureReason: 'LOW_CONFIDENCE'
+        }
+      };
     }
-    ctx.regionCodeFinal = intentResult.queryRegionCode ?? userRegionCode;
+
+    // CONTINUE - proceed to Intent
+    logger.info({
+      requestId,
+      pipelineVersion: 'route2',
+      event: 'next_stage_intent',
+      foodSignal: gateResult.gate.foodSignal
+    }, '[ROUTE2] Proceeding to intent');
+
+    // STAGE 2: INTENT (router-only)
+    const intentDecision = await executeIntentStage(request, ctx);
 
     logger.info({
       requestId,
       pipelineVersion: 'route2',
-      event: 'region_resolved',
-      userRegionCode,
-      userRegionSource,
-      queryRegionCode: ctx.queryRegionCode,
-      regionCodeFinal: ctx.regionCodeFinal,
-      mode: intentResult.mode,
-      reason: intentResult.reason
-    }, '[ROUTE2] Region and mode resolved');
+      event: 'intent_completed',
+      route: intentDecision.route,
+      confidence: intentDecision.confidence,
+      reason: intentDecision.reason
+    }, '[ROUTE2] Intent routing decision');
 
     // STAGE 3: ROUTE_LLM
-    const routePlan = await executeRouteLLMStage(intentResult, request, ctx);
+    const routePlan = await executeRouteLLMStage(intentDecision, request, ctx);
 
     // STAGE 4: GOOGLE_MAPS
-    const googleResult = await executeGoogleMapsStage(routePlan, intentResult, request, ctx);
+    const googleResult = await executeGoogleMapsStage(routePlan, intentDecision, request, ctx);
 
     // Build response (SKELETON: minimal valid response)
     const totalDurationMs = Date.now() - startTime;
+
+    // Map Gate2Language to valid UI/Google languages
+    const detectedLanguage = gateResult.gate.language;
+    // UILanguage and GoogleLanguage only support 'he' | 'en'
+    const uiLanguage: 'he' | 'en' = detectedLanguage === 'he' ? 'he' : 'en';
+    const googleLanguage: 'he' | 'en' = detectedLanguage === 'he' ? 'he' : 'en';
 
     const response: SearchResponse = {
       sessionId: request.sessionId || 'route2-session',
       query: {
         original: request.query,
         parsed: {
-          query: intentResult.food.canonicalEn || 'restaurant',
+          query: 'restaurant', // TODO: Will be extracted by ROUTE_LLM stage
           searchMode: routePlan.mode,
           filters: {},
           languageContext: {
-            uiLanguage: 'he',
-            requestLanguage: 'he',
-            googleLanguage: 'he'
+            uiLanguage,
+            requestLanguage: detectedLanguage, // RequestLanguage supports all Gate2Language values
+            googleLanguage
           },
           originalQuery: request.query
         },
-        language: intentResult.language || 'he'
+        language: detectedLanguage
       },
       results: [], // Empty for skeleton
       chips: [],
@@ -157,7 +200,7 @@ export async function searchRoute2(
         tookMs: totalDurationMs,
         mode: routePlan.mode,
         appliedFilters: [],
-        confidence: 0.5,
+        confidence: intentDecision.confidence,
         source: 'route2_skeleton',
         failureReason: 'NONE'
       }

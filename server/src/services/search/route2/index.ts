@@ -6,7 +6,7 @@
 
 export { searchRoute2 } from './route2.orchestrator.js';
 export { executeGate2Stage } from './stages/gate2.stage.js';
-export { executeIntent2Stage } from './stages/intent2.stage.js';
+export { executeIntentStage } from './stages/intent/intent.stage.js';
 export { executeRouteLLMStage } from './stages/route-llm.stage.js';
 export { executeGoogleMapsStage } from './stages/google-maps.stage.js';
 

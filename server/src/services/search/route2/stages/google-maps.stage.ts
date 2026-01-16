@@ -8,21 +8,21 @@
  */
 
 import type { SearchRequest } from '../../types/search-request.dto.js';
-import type { Route2Context, Intent2Result, RouteLLMResult, GoogleMapsResult } from '../types.js';
+import type { Route2Context, IntentResult, RouteLLMResult, GoogleMapsResult } from '../types.js';
 import { logger } from '../../../../lib/logger/structured-logger.js';
 
 /**
  * Execute GOOGLE_MAPS stage
  * 
  * @param routePlan Routing decision
- * @param intent Intent extraction result
+ * @param intentDecision Intent routing decision
  * @param request Search request
  * @param ctx Pipeline context
  * @returns Google Maps results
  */
 export async function executeGoogleMapsStage(
   routePlan: RouteLLMResult,
-  intent: Intent2Result,
+  intentDecision: IntentResult,
   request: SearchRequest,
   ctx: Route2Context
 ): Promise<GoogleMapsResult> {

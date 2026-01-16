@@ -35,14 +35,15 @@ export interface Route2Context {
 
 // Gate2 specific types
 export type Gate2Language = 'he' | 'en' | 'ru' | 'ar' | 'fr' | 'es' | 'other';
-export type Gate2Route = 'CONTINUE' | 'BYPASS';
+export type Gate2FoodSignal = 'NO' | 'UNCERTAIN' | 'YES';
+export type Gate2Route = 'CONTINUE' | 'ASK_CLARIFY' | 'STOP';
 
 /**
  * GATE2 Stage Result
- * Minimal food/language classifier - anchors/modifiers handled by Intent2
+ * Tri-state food classifier with early-stop routing
  */
 export interface Gate2Result {
-  isFoodRelated: boolean;
+  foodSignal: Gate2FoodSignal;
   language: Gate2Language;
   route: Gate2Route;
   confidence: number;
@@ -52,7 +53,20 @@ export interface Gate2StageOutput {
   gate: Gate2Result;
 }
 
-// Intent2 specific types
+// INTENT stage types (router-only)
+export type MappingRoute = 'TEXTSEARCH' | 'NEARBY' | 'LANDMARK';
+
+/**
+ * INTENT Stage Result
+ * Router-only decision without extraction
+ */
+export interface IntentResult {
+  route: MappingRoute;
+  confidence: number;
+  reason: string;
+}
+
+// Intent2 specific types (DEPRECATED - will be removed)
 export type Intent2Mode = 'nearby' | 'landmark' | 'textsearch';
 export type Intent2Reason = 'near_me_phrase' | 'explicit_distance_from_me' | 'landmark_detected' | 'default_textsearch' | 'ambiguous';
 export type LandmarkType = 'address' | 'poi' | 'street' | 'neighborhood' | 'area' | 'unknown' | null;
