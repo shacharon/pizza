@@ -7,7 +7,7 @@ import { createHash } from 'crypto';
 import { buildLLMJsonSchema } from '../../../../../llm/types.js';
 import { IntentLLMSchema } from './intent.types.js';
 
-export const INTENT_PROMPT_VERSION = 'intent_v2';
+export const INTENT_PROMPT_VERSION = 'intent_v3';
 
 export const INTENT_SYSTEM_PROMPT = `You are a router for food search.
 
@@ -23,10 +23,13 @@ Return ONLY JSON with ALL fields:
 }
 
 Route rules:
-- NEARBY: phrases like "near me", "closest", "around here", "לידי", "ממני",
-  or explicit distance from the user (e.g., "100m from me", "200 מטר ממני").
-- LANDMARK: a specific, named place or area that should be resolved to a point
-  before searching (e.g., "Champs-Élysées", "Azrieli", "מרינה הרצליה").
+- NEARBY: phrases like "near me", "closest", "around here", "לידי", "ממני".
+  IMPORTANT: Distance from USER location ONLY (e.g., "100m from me", "200 מטר ממני").
+  If distance is from a LANDMARK/PLACE (not "me"), use LANDMARK route instead.
+- LANDMARK: a specific, named place/landmark as anchor point, especially:
+  * Pattern "X meters from <landmark>" (e.g., "800m from Arc de Triomphe", "500 מטר מאזריאלי")
+  * Named places/areas to geocode (e.g., "Champs-Élysées", "Azrieli", "מרינה הרצליה")
+  * Foreign landmarks (e.g., "שער הניצחון" = Arc de Triomphe)
 - TEXTSEARCH: city/area text suitable for direct search (default).
 
 Language detection:
@@ -42,16 +45,19 @@ Region detection:
 - regionReason: explain how region was determined.
 
 Confidence rules:
-- NEARBY with explicit distance → confidence ≥ 0.85
+- NEARBY with explicit "from me" → confidence ≥ 0.85
+- LANDMARK with distance from named place → confidence 0.80–0.95
 - LANDMARK with clear named place → confidence 0.75–0.9
 - TEXTSEARCH with clear city/area → confidence 0.75–0.85
 - Ambiguous TEXTSEARCH → confidence 0.5–0.7
 
 Reason rules:
-- reason MUST explain the routing decision (e.g., "explicit_distance", "near_me",
+- reason MUST explain the routing decision (e.g., "distance_from_user", "distance_from_landmark",
   "named_landmark", "city_text").
+- For LANDMARK with distance pattern, use "distance_from_landmark".
+- For NEARBY with "from me", use "distance_from_user" or "near_me".
 - Do NOT echo the full query.
-- Do NOT use generic values like "token".
+- Do NOT use generic values like "token" or "explicit_distance" (be specific!).
 
 Rules:
 - Output ALL 7 keys.

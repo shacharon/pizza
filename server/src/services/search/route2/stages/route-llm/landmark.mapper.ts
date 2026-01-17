@@ -13,7 +13,7 @@ import { buildLLMJsonSchema } from '../../../../../llm/types.js';
 import { logger } from '../../../../../lib/logger/structured-logger.js';
 import { LandmarkMappingSchema, type LandmarkMapping } from './schemas.js';
 
-const LANDMARK_MAPPER_VERSION = 'landmark_mapper_v1';
+const LANDMARK_MAPPER_VERSION = 'landmark_mapper_v2';
 
 const LANDMARK_MAPPER_PROMPT = `You are a landmark geocoding planner.
 
@@ -30,13 +30,14 @@ Output ONLY JSON with ALL fields:
 }
 
 Rules for geocodeQuery:
-- Full, specific landmark name for geocoding
+- Full, specific landmark name for geocoding (NOT the food/cuisine)
+- If query has "X meters from <landmark>", extract ONLY the landmark name
 - Include city if ambiguous (e.g., "Azrieli Center Tel Aviv", not just "Azrieli")
 - Examples:
-  * "Champs-Élysées Paris France"
-  * "Dizengoff Center Tel Aviv"
-  * "מרינה הרצליה ישראל"
-- Keep in original language
+  * "מסעדות איטלקיות 800 מטר משער הניצחון" → geocodeQuery: "Arc de Triomphe Paris"
+  * "פיצה ליד דיזנגוף סנטר" → geocodeQuery: "Dizengoff Center Tel Aviv"
+  * "מרינה הרצליה חומוס" → geocodeQuery: "Marina Herzliya Israel"
+- Keep in original language or translate to English for foreign landmarks
 
 Rules for afterGeocode:
 - "nearbySearch": tight proximity search after geocoding (for specific venues)
@@ -46,17 +47,22 @@ Rules for afterGeocode:
   * Street/neighborhood → textSearchWithBias
 
 Rules for radiusMeters:
-- 500-800: specific buildings/POIs
-- 1000-1500: streets/small areas
-- 1500-2000: neighborhoods/larger areas
+- If query explicitly states distance (e.g., "800 meters", "500 מטר"), USE that exact value
+- Otherwise:
+  * 500-800: specific buildings/POIs
+  * 1000-1500: streets/small areas
+  * 1500-2000: neighborhoods/larger areas
 
 Rules for keyword:
 - Short food term (1-3 words max)
 - Extract from query, keep in original language
-- Examples: "pizza", "restaurant", "cafe", "חומוס"
+- Examples: "pizza", "restaurant", "Italian restaurant", "מסעדות איטלקיות"
 
 Rules for reason:
-- One-word token: "poi_landmark", "street_landmark", "area_landmark"
+- "distance_from_landmark": if query has explicit distance pattern
+- "poi_landmark": specific building/POI
+- "street_landmark": street/avenue
+- "area_landmark": neighborhood/area
 `;
 
 const LANDMARK_MAPPER_PROMPT_HASH = createHash('sha256')

@@ -1,13 +1,21 @@
 /**
  * GOOGLE_MAPS Stage - ROUTE2 Pipeline
  * 
- * Executes Google Places API calls based on route-specific mapping
+ * Executes Google Places API (New) calls based on route-specific mapping
  * Dispatches to correct API method based on providerMethod discriminator
+ * 
+ * API Version: Places API (New) - v1
+ * Endpoints:
+ * - POST https://places.googleapis.com/v1/places:searchText
+ * - POST https://places.googleapis.com/v1/places:searchNearby
  */
 
 import type { SearchRequest } from '../../types/search-request.dto.js';
 import type { Route2Context, RouteLLMMapping, GoogleMapsResult } from '../types.js';
 import { logger } from '../../../../lib/logger/structured-logger.js';
+
+// Field mask for Google Places API (New) - minimal fields to preserve current DTOs
+const PLACES_FIELD_MASK = 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.priceLevel,places.currentOpeningHours,places.photos,places.types,places.googleMapsUri';
 
 /**
  * Execute GOOGLE_MAPS stage
@@ -98,7 +106,7 @@ export async function executeGoogleMapsStage(
 }
 
 /**
- * Execute Google Places Text Search
+ * Execute Google Places Text Search (New API)
  */
 async function executeTextSearch(
   mapping: Extract<RouteLLMMapping, { providerMethod: 'textSearch' }>,
@@ -109,20 +117,20 @@ async function executeTextSearch(
 
   logger.info({
     requestId,
-    provider: 'google_places',
-    method: 'textSearch',
+    provider: 'google_places_new',
+    method: 'searchText',
     textQuery: mapping.textQuery,
     region: mapping.region,
     language: mapping.language,
     hasBias: mapping.bias !== null
-  }, '[GOOGLE] Calling Text Search API');
+  }, '[GOOGLE] Calling Text Search API (New)');
 
   const apiKey = process.env.GOOGLE_API_KEY;
   if (!apiKey) {
     logger.error({
       requestId,
-      provider: 'google_places',
-      method: 'textSearch',
+      provider: 'google_places_new',
+      method: 'searchText',
       error: 'GOOGLE_API_KEY not configured'
     }, '[GOOGLE] API key missing');
     return [];
@@ -133,32 +141,27 @@ async function executeTextSearch(
     let nextPageToken: string | undefined;
     const maxResults = 20; // Limit total results across pages
 
-    // Build initial request
-    const params = buildTextSearchParams(mapping, apiKey);
-    
+    // Build initial request body
+    const requestBody = buildTextSearchBody(mapping);
+
     // Fetch first page
-    const firstResponse = await callGoogleTextSearch(params, requestId);
-    if (firstResponse.results) {
-      results.push(...firstResponse.results.map((r: any) => mapGooglePlaceToResult(r)));
-      nextPageToken = firstResponse.next_page_token;
+    const firstResponse = await callGooglePlacesSearchText(requestBody, apiKey, requestId);
+    if (firstResponse.places) {
+      results.push(...firstResponse.places.map((r: any) => mapGooglePlaceToResult(r)));
+      nextPageToken = firstResponse.nextPageToken;
     }
 
     // Fetch additional pages if needed (up to maxResults)
     while (nextPageToken && results.length < maxResults) {
-      // Google requires ~2s delay before using next_page_token
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // New API: no delay needed for pagination
+      const pageBody = { ...requestBody, pageToken: nextPageToken };
+      const pageResponse = await callGooglePlacesSearchText(pageBody, apiKey, requestId);
 
-      const pageParams = new URLSearchParams({
-        key: apiKey,
-        pagetoken: nextPageToken
-      });
-
-      const pageResponse = await callGoogleTextSearch(pageParams, requestId);
-      if (pageResponse.results) {
+      if (pageResponse.places) {
         const remaining = maxResults - results.length;
-        const newResults = pageResponse.results.slice(0, remaining);
+        const newResults = pageResponse.places.slice(0, remaining);
         results.push(...newResults.map((r: any) => mapGooglePlaceToResult(r)));
-        nextPageToken = pageResponse.next_page_token;
+        nextPageToken = pageResponse.nextPageToken;
       } else {
         break;
       }
@@ -167,11 +170,12 @@ async function executeTextSearch(
     const durationMs = Date.now() - startTime;
     logger.info({
       requestId,
-      provider: 'google_places',
-      method: 'textSearch',
+      provider: 'google_places_new',
+      method: 'searchText',
       durationMs,
       resultCount: results.length,
-      hadPagination: !!nextPageToken
+      hadPagination: !!nextPageToken,
+      fieldMaskUsed: PLACES_FIELD_MASK
     }, '[GOOGLE] Text Search completed');
 
     return results;
@@ -182,124 +186,175 @@ async function executeTextSearch(
 
     logger.error({
       requestId,
-      provider: 'google_places',
-      method: 'textSearch',
+      provider: 'google_places_new',
+      method: 'searchText',
       durationMs,
       error: errorMsg
     }, '[GOOGLE] Text Search failed');
 
-    return [];
+    // IMPORTANT: Throw error to propagate to pipeline
+    // Do NOT return [] - that would be treated as "success with 0 results"
+    throw error;
   }
 }
 
 /**
- * Build Text Search API parameters
+ * Build Text Search API request body (New API)
+ * 
+ * NOTE: Text Search does NOT support includedTypes field!
+ * Use textQuery like "מסעדה בשרית אשקלון" or "pizza restaurant" instead.
+ * The LLM mappers already include the place type in the textQuery.
  */
-function buildTextSearchParams(
-  mapping: Extract<RouteLLMMapping, { providerMethod: 'textSearch' }>,
-  apiKey: string
-): URLSearchParams {
-  const params = new URLSearchParams({
-    key: apiKey,
-    query: mapping.textQuery,
-    language: mapping.language === 'he' ? 'he' : 'en',
-    type: 'restaurant'
-  });
+function buildTextSearchBody(
+  mapping: Extract<RouteLLMMapping, { providerMethod: 'textSearch' }>
+): any {
+  const body: any = {
+    textQuery: mapping.textQuery,
+    languageCode: mapping.language === 'he' ? 'he' : 'en'
+    // NOTE: Do NOT include includedTypes - not supported by searchText endpoint
+    // Rely on textQuery containing place type (e.g., "מסעדה", "restaurant")
+  };
 
-  // Add region bias
+  // Add region code
   if (mapping.region) {
-    params.append('region', mapping.region.toLowerCase());
+    body.regionCode = mapping.region;
   }
 
   // Add location bias if present
   if (mapping.bias && mapping.bias.type === 'locationBias') {
     const { center, radiusMeters } = mapping.bias;
-    params.append('location', `${center.lat},${center.lng}`);
-    params.append('radius', radiusMeters.toString());
+    body.locationBias = {
+      circle: {
+        center: {
+          latitude: center.lat,
+          longitude: center.lng
+        },
+        radius: radiusMeters
+      }
+    };
   }
 
-  return params;
+  // Log that we're relying on textQuery for type filtering
+  logger.debug({
+    textQuery: mapping.textQuery,
+    note: 'Text Search relies on textQuery for place type filtering (no includedTypes support)'
+  }, '[GOOGLE] Building Text Search request without includedTypes');
+
+  return body;
 }
 
 /**
- * Call Google Places Text Search API
+ * Call Google Places Search Text API (New API)
  */
-async function callGoogleTextSearch(
-  params: URLSearchParams,
+async function callGooglePlacesSearchText(
+  body: any,
+  apiKey: string,
   requestId: string
 ): Promise<any> {
-  return callGooglePlacesAPI('textsearch', params, requestId);
-}
+  const url = 'https://places.googleapis.com/v1/places:searchText';
 
-/**
- * Generalized Google Places API caller
- * Supports both textsearch and nearbysearch endpoints
- */
-async function callGooglePlacesAPI(
-  endpoint: 'textsearch' | 'nearbysearch',
-  params: URLSearchParams,
-  requestId: string
-): Promise<any> {
-  const url = `https://maps.googleapis.com/maps/api/place/${endpoint}/json?${params.toString()}`;
-  
   const response = await fetch(url, {
-    method: 'GET',
+    method: 'POST',
     headers: {
-      'Accept': 'application/json'
-    }
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': apiKey,
+      'X-Goog-FieldMask': PLACES_FIELD_MASK
+    },
+    body: JSON.stringify(body)
   });
 
   if (!response.ok) {
-    throw new Error(`Google API HTTP ${response.status}: ${response.statusText}`);
+    const errorText = await response.text();
+
+    // Log error details for debugging
+    logger.error({
+      requestId,
+      provider: 'google_places_new',
+      endpoint: 'searchText',
+      status: response.status,
+      errorBody: errorText,
+      requestBody: body
+    }, '[GOOGLE] Text Search API error');
+
+    throw new Error(`Google Places API (New) searchText failed: HTTP ${response.status} - ${errorText}`);
   }
 
   const data = await response.json();
-
-  if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
-    logger.warn({
-      requestId,
-      provider: 'google_places',
-      endpoint,
-      status: data.status,
-      errorMessage: data.error_message
-    }, `[GOOGLE] ${endpoint} non-OK status`);
-
-    if (data.status === 'REQUEST_DENIED' || data.status === 'INVALID_REQUEST') {
-      throw new Error(`Google API error: ${data.status} - ${data.error_message || 'no details'}`);
-    }
-  }
-
   return data;
 }
 
 /**
- * Build Nearby Search API parameters
+ * Build Nearby Search API request body (New API)
  */
-function buildNearbySearchParams(
-  mapping: Extract<RouteLLMMapping, { providerMethod: 'nearbySearch' }>,
-  apiKey: string
-): URLSearchParams {
-  const params = new URLSearchParams({
-    key: apiKey,
-    location: `${mapping.location.lat},${mapping.location.lng}`,
-    radius: mapping.radiusMeters.toString(),
-    keyword: mapping.keyword,
-    type: 'restaurant',
-    language: mapping.language === 'he' ? 'he' : 'en'
-  });
+function buildNearbySearchBody(
+  mapping: Extract<RouteLLMMapping, { providerMethod: 'nearbySearch' }>
+): any {
+  const body: any = {
+    locationRestriction: {
+      circle: {
+        center: {
+          latitude: mapping.location.lat,
+          longitude: mapping.location.lng
+        },
+        radius: mapping.radiusMeters
+      }
+    },
+    languageCode: mapping.language === 'he' ? 'he' : 'en',
+    includedTypes: ['restaurant'],
+    rankPreference: 'DISTANCE'
+  };
 
-  // Add region if present
+  // Add region code
   if (mapping.region) {
-    // Note: Nearby Search doesn't officially support 'region' param,
-    // but it doesn't hurt to include it for consistency
-    params.append('region', mapping.region.toLowerCase());
+    body.regionCode = mapping.region;
   }
 
-  return params;
+  return body;
+}
+
+/**
+ * Call Google Places Search Nearby API (New API)
+ */
+async function callGooglePlacesSearchNearby(
+  body: any,
+  apiKey: string,
+  requestId: string
+): Promise<any> {
+  const url = 'https://places.googleapis.com/v1/places:searchNearby';
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': apiKey,
+      'X-Goog-FieldMask': PLACES_FIELD_MASK
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+
+    // Log error details for debugging
+    logger.error({
+      requestId,
+      provider: 'google_places_new',
+      endpoint: 'searchNearby',
+      status: response.status,
+      errorBody: errorText,
+      requestBody: body
+    }, '[GOOGLE] Nearby Search API error');
+
+    throw new Error(`Google Places API (New) searchNearby failed: HTTP ${response.status} - ${errorText}`);
+  }
+
+  const data = await response.json();
+  return data;
 }
 
 /**
  * Call Google Geocoding API to get coordinates for a location query
+ * (Geocoding API remains unchanged - uses legacy endpoint)
  */
 async function callGoogleGeocodingAPI(
   address: string,
@@ -317,7 +372,7 @@ async function callGoogleGeocodingAPI(
   }
 
   const url = `https://maps.googleapis.com/maps/api/geocode/json?${params.toString()}`;
-  
+
   const response = await fetch(url, {
     method: 'GET',
     headers: {
@@ -357,38 +412,84 @@ async function callGoogleGeocodingAPI(
 }
 
 /**
- * Map Google Place result to internal RestaurantResult shape
+ * Map Google Place result (New API) to internal RestaurantResult shape
+ * 
+ * New API response structure:
+ * {
+ *   id: "places/ChIJ...",
+ *   displayName: { text: "...", languageCode: "..." },
+ *   formattedAddress: "...",
+ *   location: { latitude: ..., longitude: ... },
+ *   rating: ...,
+ *   userRatingCount: ...,
+ *   priceLevel: "PRICE_LEVEL_...",
+ *   currentOpeningHours: { openNow: true/false },
+ *   photos: [{ name: "places/.../photos/..." }],
+ *   types: [...],
+ *   googleMapsUri: "..."
+ * }
  */
 function mapGooglePlaceToResult(place: any): any {
+  // Extract place ID from resource name (places/ChIJxxx -> ChIJxxx)
+  const placeId = place.id ? place.id.split('/').pop() || place.id : 'unknown';
+
   return {
-    id: place.place_id, // Use place_id as internal ID
-    placeId: place.place_id,
+    id: placeId, // Use place_id as internal ID
+    placeId: placeId,
     source: 'google_places' as const,
-    name: place.name || 'Unknown',
-    address: place.formatted_address || '',
+    name: place.displayName?.text || 'Unknown',
+    address: place.formattedAddress || '',
     location: {
-      lat: place.geometry?.location?.lat || 0,
-      lng: place.geometry?.location?.lng || 0
+      lat: place.location?.latitude || 0,
+      lng: place.location?.longitude || 0
     },
     rating: place.rating,
-    userRatingsTotal: place.user_ratings_total,
-    priceLevel: place.price_level,
-    openNow: place.opening_hours?.open_now !== undefined
-      ? place.opening_hours.open_now
+    userRatingsTotal: place.userRatingCount,
+    priceLevel: parsePriceLevel(place.priceLevel),
+    openNow: place.currentOpeningHours?.openNow !== undefined
+      ? place.currentOpeningHours.openNow
       : 'UNKNOWN',
     photoUrl: place.photos?.[0]
-      ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${place.photos[0].photo_reference}&key=${process.env.GOOGLE_API_KEY}`
+      ? buildPhotoUrl(place.photos[0].name)
       : undefined,
     photos: place.photos?.slice(0, 5).map((photo: any) =>
-      `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${photo.photo_reference}&key=${process.env.GOOGLE_API_KEY}`
+      buildPhotoUrl(photo.name)
     ),
-    googleMapsUrl: place.url || `https://www.google.com/maps/place/?q=place_id:${place.place_id}`,
+    googleMapsUrl: place.googleMapsUri || `https://www.google.com/maps/place/?q=place_id:${placeId}`,
     tags: place.types || []
   };
 }
 
 /**
- * Execute Google Places Nearby Search
+ * Build photo URL for New Places API
+ * Uses resource name format: places/ChIJ.../photos/...
+ */
+function buildPhotoUrl(photoName: string): string {
+  const apiKey = process.env.GOOGLE_API_KEY;
+  return `https://places.googleapis.com/v1/${photoName}/media?maxWidthPx=800&key=${apiKey}`;
+}
+
+/**
+ * Parse price level from New API format
+ * New API uses enum: "PRICE_LEVEL_FREE", "PRICE_LEVEL_INEXPENSIVE", "PRICE_LEVEL_MODERATE", "PRICE_LEVEL_EXPENSIVE", "PRICE_LEVEL_VERY_EXPENSIVE"
+ * Legacy API uses numbers: 0, 1, 2, 3, 4
+ */
+function parsePriceLevel(priceLevel: string | undefined): number | undefined {
+  if (!priceLevel) return undefined;
+
+  const priceLevelMap: Record<string, number> = {
+    'PRICE_LEVEL_FREE': 0,
+    'PRICE_LEVEL_INEXPENSIVE': 1,
+    'PRICE_LEVEL_MODERATE': 2,
+    'PRICE_LEVEL_EXPENSIVE': 3,
+    'PRICE_LEVEL_VERY_EXPENSIVE': 4
+  };
+
+  return priceLevelMap[priceLevel];
+}
+
+/**
+ * Execute Google Places Nearby Search (New API)
  */
 async function executeNearbySearch(
   mapping: Extract<RouteLLMMapping, { providerMethod: 'nearbySearch' }>,
@@ -399,21 +500,22 @@ async function executeNearbySearch(
 
   logger.info({
     requestId,
-    provider: 'google_places',
-    method: 'nearbySearch',
+    provider: 'google_places_new',
+    method: 'searchNearby',
     location: mapping.location,
     radiusMeters: mapping.radiusMeters,
     keyword: mapping.keyword,
     region: mapping.region,
-    language: mapping.language
-  }, '[GOOGLE] Calling Nearby Search API');
+    language: mapping.language,
+    anchorSource: 'USER_LOCATION'
+  }, '[GOOGLE] Calling Nearby Search API (New) - anchor: user location');
 
   const apiKey = process.env.GOOGLE_API_KEY;
   if (!apiKey) {
     logger.error({
       requestId,
-      provider: 'google_places',
-      method: 'nearbySearch',
+      provider: 'google_places_new',
+      method: 'searchNearby',
       error: 'GOOGLE_API_KEY not configured'
     }, '[GOOGLE] API key missing');
     return [];
@@ -424,40 +526,27 @@ async function executeNearbySearch(
     let nextPageToken: string | undefined;
     const maxResults = 20; // Limit total results across pages
 
-    // Build initial request
-    const params = buildNearbySearchParams(mapping, apiKey);
-    
+    // Build initial request body
+    const requestBody = buildNearbySearchBody(mapping);
+
     // Fetch first page
-    const firstResponse = await callGooglePlacesAPI(
-      'nearbysearch',
-      params,
-      requestId
-    );
-    if (firstResponse.results) {
-      results.push(...firstResponse.results.map((r: any) => mapGooglePlaceToResult(r)));
-      nextPageToken = firstResponse.next_page_token;
+    const firstResponse = await callGooglePlacesSearchNearby(requestBody, apiKey, requestId);
+    if (firstResponse.places) {
+      results.push(...firstResponse.places.map((r: any) => mapGooglePlaceToResult(r)));
+      nextPageToken = firstResponse.nextPageToken;
     }
 
     // Fetch additional pages if needed (up to maxResults)
     while (nextPageToken && results.length < maxResults) {
-      // Google requires ~2s delay before using next_page_token
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // New API: no delay needed for pagination
+      const pageBody = { ...requestBody, pageToken: nextPageToken };
+      const pageResponse = await callGooglePlacesSearchNearby(pageBody, apiKey, requestId);
 
-      const pageParams = new URLSearchParams({
-        key: apiKey,
-        pagetoken: nextPageToken
-      });
-
-      const pageResponse = await callGooglePlacesAPI(
-        'nearbysearch',
-        pageParams,
-        requestId
-      );
-      if (pageResponse.results) {
+      if (pageResponse.places) {
         const remaining = maxResults - results.length;
-        const newResults = pageResponse.results.slice(0, remaining);
+        const newResults = pageResponse.places.slice(0, remaining);
         results.push(...newResults.map((r: any) => mapGooglePlaceToResult(r)));
-        nextPageToken = pageResponse.next_page_token;
+        nextPageToken = pageResponse.nextPageToken;
       } else {
         break;
       }
@@ -466,11 +555,12 @@ async function executeNearbySearch(
     const durationMs = Date.now() - startTime;
     logger.info({
       requestId,
-      provider: 'google_places',
-      method: 'nearbySearch',
+      provider: 'google_places_new',
+      method: 'searchNearby',
       durationMs,
       resultCount: results.length,
-      hadPagination: !!nextPageToken
+      hadPagination: !!nextPageToken,
+      fieldMaskUsed: PLACES_FIELD_MASK
     }, '[GOOGLE] Nearby Search completed');
 
     return results;
@@ -481,20 +571,22 @@ async function executeNearbySearch(
 
     logger.error({
       requestId,
-      provider: 'google_places',
-      method: 'nearbySearch',
+      provider: 'google_places_new',
+      method: 'searchNearby',
       durationMs,
       error: errorMsg
     }, '[GOOGLE] Nearby Search failed');
 
-    return [];
+    // IMPORTANT: Throw error to propagate to pipeline
+    // Do NOT return [] - that would be treated as "success with 0 results"
+    throw error;
   }
 }
 
 /**
  * Execute Landmark Plan (two-phase search)
- * 1. Geocode the landmark
- * 2. Search nearby or with bias based on afterGeocode
+ * 1. Geocode the landmark (using legacy Geocoding API)
+ * 2. Search nearby or with bias based on afterGeocode (using New Places API)
  */
 async function executeLandmarkPlan(
   mapping: Extract<RouteLLMMapping, { providerMethod: 'landmarkPlan' }>,
@@ -505,21 +597,23 @@ async function executeLandmarkPlan(
 
   logger.info({
     requestId,
-    provider: 'google_places',
+    provider: 'google_places_new',
     method: 'landmarkPlan',
     geocodeQuery: mapping.geocodeQuery,
     afterGeocode: mapping.afterGeocode,
     radiusMeters: mapping.radiusMeters,
     keyword: mapping.keyword,
     region: mapping.region,
-    language: mapping.language
-  }, '[GOOGLE] Executing Landmark Plan (two-phase)');
+    language: mapping.language,
+    anchorSource: 'GEOCODE_ANCHOR',
+    anchorText: mapping.geocodeQuery
+  }, '[GOOGLE] Executing Landmark Plan (two-phase) - anchor: geocoded landmark');
 
   const apiKey = process.env.GOOGLE_API_KEY;
   if (!apiKey) {
     logger.error({
       requestId,
-      provider: 'google_places',
+      provider: 'google_places_new',
       method: 'landmarkPlan',
       error: 'GOOGLE_API_KEY not configured'
     }, '[GOOGLE] API key missing');
@@ -527,7 +621,7 @@ async function executeLandmarkPlan(
   }
 
   try {
-    // Phase 1: Geocode the landmark
+    // Phase 1: Geocode the landmark (uses legacy Geocoding API)
     const geocodeStartTime = Date.now();
     const geocodeResult = await callGoogleGeocodingAPI(
       mapping.geocodeQuery,
@@ -539,7 +633,7 @@ async function executeLandmarkPlan(
     if (!geocodeResult) {
       logger.warn({
         requestId,
-        provider: 'google_places',
+        provider: 'google_places_new',
         method: 'landmarkPlan',
         geocodeQuery: mapping.geocodeQuery
       }, '[GOOGLE] Geocoding returned no results');
@@ -549,51 +643,68 @@ async function executeLandmarkPlan(
     const geocodeDurationMs = Date.now() - geocodeStartTime;
     logger.info({
       requestId,
-      provider: 'google_places',
+      provider: 'google_places_new',
       method: 'landmarkPlan',
       phase: 'geocode',
       durationMs: geocodeDurationMs,
       location: geocodeResult
     }, '[GOOGLE] Landmark geocoded successfully');
 
-    // Phase 2: Search based on afterGeocode strategy
+    // Phase 2: Search based on afterGeocode strategy (using New Places API)
     const searchStartTime = Date.now();
     let results: any[] = [];
 
     if (mapping.afterGeocode === 'nearbySearch') {
       // Use Nearby Search centered on geocoded location
-      const params = new URLSearchParams({
-        key: apiKey,
-        location: `${geocodeResult.lat},${geocodeResult.lng}`,
-        radius: mapping.radiusMeters.toString(),
-        keyword: mapping.keyword,
-        type: 'restaurant',
-        language: mapping.language === 'he' ? 'he' : 'en'
-      });
+      const requestBody = {
+        locationRestriction: {
+          circle: {
+            center: {
+              latitude: geocodeResult.lat,
+              longitude: geocodeResult.lng
+            },
+            radius: mapping.radiusMeters
+          }
+        },
+        languageCode: mapping.language === 'he' ? 'he' : 'en',
+        includedTypes: ['restaurant'],
+        rankPreference: 'DISTANCE'
+      };
 
-      const response = await callGooglePlacesAPI('nearbysearch', params, requestId);
-      if (response.results) {
-        results = response.results.map((r: any) => mapGooglePlaceToResult(r));
+      if (mapping.region) {
+        (requestBody as any).regionCode = mapping.region;
+      }
+
+      const response = await callGooglePlacesSearchNearby(requestBody, apiKey, requestId);
+      if (response.places) {
+        results = response.places.map((r: any) => mapGooglePlaceToResult(r));
       }
 
     } else {
       // Use Text Search with location bias
-      const params = new URLSearchParams({
-        key: apiKey,
-        query: mapping.keyword,
-        location: `${geocodeResult.lat},${geocodeResult.lng}`,
-        radius: mapping.radiusMeters.toString(),
-        type: 'restaurant',
-        language: mapping.language === 'he' ? 'he' : 'en'
-      });
+      // NOTE: Text Search does NOT support includedTypes
+      const requestBody: any = {
+        textQuery: mapping.keyword,
+        languageCode: mapping.language === 'he' ? 'he' : 'en',
+        // Do NOT include includedTypes - not supported by searchText
+        locationBias: {
+          circle: {
+            center: {
+              latitude: geocodeResult.lat,
+              longitude: geocodeResult.lng
+            },
+            radius: mapping.radiusMeters
+          }
+        }
+      };
 
       if (mapping.region) {
-        params.append('region', mapping.region.toLowerCase());
+        requestBody.regionCode = mapping.region;
       }
 
-      const response = await callGooglePlacesAPI('textsearch', params, requestId);
-      if (response.results) {
-        results = response.results.map((r: any) => mapGooglePlaceToResult(r));
+      const response = await callGooglePlacesSearchText(requestBody, apiKey, requestId);
+      if (response.places) {
+        results = response.places.map((r: any) => mapGooglePlaceToResult(r));
       }
     }
 
@@ -602,13 +713,14 @@ async function executeLandmarkPlan(
 
     logger.info({
       requestId,
-      provider: 'google_places',
+      provider: 'google_places_new',
       method: 'landmarkPlan',
       phase: 'search',
       afterGeocode: mapping.afterGeocode,
       searchDurationMs,
       totalDurationMs,
-      resultCount: results.length
+      resultCount: results.length,
+      fieldMaskUsed: PLACES_FIELD_MASK
     }, '[GOOGLE] Landmark Plan completed');
 
     return results;
@@ -619,13 +731,14 @@ async function executeLandmarkPlan(
 
     logger.error({
       requestId,
-      provider: 'google_places',
+      provider: 'google_places_new',
       method: 'landmarkPlan',
       durationMs,
       error: errorMsg
     }, '[GOOGLE] Landmark Plan failed');
 
-    return [];
+    // IMPORTANT: Throw error to propagate to pipeline
+    // Do NOT return [] - that would be treated as "success with 0 results"
+    throw error;
   }
 }
-

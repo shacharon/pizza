@@ -21,7 +21,7 @@ import { CONTRACTS_VERSION } from '../../contracts/search.contracts.js';
 import { searchAsyncStore } from '../../search-async/searchAsync.store.js';
 import { publishSearchEvent } from '../../infra/websocket/search-ws.publisher.js';
 import type { SearchRequest } from '../../services/search/types/search-request.dto.js';
-import { searchJobStore } from '../../services/search/job-store/inmemory-search-job.store.js';
+import { searchJobStore } from '../../services/search/job-store/index.js';
 
 
 const router = Router();
@@ -182,8 +182,7 @@ router.post('/', async (req: Request, res: Response) => {
     // ASYNC mode: 202 ACK + background job
     if (mode === 'async') {
       // Create job using the same requestId
-      searchJobStore.createJob({
-        requestId,
+      await searchJobStore.createJob(requestId, {
         sessionId: validation.data!.sessionId || 'new',
         query: validation.data!.query
       });
@@ -202,7 +201,7 @@ router.post('/', async (req: Request, res: Response) => {
       void (async () => {
         try {
           // Set status to RUNNING + publish progress
-          searchJobStore.setStatus(requestId, 'RUNNING', 0);
+          await searchJobStore.setStatus(requestId, 'RUNNING', 0);
           publishSearchEvent(requestId, {
             channel: 'search',
             contractsVersion: CONTRACTS_VERSION,
@@ -226,7 +225,7 @@ router.post('/', async (req: Request, res: Response) => {
           };
 
           // Publish progress at 50% (pipeline started)
-          searchJobStore.setStatus(requestId, 'RUNNING', 50);
+          await searchJobStore.setStatus(requestId, 'RUNNING', 50);
           publishSearchEvent(requestId, {
             channel: 'search',
             contractsVersion: CONTRACTS_VERSION,
@@ -243,7 +242,7 @@ router.post('/', async (req: Request, res: Response) => {
           const response = await searchRoute2(validation.data!, detachedContext);
 
           // Publish progress at 90% (pipeline complete, storing result)
-          searchJobStore.setStatus(requestId, 'RUNNING', 90);
+          await searchJobStore.setStatus(requestId, 'RUNNING', 90);
           publishSearchEvent(requestId, {
             channel: 'search',
             contractsVersion: CONTRACTS_VERSION,
@@ -256,35 +255,78 @@ router.post('/', async (req: Request, res: Response) => {
             message: 'Finalizing results'
           });
 
+          // Determine terminal status based on response
+          let terminalStatus: 'DONE_SUCCESS' | 'DONE_CLARIFY' = 'DONE_SUCCESS';
+          let wsEventType: 'ready' | 'clarify' = 'ready';
+
+          // Check if this is a clarify response (no results + assist message)
+          if (response.results.length === 0 && response.assist?.type === 'clarify') {
+            terminalStatus = 'DONE_CLARIFY';
+            wsEventType = 'clarify';
+          }
+
           // Store result
-          searchJobStore.setResult(requestId, response);
-          searchJobStore.setStatus(requestId, 'DONE', 100);
+          await searchJobStore.setResult(requestId, response);
+          await searchJobStore.setStatus(requestId, terminalStatus, 100);
 
-          // Publish done event
-          publishSearchEvent(requestId, {
-            channel: 'search',
-            contractsVersion: CONTRACTS_VERSION,
-            type: 'ready',
-            requestId,
-            ts: new Date().toISOString(),
-            stage: 'done',
-            ready: 'results',
-            decision: 'CONTINUE',
-            resultCount: response.results.length
-          });
+          // Publish appropriate event
+          if (wsEventType === 'clarify') {
+            publishSearchEvent(requestId, {
+              channel: 'search',
+              contractsVersion: CONTRACTS_VERSION,
+              type: 'clarify',
+              requestId,
+              ts: new Date().toISOString(),
+              stage: 'done',
+              message: response.assist?.message || 'Please clarify your search'
+            });
 
-          logger.info({
-            requestId,
-            resultCount: response.results.length,
-            durationMs: Date.now() - detachedContext.startTime,
-            msg: '[ASYNC] Job completed successfully'
-          });
+            logger.info({
+              requestId,
+              durationMs: Date.now() - detachedContext.startTime,
+              msg: '[ASYNC] Job completed - clarification needed'
+            });
+          } else {
+            publishSearchEvent(requestId, {
+              channel: 'search',
+              contractsVersion: CONTRACTS_VERSION,
+              type: 'ready',
+              requestId,
+              ts: new Date().toISOString(),
+              stage: 'done',
+              ready: 'results',
+              decision: 'CONTINUE',
+              resultCount: response.results.length
+            });
+
+            logger.info({
+              requestId,
+              resultCount: response.results.length,
+              durationMs: Date.now() - detachedContext.startTime,
+              msg: '[ASYNC] Job completed successfully'
+            });
+          }
 
         } catch (err) {
           const message = err instanceof Error ? err.message : 'Internal error';
-          const errorCode = err instanceof Error && err.message.includes('timeout') ? 'TIMEOUT' : 'SEARCH_FAILED';
 
-          searchJobStore.setError(requestId, errorCode, message);
+          // Determine error type
+          let errorType: 'LLM_TIMEOUT' | 'GATE_ERROR' | 'SEARCH_FAILED' = 'SEARCH_FAILED';
+          let errorCode = 'SEARCH_FAILED';
+
+          if (err instanceof Error) {
+            if (err.message.includes('GATE_TIMEOUT') || err.message.includes('gate2')) {
+              errorType = 'GATE_ERROR';
+              errorCode = 'GATE_TIMEOUT';
+            } else if (err.message.includes('timeout') || err.message.includes('abort')) {
+              errorType = 'LLM_TIMEOUT';
+              errorCode = 'LLM_TIMEOUT';
+            }
+          }
+
+          // Set terminal DONE_FAILED status
+          await searchJobStore.setError(requestId, errorCode, message, errorType);
+          await searchJobStore.setStatus(requestId, 'DONE_FAILED', 0);
 
           // Publish error event
           publishSearchEvent(requestId, {
@@ -295,12 +337,14 @@ router.post('/', async (req: Request, res: Response) => {
             ts: new Date().toISOString(),
             stage: 'done',
             code: errorCode as any,
-            message
+            message,
+            errorType
           });
 
           logger.error({
             requestId,
             errorCode,
+            errorType,
             error: message,
             msg: '[ASYNC] Job failed'
           });
@@ -341,7 +385,7 @@ router.post('/', async (req: Request, res: Response) => {
  * - 202 if not done yet (PENDING, RUNNING, or FAILED)
  * - 200 if done (full SearchResponse)
  */
-router.get('/:requestId/result', (req: Request, res: Response) => {
+router.get('/:requestId/result', async (req: Request, res: Response) => {
   const { requestId } = req.params;
 
   if (!requestId) {
@@ -352,7 +396,7 @@ router.get('/:requestId/result', (req: Request, res: Response) => {
     });
   }
 
-  const statusInfo = searchJobStore.getStatus(requestId);
+  const statusInfo = await searchJobStore.getStatus(requestId);
 
   // NOT_FOUND: requestId unknown or expired
   if (!statusInfo) {
@@ -364,13 +408,13 @@ router.get('/:requestId/result', (req: Request, res: Response) => {
     });
   }
 
-  // FAILED: return error details with 500
-  if (statusInfo.status === 'FAILED') {
+  // DONE_FAILED: return error details with 500
+  if (statusInfo.status === 'DONE_FAILED') {
     logger.warn({
       requestId,
-      status: 'FAILED',
+      status: 'DONE_FAILED',
       error: statusInfo.error,
-      msg: '[GET /result] FAILED'
+      msg: '[GET /result] DONE_FAILED'
     });
 
     return res.status(500).json({
@@ -382,7 +426,7 @@ router.get('/:requestId/result', (req: Request, res: Response) => {
   }
 
   // PENDING/RUNNING: still processing
-  if (statusInfo.status !== 'DONE') {
+  if (statusInfo.status === 'PENDING' || statusInfo.status === 'RUNNING') {
     logger.info({
       requestId,
       status: statusInfo.status,
@@ -399,8 +443,8 @@ router.get('/:requestId/result', (req: Request, res: Response) => {
     });
   }
 
-  // DONE: success - return full result
-  const result = searchJobStore.getResult(requestId);
+  // DONE_SUCCESS or DONE_CLARIFY: return full result
+  const result = await searchJobStore.getResult(requestId);
 
   if (!result) {
     logger.error({ requestId, msg: '[GET /result] DONE but result missing' });
@@ -413,8 +457,8 @@ router.get('/:requestId/result', (req: Request, res: Response) => {
 
   logger.info({
     requestId,
-    status: 'DONE',
-    msg: '[GET /result] DONE - returning stored result'
+    status: statusInfo.status,
+    msg: `[GET /result] ${statusInfo.status} - returning stored result`
   });
 
   return res.status(200).json(result);
@@ -428,7 +472,7 @@ router.get('/:requestId/result', (req: Request, res: Response) => {
  * - 200 with { requestId, status, progress } if found
  * - 404 if not found or expired
  */
-router.get('/:requestId', (req: Request, res: Response) => {
+router.get('/:requestId', async (req: Request, res: Response) => {
   const { requestId } = req.params;
 
   if (!requestId) {
@@ -439,7 +483,7 @@ router.get('/:requestId', (req: Request, res: Response) => {
     });
   }
 
-  const statusInfo = searchJobStore.getStatus(requestId);
+  const statusInfo = await searchJobStore.getStatus(requestId);
 
   if (!statusInfo) {
     logger.warn({ requestId, msg: '[GET /:requestId] NOT_FOUND' });

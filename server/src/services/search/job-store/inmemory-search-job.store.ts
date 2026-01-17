@@ -4,22 +4,9 @@
  */
 
 import { logger } from '../../../lib/logger/structured-logger.js';
+import type { ISearchJobStore, SearchJob, JobStatus } from './job-store.interface.js';
 
-type JobStatus = 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED';
-
-interface SearchJob {
-  requestId: string;
-  sessionId: string;
-  query: string;
-  status: JobStatus;
-  progress?: number; // 0-100
-  result?: unknown;
-  error?: { code: string; message: string };
-  createdAt: number;
-  updatedAt: number;
-}
-
-export class InMemorySearchJobStore {
+export class InMemorySearchJobStore implements ISearchJobStore {
   private jobs = new Map<string, SearchJob>();
   private readonly ttlMs = 10 * 60 * 1000; // 10 minutes
 
@@ -32,13 +19,13 @@ export class InMemorySearchJobStore {
   /**
    * Create a new search job with explicit requestId
    */
-  createJob({ requestId, sessionId, query }: { requestId: string; sessionId: string; query: string }): void {
+  createJob(requestId: string, params: { sessionId: string; query: string }): void {
     const now = Date.now();
 
     this.jobs.set(requestId, {
       requestId,
-      sessionId,
-      query,
+      sessionId: params.sessionId,
+      query: params.query,
       status: 'PENDING',
       createdAt: now,
       updatedAt: now
@@ -46,10 +33,10 @@ export class InMemorySearchJobStore {
 
     logger.info({
       requestId,
-      sessionId,
-      query,
+      sessionId: params.sessionId,
+      query: params.query,
       status: 'PENDING',
-      msg: '[JobStore] Job created'
+      msg: '[InMemoryJobStore] Job created'
     });
   }
 
@@ -99,16 +86,16 @@ export class InMemorySearchJobStore {
   }
 
   /**
-   * Set job error
+   * Set job error with errorType for better UX
    */
-  setError(requestId: string, code: string, message: string): void {
+  setError(requestId: string, code: string, message: string, errorType?: 'LLM_TIMEOUT' | 'GATE_ERROR' | 'SEARCH_FAILED'): void {
     const job = this.jobs.get(requestId);
     if (!job) {
       logger.warn({ requestId, msg: '[JobStore] setError called but job not found' });
       return;
     }
 
-    job.error = { code, message };
+    job.error = { code, message, errorType: errorType || 'UNKNOWN' };
     job.status = 'FAILED';
     job.updatedAt = Date.now();
 
@@ -116,8 +103,35 @@ export class InMemorySearchJobStore {
       requestId,
       code,
       message,
+      errorType: errorType || 'UNKNOWN',
       msg: '[JobStore] Error set'
     });
+  }
+
+  /**
+   * Get full job details
+   */
+  getJob(requestId: string): SearchJob | null {
+    const job = this.jobs.get(requestId);
+    if (!job) {
+      return null;
+    }
+
+    // Check TTL
+    if (Date.now() - job.createdAt > this.ttlMs) {
+      this.jobs.delete(requestId);
+      return null;
+    }
+
+    return job;
+  }
+
+  /**
+   * Delete a job
+   */
+  deleteJob(requestId: string): void {
+    this.jobs.delete(requestId);
+    logger.info({ requestId, msg: '[JobStore] Job deleted' });
   }
 
   /**
@@ -160,23 +174,6 @@ export class InMemorySearchJobStore {
     return job.result ?? null;
   }
 
-  /**
-   * Get full job (for debugging)
-   */
-  getJob(requestId: string): SearchJob | null {
-    const job = this.jobs.get(requestId);
-    if (!job) {
-      return null;
-    }
-
-    // Check TTL
-    if (Date.now() - job.createdAt > this.ttlMs) {
-      this.jobs.delete(requestId);
-      return null;
-    }
-
-    return job;
-  }
 
   /**
    * Auto-cleanup expired jobs
@@ -198,5 +195,3 @@ export class InMemorySearchJobStore {
   }
 }
 
-// Singleton instance
-export const searchJobStore = new InMemorySearchJobStore();

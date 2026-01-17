@@ -55,12 +55,22 @@ export type WsSearchEvent =
     | {
         channel: "search";
         contractsVersion: ContractsVersion;
+        type: "clarify";
+        requestId: string;
+        ts: string; // ISO string
+        stage: SearchStage;
+        message: string;
+    }
+    | {
+        channel: "search";
+        contractsVersion: ContractsVersion;
         type: "error";
         requestId: string;
         ts: string; // ISO string
         stage: SearchStage;
         code: ReasonCode;
         message: string;
+        errorType?: string;
     };
 
 // ---- HTTP (Iteration 1)
