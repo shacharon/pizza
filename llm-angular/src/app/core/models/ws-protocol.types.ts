@@ -1,12 +1,19 @@
 /**
  * WebSocket Protocol Types - Phase 6
  * Exact union types matching backend server/src/infra/websocket/websocket-protocol.ts
+ * 
+ * Unified Protocol: Supports both "search" and "assistant" channels
  */
 
 /**
  * Assistant Status States
  */
 export type AssistantStatus = 'idle' | 'pending' | 'streaming' | 'completed' | 'failed';
+
+/**
+ * WebSocket Channel Types
+ */
+export type WSChannel = 'search' | 'assistant';
 
 /**
  * Action Definition (from backend)
@@ -24,9 +31,20 @@ export interface ActionDefinition {
 }
 
 /**
- * Client → Server Messages
+ * Client → Server Messages (Canonical Envelope v1)
  */
-export interface WSClientSubscribe {
+export interface WSClientEnvelope {
+  v: 1;
+  type: 'subscribe' | 'unsubscribe' | 'event';
+  channel: WSChannel;
+  requestId: string;
+  sessionId?: string;
+}
+
+/**
+ * Legacy subscribe message (backward compatible)
+ */
+export interface WSClientSubscribeLegacy {
   type: 'subscribe';
   requestId: string;
 }
@@ -48,7 +66,8 @@ export interface WSClientUIStateChanged {
 }
 
 export type WSClientMessage = 
-  | WSClientSubscribe 
+  | WSClientEnvelope
+  | WSClientSubscribeLegacy
   | WSClientActionClicked 
   | WSClientUIStateChanged;
 

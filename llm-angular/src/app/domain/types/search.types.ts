@@ -17,6 +17,7 @@ export interface SearchRequest {
 }
 
 export interface SearchResponse {
+  requestId: string;  // For WebSocket subscription
   sessionId: string;
   query: ParsedQuery;
   results: Restaurant[];

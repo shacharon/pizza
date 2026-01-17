@@ -21,6 +21,7 @@ export class SearchStore {
   readonly response = this._response.asReadonly();
 
   // Computed signals
+  readonly requestId = computed(() => this._response()?.requestId);
   readonly results = computed(() => this._response()?.results || []);
   readonly chips = computed(() => this._response()?.chips || []);
   readonly meta = computed(() => this._response()?.meta);

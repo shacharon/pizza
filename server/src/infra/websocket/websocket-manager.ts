@@ -7,8 +7,8 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import type { Server as HTTPServer } from 'http';
 import { logger } from '../../lib/logger/structured-logger.js';
-import type { WSClientMessage, WSServerMessage } from './websocket-protocol.js';
-import { isWSClientMessage } from './websocket-protocol.js';
+import type { WSClientMessage, WSServerMessage, WSChannel } from './websocket-protocol.js';
+import { isWSClientMessage, normalizeToCanonical } from './websocket-protocol.js';
 import type { IRequestStateStore } from '../state/request-state.store.js';
 
 export interface WebSocketManagerConfig {
@@ -18,10 +18,16 @@ export interface WebSocketManagerConfig {
   requestStateStore?: IRequestStateStore; // Phase 3: For late-subscriber replay
 }
 
+/**
+ * Subscription key: channel:requestId or channel:sessionId
+ */
+type SubscriptionKey = string;
+
 export class WebSocketManager {
   private wss: WebSocketServer;
-  private subscriptions = new Map<string, Set<WebSocket>>();
-  private socketToRequests = new WeakMap<WebSocket, Set<string>>();
+  // Unified subscription map: key = "channel:requestId" or "channel:sessionId"
+  private subscriptions = new Map<SubscriptionKey, Set<WebSocket>>();
+  private socketToSubscriptions = new WeakMap<WebSocket, Set<SubscriptionKey>>();
   private heartbeatInterval: NodeJS.Timeout | undefined;
   private config: WebSocketManagerConfig;
   private requestStateStore: IRequestStateStore | undefined;
@@ -105,36 +111,100 @@ export class WebSocketManager {
   }
 
   private handleMessage(ws: WebSocket, data: any, clientId: string): void {
+    let message: any;
+    
     try {
       const raw = data.toString();
-      const message = JSON.parse(raw);
-
-      if (!isWSClientMessage(message)) {
-        logger.warn({
-          clientId,
-          messageType: message?.type,
-        }, 'Invalid WebSocket message format');
-
-        this.sendError(ws, 'invalid_message', 'Invalid message format');
-        return;
-      }
-
-      logger.debug({
-        clientId,
-        type: message.type,
-        requestId: message.requestId
-      }, 'WebSocket message received');
-
-      this.handleClientMessage(ws, message, clientId);
-
+      message = JSON.parse(raw);
     } catch (err) {
       logger.error({
         clientId,
-        err
-      }, 'WebSocket message parse error');
+        error: err instanceof Error ? err.message : 'unknown'
+      }, 'WebSocket JSON parse error');
 
-      this.sendError(ws, 'parse_error', 'Failed to parse message');
+      this.sendError(ws, 'parse_error', 'Failed to parse JSON');
+      return;
     }
+
+    // DEV: Log message structure (keys only, no values)
+    if (process.env.NODE_ENV !== 'production') {
+      const msgKeys = message ? Object.keys(message) : [];
+      const payloadKeys = message?.payload ? Object.keys(message.payload) : null;
+      const dataKeys = message?.data ? Object.keys(message.data) : null;
+      logger.debug({
+        clientId,
+        msgKeys,
+        payloadKeys,
+        dataKeys,
+        hasPayload: !!message?.payload,
+        hasData: !!message?.data
+      }, '[DEV] WS message keys');
+    }
+
+    // Normalize requestId from various legacy locations (backward compatibility)
+    if (message && message.type === 'subscribe' && !message.requestId) {
+      // Check payload.requestId
+      if (message.payload?.requestId) {
+        message.requestId = message.payload.requestId;
+        logger.debug({ clientId }, '[WS] Normalized requestId from payload.requestId');
+      }
+      // Check data.requestId
+      else if ((message as any).data?.requestId) {
+        message.requestId = (message as any).data.requestId;
+        logger.debug({ clientId }, '[WS] Normalized requestId from data.requestId');
+      }
+      // Check reqId
+      else if ((message as any).reqId) {
+        message.requestId = (message as any).reqId;
+        logger.debug({ clientId }, '[WS] Normalized requestId from reqId');
+      }
+    }
+
+    // Validate message structure
+    if (!isWSClientMessage(message)) {
+      const isSubscribe = message?.type === 'subscribe';
+      const hasRequestId = 'requestId' in (message || {});
+      
+      logger.warn({
+        clientId,
+        messageType: message?.type || 'undefined',
+        hasChannel: 'channel' in (message || {}),
+        hasRequestId,
+        reasonCode: isSubscribe && !hasRequestId ? 'MISSING_REQUEST_ID' : 'INVALID_FORMAT'
+      }, 'Invalid WebSocket message format');
+
+      // Send specific error for missing requestId on subscribe
+      if (isSubscribe && !hasRequestId) {
+        this.sendValidationError(ws, {
+          v: 1,
+          type: 'publish',
+          channel: 'system',
+          payload: {
+            code: 'MISSING_REQUEST_ID',
+            message: 'Subscribe requires requestId. Send subscribe after /search returns requestId.'
+          }
+        });
+      } else {
+        this.sendError(ws, 'invalid_message', 'Invalid message format');
+      }
+      return;
+    }
+
+    // Log message metadata only (no payload)
+    const logData: any = {
+      clientId,
+      type: message.type,
+      hasRequestId: 'requestId' in message,
+      hasSessionId: 'sessionId' in message
+    };
+
+    if ('channel' in message) {
+      logData.channel = message.channel;
+    }
+
+    logger.debug(logData, 'WebSocket message received');
+
+    this.handleClientMessage(ws, message, clientId);
   }
 
   private async handleClientMessage(
@@ -143,21 +213,69 @@ export class WebSocketManager {
     clientId: string
   ): Promise<void> {
     switch (message.type) {
-      case 'subscribe':
-        this.subscribe(message.requestId, ws);
+      case 'subscribe': {
+        // Normalize legacy to canonical
+        const canonical = normalizeToCanonical(message);
+        const envelope = canonical as any;
         
-        // Check request state for enhanced logging
-        const requestStatus = await this.getRequestStatus(message.requestId);
+        const channel: WSChannel = envelope.channel || 'search';
+        const requestId = envelope.requestId;
+        const sessionId = envelope.sessionId;
+        
+        // Subscribe using channel-based key
+        this.subscribeToChannel(channel, requestId, sessionId, ws);
+        
+        // Minimal logging (no status check for search)
+        if (channel === 'search') {
+          logger.info({
+            clientId,
+            channel,
+            requestId
+          }, 'websocket_subscribed');
+          
+          // Phase 3: Late-subscriber replay
+          this.replayStateIfAvailable(requestId, ws, clientId);
+        } else {
+          // Assistant channel: include sessionId and status
+          const requestStatus = await this.getRequestStatus(requestId);
+          logger.info({
+            clientId,
+            channel,
+            requestId,
+            sessionId: sessionId || 'none',
+            status: requestStatus
+          }, 'websocket_subscribed');
+        }
+        break;
+      }
+
+      case 'unsubscribe': {
+        const envelope = message as any;
+        const channel: WSChannel = envelope.channel;
+        const requestId = envelope.requestId;
+        const sessionId = envelope.sessionId;
+        
+        this.unsubscribeFromChannel(channel, requestId, sessionId, ws);
         
         logger.info({
           clientId,
-          requestId: message.requestId,
-          status: requestStatus
-        }, 'websocket_subscribed');
-        
-        // Phase 3: Late-subscriber replay
-        this.replayStateIfAvailable(message.requestId, ws, clientId);
+          channel,
+          requestId,
+          sessionId: sessionId || 'none'
+        }, 'websocket_unsubscribed');
         break;
+      }
+
+      case 'event': {
+        const envelope = message as any;
+        logger.debug({
+          clientId,
+          channel: envelope.channel,
+          requestId: envelope.requestId
+        }, 'websocket_event_received');
+        // TODO: Handle custom events
+        break;
+      }
 
       case 'action_clicked':
         logger.info({
@@ -295,35 +413,106 @@ export class WebSocketManager {
   }
 
   /**
-   * Subscribe a WebSocket to receive updates for a specific requestId
+   * Build subscription key
+   * For search channel: always use requestId (ignore sessionId)
+   * For assistant channel: use sessionId if provided, else requestId
    */
-  subscribe(requestId: string, client: WebSocket): void {
-    // Add to subscriptions map
-    if (!this.subscriptions.has(requestId)) {
-      this.subscriptions.set(requestId, new Set());
+  private buildSubscriptionKey(channel: WSChannel, requestId: string, sessionId?: string): SubscriptionKey {
+    if (channel === 'search') {
+      return `search:${requestId}`;
     }
-    this.subscriptions.get(requestId)!.add(client);
-
-    // Track reverse mapping for cleanup
-    if (!this.socketToRequests.has(client)) {
-      this.socketToRequests.set(client, new Set());
+    
+    // Assistant channel: prefer session-based
+    if (sessionId) {
+      return `${channel}:${sessionId}`;
     }
-    this.socketToRequests.get(client)!.add(requestId);
-
-    logger.debug({
-      requestId,
-      subscriberCount: this.subscriptions.get(requestId)!.size
-    }, 'WebSocket subscribed to requestId');
+    return `${channel}:${requestId}`;
   }
 
   /**
-   * Publish a message to all WebSockets subscribed to a requestId
+   * Subscribe to a channel (unified)
    */
-  publish(requestId: string, message: WSServerMessage): void {
-    const clients = this.subscriptions.get(requestId);
+  private subscribeToChannel(
+    channel: WSChannel,
+    requestId: string,
+    sessionId: string | undefined,
+    client: WebSocket
+  ): void {
+    const key = this.buildSubscriptionKey(channel, requestId, sessionId);
+    
+    // Add to subscriptions map
+    if (!this.subscriptions.has(key)) {
+      this.subscriptions.set(key, new Set());
+    }
+    this.subscriptions.get(key)!.add(client);
+
+    // Track reverse mapping for cleanup
+    if (!this.socketToSubscriptions.has(client)) {
+      this.socketToSubscriptions.set(client, new Set());
+    }
+    this.socketToSubscriptions.get(client)!.add(key);
+
+    logger.debug({
+      channel,
+      requestId,
+      sessionId: sessionId || 'none',
+      subscriberCount: this.subscriptions.get(key)!.size
+    }, 'WebSocket subscribed to channel');
+  }
+
+  /**
+   * Unsubscribe from a channel
+   */
+  private unsubscribeFromChannel(
+    channel: WSChannel,
+    requestId: string,
+    sessionId: string | undefined,
+    client: WebSocket
+  ): void {
+    const key = this.buildSubscriptionKey(channel, requestId, sessionId);
+    
+    const subscribers = this.subscriptions.get(key);
+    if (subscribers) {
+      subscribers.delete(client);
+      if (subscribers.size === 0) {
+        this.subscriptions.delete(key);
+      }
+    }
+
+    const clientSubs = this.socketToSubscriptions.get(client);
+    if (clientSubs) {
+      clientSubs.delete(key);
+    }
+
+    logger.debug({
+      channel,
+      requestId,
+      sessionId: sessionId || 'none'
+    }, 'WebSocket unsubscribed from channel');
+  }
+
+  /**
+   * Legacy: Subscribe a WebSocket to receive updates for a specific requestId
+   * @deprecated Use subscribeToChannel with channel parameter
+   */
+  subscribe(requestId: string, client: WebSocket): void {
+    this.subscribeToChannel('search', requestId, undefined, client);
+  }
+
+  /**
+   * Publish to a specific channel
+   */
+  publishToChannel(
+    channel: WSChannel,
+    requestId: string,
+    sessionId: string | undefined,
+    message: WSServerMessage
+  ): void {
+    const key = this.buildSubscriptionKey(channel, requestId, sessionId);
+    const clients = this.subscriptions.get(key);
 
     if (!clients || clients.size === 0) {
-      logger.debug({ requestId }, 'No subscribers for requestId');
+      logger.debug({ channel, requestId, sessionId: sessionId || 'none' }, 'No subscribers for channel key');
       return;
     }
 
@@ -337,12 +526,19 @@ export class WebSocketManager {
       }
     }
 
-    logger.debug({
+    logger.info({
+      channel,
       requestId,
-      messageType: message.type,
-      subscriberCount: clients.size,
-      sentCount: sent
-    }, 'websocket_message_sent');
+      clientCount: sent
+    }, 'websocket_published');
+  }
+
+  /**
+   * Legacy: Publish a message to all WebSockets subscribed to a requestId
+   * @deprecated Use publishToChannel with channel parameter
+   */
+  publish(requestId: string, message: WSServerMessage): void {
+    this.publishToChannel('search', requestId, undefined, message);
   }
 
   /**
@@ -367,22 +563,31 @@ export class WebSocketManager {
   }
 
   /**
+   * Send validation error with structured payload
+   */
+  private sendValidationError(ws: WebSocket, errorPayload: any): void {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(errorPayload));
+    }
+  }
+
+  /**
    * Cleanup: Remove WebSocket from all subscriptions (leak prevention)
    */
   private cleanup(ws: WebSocket): void {
-    const requestIds = this.socketToRequests.get(ws);
+    const subscriptionKeys = this.socketToSubscriptions.get(ws);
 
-    if (requestIds) {
-      for (const requestId of requestIds) {
-        const sockets = this.subscriptions.get(requestId);
+    if (subscriptionKeys) {
+      for (const key of subscriptionKeys) {
+        const sockets = this.subscriptions.get(key);
         if (sockets) {
           sockets.delete(ws);
           if (sockets.size === 0) {
-            this.subscriptions.delete(requestId);
+            this.subscriptions.delete(key);
           }
         }
       }
-      this.socketToRequests.delete(ws);
+      this.socketToSubscriptions.delete(ws);
     }
   }
 

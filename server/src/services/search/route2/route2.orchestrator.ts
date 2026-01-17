@@ -20,6 +20,7 @@ import { executeRouteLLM } from './stages/route-llm/route-llm.dispatcher.js';
 import { executeGoogleMapsStage } from './stages/google-maps.stage.js';
 import { resolveUserRegionCode } from './utils/region-resolver.js';
 import { logger } from '../../../lib/logger/structured-logger.js';
+import { wsManager } from '../../../server.js';
 
 /**
  * Execute ROUTE2 search pipeline
@@ -61,6 +62,7 @@ export async function searchRoute2(
       }, '[ROUTE2] Pipeline stopped - not food related');
 
       return {
+        requestId,
         sessionId: request.sessionId || 'route2-session',
         query: {
           original: request.query,
@@ -105,6 +107,7 @@ export async function searchRoute2(
       }, '[ROUTE2] Pipeline asking for clarification');
 
       return {
+        requestId,
         sessionId: request.sessionId || 'route2-session',
         query: {
           original: request.query,
@@ -185,6 +188,7 @@ export async function searchRoute2(
     const googleLanguage: 'he' | 'en' = detectedLanguage === 'he' ? 'he' : 'en';
 
     const response: SearchResponse = {
+      requestId,
       sessionId: request.sessionId || 'route2-session',
       query: {
         original: request.query,
@@ -227,6 +231,13 @@ export async function searchRoute2(
       durationMs: totalDurationMs,
       resultCount: googleResult.results.length
     }, '[ROUTE2] Pipeline completed');
+
+    // Emit WebSocket event to subscribers
+    wsManager.publishToChannel('search', requestId, undefined, {
+      type: 'status',
+      requestId,
+      status: 'completed'
+    });
 
     return response;
 

@@ -89,6 +89,9 @@ export interface SearchResponseMeta {
 }
 
 export interface SearchResponse {
+  // Request ID (for WebSocket subscription)
+  requestId: string;
+  
   // Session
   sessionId: string;
   

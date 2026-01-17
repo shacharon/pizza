@@ -54,11 +54,13 @@ export class SearchFacade {
   
   // NEW: Combined response signal for convenience (Phase 5)
   readonly response = computed<SearchResponse | null>(() => {
+    const requestId = this.requestId();
     const results = this.results();
     const meta = this.meta();
-    if (!results || !meta) return null;
+    if (!results || !meta || !requestId) return null;
     
     return {
+      requestId,
       sessionId: this.conversationId(),
       query: {
         original: this.query() || '',
@@ -175,6 +177,7 @@ export class SearchFacade {
       // Convert CoreSearchResult to SearchResponse (partial)
       // This maintains compatibility with existing SearchStore
       const partialResponse: SearchResponse = {
+        requestId: response.requestId,
         sessionId: response.sessionId || this.conversationId(),
         query: response.query || {
           original: query,
@@ -195,11 +198,13 @@ export class SearchFacade {
       // Update input state machine
       this.inputStateMachine.searchComplete();
       
-      // Subscribe to WebSocket for assistant
-      this.wsClient.subscribe(response.requestId);
+      // Subscribe to WebSocket for assistant (AFTER HTTP response with requestId)
+      const sessionId = response.sessionId || this.conversationId();
+      this.wsClient.subscribe(response.requestId, 'search', sessionId);
       
       console.log('[SearchFacade] Async search completed', {
         requestId: response.requestId,
+        sessionId,
         resultCount: response.results.length,
         tookMs: response.meta.tookMs
       });

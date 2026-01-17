@@ -1,13 +1,31 @@
 /**
  * Phase 3: WebSocket Message Protocol
  * Defines client→server and server→client message types
+ * 
+ * Unified Protocol: Supports both "search" and "assistant" channels
  */
 
 // ============================================================================
-// Client → Server Messages
+// Client → Server Messages (Canonical Envelope)
 // ============================================================================
 
-export interface WSClientSubscribe {
+export type WSChannel = 'search' | 'assistant';
+
+/**
+ * Canonical message envelope for all client messages (v1)
+ */
+export interface WSClientEnvelope {
+  v: 1;
+  type: 'subscribe' | 'unsubscribe' | 'event';
+  channel: WSChannel;
+  requestId: string;
+  sessionId?: string;
+}
+
+/**
+ * Legacy subscribe message (backward compatible)
+ */
+export interface WSClientSubscribeLegacy {
   type: 'subscribe';
   requestId: string;
 }
@@ -29,7 +47,8 @@ export interface WSClientUIStateChanged {
 }
 
 export type WSClientMessage =
-  | WSClientSubscribe
+  | WSClientEnvelope
+  | WSClientSubscribeLegacy
   | WSClientActionClicked
   | WSClientUIStateChanged;
 
@@ -84,6 +103,10 @@ export type WSServerMessage =
 // Validation Helpers
 // ============================================================================
 
+/**
+ * Validate and normalize client messages
+ * Accepts both canonical envelope (v1) and legacy formats
+ */
 export function isWSClientMessage(msg: any): msg is WSClientMessage {
   if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') {
     return false;
@@ -91,12 +114,55 @@ export function isWSClientMessage(msg: any): msg is WSClientMessage {
 
   switch (msg.type) {
     case 'subscribe':
-      return typeof msg.requestId === 'string';
+      // Must have requestId
+      if (typeof msg.requestId !== 'string') {
+        return false;
+      }
+      
+      // Accept both canonical (with channel) and legacy (without channel)
+      if ('channel' in msg) {
+        // Canonical envelope (v1)
+        return (msg.channel === 'search' || msg.channel === 'assistant');
+      } else {
+        // Legacy format (backward compatible)
+        return true;
+      }
+    
+    case 'unsubscribe':
+    case 'event':
+      // Canonical envelope required
+      return (
+        typeof msg.requestId === 'string' &&
+        'channel' in msg &&
+        (msg.channel === 'search' || msg.channel === 'assistant')
+      );
+    
     case 'action_clicked':
       return typeof msg.requestId === 'string' && typeof msg.actionId === 'string';
+    
     case 'ui_state_changed':
       return typeof msg.requestId === 'string' && typeof msg.state === 'object';
+    
     default:
       return false;
   }
+}
+
+/**
+ * Normalize legacy subscribe to canonical envelope
+ */
+export function normalizeToCanonical(msg: WSClientMessage): WSClientEnvelope | WSClientMessage {
+  // If it's already canonical or not a subscribe, return as-is
+  if (msg.type !== 'subscribe' || 'channel' in msg) {
+    return msg;
+  }
+
+  // Convert legacy subscribe to canonical (default to 'search' channel)
+  const legacy = msg as WSClientSubscribeLegacy;
+  return {
+    v: 1,
+    type: 'subscribe',
+    channel: 'search',
+    requestId: legacy.requestId
+  };
 }

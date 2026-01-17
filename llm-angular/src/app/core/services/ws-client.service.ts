@@ -9,7 +9,8 @@ import { environment } from '../../../environments/environment';
 import type {
   WSClientMessage,
   WSServerMessage,
-  ConnectionStatus
+  ConnectionStatus,
+  WSChannel
 } from '../models/ws-protocol.types';
 import { isWSServerMessage } from '../models/ws-protocol.types';
 
@@ -104,19 +105,49 @@ export class WsClientService {
   }
 
   /**
-   * Subscribe to a request ID
+   * Subscribe to a request ID (using canonical envelope)
    * Stores lastRequestId for auto-resubscribe on reconnect
+   * @param requestId - Request ID to subscribe to
+   * @param channel - Channel to subscribe to ('search' or 'assistant')
+   * @param sessionId - Optional session ID
    */
-  subscribe(requestId: string): void {
+  subscribe(requestId: string, channel: 'search' | 'assistant' = 'search', sessionId?: string): void {
     this.lastRequestId = requestId;
 
-    const message: WSClientMessage = {
+    // Build canonical message (only include sessionId if provided)
+    const message: any = {
+      v: 1,
       type: 'subscribe',
+      channel,
       requestId
     };
 
-    this.send(message);
-    console.log('[WS] Subscribed to', requestId);
+    if (sessionId) {
+      message.sessionId = sessionId;
+    }
+
+    this.send(message as WSClientMessage);
+    console.log('[WS] Subscribed to', { requestId, channel, sessionId });
+  }
+
+  /**
+   * Unsubscribe from a request ID
+   */
+  unsubscribe(requestId: string, channel: 'search' | 'assistant' = 'search', sessionId?: string): void {
+    // Build canonical message (only include sessionId if provided)
+    const message: any = {
+      v: 1,
+      type: 'unsubscribe',
+      channel,
+      requestId
+    };
+
+    if (sessionId) {
+      message.sessionId = sessionId;
+    }
+
+    this.send(message as WSClientMessage);
+    console.log('[WS] Unsubscribed from', { requestId, channel, sessionId });
   }
 
   /**
