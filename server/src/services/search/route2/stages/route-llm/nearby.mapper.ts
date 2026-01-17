@@ -104,23 +104,102 @@ export async function executeNearbyMapper(
       { role: 'user', content: userPrompt }
     ];
 
-    const mapping = await llmProvider.completeJSON(
-      messages,
-      NearbyMappingSchema,
-      {
-        temperature: 0,
-        timeout: 3000,
-        promptVersion: NEARBY_MAPPER_VERSION,
-        promptHash: NEARBY_MAPPER_PROMPT_HASH,
-        promptLength: NEARBY_MAPPER_PROMPT.length,
-        schemaHash: NEARBY_SCHEMA_HASH,
-        ...(traceId && { traceId }),
-        ...(sessionId && { sessionId }),
-        ...(requestId && { requestId }),
-        stage: 'nearby_mapper'
-      },
-      NEARBY_JSON_SCHEMA
-    );
+    let mapping: NearbyMapping | null = null;
+    let lastError: any = null;
+
+    // Attempt 1: Initial LLM call with 4.5s timeout
+    try {
+      mapping = await llmProvider.completeJSON(
+        messages,
+        NearbyMappingSchema,
+        {
+          temperature: 0,
+          timeout: 4500,
+          promptVersion: NEARBY_MAPPER_VERSION,
+          promptHash: NEARBY_MAPPER_PROMPT_HASH,
+          promptLength: NEARBY_MAPPER_PROMPT.length,
+          schemaHash: NEARBY_SCHEMA_HASH,
+          ...(traceId && { traceId }),
+          ...(sessionId && { sessionId }),
+          ...(requestId && { requestId }),
+          stage: 'nearby_mapper'
+        },
+        NEARBY_JSON_SCHEMA
+      );
+    } catch (err: any) {
+      lastError = err;
+      const errorMsg = err?.message || String(err);
+      const errorType = err?.errorType || '';
+      const isTimeout = errorType === 'abort_timeout' ||
+        errorMsg.toLowerCase().includes('abort') ||
+        errorMsg.toLowerCase().includes('timeout');
+
+      if (isTimeout) {
+        logger.warn({
+          requestId,
+          stage: 'nearby_mapper',
+          errorType,
+          attempt: 1,
+          msg: '[ROUTE2] nearby_mapper timeout, retrying once'
+        });
+
+        // Jittered backoff: 150-250ms
+        await new Promise(resolve => setTimeout(resolve, 150 + Math.random() * 100));
+
+        // Attempt 2: Retry once
+        try {
+          mapping = await llmProvider.completeJSON(
+            messages,
+            NearbyMappingSchema,
+            {
+              temperature: 0,
+              timeout: 4500,
+              promptVersion: NEARBY_MAPPER_VERSION,
+              promptHash: NEARBY_MAPPER_PROMPT_HASH,
+              promptLength: NEARBY_MAPPER_PROMPT.length,
+              schemaHash: NEARBY_SCHEMA_HASH,
+              ...(traceId && { traceId }),
+              ...(sessionId && { sessionId }),
+              ...(requestId && { requestId }),
+              stage: 'nearby_mapper'
+            },
+            NEARBY_JSON_SCHEMA
+          );
+
+          logger.info({
+            requestId,
+            stage: 'nearby_mapper',
+            attempt: 2,
+            msg: '[ROUTE2] nearby_mapper retry succeeded'
+          });
+        } catch (retryErr) {
+          // Retry failed - will use fallback below
+          lastError = retryErr;
+        }
+      }
+    }
+
+    // If LLM failed (even after retry), use fallback mapping
+    if (!mapping) {
+      logger.warn({
+        requestId,
+        stage: 'nearby_mapper',
+        error: lastError?.message || String(lastError),
+        msg: '[ROUTE2] nearby_mapper LLM failed, using fallback'
+      });
+
+      mapping = buildFallbackMapping(request.query, intent, userLocation);
+
+      logger.info({
+        requestId,
+        stage: 'nearby_mapper',
+        event: 'fallback_mapping',
+        keyword: mapping.keyword,
+        radiusMeters: mapping.radiusMeters,
+        reason: mapping.reason,
+        msg: '[ROUTE2] nearby_mapper fallback applied'
+      });
+    }
 
     const durationMs = Date.now() - startTime;
 
@@ -168,4 +247,63 @@ function buildUserPrompt(
 User location: lat=${userLocation.lat}, lng=${userLocation.lng}
 Region: ${intent.region}
 Language: ${intent.language}`;
+}
+
+/**
+ * Build fallback mapping without LLM (used when LLM times out/fails)
+ * Extracts radius from query patterns, uses cleaned query as keyword
+ */
+function buildFallbackMapping(
+  query: string,
+  intent: IntentResult,
+  userLocation: { lat: number; lng: number }
+): NearbyMapping {
+  // Extract explicit distance from query
+  // Patterns: "2500 מטר", "500m", "300 meters", "1km", "במרחק של 2000 מטר"
+  const distancePatterns = [
+    /(\d+)\s*(?:מטר|מטרים)/i,           // Hebrew: 2500 מטר
+    /(\d+)\s*m(?:eters?)?(?:\s|$)/i,     // English: 500m, 300 meters
+    /(\d+(?:\.\d+)?)\s*km/i,              // Kilometers: 1km, 1.5km
+    /במרחק\s+(?:של\s+)?(\d+)/i          // Hebrew: במרחק של 2500
+  ];
+
+  let radiusMeters = 2000; // Default for nearby without distance
+  let reason = 'fallback_default_radius';
+
+  for (const pattern of distancePatterns) {
+    const match = query.match(pattern);
+    if (match && match[1]) {
+      const value = parseFloat(match[1]);
+      if (pattern.source.includes('km')) {
+        radiusMeters = Math.round(value * 1000); // km to meters
+      } else {
+        radiusMeters = Math.round(value);
+      }
+      reason = 'fallback_explicit_radius';
+      break;
+    }
+  }
+
+  // Clean query: remove distance phrases, keep food/cuisine words
+  let keyword = query
+    .replace(/במרחק\s+(?:של\s+)?\d+\s*(?:מטר|מטרים|ק"מ)?(?:\s+ממני)?/gi, '')
+    .replace(/\d+\s*(?:meters?|m|km)?\s*(?:away|from me)?/gi, '')
+    .replace(/(?:near me|close to me|nearby)/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // If cleaned keyword is too short, use original query (first 50 chars)
+  if (keyword.length < 3) {
+    keyword = query.substring(0, 50);
+  }
+
+  return {
+    providerMethod: 'nearbySearch',
+    location: userLocation,
+    radiusMeters,
+    keyword,
+    region: intent.region,
+    language: intent.language,
+    reason
+  };
 }

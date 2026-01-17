@@ -26,6 +26,13 @@ export interface AsyncSearchPending {
   contractsVersion: string;
 }
 
+export interface AsyncSearchFailed {
+  requestId: string;
+  status: 'FAILED';
+  error: { code: string; message: string };
+  contractsVersion: string;
+}
+
 /**
  * Core Search Result from async endpoint
  * Minimal required fields + optional extensions

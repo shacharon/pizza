@@ -51,7 +51,21 @@ export async function searchRoute2(
     // STAGE 1: GATE2
     const gateResult = await executeGate2Stage(request, ctx);
 
-    // EARLY STOP: Not food-related
+    // EARLY STOP: Gate2 error (timeout/failure)
+    if (gateResult.error) {
+      logger.error({
+        requestId,
+        pipelineVersion: 'route2',
+        event: 'pipeline_failed',
+        reason: 'gate2_error',
+        errorCode: gateResult.error.code,
+        errorMessage: gateResult.error.message
+      }, '[ROUTE2] Pipeline failed - gate2 error');
+
+      throw new Error(`${gateResult.error.code}: ${gateResult.error.message}`);
+    }
+
+    // EARLY STOP: Not food-related (genuine NO from LLM)
     if (gateResult.gate.route === 'STOP') {
       logger.info({
         requestId,

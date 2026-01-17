@@ -36,6 +36,8 @@ export type WsSearchEvent =
         stage: SearchStage;
         decision?: SearchDecision; // useful at gate2
         message?: string;
+        progress?: number; // 0-100
+        status?: string; // "running", etc
     }
     | {
         channel: "search";

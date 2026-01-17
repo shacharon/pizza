@@ -110,7 +110,7 @@ export async function executeTextSearchMapper(
       TextSearchMappingSchema,
       {
         temperature: 0,
-        timeout: 3000,
+        timeout: 3500,
         promptVersion: TEXTSEARCH_MAPPER_VERSION,
         promptHash: TEXTSEARCH_MAPPER_PROMPT_HASH,
         promptLength: TEXTSEARCH_MAPPER_PROMPT.length,

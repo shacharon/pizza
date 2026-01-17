@@ -51,6 +51,11 @@ export interface Gate2Result {
 
 export interface Gate2StageOutput {
   gate: Gate2Result;
+  error?: {
+    code: string;
+    message: string;
+    stage: string;
+  };
 }
 
 // INTENT stage types (router-only)

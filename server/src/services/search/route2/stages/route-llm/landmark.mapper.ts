@@ -102,7 +102,7 @@ export async function executeLandmarkMapper(
       LandmarkMappingSchema,
       {
         temperature: 0,
-        timeout: 2000,
+        timeout: 4000,
         promptVersion: LANDMARK_MAPPER_VERSION,
         promptHash: LANDMARK_MAPPER_PROMPT_HASH,
         promptLength: LANDMARK_MAPPER_PROMPT.length,

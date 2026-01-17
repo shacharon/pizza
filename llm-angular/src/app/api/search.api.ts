@@ -8,7 +8,7 @@ import { HttpClient, HttpErrorResponse, HttpResponse } from '@angular/common/htt
 import { Observable, throwError } from 'rxjs';
 import { catchError, map } from 'rxjs/operators';
 import type { SearchRequest, SearchResponse } from '../domain/types/search.types';
-import type { AsyncSearchAccepted, AsyncSearchPending } from '../core/models/async-search.types';
+import type { AsyncSearchAccepted, AsyncSearchPending, AsyncSearchFailed } from '../core/models/async-search.types';
 import { ENDPOINTS } from '../shared/api/api.config';
 import { mapApiError, logApiError, type ApiErrorView } from '../shared/http/api-error.mapper';
 
@@ -20,7 +20,7 @@ export type AsyncSearchResponse = AsyncSearchAccepted | SearchResponse;
 /**
  * Union type for polling responses
  */
-export type AsyncPollResponse = AsyncSearchPending | SearchResponse;
+export type AsyncPollResponse = AsyncSearchPending | AsyncSearchFailed | SearchResponse;
 
 @Injectable({ providedIn: 'root' })
 export class SearchApiClient {

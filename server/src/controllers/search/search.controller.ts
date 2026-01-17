@@ -21,6 +21,7 @@ import { CONTRACTS_VERSION } from '../../contracts/search.contracts.js';
 import { searchAsyncStore } from '../../search-async/searchAsync.store.js';
 import { publishSearchEvent } from '../../infra/websocket/search-ws.publisher.js';
 import type { SearchRequest } from '../../services/search/types/search-request.dto.js';
+import { searchJobStore } from '../../services/search/job-store/inmemory-search-job.store.js';
 
 
 const router = Router();
@@ -178,50 +179,133 @@ router.post('/', async (req: Request, res: Response) => {
       userLocation: validation.data!.userLocation ?? null,
     };
 
-    // ASYNC mode: 202 ACK + detached background execution
+    // ASYNC mode: 202 ACK + background job
     if (mode === 'async') {
-      const resultUrl = `/api/v1/search/${requestId}/result`;
-
-      // Log async branch hit ONCE with all relevant info
-      logger.info({
+      // Create job using the same requestId
+      searchJobStore.createJob({
         requestId,
-        mode: 'async',
-        resultUrl,
-        query: validation.data!.query,
-        msg: '[ASYNC] Request accepted, returning 202'
+        sessionId: validation.data!.sessionId || 'new',
+        query: validation.data!.query
       });
 
-      // init store (logs transition to PENDING)
-      searchAsyncStore.init(requestId);
+      // Build result URL
+      const resultUrl = `/api/v1/search/${requestId}/result`;
 
-      // Return 202 Accepted (minimal payload - no placeholder results)
+      // Return 202 Accepted with resultUrl for polling
       res.status(202).json({
         requestId,
         resultUrl,
-        contractsVersion: CONTRACTS_VERSION,
+        contractsVersion: CONTRACTS_VERSION
       });
 
-      // WS progress: accepted
-      publishSearchEvent(requestId, {
-        channel: 'search',
-        contractsVersion: CONTRACTS_VERSION,
-        type: 'progress',
-        requestId,
-        ts: new Date().toISOString(),
-        stage: 'accepted',
-        message: 'request accepted',
-      });
+      // Start background job (do NOT await)
+      void (async () => {
+        try {
+          // Set status to RUNNING + publish progress
+          searchJobStore.setStatus(requestId, 'RUNNING', 0);
+          publishSearchEvent(requestId, {
+            channel: 'search',
+            contractsVersion: CONTRACTS_VERSION,
+            type: 'progress',
+            requestId,
+            ts: new Date().toISOString(),
+            stage: 'accepted',
+            status: 'running',
+            progress: 0,
+            message: 'Search started'
+          });
 
-      // Kick off detached background execution (NOT tied to request lifecycle)
-      void runAsyncSearch({
-        requestId,
-        query: validation.data!,
-        resultUrl,
-        llmProvider: llm,
-        userLocation: validation.data!.userLocation ?? null,
-        ...(req.traceId !== undefined && { traceId: req.traceId }),
-        ...(validation.data!.sessionId !== undefined && { sessionId: validation.data!.sessionId }),
-      });
+          // Create detached context with same requestId
+          const detachedContext: Route2Context = {
+            requestId,
+            ...(req.traceId !== undefined && { traceId: req.traceId }),
+            ...(validation.data!.sessionId !== undefined && { sessionId: validation.data!.sessionId }),
+            startTime: Date.now(),
+            llmProvider: llm,
+            userLocation: validation.data!.userLocation ?? null,
+          };
+
+          // Publish progress at 50% (pipeline started)
+          searchJobStore.setStatus(requestId, 'RUNNING', 50);
+          publishSearchEvent(requestId, {
+            channel: 'search',
+            contractsVersion: CONTRACTS_VERSION,
+            type: 'progress',
+            requestId,
+            ts: new Date().toISOString(),
+            stage: 'route_llm',
+            status: 'running',
+            progress: 50,
+            message: 'Processing search'
+          });
+
+          // Execute search
+          const response = await searchRoute2(validation.data!, detachedContext);
+
+          // Publish progress at 90% (pipeline complete, storing result)
+          searchJobStore.setStatus(requestId, 'RUNNING', 90);
+          publishSearchEvent(requestId, {
+            channel: 'search',
+            contractsVersion: CONTRACTS_VERSION,
+            type: 'progress',
+            requestId,
+            ts: new Date().toISOString(),
+            stage: 'google',
+            status: 'running',
+            progress: 90,
+            message: 'Finalizing results'
+          });
+
+          // Store result
+          searchJobStore.setResult(requestId, response);
+          searchJobStore.setStatus(requestId, 'DONE', 100);
+
+          // Publish done event
+          publishSearchEvent(requestId, {
+            channel: 'search',
+            contractsVersion: CONTRACTS_VERSION,
+            type: 'ready',
+            requestId,
+            ts: new Date().toISOString(),
+            stage: 'done',
+            ready: 'results',
+            decision: 'CONTINUE',
+            resultCount: response.results.length
+          });
+
+          logger.info({
+            requestId,
+            resultCount: response.results.length,
+            durationMs: Date.now() - detachedContext.startTime,
+            msg: '[ASYNC] Job completed successfully'
+          });
+
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Internal error';
+          const errorCode = err instanceof Error && err.message.includes('timeout') ? 'TIMEOUT' : 'SEARCH_FAILED';
+
+          searchJobStore.setError(requestId, errorCode, message);
+
+          // Publish error event
+          publishSearchEvent(requestId, {
+            channel: 'search',
+            contractsVersion: CONTRACTS_VERSION,
+            type: 'error',
+            requestId,
+            ts: new Date().toISOString(),
+            stage: 'done',
+            code: errorCode as any,
+            message
+          });
+
+          logger.error({
+            requestId,
+            errorCode,
+            error: message,
+            msg: '[ASYNC] Job failed'
+          });
+        }
+      })();
 
       return;
     }
@@ -254,84 +338,131 @@ router.post('/', async (req: Request, res: Response) => {
  * 
  * Returns:
  * - 404 if requestId not found
- * - 202 if still pending (with resultUrl for retry)
+ * - 202 if not done yet (PENDING, RUNNING, or FAILED)
  * - 200 if done (full SearchResponse)
- * - 500 if failed (with error details)
  */
 router.get('/:requestId/result', (req: Request, res: Response) => {
-  const requestId = req.params.requestId;
+  const { requestId } = req.params;
 
   if (!requestId) {
     logger.warn({ msg: '[GET /result] Missing requestId' });
     return res.status(400).json({
       code: 'BAD_REQUEST',
-      message: 'Missing requestId',
-      contractsVersion: CONTRACTS_VERSION,
+      message: 'Missing requestId'
     });
   }
 
-  const entry = searchAsyncStore.get(requestId);
+  const statusInfo = searchJobStore.getStatus(requestId);
 
   // NOT_FOUND: requestId unknown or expired
-  if (!entry) {
+  if (!statusInfo) {
     logger.warn({ requestId, msg: '[GET /result] NOT_FOUND' });
     return res.status(404).json({
       code: 'NOT_FOUND',
-      message: 'Request not found or expired',
-      requestId,
-      contractsVersion: CONTRACTS_VERSION,
+      message: 'Job not found or expired',
+      requestId
     });
   }
 
-  // PENDING: still processing
-  if (entry.status === 'PENDING') {
-    const resultUrl = `/api/v1/search/${requestId}/result`;
-    logger.info({ requestId, status: 'PENDING', msg: '[GET /result] PENDING' });
-
-    return res.status(202).json({
-      requestId,
-      status: 'PENDING',
-      resultUrl,
-      contractsVersion: CONTRACTS_VERSION,
-    });
-  }
-
-  // FAILED: pipeline error
-  if (entry.status === 'FAILED') {
+  // FAILED: return error details with 500
+  if (statusInfo.status === 'FAILED') {
     logger.warn({
       requestId,
       status: 'FAILED',
-      error: entry.error,
+      error: statusInfo.error,
       msg: '[GET /result] FAILED'
     });
 
     return res.status(500).json({
-      code: entry.error?.code || 'INTERNAL_ERROR',
-      message: entry.error?.message || 'Unknown error',
       requestId,
-      contractsVersion: CONTRACTS_VERSION,
+      status: 'FAILED',
+      error: statusInfo.error || { code: 'SEARCH_FAILED', message: 'Search failed' },
+      contractsVersion: CONTRACTS_VERSION
     });
   }
 
-  // DONE: success - return full SearchResponse
-  if (!entry.result) {
+  // PENDING/RUNNING: still processing
+  if (statusInfo.status !== 'DONE') {
+    logger.info({
+      requestId,
+      status: statusInfo.status,
+      progress: statusInfo.progress,
+      msg: '[GET /result] NOT_DONE'
+    });
+
+    // Return 202 with "PENDING" status (frontend expects this)
+    return res.status(202).json({
+      requestId,
+      status: 'PENDING',
+      progress: statusInfo.progress,
+      contractsVersion: CONTRACTS_VERSION
+    });
+  }
+
+  // DONE: success - return full result
+  const result = searchJobStore.getResult(requestId);
+
+  if (!result) {
     logger.error({ requestId, msg: '[GET /result] DONE but result missing' });
     return res.status(500).json({
       code: 'INTERNAL_ERROR',
       message: 'Result missing from store',
-      requestId,
-      contractsVersion: CONTRACTS_VERSION,
+      requestId
     });
   }
 
   logger.info({
     requestId,
     status: 'DONE',
-    resultCount: entry.resultCount,
-    msg: '[GET /result] DONE - returning stored response'
+    msg: '[GET /result] DONE - returning stored result'
   });
 
-  return res.status(200).json(entry.result);
+  return res.status(200).json(result);
+});
+
+/**
+ * GET /search/:requestId
+ * Get job status and progress
+ * 
+ * Returns:
+ * - 200 with { requestId, status, progress } if found
+ * - 404 if not found or expired
+ */
+router.get('/:requestId', (req: Request, res: Response) => {
+  const { requestId } = req.params;
+
+  if (!requestId) {
+    logger.warn({ msg: '[GET /:requestId] Missing requestId' });
+    return res.status(400).json({
+      code: 'BAD_REQUEST',
+      message: 'Missing requestId'
+    });
+  }
+
+  const statusInfo = searchJobStore.getStatus(requestId);
+
+  if (!statusInfo) {
+    logger.warn({ requestId, msg: '[GET /:requestId] NOT_FOUND' });
+    return res.status(404).json({
+      code: 'NOT_FOUND',
+      message: 'Job not found or expired',
+      requestId
+    });
+  }
+
+  logger.info({
+    requestId,
+    status: statusInfo.status,
+    progress: statusInfo.progress,
+    msg: '[GET /:requestId] Status retrieved'
+  });
+
+  return res.status(200).json({
+    requestId,
+    status: statusInfo.status,
+    progress: statusInfo.progress,
+    ...(statusInfo.error && { error: statusInfo.error })
+  });
 });
 
 /**
