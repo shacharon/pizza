@@ -219,7 +219,7 @@ export async function tightenSharedFilters(params: {
     const final: FinalSharedFilters = {
         uiLanguage: resolvedUiLanguage,
         providerLanguage: resolvedProviderLanguage,
-        openNow: base.openNow,
+        openState: base.openState,
         regionCode: resolvedRegion,
         disclaimers: {
             hours: true,
@@ -240,7 +240,7 @@ export async function tightenSharedFilters(params: {
                 },
                 base: {
                     language: base.language,
-                    openNow: base.openNow,
+                    openState: base.openState,
                     regionHint: base.regionHint ?? null
                 },
                 device: {
@@ -251,7 +251,7 @@ export async function tightenSharedFilters(params: {
             final: {
                 uiLanguage: final.uiLanguage,
                 providerLanguage: final.providerLanguage,
-                openNow: final.openNow,
+                openState: final.openState,
                 regionCode: final.regionCode
             },
             languageSource,

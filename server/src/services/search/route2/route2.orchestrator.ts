@@ -21,6 +21,7 @@ import { executeGoogleMapsStage } from './stages/google-maps.stage.js';
 import { resolveUserRegionCode } from './utils/region-resolver.js';
 import { resolveBaseFiltersLLM } from './shared/base-filters-llm.js';
 import { tightenSharedFilters } from './shared/shared-filters.tighten.js';
+import { applyPostFilters } from './post-filters/post-results.filter.js';
 import { logger } from '../../../lib/logger/structured-logger.js';
 import { wsManager } from '../../../server.js';
 
@@ -236,7 +237,7 @@ export async function searchRoute2(
       uiLanguage: finalFilters.uiLanguage,
       providerLanguage: finalFilters.providerLanguage,
       regionCode: finalFilters.regionCode,
-      openNow: finalFilters.openNow,
+      openState: finalFilters.openState,
       sources: {
         language: languageSource,
         region: regionSource
@@ -253,6 +254,17 @@ export async function searchRoute2(
 
     // STAGE 4: GOOGLE_MAPS
     const googleResult = await executeGoogleMapsStage(mapping, request, ctx);
+
+    // STAGE 5: POST-FILTERS (deterministic filtering after Google results)
+    const postFilterResult = applyPostFilters({
+      results: googleResult.results,
+      sharedFilters: finalFilters,
+      requestId: ctx.requestId,
+      pipelineVersion: 'route2'
+    });
+
+    // Use filtered results for response
+    const finalResults = postFilterResult.resultsFiltered;
 
     // Build response (SKELETON: minimal valid response)
     const totalDurationMs = Date.now() - startTime;
@@ -283,11 +295,11 @@ export async function searchRoute2(
         },
         language: detectedLanguage
       },
-      results: googleResult.results,
+      results: finalResults,
       chips: [],
       assist: {
         type: 'guide',
-        message: googleResult.results.length === 0 ? 'No results found (Google API stub)' : ''
+        message: finalResults.length === 0 ? 'No results found (Google API stub)' : ''
       },
       meta: {
         tookMs: totalDurationMs,
@@ -305,7 +317,12 @@ export async function searchRoute2(
       pipelineVersion: 'route2',
       event: 'pipeline_completed',
       durationMs: totalDurationMs,
-      resultCount: googleResult.results.length
+      resultCount: finalResults.length,
+      postFilters: {
+        applied: postFilterResult.applied,
+        beforeCount: postFilterResult.stats.before,
+        afterCount: postFilterResult.stats.after
+      }
     }, '[ROUTE2] Pipeline completed');
 
     // Emit WebSocket event to subscribers

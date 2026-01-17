@@ -20,13 +20,17 @@ const BASE_FILTERS_PROMPT = `You are a base filter extractor for restaurant sear
 Output ONLY JSON with ALL fields:
 {
   "language": "he|en|auto",
-  "openNow": boolean,
+  "openState": "ANY|OPEN_NOW|CLOSED_NOW",
   "regionHint": "ISO-3166-1 alpha-2" or null
 }
 
 Rules:
 - language: "he" if query is primarily Hebrew, "en" if primarily English, else "auto".
-- openNow: true ONLY if query explicitly asks for open now / currently open / פתוח עכשיו. Otherwise false.
+- openState:
+  * "OPEN_NOW" ONLY if query explicitly asks for: open now / currently open / open / פתוח עכשיו / פתוח / open restaurants
+  * "CLOSED_NOW" ONLY if query explicitly asks for: closed / closed now / not open / סגור / סגור עכשיו / לא פתוח
+  * Support common misspellings: "cloesed", "closd", "clsoed" → treat as CLOSED_NOW
+  * "ANY" otherwise (default - no filter)
 - regionHint: MUST be either null OR exactly 2 uppercase letters (ISO-3166-1 alpha-2 country code).
   * Valid examples: "IL", "FR", "US", "ES", "RU", "DE"
   * Set ONLY if explicitly stated as a country (e.g., "Israel", "France", "Russia")
@@ -52,7 +56,7 @@ const { schema: BASE_FILTERS_JSON_SCHEMA, schemaHash: BASE_FILTERS_SCHEMA_HASH }
 function createFallbackFilters(): PreGoogleBaseFilters {
     return {
         language: 'auto',
-        openNow: false,
+        openState: 'ANY',
         regionHint: null
     };
 }
@@ -144,7 +148,7 @@ export async function resolveBaseFiltersLLM(params: {
 
         const validatedResult: PreGoogleBaseFilters = {
             language: result.language,
-            openNow: result.openNow,
+            openState: result.openState,
             regionHint: validatedRegionHint
         };
 
@@ -156,7 +160,7 @@ export async function resolveBaseFiltersLLM(params: {
             event: 'base_filters_llm_completed',
             durationMs,
             language: validatedResult.language,
-            openNow: validatedResult.openNow,
+            openState: validatedResult.openState,
             regionHint: validatedResult.regionHint || null,
             ...(result.regionHint !== validatedResult.regionHint && {
                 regionHintSanitized: true,

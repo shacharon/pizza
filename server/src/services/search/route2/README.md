@@ -18,6 +18,7 @@ route2.orchestrator.ts
 │ 2. INTENT2      (Extract food/location) │
 │ 3. ROUTE_LLM    (Determine mode)        │
 │ 4. GOOGLE_MAPS  (Execute search)        │
+│ 5. POST_FILTER  (Deterministic filters) │
 └─────────────────────────────────────────┘
   ↓
 SearchResponse
@@ -30,11 +31,16 @@ route2/
 ├── types.ts                      # Type definitions
 ├── route2.orchestrator.ts        # Main pipeline orchestrator
 ├── index.ts                      # Exports
-└── stages/
-    ├── gate2.stage.ts           # Stage 1: Pre-filter
-    ├── intent2.stage.ts         # Stage 2: Intent extraction
-    ├── route-llm.stage.ts       # Stage 3: Routing decision
-    └── google-maps.stage.ts     # Stage 4: Google search
+├── stages/
+│   ├── gate2.stage.ts           # Stage 1: Pre-filter
+│   ├── intent2.stage.ts         # Stage 2: Intent extraction
+│   ├── route-llm.stage.ts       # Stage 3: Routing decision
+│   └── google-maps.stage.ts     # Stage 4: Google search
+└── post-filters/
+    ├── post-results.filter.ts   # Stage 5: Post-result filtering (openNow)
+    └── __tests__/
+        ├── post-results.filter.test.ts
+        └── integration.test.ts
 ```
 
 ## Feature Flag
@@ -70,7 +76,8 @@ When ROUTE2 runs, you'll see:
 [ROUTE2] route_llm completed { requestId, pipelineVersion:"route2", stage:"route_llm", event:"stage_completed", durationMs:X }
 [ROUTE2] google_maps started { requestId, pipelineVersion:"route2", stage:"google_maps", event:"stage_started" }
 [ROUTE2] google_maps completed { requestId, pipelineVersion:"route2", stage:"google_maps", event:"stage_completed", durationMs:X }
-[ROUTE2] Pipeline completed { requestId, pipelineVersion:"route2", event:"pipeline_completed", durationMs:X }
+[ROUTE2] Post-filters applied { requestId, pipelineVersion:"route2", event:"post_filter_applied", openNow:true/false, stats:{before:N, after:M} }
+[ROUTE2] Pipeline completed { requestId, pipelineVersion:"route2", event:"pipeline_completed", durationMs:X, resultCount:M }
 ```
 
 ## Next Steps
@@ -95,3 +102,59 @@ curl -X POST http://localhost:3000/api/v1/search \
 # Test V1 (set ROUTE2_ENABLED=false)
 ROUTE2_ENABLED=false npm run dev
 ```
+
+## Post-Result Filtering
+
+**Stage 5: POST_FILTER** applies deterministic filters to results after Google API call.
+
+### Open/Closed State Filter (Tri-State)
+
+**OpenState Filter** supports three modes:
+- `ANY`: No filtering (default - return all results)
+- `OPEN_NOW`: Return only currently open places
+- `CLOSED_NOW`: Return only currently closed places
+
+**Filtering Rules:**
+- `ANY` → no filtering
+- `OPEN_NOW` → keep only places where `currentOpeningHours?.openNow === true`
+- `CLOSED_NOW` → keep only places where `currentOpeningHours?.openNow === false`
+- Missing `currentOpeningHours` → filtered out for `OPEN_NOW` and `CLOSED_NOW` (defensive)
+
+**Trigger Examples:**
+- "open restaurants" / "פתוח עכשיו" → `openState: OPEN_NOW`
+- "closed restaurants" / "סגור עכשיו" / "cloesed" (typo) → `openState: CLOSED_NOW`
+- "pizza in tel aviv" → `openState: ANY` (no filter)
+
+**Flow:**
+1. `base-filters-llm.ts` detects open/closed intent → sets `openState`
+2. `shared-filters.tighten.ts` copies to `FinalSharedFilters`
+3. `google-maps.stage.ts` executes search (no filter sent to Google)
+4. `post-results.filter.ts` filters results server-side
+5. Filtered results flow to response, WebSocket, and JobStore
+
+**Example:**
+```typescript
+// OPEN_NOW: Input 5 results (2 open, 2 closed, 1 unknown)
+// Output: 2 results (only open)
+{
+  "resultsFiltered": [...],
+  "applied": { "openState": "OPEN_NOW" },
+  "stats": { "before": 5, "after": 2 }
+}
+
+// CLOSED_NOW: Input 5 results (2 open, 2 closed, 1 unknown)
+// Output: 2 results (only closed)
+{
+  "resultsFiltered": [...],
+  "applied": { "openState": "CLOSED_NOW" },
+  "stats": { "before": 5, "after": 2 }
+}
+```
+
+**Tests:**
+```bash
+# Tri-state unit tests
+node --import tsx src/services/search/route2/post-filters/__tests__/post-results-tristate.test.ts
+```
+
+
