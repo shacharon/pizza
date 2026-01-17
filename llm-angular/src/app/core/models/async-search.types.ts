@@ -1,13 +1,36 @@
 /**
  * Async Search Types - Phase 6
- * Mirror backend CoreSearchResult with tolerant optional fields
+ * Proper 202 async flow with polling + WebSocket
  */
 
-import type { Restaurant, RefinementChip, ParsedQuery, ResultGroup } from '../../domain/types/search.types';
+import type { Restaurant, RefinementChip, ParsedQuery, ResultGroup, SearchResponse } from '../../domain/types/search.types';
+
+/**
+ * Async Search Accepted Response (HTTP 202)
+ * Returned immediately when POST /search?mode=async
+ */
+export interface AsyncSearchAccepted {
+  requestId: string;
+  resultUrl: string;
+  contractsVersion: string;
+}
+
+/**
+ * Async Search Pending Response (HTTP 202 from GET /result)
+ * Returned when polling while pipeline is still running
+ */
+export interface AsyncSearchPending {
+  requestId: string;
+  status: 'PENDING';
+  resultUrl: string;
+  contractsVersion: string;
+}
 
 /**
  * Core Search Result from async endpoint
  * Minimal required fields + optional extensions
+ * 
+ * @deprecated Use SearchResponse directly for DONE state
  */
 export interface CoreSearchResult {
   // Required fields (strict)

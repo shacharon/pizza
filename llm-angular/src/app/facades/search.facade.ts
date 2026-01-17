@@ -137,11 +137,19 @@ export class SearchFacade {
     this.wsClient.connect();
   }
 
+  // Polling state
+  private pollingIntervalId?: any;
+  private pollingTimeoutId?: any;
+  
   /**
-   * Execute search with WebSocket assistant streaming
+   * Execute search with proper async 202 handling
+   * Supports both WebSocket (fast path) and polling (fallback)
    */
   async search(query: string, filters?: SearchFilters): Promise<void> {
     try {
+      // Cancel any previous polling
+      this.cancelPolling();
+      
       // Reset assistant state
       this.assistantText.set('');
       this.assistantStatus.set('pending');
@@ -159,9 +167,9 @@ export class SearchFacade {
       // Check if this is a fresh search after intent reset
       const shouldClearContext = this.inputStateMachine.intentReset();
       
-      // Call search API
+      // Call search API (returns 202 or 200)
       const response = await firstValueFrom(
-        this.searchApiClient.search({
+        this.searchApiClient.searchAsync({
           query,
           filters,
           sessionId: this.conversationId(),
@@ -171,52 +179,151 @@ export class SearchFacade {
         })
       );
       
-      // Store requestId
-      this.currentRequestId.set(response.requestId);
-      
-      // Convert CoreSearchResult to SearchResponse (partial)
-      // This maintains compatibility with existing SearchStore
-      const partialResponse: SearchResponse = {
-        requestId: response.requestId,
-        sessionId: response.sessionId || this.conversationId(),
-        query: response.query || {
-          original: query,
-          parsed: {},
-          language: this.locale()
-        },
-        results: response.results,
-        groups: response.groups,
-        chips: response.chips,
-        meta: response.meta as any,
-        // No assist or proposedActions - will come via WebSocket
-      };
-      
-      // Update store with partial response
-      this.searchStore.setResponse(partialResponse);
-      this.searchStore.setLoading(false);
-      
-      // Update input state machine
-      this.inputStateMachine.searchComplete();
-      
-      // Subscribe to WebSocket for assistant (AFTER HTTP response with requestId)
-      const sessionId = response.sessionId || this.conversationId();
-      this.wsClient.subscribe(response.requestId, 'search', sessionId);
-      
-      console.log('[SearchFacade] Async search completed', {
-        requestId: response.requestId,
-        sessionId,
-        resultCount: response.results.length,
-        tookMs: response.meta.tookMs
-      });
+      // Check if it's a 202 Accepted (async) or 200 (sync fallback)
+      if ('resultUrl' in response) {
+        // HTTP 202: Async mode - start polling + WS
+        const { requestId, resultUrl } = response;
+        this.currentRequestId.set(requestId);
+        
+        console.log('[SearchFacade] Async 202 accepted', { requestId, resultUrl });
+        
+        // Subscribe to WebSocket for real-time updates
+        this.wsClient.subscribe(requestId, 'search', this.conversationId());
+        
+        // Start polling fallback (every 800ms, max 20s)
+        this.startPolling(resultUrl, query);
+        
+      } else {
+        // HTTP 200: Sync mode (fallback)
+        const syncResponse = response as SearchResponse;
+        this.currentRequestId.set(syncResponse.requestId);
+        this.handleSearchResponse(syncResponse, query);
+      }
       
     } catch (error) {
-      console.error('[SearchFacade] Async search error:', error);
+      console.error('[SearchFacade] Search error:', error);
       this.searchStore.setError(error as any);
       this.searchStore.setLoading(false);
       this.assistantStatus.set('failed');
       this.wsError.set('Search failed. Please try again.');
       this.inputStateMachine.searchFailed();
     }
+  }
+  
+  /**
+   * Start polling for async search results
+   */
+  private startPolling(resultUrl: string, query: string): void {
+    const pollInterval = 800; // 800ms
+    const maxDuration = 20000; // 20 seconds
+    const startTime = Date.now();
+    
+    console.log('[SearchFacade] Starting polling', { resultUrl, pollInterval, maxDuration });
+    
+    // Set timeout to stop polling after maxDuration
+    this.pollingTimeoutId = setTimeout(() => {
+      console.warn('[SearchFacade] Polling timeout reached');
+      this.cancelPolling();
+      // Don't fail - results may still come via WS
+      // Just slow down polling to every 2s
+      this.startSlowPolling(resultUrl, query);
+    }, maxDuration);
+    
+    // Start polling
+    this.pollingIntervalId = setInterval(async () => {
+      try {
+        const pollResponse = await firstValueFrom(this.searchApiClient.pollResult(resultUrl));
+        
+        // Check if it's PENDING (202) or DONE (200)
+        if ('status' in pollResponse && pollResponse.status === 'PENDING') {
+          console.log('[SearchFacade] Poll PENDING, continuing...');
+          return; // Continue polling
+        }
+        
+        // Got results! (200) - narrow type to SearchResponse
+        const doneResponse = pollResponse as SearchResponse;
+        console.log('[SearchFacade] Poll DONE', { resultCount: doneResponse.results.length });
+        this.cancelPolling();
+        this.handleSearchResponse(doneResponse, query);
+        
+      } catch (error) {
+        console.error('[SearchFacade] Poll error:', error);
+        // Continue polling - might be transient error
+      }
+    }, pollInterval);
+  }
+  
+  /**
+   * Start slow polling after timeout (every 2s)
+   */
+  private startSlowPolling(resultUrl: string, query: string): void {
+    console.log('[SearchFacade] Starting slow polling (2s interval)');
+    
+    this.pollingIntervalId = setInterval(async () => {
+      try {
+        const pollResponse = await firstValueFrom(this.searchApiClient.pollResult(resultUrl));
+        
+        if ('status' in pollResponse && pollResponse.status === 'PENDING') {
+          console.log('[SearchFacade] Slow poll PENDING...');
+          return;
+        }
+        
+        const doneResponse = pollResponse as SearchResponse;
+        console.log('[SearchFacade] Slow poll DONE', { resultCount: doneResponse.results.length });
+        this.cancelPolling();
+        this.handleSearchResponse(doneResponse, query);
+        
+      } catch (error) {
+        console.error('[SearchFacade] Slow poll error:', error);
+      }
+    }, 2000);
+  }
+  
+  /**
+   * Cancel polling timers
+   */
+  private cancelPolling(): void {
+    if (this.pollingIntervalId) {
+      clearInterval(this.pollingIntervalId);
+      this.pollingIntervalId = undefined;
+    }
+    if (this.pollingTimeoutId) {
+      clearTimeout(this.pollingTimeoutId);
+      this.pollingTimeoutId = undefined;
+    }
+  }
+  
+  /**
+   * Handle search response (from sync, polling, or WS)
+   */
+  private handleSearchResponse(response: SearchResponse, query: string): void {
+    // Only process if we're still on this search
+    if (this.searchStore.query() !== query) {
+      console.log('[SearchFacade] Ignoring stale response for:', query);
+      return;
+    }
+    
+    console.log('[SearchFacade] Handling search response', {
+      requestId: response.requestId,
+      resultCount: response.results.length
+    });
+    
+    // Store requestId if not already set
+    if (!this.currentRequestId()) {
+      this.currentRequestId.set(response.requestId);
+    }
+    
+    // Update store with full response
+    this.searchStore.setResponse(response);
+    this.searchStore.setLoading(false);
+    
+    // Update input state machine
+    this.inputStateMachine.searchComplete();
+    
+    console.log('[SearchFacade] Search completed', {
+      requestId: response.requestId,
+      resultCount: response.results.length
+    });
   }
   
   /**
@@ -230,6 +337,13 @@ export class SearchFacade {
       return;
     }
     
+    // Check if it's a search contract event
+    if ('channel' in msg && msg.channel === 'search') {
+      this.handleSearchEvent(msg as any);
+      return;
+    }
+    
+    // Legacy assistant events
     switch (msg.type) {
       case 'status':
         this.assistantStatus.set(msg.status);
@@ -257,6 +371,50 @@ export class SearchFacade {
         console.error('[SearchFacade] Assistant error', msg);
         this.wsError.set(msg.message);
         this.assistantStatus.set('failed');
+        break;
+    }
+  }
+  
+  /**
+   * Handle search contract events (progress, ready, error)
+   */
+  private handleSearchEvent(event: import('../contracts/search.contracts').WsSearchEvent): void {
+    const requestId = event.requestId;
+    
+    switch (event.type) {
+      case 'progress':
+        console.log('[SearchFacade] WS progress:', event.stage, event.message);
+        // Keep showing loading state
+        break;
+        
+      case 'ready':
+        console.log('[SearchFacade] WS ready:', event.ready, event.resultUrl);
+        
+        if (event.ready === 'results' && event.resultUrl) {
+          // Stop polling - results are ready
+          this.cancelPolling();
+          
+          // Fetch results via GET (authoritative source)
+          firstValueFrom(this.searchApiClient.pollResult(event.resultUrl))
+            .then(response => {
+              if (!('status' in response)) {
+                const doneResponse = response as SearchResponse;
+                this.handleSearchResponse(doneResponse, this.searchStore.query());
+              }
+            })
+            .catch(error => {
+              console.error('[SearchFacade] WS-triggered fetch failed:', error);
+            });
+        }
+        break;
+        
+      case 'error':
+        console.error('[SearchFacade] WS search error:', event.code, event.message);
+        this.cancelPolling();
+        this.searchStore.setError(event.message);
+        this.searchStore.setLoading(false);
+        this.assistantStatus.set('failed');
+        this.wsError.set(event.message);
         break;
     }
   }

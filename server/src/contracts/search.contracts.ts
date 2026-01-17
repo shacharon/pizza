@@ -48,6 +48,7 @@ export type WsSearchEvent =
         decision: SearchDecision;
         message?: string;
         resultUrl?: string; // only when ready=results
+        resultCount?: number; // only when ready=results
     }
     | {
         channel: "search";
