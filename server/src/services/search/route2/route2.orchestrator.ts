@@ -19,6 +19,8 @@ import { executeIntentStage } from './stages/intent/intent.stage.js';
 import { executeRouteLLM } from './stages/route-llm/route-llm.dispatcher.js';
 import { executeGoogleMapsStage } from './stages/google-maps.stage.js';
 import { resolveUserRegionCode } from './utils/region-resolver.js';
+import { resolveBaseFiltersLLM } from './shared/base-filters-llm.js';
+import { tightenSharedFilters } from './shared/shared-filters.tighten.js';
 import { logger } from '../../../lib/logger/structured-logger.js';
 import { wsManager } from '../../../server.js';
 
@@ -188,6 +190,66 @@ export async function searchRoute2(
       region: mapping.region,
       language: mapping.language
     }, '[ROUTE2] Route-LLM mapping completed');
+
+    // SHARED FILTERS: Resolve base filters via LLM
+    const baseFilters = await resolveBaseFiltersLLM({
+      query: request.query,
+      route: intentDecision.route,
+      llmProvider: ctx.llmProvider,
+      requestId: ctx.requestId,
+      ...(ctx.traceId && { traceId: ctx.traceId }),
+      ...(ctx.sessionId && { sessionId: ctx.sessionId })
+    });
+
+    // SHARED FILTERS: Tighten to final filters
+    const { filters: finalFilters, regionSource, languageSource } = await tightenSharedFilters({
+      base: baseFilters,
+      intent: intentDecision,
+      mapping,
+      userLocation: request.userLocation,
+      deviceRegionCode: ctx.userRegionCode,
+      gateLanguage: gateResult.gate.language,
+      defaultRegion: ctx.userRegionCode || 'IL',
+      requestId: ctx.requestId
+    });
+
+    // Store in context
+    ctx.sharedFilters = {
+      preGoogle: baseFilters,
+      final: finalFilters
+    };
+
+    // APPLY OVERRIDE: Apply final filters to mapping before Google call
+    const originalMapping = { ...mapping };
+    mapping.language = finalFilters.providerLanguage; // Use providerLanguage for Google API
+    mapping.region = finalFilters.regionCode;
+
+    // Determine if values were actually overridden (not locked by intent)
+    const languageOverridden = originalMapping.language !== mapping.language && languageSource !== 'intent_locked';
+    const regionOverridden = originalMapping.region !== mapping.region && regionSource !== 'intent_locked';
+
+    logger.info({
+      requestId,
+      pipelineVersion: 'route2',
+      event: 'shared_filters_applied_to_mapping',
+      providerMethod: mapping.providerMethod,
+      uiLanguage: finalFilters.uiLanguage,
+      providerLanguage: finalFilters.providerLanguage,
+      regionCode: finalFilters.regionCode,
+      openNow: finalFilters.openNow,
+      sources: {
+        language: languageSource,
+        region: regionSource
+      },
+      overridden: {
+        language: languageOverridden,
+        region: regionOverridden
+      },
+      locked: {
+        language: languageSource === 'intent_locked',
+        region: regionSource === 'intent_locked'
+      }
+    }, '[ROUTE2] Shared filters applied to mapping');
 
     // STAGE 4: GOOGLE_MAPS
     const googleResult = await executeGoogleMapsStage(mapping, request, ctx);

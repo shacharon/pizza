@@ -13,6 +13,10 @@ import { buildLLMJsonSchema } from '../../../../../llm/types.js';
 import { logger } from '../../../../../lib/logger/structured-logger.js';
 import { TextSearchMappingSchema, type TextSearchMapping } from './schemas.js';
 
+// Default radius for location bias (meters)
+const DEFAULT_BIAS_RADIUS = 5000; // 5km for city-level searches
+const USER_LOCATION_RADIUS = 3000; // 3km for user location bias
+
 const TEXTSEARCH_MAPPER_VERSION = 'textsearch_mapper_v1';
 
 const TEXTSEARCH_MAPPER_PROMPT = `
@@ -138,22 +142,16 @@ export async function executeTextSearchMapper(
           language: intent.language,
           route: intent.route,
           confidence: intent.confidence,
+          reason: intent.reason,
         },
         // what the LLM returned
         mapping,
       }, '[ROUTE2] textsearch_mapper debug_dump');
     }
-    if (mapping.bias !== null) {
-      logger.warn({
-        requestId,
-        pipelineVersion: 'route2',
-        stage: 'textsearch_mapper',
-        event: 'bias_forced_null',
-        receivedBias: mapping.bias,
-      }, '[ROUTE2] textsearch_mapper bias_forced_null');
 
-      mapping.bias = null as any;
-    }
+    // Apply location bias logic
+    const biasResult = applyLocationBias(mapping, intent, request, requestId);
+    mapping.bias = biasResult.bias;
 
     const durationMs = Date.now() - startTime;
 
@@ -165,6 +163,8 @@ export async function executeTextSearchMapper(
       durationMs,
       textQuery: mapping.textQuery,
       hasBias: mapping.bias !== null,
+      biasSource: biasResult.source,
+      biasNullReason: biasResult.nullReason || null,
       region: mapping.region,
       language: mapping.language,
       reason: mapping.reason
@@ -199,4 +199,125 @@ function buildUserPrompt(
   return `Query: "${query}"
 Region: ${intent.region}
 Language: ${intent.language}`;
+}
+
+/**
+ * Apply location bias logic to text search mapping
+ * 
+ * Rules:
+ * 1) If userLocation exists → set bias = locationBias(userLocation, USER_LOCATION_RADIUS)
+ * 2) Else if intent.reason === "city_text" → resolve city center and set bias (TODO: implement geocoding)
+ * 3) Never allow bias with lat/lng = 0
+ * 4) Only force bias=null when reason === "food_only" AND no location signal exists
+ * 
+ * @returns Object with bias, source, and nullReason
+ */
+function applyLocationBias(
+  mapping: TextSearchMapping,
+  intent: IntentResult,
+  request: SearchRequest,
+  requestId?: string
+): {
+  bias: TextSearchMapping['bias'];
+  source: 'user_location' | 'city_geocode' | null;
+  nullReason?: string;
+} {
+  // Rule 1: User location bias (highest priority)
+  if (request.userLocation) {
+    const { lat, lng } = request.userLocation;
+
+    // Guard: Never allow 0,0 coordinates
+    if (lat === 0 && lng === 0) {
+      logger.warn({
+        requestId,
+        pipelineVersion: 'route2',
+        stage: 'textsearch_mapper',
+        event: 'bias_rejected_zero_coords',
+        userLocation: request.userLocation
+      }, '[ROUTE2] Rejected bias with lat/lng = 0');
+
+      return {
+        bias: null,
+        source: null,
+        nullReason: 'zero_coordinates'
+      };
+    }
+
+    logger.info({
+      requestId,
+      pipelineVersion: 'route2',
+      stage: 'textsearch_mapper',
+      event: 'bias_applied',
+      source: 'user_location',
+      center: { lat, lng },
+      radiusMeters: USER_LOCATION_RADIUS
+    }, '[ROUTE2] Applied location bias from user location');
+
+    return {
+      bias: {
+        type: 'locationBias',
+        center: { lat, lng },
+        radiusMeters: USER_LOCATION_RADIUS
+      },
+      source: 'user_location'
+    };
+  }
+
+  // Rule 2: City geocoding bias (for city_text queries)
+  if (intent.reason === 'city_text') {
+    // TODO: Implement city center geocoding
+    // For now, we'll need to extract city name from textQuery and geocode it
+    // This requires a geocoding service integration
+    logger.info({
+      requestId,
+      pipelineVersion: 'route2',
+      stage: 'textsearch_mapper',
+      event: 'bias_city_geocode_needed',
+      intentReason: intent.reason,
+      textQuery: mapping.textQuery
+    }, '[ROUTE2] City geocoding needed but not yet implemented');
+
+    // Fall through to no bias for now
+    // When implemented, this should return:
+    // return {
+    //   bias: { type: 'locationBias', center: { lat, lng }, radiusMeters: DEFAULT_BIAS_RADIUS },
+    //   source: 'city_geocode'
+    // };
+  }
+
+  // Rule 4: Force null for food_only without location signal
+  if (mapping.reason === 'food_only') {
+    logger.info({
+      requestId,
+      pipelineVersion: 'route2',
+      stage: 'textsearch_mapper',
+      event: 'bias_nullified',
+      mapperReason: mapping.reason,
+      intentReason: intent.reason,
+      explanation: 'food_only query without location signal - relying on textQuery location'
+    }, '[ROUTE2] Bias nullified for food_only query');
+
+    return {
+      bias: null,
+      source: null,
+      nullReason: 'food_only_no_location'
+    };
+  }
+
+  // Default: No bias (textQuery contains location, let Google handle it)
+  logger.info({
+    requestId,
+    pipelineVersion: 'route2',
+    stage: 'textsearch_mapper',
+    event: 'bias_not_applied',
+    mapperReason: mapping.reason,
+    intentReason: intent.reason,
+    explanation: 'textQuery contains location information'
+  }, '[ROUTE2] No bias applied - using textQuery location');
+
+  return {
+    bias: null,
+    source: null,
+    nullReason: 'text_query_has_location'
+  };
 }

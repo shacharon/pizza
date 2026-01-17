@@ -8,9 +8,11 @@
 import type { SearchRequest } from '../types/search-request.dto.js';
 import type { SearchResponse } from '../types/search-response.dto.js';
 import type { LLMProvider } from '../../../llm/types.js';
+import type { PreGoogleBaseFilters, FinalSharedFilters } from './shared/shared-filters.types.js';
 
 // Re-export for convenience
 export type { SearchRequest, SearchResponse };
+export type { PreGoogleBaseFilters, FinalSharedFilters };
 
 /**
  * ROUTE2 Pipeline Context
@@ -31,6 +33,11 @@ export interface Route2Context {
   userRegionCode?: 'IL' | 'OTHER';
   queryRegionCode?: 'IL' | 'OTHER';
   regionCodeFinal?: 'IL' | 'OTHER';
+  // Shared filters: Pre-Google (base) and Final (tightened)
+  sharedFilters?: {
+    preGoogle?: PreGoogleBaseFilters;
+    final?: FinalSharedFilters;
+  };
 }
 
 // Gate2 specific types

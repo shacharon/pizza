@@ -289,6 +289,20 @@ async function callGooglePlacesSearchText(
 function buildNearbySearchBody(
   mapping: Extract<RouteLLMMapping, { providerMethod: 'nearbySearch' }>
 ): any {
+  // Normalize keyword for non-IL regions
+  let normalizedKeyword = mapping.keyword;
+  if (mapping.region && mapping.region !== 'IL') {
+    // Convert to English with "restaurant" suffix
+    if (mapping.keyword.includes('איטלק') || mapping.keyword.toLowerCase().includes('italian')) {
+      normalizedKeyword = 'Italian restaurant';
+    } else {
+      // Generic: append "restaurant" if not present
+      normalizedKeyword = mapping.keyword.toLowerCase().includes('restaurant')
+        ? mapping.keyword
+        : `${mapping.keyword} restaurant`;
+    }
+  }
+
   const body: any = {
     locationRestriction: {
       circle: {
@@ -655,6 +669,20 @@ async function executeLandmarkPlan(
     let results: any[] = [];
 
     if (mapping.afterGeocode === 'nearbySearch') {
+      // Normalize keyword for non-IL regions
+      let normalizedKeyword = mapping.keyword;
+      if (mapping.region && mapping.region !== 'IL') {
+        // Convert to English with "restaurant" suffix
+        if (mapping.keyword.includes('איטלק') || mapping.keyword.toLowerCase().includes('italian')) {
+          normalizedKeyword = 'Italian restaurant';
+        } else {
+          // Generic: append "restaurant" if not present
+          normalizedKeyword = mapping.keyword.toLowerCase().includes('restaurant')
+            ? mapping.keyword
+            : `${mapping.keyword} restaurant`;
+        }
+      }
+
       // Use Nearby Search centered on geocoded location
       const requestBody = {
         locationRestriction: {
@@ -674,6 +702,13 @@ async function executeLandmarkPlan(
       if (mapping.region) {
         (requestBody as any).regionCode = mapping.region;
       }
+
+      logger.debug({
+        requestId,
+        originalKeyword: mapping.keyword,
+        normalizedKeyword,
+        region: mapping.region
+      }, '[GOOGLE] Keyword normalized for nearby search');
 
       const response = await callGooglePlacesSearchNearby(requestBody, apiKey, requestId);
       if (response.places) {

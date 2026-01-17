@@ -13,7 +13,7 @@ import { buildLLMJsonSchema } from '../../../../../llm/types.js';
 import { logger } from '../../../../../lib/logger/structured-logger.js';
 import { LandmarkMappingSchema, type LandmarkMapping } from './schemas.js';
 
-const LANDMARK_MAPPER_VERSION = 'landmark_mapper_v2';
+const LANDMARK_MAPPER_VERSION = 'landmark_mapper_v3';
 
 const LANDMARK_MAPPER_PROMPT = `You are a landmark geocoding planner.
 
@@ -34,9 +34,8 @@ Rules for geocodeQuery:
 - If query has "X meters from <landmark>", extract ONLY the landmark name
 - Include city if ambiguous (e.g., "Azrieli Center Tel Aviv", not just "Azrieli")
 - Examples:
-  * "מסעדות איטלקיות 800 מטר משער הניצחון" → geocodeQuery: "Arc de Triomphe Paris"
-  * "פיצה ליד דיזנגוף סנטר" → geocodeQuery: "Dizengoff Center Tel Aviv"
-  * "מרינה הרצליה חומוס" → geocodeQuery: "Marina Herzliya Israel"
+  * "פיצה ליד דיזנגוף סנטר" → "Dizengoff Center Tel Aviv"
+  * "מרינה הרצליה חומוס" → "Marina Herzliya Israel"
 - Keep in original language or translate to English for foreign landmarks
 
 Rules for afterGeocode:
@@ -123,6 +122,7 @@ export async function executeLandmarkMapper(
 
     const durationMs = Date.now() - startTime;
 
+    // Debug dump
     logger.info({
       requestId,
       pipelineVersion: 'route2',
@@ -164,7 +164,9 @@ function buildUserPrompt(
   query: string,
   intent: IntentResult
 ): string {
-  return `Query: "${query}"
+  const prompt = `Query: "${query}"
 Region: ${intent.region}
 Language: ${intent.language}`;
+
+  return prompt;
 }

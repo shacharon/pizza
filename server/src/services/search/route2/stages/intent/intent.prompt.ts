@@ -7,7 +7,7 @@ import { createHash } from 'crypto';
 import { buildLLMJsonSchema } from '../../../../../llm/types.js';
 import { IntentLLMSchema } from './intent.types.js';
 
-export const INTENT_PROMPT_VERSION = 'intent_v3';
+export const INTENT_PROMPT_VERSION = 'intent_v4';
 
 export const INTENT_SYSTEM_PROMPT = `You are a router for food search.
 
