@@ -142,6 +142,7 @@ export interface SearchErrorResponse {
  * Creates a successful search response
  */
 export function createSearchResponse(params: {
+  requestId: string;
   sessionId: string;
   originalQuery: string;
   intent: ParsedIntent;
@@ -211,6 +212,7 @@ export function createSearchResponse(params: {
   };
 }): SearchResponse {
   const response: SearchResponse = {
+    requestId: params.requestId,
     sessionId: params.sessionId,
     query: {
       original: params.originalQuery,

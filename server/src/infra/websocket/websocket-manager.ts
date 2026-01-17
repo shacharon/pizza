@@ -48,7 +48,7 @@ export class WebSocketManager {
           allowedOrigins: this.config.allowedOrigins,
           env: process.env.NODE_ENV
         }, 'SECURITY: WebSocket allowedOrigins must be explicitly set in production (not *)');
-        
+
         // In production, reject all if misconfigured
         this.config.allowedOrigins = ['__PRODUCTION_MISCONFIGURED__'];
       }
@@ -112,7 +112,7 @@ export class WebSocketManager {
 
   private handleMessage(ws: WebSocket, data: any, clientId: string): void {
     let message: any;
-    
+
     try {
       const raw = data.toString();
       message = JSON.parse(raw);
@@ -164,7 +164,7 @@ export class WebSocketManager {
     if (!isWSClientMessage(message)) {
       const isSubscribe = message?.type === 'subscribe';
       const hasRequestId = 'requestId' in (message || {});
-      
+
       logger.warn({
         clientId,
         messageType: message?.type || 'undefined',
@@ -217,14 +217,14 @@ export class WebSocketManager {
         // Normalize legacy to canonical
         const canonical = normalizeToCanonical(message);
         const envelope = canonical as any;
-        
+
         const channel: WSChannel = envelope.channel || 'search';
         const requestId = envelope.requestId;
         const sessionId = envelope.sessionId;
-        
+
         // Subscribe using channel-based key
         this.subscribeToChannel(channel, requestId, sessionId, ws);
-        
+
         // Minimal logging (no status check for search)
         if (channel === 'search') {
           logger.info({
@@ -232,7 +232,7 @@ export class WebSocketManager {
             channel,
             requestId
           }, 'websocket_subscribed');
-          
+
           // Phase 3: Late-subscriber replay
           this.replayStateIfAvailable(requestId, ws, clientId);
         } else {
@@ -254,9 +254,9 @@ export class WebSocketManager {
         const channel: WSChannel = envelope.channel;
         const requestId = envelope.requestId;
         const sessionId = envelope.sessionId;
-        
+
         this.unsubscribeFromChannel(channel, requestId, sessionId, ws);
-        
+
         logger.info({
           clientId,
           channel,
@@ -306,11 +306,11 @@ export class WebSocketManager {
 
     try {
       const state = await this.requestStateStore.get(requestId);
-      
+
       if (!state) {
         return 'not_found'; // Request doesn't exist or expired
       }
-      
+
       // Map assistant status to subscribe log status
       switch (state.assistantStatus) {
         case 'pending':
@@ -394,10 +394,10 @@ export class WebSocketManager {
 
   private handleClose(ws: WebSocket, clientId: string, code: number, reasonBuffer: Buffer): void {
     this.cleanup(ws);
-    
+
     const reason = reasonBuffer?.toString() || '';
     const wasClean = code === 1000 || code === 1001;
-    
+
     logger.info({
       clientId,
       code,
@@ -421,7 +421,7 @@ export class WebSocketManager {
     if (channel === 'search') {
       return `search:${requestId}`;
     }
-    
+
     // Assistant channel: prefer session-based
     if (sessionId) {
       return `${channel}:${sessionId}`;
@@ -439,7 +439,7 @@ export class WebSocketManager {
     client: WebSocket
   ): void {
     const key = this.buildSubscriptionKey(channel, requestId, sessionId);
-    
+
     // Add to subscriptions map
     if (!this.subscriptions.has(key)) {
       this.subscriptions.set(key, new Set());
@@ -470,7 +470,7 @@ export class WebSocketManager {
     client: WebSocket
   ): void {
     const key = this.buildSubscriptionKey(channel, requestId, sessionId);
-    
+
     const subscribers = this.subscriptions.get(key);
     if (subscribers) {
       subscribers.delete(client);
@@ -606,7 +606,7 @@ export class WebSocketManager {
           this.cleanup(ws);
           ws.terminate();
           terminatedCount++;
-          
+
           // Log individual heartbeat termination with clientId
           if (ws.clientId) {
             logger.info({
