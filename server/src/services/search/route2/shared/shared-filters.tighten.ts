@@ -220,6 +220,8 @@ export async function tightenSharedFilters(params: {
         uiLanguage: resolvedUiLanguage,
         providerLanguage: resolvedProviderLanguage,
         openState: base.openState,
+        openAt: base.openAt,
+        openBetween: base.openBetween,
         regionCode: resolvedRegion,
         disclaimers: {
             hours: true,

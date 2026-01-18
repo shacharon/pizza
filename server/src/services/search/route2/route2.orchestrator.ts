@@ -20,7 +20,7 @@ import { executeRouteLLM } from './stages/route-llm/route-llm.dispatcher.js';
 import { executeGoogleMapsStage } from './stages/google-maps.stage.js';
 import { resolveUserRegionCode } from './utils/region-resolver.js';
 import { resolveBaseFiltersLLM } from './shared/base-filters-llm.js';
-import { tightenSharedFilters } from './shared/shared-filters.tighten.js';
+import { resolveFilters } from './shared/filters-resolver.js';
 import { applyPostFilters } from './post-filters/post-results.filter.js';
 import { logger } from '../../../lib/logger/structured-logger.js';
 import { wsManager } from '../../../server.js';
@@ -202,15 +202,11 @@ export async function searchRoute2(
       ...(ctx.sessionId && { sessionId: ctx.sessionId })
     });
 
-    // SHARED FILTERS: Tighten to final filters
-    const { filters: finalFilters, regionSource, languageSource } = await tightenSharedFilters({
+    // FILTERS: Resolve base filters to final filters
+    const finalFilters = await resolveFilters({
       base: baseFilters,
       intent: intentDecision,
-      mapping,
-      userLocation: request.userLocation,
       deviceRegionCode: ctx.userRegionCode,
-      gateLanguage: gateResult.gate.language,
-      defaultRegion: ctx.userRegionCode || 'IL',
       requestId: ctx.requestId
     });
 
@@ -220,37 +216,9 @@ export async function searchRoute2(
       final: finalFilters
     };
 
-    // APPLY OVERRIDE: Apply final filters to mapping before Google call
-    const originalMapping = { ...mapping };
-    mapping.language = finalFilters.providerLanguage; // Use providerLanguage for Google API
+    // Apply language/region to mapping (simple passthrough)
+    mapping.language = finalFilters.providerLanguage;
     mapping.region = finalFilters.regionCode;
-
-    // Determine if values were actually overridden (not locked by intent)
-    const languageOverridden = originalMapping.language !== mapping.language && languageSource !== 'intent_locked';
-    const regionOverridden = originalMapping.region !== mapping.region && regionSource !== 'intent_locked';
-
-    logger.info({
-      requestId,
-      pipelineVersion: 'route2',
-      event: 'shared_filters_applied_to_mapping',
-      providerMethod: mapping.providerMethod,
-      uiLanguage: finalFilters.uiLanguage,
-      providerLanguage: finalFilters.providerLanguage,
-      regionCode: finalFilters.regionCode,
-      openState: finalFilters.openState,
-      sources: {
-        language: languageSource,
-        region: regionSource
-      },
-      overridden: {
-        language: languageOverridden,
-        region: regionOverridden
-      },
-      locked: {
-        language: languageSource === 'intent_locked',
-        region: regionSource === 'intent_locked'
-      }
-    }, '[ROUTE2] Shared filters applied to mapping');
 
     // STAGE 4: GOOGLE_MAPS
     const googleResult = await executeGoogleMapsStage(mapping, request, ctx);

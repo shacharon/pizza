@@ -13,10 +13,6 @@ import { buildLLMJsonSchema } from '../../../../../llm/types.js';
 import { logger } from '../../../../../lib/logger/structured-logger.js';
 import { TextSearchMappingSchema, type TextSearchMapping } from './schemas.js';
 
-// Default radius for location bias (meters)
-const DEFAULT_BIAS_RADIUS = 5000; // 5km for city-level searches
-const USER_LOCATION_RADIUS = 3000; // 3km for user location bias
-
 const TEXTSEARCH_MAPPER_VERSION = 'textsearch_mapper_v1';
 
 const TEXTSEARCH_MAPPER_PROMPT = `
@@ -33,39 +29,32 @@ Output ONLY JSON with ALL fields:
 }
 
 Core goal:
-Preserve the user's intent for Google Places Text Search, maximizing relevance. Do NOT drop place-type intent.
+Preserve the user's original query as much as possible for Google Places Text Search. Only remove obvious filler words.
 
 Rules for textQuery:
-1) Keep original language. Do NOT translate.
-2) Remove filler only (e.g., "תמצא לי", "בבקשה", "הכי טוב", "קרוב", "בא לי").
-3) ALWAYS preserve a PLACE-TYPE token if implied or explicit:
-   - If the query contains or implies a venue search (restaurant/cafe/bar/food place), ensure textQuery includes a place-type word:
-     - Hebrew: include "מסעדה" (or "בית קפה"/"בר" if explicitly requested)
-     - English: include "restaurant" (or "cafe"/"bar" if explicitly requested)
-4) Preserve dietary/service modifiers (e.g., "חלבית", "בשרית", "כשר", "טבעוני", "ללא גלוטן", "משלוח") but NEVER let them replace the place-type.
-   - Bad: "חלבית אשקלון"
-   - Good: "מסעדה חלבית אשקלון"
-5) Preserve the location (city/neighborhood/landmark) exactly as given.
-6) If the query is a specific FOOD ITEM/category (pizza/sushi/shawarma/etc) and no place-type was requested explicitly, do NOT force-add "מסעדה".
-   - Keep it as food + location.
-7) Keep textQuery short: [food/place-type + modifiers + location], no extra words.
+1) **PRESERVE the original query structure**: Keep prepositions (ב/in/at), conjunctions, and location phrases intact.
+2) Keep original language. Do NOT translate.
+3) Remove ONLY filler/politeness words (e.g., "תמצא לי", "בבקשה", "הכי טוב", "אני רוצה", "please find").
+4) **DO NOT remove prepositions**: Keep "ב" (in/at), "של" (of), "עם" (with), etc.
+5) If place-type is missing AND clearly implied (e.g., "חלבית באשקלון" = dairy in Ashdod), you MAY add "מסעדה" prefix.
+6) Otherwise, return the query almost unchanged (minus filler only).
 
 Bias rules:
 - ALWAYS output bias as null. (bias is handled outside this mapper)
 
 Reason rules (one token):
-- "place_type_preserved" if you kept/added a place-type token
-- "modifier_kept" if you kept dietary/service modifiers
-- "query_cleaned" if you mainly removed filler
-- "food_only" if it is food-item search without place-type
+- "original_preserved" if you kept query mostly unchanged
+- "place_type_added" if you added missing place-type
+- "filler_removed" if you removed filler words
 
 Examples (must follow exactly):
-- "פיצה בגדרה" -> {"providerMethod":"textSearch","textQuery":"פיצה גדרה","region":"IL","language":"he","bias":null,"reason":"food_only"}
-- "מסעדה בשרית באשקלון" -> {"providerMethod":"textSearch","textQuery":"מסעדה בשרית אשקלון","region":"IL","language":"he","bias":null,"reason":"place_type_preserved"}
-- "מסעדה חלבית באשקלון" -> {"providerMethod":"textSearch","textQuery":"מסעדה חלבית אשקלון","region":"IL","language":"he","bias":null,"reason":"place_type_preserved"}
-- "מסעדה כשרה בגדרה" -> {"providerMethod":"textSearch","textQuery":"מסעדה כשרה גדרה","region":"IL","language":"he","bias":null,"reason":"place_type_preserved"}
-- "sushi in haifa" -> {"providerMethod":"textSearch","textQuery":"sushi haifa","region":"IL","language":"en","bias":null,"reason":"food_only"}
-- "kosher restaurant in haifa" -> {"providerMethod":"textSearch","textQuery":"kosher restaurant haifa","region":"IL","language":"en","bias":null,"reason":"place_type_preserved"}
+- "מסעדות איטלקיות בגדרה" -> {"providerMethod":"textSearch","textQuery":"מסעדות איטלקיות בגדרה","region":"IL","language":"he","bias":null,"reason":"original_preserved"}
+- "פיצה בגדרה" -> {"providerMethod":"textSearch","textQuery":"פיצה בגדרה","region":"IL","language":"he","bias":null,"reason":"original_preserved"}
+- "מסעדה בשרית באשקלון" -> {"providerMethod":"textSearch","textQuery":"מסעדה בשרית באשקלון","region":"IL","language":"he","bias":null,"reason":"original_preserved"}
+- "חלבית באשקלון" -> {"providerMethod":"textSearch","textQuery":"מסעדה חלבית באשקלון","region":"IL","language":"he","bias":null,"reason":"place_type_added"}
+- "תמצא לי מסעדה כשרה בגדרה" -> {"providerMethod":"textSearch","textQuery":"מסעדה כשרה בגדרה","region":"IL","language":"he","bias":null,"reason":"filler_removed"}
+- "sushi in haifa" -> {"providerMethod":"textSearch","textQuery":"sushi in haifa","region":"IL","language":"en","bias":null,"reason":"original_preserved"}
+- "kosher restaurant in haifa" -> {"providerMethod":"textSearch","textQuery":"kosher restaurant in haifa","region":"IL","language":"en","bias":null,"reason":"original_preserved"}
 
 Return ONLY the JSON object.
 
@@ -127,7 +116,11 @@ export async function executeTextSearchMapper(
       TEXTSEARCH_JSON_SCHEMA
     );
 
-    // DEV-ONLY: dump mapper inputs/outputs for debugging
+    // Apply location bias logic (TEXTSEARCH always returns null)
+    const biasResult = applyLocationBias(mapping, intent, request, requestId);
+    mapping.bias = biasResult.bias;
+
+    // DEV-ONLY: dump mapper inputs/outputs for debugging (after bias decision)
     if (process.env.NODE_ENV !== 'production') {
       logger.info({
         requestId,
@@ -144,14 +137,10 @@ export async function executeTextSearchMapper(
           confidence: intent.confidence,
           reason: intent.reason,
         },
-        // what the LLM returned
+        // final mapping (after bias decision)
         mapping,
       }, '[ROUTE2] textsearch_mapper debug_dump');
     }
-
-    // Apply location bias logic
-    const biasResult = applyLocationBias(mapping, intent, request, requestId);
-    mapping.bias = biasResult.bias;
 
     const durationMs = Date.now() - startTime;
 
@@ -162,7 +151,7 @@ export async function executeTextSearchMapper(
       event: 'stage_completed',
       durationMs,
       textQuery: mapping.textQuery,
-      hasBias: mapping.bias !== null,
+      hasBias: mapping.bias !== null && mapping.bias !== undefined,
       biasSource: biasResult.source,
       biasNullReason: biasResult.nullReason || null,
       region: mapping.region,
@@ -175,18 +164,79 @@ export async function executeTextSearchMapper(
   } catch (error) {
     const durationMs = Date.now() - startTime;
     const errorMsg = error instanceof Error ? error.message : 'unknown';
+    const isTimeout = errorMsg.includes('timeout') || errorMsg.includes('abort');
 
-    logger.error({
+    logger.warn({
       requestId,
       pipelineVersion: 'route2',
       stage: 'textsearch_mapper',
-      event: 'stage_failed',
+      event: 'mapper_llm_failed',
       durationMs,
-      error: errorMsg
-    }, '[ROUTE2] textsearch_mapper failed');
+      error: errorMsg,
+      isTimeout,
+      fallbackStrategy: 'deterministic_mapping'
+    }, '[ROUTE2] textsearch_mapper LLM failed, building deterministic fallback');
 
-    throw error;
+    // Build deterministic fallback mapping
+    const fallbackMapping = buildDeterministicMapping(intent, request, requestId);
+    
+    logger.info({
+      requestId,
+      pipelineVersion: 'route2',
+      stage: 'textsearch_mapper',
+      event: 'stage_completed',
+      durationMs,
+      textQuery: fallbackMapping.textQuery,
+      hasBias: fallbackMapping.bias !== null,
+      biasSource: 'deterministic_fallback',
+      region: fallbackMapping.region,
+      language: fallbackMapping.language,
+      reason: fallbackMapping.reason,
+      fallback: true
+    }, '[ROUTE2] textsearch_mapper completed with deterministic fallback');
+
+    return fallbackMapping;
   }
+}
+
+/**
+ * Build deterministic mapping when LLM fails/times out
+ */
+function buildDeterministicMapping(
+  intent: IntentResult,
+  request: SearchRequest,
+  requestId?: string
+): TextSearchMapping {
+  // Clean query: remove status words and trim
+  const statusWords = ['פתוחות', 'פתוח', 'סגורות', 'סגור', 'open', 'closed'];
+  let cleanedQuery = request.query;
+  for (const word of statusWords) {
+    cleanedQuery = cleanedQuery.replace(new RegExp(`\\b${word}\\b`, 'gi'), '');
+  }
+  cleanedQuery = cleanedQuery.trim().replace(/\s+/g, ' ');
+
+  // TEXTSEARCH: No automatic bias (textQuery contains location)
+  const mapping: TextSearchMapping = {
+    providerMethod: 'textSearch',
+    textQuery: cleanedQuery,
+    region: intent.region,
+    language: intent.language,
+    bias: null, // No automatic bias for TEXTSEARCH
+    reason: 'deterministic_fallback'
+  };
+
+  logger.info({
+    requestId,
+    pipelineVersion: 'route2',
+    stage: 'textsearch_mapper',
+    event: 'deterministic_mapping_built',
+    originalQuery: request.query,
+    cleanedQuery,
+    intentReason: intent.reason,
+    hasBias: false
+  }, '[ROUTE2] Built deterministic mapping (no bias)');
+
+  return mapping;
 }
 
 /**
@@ -204,11 +254,10 @@ Language: ${intent.language}`;
 /**
  * Apply location bias logic to text search mapping
  * 
- * Rules:
- * 1) If userLocation exists → set bias = locationBias(userLocation, USER_LOCATION_RADIUS)
- * 2) Else if intent.reason === "city_text" → resolve city center and set bias (TODO: implement geocoding)
- * 3) Never allow bias with lat/lng = 0
- * 4) Only force bias=null when reason === "food_only" AND no location signal exists
+ * TEXTSEARCH Rules (simplified):
+ * - Default: NO location bias (textQuery includes location, Google handles it)
+ * - If query contains explicit city/landmark → bias = null
+ * - Never apply automatic small-radius bias (≤1km)
  * 
  * @returns Object with bias, source, and nullReason
  */
@@ -219,105 +268,25 @@ function applyLocationBias(
   requestId?: string
 ): {
   bias: TextSearchMapping['bias'];
-  source: 'user_location' | 'city_geocode' | null;
+  source: 'user_location' | 'city_geocode' | 'llm_provided' | null;
   nullReason?: string;
 } {
-  // Rule 1: User location bias (highest priority)
-  if (request.userLocation) {
-    const { lat, lng } = request.userLocation;
-
-    // Guard: Never allow 0,0 coordinates
-    if (lat === 0 && lng === 0) {
-      logger.warn({
-        requestId,
-        pipelineVersion: 'route2',
-        stage: 'textsearch_mapper',
-        event: 'bias_rejected_zero_coords',
-        userLocation: request.userLocation
-      }, '[ROUTE2] Rejected bias with lat/lng = 0');
-
-      return {
-        bias: null,
-        source: null,
-        nullReason: 'zero_coordinates'
-      };
-    }
-
-    logger.info({
-      requestId,
-      pipelineVersion: 'route2',
-      stage: 'textsearch_mapper',
-      event: 'bias_applied',
-      source: 'user_location',
-      center: { lat, lng },
-      radiusMeters: USER_LOCATION_RADIUS
-    }, '[ROUTE2] Applied location bias from user location');
-
-    return {
-      bias: {
-        type: 'locationBias',
-        center: { lat, lng },
-        radiusMeters: USER_LOCATION_RADIUS
-      },
-      source: 'user_location'
-    };
-  }
-
-  // Rule 2: City geocoding bias (for city_text queries)
-  if (intent.reason === 'city_text') {
-    // TODO: Implement city center geocoding
-    // For now, we'll need to extract city name from textQuery and geocode it
-    // This requires a geocoding service integration
-    logger.info({
-      requestId,
-      pipelineVersion: 'route2',
-      stage: 'textsearch_mapper',
-      event: 'bias_city_geocode_needed',
-      intentReason: intent.reason,
-      textQuery: mapping.textQuery
-    }, '[ROUTE2] City geocoding needed but not yet implemented');
-
-    // Fall through to no bias for now
-    // When implemented, this should return:
-    // return {
-    //   bias: { type: 'locationBias', center: { lat, lng }, radiusMeters: DEFAULT_BIAS_RADIUS },
-    //   source: 'city_geocode'
-    // };
-  }
-
-  // Rule 4: Force null for food_only without location signal
-  if (mapping.reason === 'food_only') {
-    logger.info({
-      requestId,
-      pipelineVersion: 'route2',
-      stage: 'textsearch_mapper',
-      event: 'bias_nullified',
-      mapperReason: mapping.reason,
-      intentReason: intent.reason,
-      explanation: 'food_only query without location signal - relying on textQuery location'
-    }, '[ROUTE2] Bias nullified for food_only query');
-
-    return {
-      bias: null,
-      source: null,
-      nullReason: 'food_only_no_location'
-    };
-  }
-
-  // Default: No bias (textQuery contains location, let Google handle it)
+  // TEXTSEARCH default: NO bias
+  // The textQuery already includes the location (e.g., "pizza gedera"), let Google handle it
+  
   logger.info({
     requestId,
     pipelineVersion: 'route2',
     stage: 'textsearch_mapper',
-    event: 'bias_not_applied',
-    mapperReason: mapping.reason,
+    event: 'bias_textsearch_no_bias',
+    textQuery: mapping.textQuery,
     intentReason: intent.reason,
-    explanation: 'textQuery contains location information'
-  }, '[ROUTE2] No bias applied - using textQuery location');
+    explanation: 'TEXTSEARCH relies on textQuery location, no automatic bias applied'
+  }, '[ROUTE2] TEXTSEARCH: No bias applied');
 
   return {
     bias: null,
     source: null,
-    nullReason: 'text_query_has_location'
+    nullReason: 'textsearch_no_automatic_bias'
   };
 }

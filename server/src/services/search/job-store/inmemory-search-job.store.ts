@@ -96,7 +96,7 @@ export class InMemorySearchJobStore implements ISearchJobStore {
     }
 
     job.error = { code, message, errorType: errorType || 'UNKNOWN' };
-    job.status = 'FAILED';
+    job.status = 'DONE_FAILED';
     job.updatedAt = Date.now();
 
     logger.warn({
@@ -151,7 +151,7 @@ export class InMemorySearchJobStore implements ISearchJobStore {
 
     return {
       status: job.status,
-      progress: job.progress,
+      ...(job.progress !== undefined && { progress: job.progress }),
       ...(job.error && { error: job.error })
     };
   }

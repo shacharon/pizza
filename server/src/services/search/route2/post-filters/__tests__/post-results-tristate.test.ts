@@ -25,7 +25,7 @@ function createMockPlace(id: string, openNow: boolean | 'UNKNOWN'): any {
 }
 
 // Helper to create mock filters
-function createMockFilters(openState: 'ANY' | 'OPEN_NOW' | 'CLOSED_NOW'): FinalSharedFilters {
+function createMockFilters(openState: 'OPEN_NOW' | 'CLOSED_NOW' | null): FinalSharedFilters {
   return {
     uiLanguage: 'he',
     providerLanguage: 'he',
@@ -42,9 +42,9 @@ console.log('🧪 Running post-results filter tests (tri-state openState)...\n')
 
 let allPass = true;
 
-// Test 1: openState=ANY -> results unchanged
+// Test 1: openState=null -> results unchanged
 {
-  console.log('Test 1: openState=ANY -> results unchanged');
+  console.log('Test 1: openState=null -> results unchanged');
   
   const results = [
     createMockPlace('open1', true),
@@ -52,7 +52,7 @@ let allPass = true;
     createMockPlace('unknown1', 'UNKNOWN')
   ];
   
-  const filters = createMockFilters('ANY');
+  const filters = createMockFilters(null);
   
   const output = applyPostFilters({
     results,
@@ -62,7 +62,7 @@ let allPass = true;
   });
   
   const pass = output.resultsFiltered.length === 3 &&
-               output.applied.openState === 'ANY' &&
+               output.applied.openState === null &&
                output.stats.before === 3 &&
                output.stats.after === 3;
   

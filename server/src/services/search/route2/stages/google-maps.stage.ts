@@ -14,8 +14,8 @@ import type { SearchRequest } from '../../types/search-request.dto.js';
 import type { Route2Context, RouteLLMMapping, GoogleMapsResult } from '../types.js';
 import { logger } from '../../../../lib/logger/structured-logger.js';
 
-// Field mask for Google Places API (New) - minimal fields to preserve current DTOs
-const PLACES_FIELD_MASK = 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.priceLevel,places.currentOpeningHours,places.photos,places.types,places.googleMapsUri';
+// Field mask for Google Places API (New) - includes opening hours data
+const PLACES_FIELD_MASK = 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.priceLevel,places.currentOpeningHours,places.regularOpeningHours,places.utcOffsetMinutes,places.photos,places.types,places.googleMapsUri';
 
 /**
  * Execute GOOGLE_MAPS stage
@@ -107,6 +107,7 @@ export async function executeGoogleMapsStage(
 
 /**
  * Execute Google Places Text Search (New API)
+ * Includes retry logic for low results
  */
 async function executeTextSearch(
   mapping: Extract<RouteLLMMapping, { providerMethod: 'textSearch' }>,
@@ -137,33 +138,46 @@ async function executeTextSearch(
   }
 
   try {
-    const results: any[] = [];
-    let nextPageToken: string | undefined;
-    const maxResults = 20; // Limit total results across pages
+    // First attempt
+    let results = await executeTextSearchAttempt(mapping, apiKey, requestId);
 
-    // Build initial request body
-    const requestBody = buildTextSearchBody(mapping);
+    // Retry logic for low results (Fix #4) - must materially change request
+    if (results.length <= 1 && mapping.bias !== null) {
+      logger.info({
+        requestId,
+        provider: 'google_places_new',
+        method: 'searchText',
+        event: 'textsearch_retry_low_results',
+        beforeCount: results.length,
+        reason: 'low_results_with_bias',
+        originalBias: mapping.bias,
+        originalTextQuery: mapping.textQuery,
+        originalLanguage: mapping.language
+      }, '[GOOGLE] Low results detected, retrying with bias removed');
 
-    // Fetch first page
-    const firstResponse = await callGooglePlacesSearchText(requestBody, apiKey, requestId);
-    if (firstResponse.places) {
-      results.push(...firstResponse.places.map((r: any) => mapGooglePlaceToResult(r)));
-      nextPageToken = firstResponse.nextPageToken;
-    }
+      // Retry strategy: Remove bias entirely to get broader results
+      // This is the most material change that preserves intent
+      const retryMapping: Extract<RouteLLMMapping, { providerMethod: 'textSearch' }> = {
+        ...mapping,
+        bias: null  // Remove bias completely
+      };
 
-    // Fetch additional pages if needed (up to maxResults)
-    while (nextPageToken && results.length < maxResults) {
-      // New API: no delay needed for pagination
-      const pageBody = { ...requestBody, pageToken: nextPageToken };
-      const pageResponse = await callGooglePlacesSearchText(pageBody, apiKey, requestId);
+      const retryResults = await executeTextSearchAttempt(retryMapping, apiKey, requestId);
 
-      if (pageResponse.places) {
-        const remaining = maxResults - results.length;
-        const newResults = pageResponse.places.slice(0, remaining);
-        results.push(...newResults.map((r: any) => mapGooglePlaceToResult(r)));
-        nextPageToken = pageResponse.nextPageToken;
-      } else {
-        break;
+      logger.info({
+        requestId,
+        provider: 'google_places_new',
+        method: 'searchText',
+        event: 'textsearch_retry_completed',
+        beforeCount: results.length,
+        afterCount: retryResults.length,
+        strategyUsed: 'removed_bias',
+        improvement: retryResults.length - results.length
+      }, '[GOOGLE] Retry completed');
+
+      // Use retry results if better
+      if (retryResults.length > results.length) {
+        results = retryResults;
       }
     }
 
@@ -174,7 +188,6 @@ async function executeTextSearch(
       method: 'searchText',
       durationMs,
       resultCount: results.length,
-      hadPagination: !!nextPageToken,
       fieldMaskUsed: PLACES_FIELD_MASK
     }, '[GOOGLE] Text Search completed');
 
@@ -199,6 +212,59 @@ async function executeTextSearch(
 }
 
 /**
+ * Execute a single Text Search attempt (helper for retry logic)
+ */
+async function executeTextSearchAttempt(
+  mapping: Extract<RouteLLMMapping, { providerMethod: 'textSearch' }>,
+  apiKey: string,
+  requestId: string
+): Promise<any[]> {
+  const results: any[] = [];
+  let nextPageToken: string | undefined;
+  const maxResults = 20; // Limit total results across pages
+
+  // Build request body
+  const requestBody = buildTextSearchBody(mapping, requestId);
+
+  // Log the actual request payload
+  logger.info({
+    requestId,
+    event: 'textsearch_request_payload',
+    textQuery: requestBody.textQuery,
+    languageCode: requestBody.languageCode,
+    regionCode: requestBody.regionCode,
+    hasBias: !!requestBody.locationBias,
+    bias: requestBody.locationBias || null,
+    maxResultCount: maxResults
+  }, '[GOOGLE] Text Search request payload');
+
+  // Fetch first page
+  const firstResponse = await callGooglePlacesSearchText(requestBody, apiKey, requestId);
+  if (firstResponse.places) {
+    results.push(...firstResponse.places.map((r: any) => mapGooglePlaceToResult(r)));
+    nextPageToken = firstResponse.nextPageToken;
+  }
+
+  // Fetch additional pages if needed (up to maxResults)
+  while (nextPageToken && results.length < maxResults) {
+    // New API: no delay needed for pagination
+    const pageBody = { ...requestBody, pageToken: nextPageToken };
+    const pageResponse = await callGooglePlacesSearchText(pageBody, apiKey, requestId);
+
+    if (pageResponse.places) {
+      const remaining = maxResults - results.length;
+      const newResults = pageResponse.places.slice(0, remaining);
+      results.push(...newResults.map((r: any) => mapGooglePlaceToResult(r)));
+      nextPageToken = pageResponse.nextPageToken;
+    } else {
+      break;
+    }
+  }
+
+  return results;
+}
+
+/**
  * Build Text Search API request body (New API)
  * 
  * NOTE: Text Search does NOT support includedTypes field!
@@ -206,7 +272,8 @@ async function executeTextSearch(
  * The LLM mappers already include the place type in the textQuery.
  */
 function buildTextSearchBody(
-  mapping: Extract<RouteLLMMapping, { providerMethod: 'textSearch' }>
+  mapping: Extract<RouteLLMMapping, { providerMethod: 'textSearch' }>,
+  requestId?: string
 ): any {
   const body: any = {
     textQuery: mapping.textQuery,
@@ -220,18 +287,22 @@ function buildTextSearchBody(
     body.regionCode = mapping.region;
   }
 
-  // Add location bias if present
+  // Add location bias if present - validate first
   if (mapping.bias && mapping.bias.type === 'locationBias') {
     const { center, radiusMeters } = mapping.bias;
-    body.locationBias = {
-      circle: {
-        center: {
-          latitude: center.lat,
-          longitude: center.lng
-        },
-        radius: radiusMeters
-      }
-    };
+    const validatedBias = validateLocationBias(center, requestId);
+    
+    if (validatedBias) {
+      body.locationBias = {
+        circle: {
+          center: {
+            latitude: validatedBias.lat,
+            longitude: validatedBias.lng
+          },
+          radius: radiusMeters
+        }
+      };
+    }
   }
 
   // Log that we're relying on textQuery for type filtering
@@ -241,6 +312,45 @@ function buildTextSearchBody(
   }, '[GOOGLE] Building Text Search request without includedTypes');
 
   return body;
+}
+
+/**
+ * Validate location bias coordinates
+ * Returns validated coordinates or null if invalid
+ */
+function validateLocationBias(
+  center: { lat: number; lng: number },
+  requestId?: string
+): { lat: number; lng: number } | null {
+  const { lat, lng } = center;
+
+  // Check valid ranges
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    logger.warn({
+      requestId,
+      event: 'bias_invalid_discarded',
+      reason: 'out_of_range',
+      lat,
+      lng
+    }, '[GOOGLE] Invalid bias coordinates discarded');
+    return null;
+  }
+
+  // Detect potential swapped coordinates for Israel region
+  // Israel: lat ~29-33, lng ~34-36
+  // If both values are ~34-35, likely swapped or invalid
+  if (Math.abs(lat - lng) < 0.5 && lat > 32 && lat < 36 && lng > 32 && lng < 36) {
+    logger.warn({
+      requestId,
+      event: 'bias_invalid_discarded',
+      reason: 'suspicious_duplicate_values',
+      lat,
+      lng
+    }, '[GOOGLE] Suspicious bias coordinates (possible swap) discarded');
+    return null;
+  }
+
+  return { lat, lng };
 }
 
 /**

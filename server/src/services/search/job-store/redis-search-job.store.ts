@@ -3,7 +3,7 @@
  * Persistent storage that survives server restarts
  */
 
-import Redis from 'ioredis';
+import { Redis, type Redis as RedisClient } from 'ioredis';
 import { logger } from '../../../lib/logger/structured-logger.js';
 import type { ISearchJobStore, SearchJob, JobStatus } from './job-store.interface.js';
 
@@ -11,13 +11,13 @@ const KEY_PREFIX = 'search:job:';
 const DEFAULT_TTL_SECONDS = 24 * 60 * 60; // 24 hours
 
 export class RedisSearchJobStore implements ISearchJobStore {
-  private redis: Redis;
+  private redis: RedisClient;
   private ttlSeconds: number;
 
   constructor(redisUrl: string, ttlSeconds: number = DEFAULT_TTL_SECONDS) {
     this.redis = new Redis(redisUrl, {
       maxRetriesPerRequest: 3,
-      retryStrategy: (times) => {
+      retryStrategy: (times: number) => {
         if (times > 3) return null;
         return Math.min(times * 100, 2000);
       },
@@ -26,7 +26,7 @@ export class RedisSearchJobStore implements ISearchJobStore {
 
     this.ttlSeconds = ttlSeconds;
 
-    this.redis.on('error', (err) => {
+    this.redis.on('error', (err: Error) => {
       logger.error({ error: err.message, msg: '[RedisJobStore] Connection error' });
     });
 
@@ -35,7 +35,7 @@ export class RedisSearchJobStore implements ISearchJobStore {
     });
 
     // Connect immediately
-    this.redis.connect().catch((err) => {
+    this.redis.connect().catch((err: Error) => {
       logger.error({ error: err.message, msg: '[RedisJobStore] Failed to connect' });
     });
   }
@@ -120,7 +120,7 @@ export class RedisSearchJobStore implements ISearchJobStore {
     }
 
     job.error = { code, message, errorType: errorType || 'UNKNOWN' };
-    job.status = 'FAILED';
+    job.status = 'DONE_FAILED';
     job.updatedAt = Date.now();
 
     const key = this.getKey(requestId);
@@ -143,7 +143,7 @@ export class RedisSearchJobStore implements ISearchJobStore {
 
     return {
       status: job.status,
-      progress: job.progress,
+      ...(job.progress !== undefined && { progress: job.progress }),
       ...(job.error && { error: job.error })
     };
   }
