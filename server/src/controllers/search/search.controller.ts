@@ -384,8 +384,10 @@ router.post('/', async (req: Request, res: Response) => {
  * - 404 if requestId not found
  * - 202 if not done yet (PENDING, RUNNING, or FAILED)
  * - 200 if done (full SearchResponse)
+ * 
+ * Note: Both /result and /result/ are supported to prevent production 404s
  */
-router.get('/:requestId/result', async (req: Request, res: Response) => {
+const getResultHandler = async (req: Request, res: Response) => {
   const { requestId } = req.params;
 
   if (!requestId) {
@@ -462,7 +464,11 @@ router.get('/:requestId/result', async (req: Request, res: Response) => {
   });
 
   return res.status(200).json(result);
-});
+};
+
+// Register handler for both /result and /result/ (prevents trailing-slash 404s in production)
+router.get('/:requestId/result', getResultHandler);
+router.get('/:requestId/result/', getResultHandler);
 
 /**
  * GET /search/:requestId

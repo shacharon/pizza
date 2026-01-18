@@ -11,6 +11,7 @@ import type { SearchRequest, SearchResponse } from '../domain/types/search.types
 import type { AsyncSearchAccepted, AsyncSearchPending, AsyncSearchFailed } from '../core/models/async-search.types';
 import { ENDPOINTS } from '../shared/api/api.config';
 import { mapApiError, logApiError, type ApiErrorView } from '../shared/http/api-error.mapper';
+import { normalizeUrl } from '../shared/utils/url.utils';
 
 /**
  * Union type for async search responses
@@ -61,7 +62,7 @@ export class SearchApiClient {
    * Returns 202 PENDING or 200 DONE or throws on error
    */
   pollResult(resultUrl: string): Observable<AsyncPollResponse> {
-    const fullUrl = resultUrl.startsWith('/api') ? resultUrl : `/api/v1/search/${resultUrl}/result`;
+    const fullUrl = normalizeUrl(resultUrl.startsWith('/api') ? resultUrl : `/api/v1/search/${resultUrl}/result`);
     
     return this.http.get<AsyncSearchPending | SearchResponse>(fullUrl, { observe: 'response' }).pipe(
       map((response: HttpResponse<AsyncSearchPending | SearchResponse>) => {

@@ -14,6 +14,7 @@ import { SessionStore } from '../state/session.store';
 import { ActionsStore } from '../state/actions.store';
 import { WsClientService } from '../core/services/ws-client.service';
 import { SearchApiClient } from '../api/search.api';
+import { normalizeUrl } from '../shared/utils/url.utils';
 import type {
   SearchFilters,
   Restaurant,
@@ -227,7 +228,7 @@ export class SearchFacade {
 
     // Defer polling start by 3s (if WS delivers first, this is canceled)
     this.pollingStartTimeoutId = setTimeout(() => {
-      const resultUrl = `/api/v1/search/${requestId}/result`;
+      const resultUrl = normalizeUrl(`/api/v1/search/${requestId}/result`);
       const startTime = Date.now();
 
       console.log('[SearchFacade] Starting polling', { requestId, resultUrl });
@@ -430,7 +431,7 @@ export class SearchFacade {
           this.cancelPolling();
 
           // Fetch results via GET (authoritative source)
-          const resultUrl = `/api/v1/search/${requestId}/result`;
+          const resultUrl = normalizeUrl(`/api/v1/search/${requestId}/result`);
           firstValueFrom(this.searchApiClient.pollResult(resultUrl))
             .then(response => {
               if (!('status' in response)) {
