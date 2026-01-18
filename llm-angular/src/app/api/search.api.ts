@@ -9,9 +9,9 @@ import { Observable, throwError } from 'rxjs';
 import { catchError, map } from 'rxjs/operators';
 import type { SearchRequest, SearchResponse } from '../domain/types/search.types';
 import type { AsyncSearchAccepted, AsyncSearchPending, AsyncSearchFailed } from '../core/models/async-search.types';
-import { ENDPOINTS } from '../shared/api/api.config';
+import { ENDPOINTS, buildApiUrl } from '../shared/api/api.config';
 import { mapApiError, logApiError, type ApiErrorView } from '../shared/http/api-error.mapper';
-import { normalizeUrl } from '../shared/utils/url.utils';
+import { environment } from '../../environments/environment';
 
 /**
  * Union type for async search responses
@@ -60,11 +60,23 @@ export class SearchApiClient {
   /**
    * Poll async search result
    * Returns 202 PENDING or 200 DONE or throws on error
+   * 
+   * @param resultUrl - MUST be absolute URL from buildApiUrl() or ENDPOINTS
    */
   pollResult(resultUrl: string): Observable<AsyncPollResponse> {
-    const fullUrl = normalizeUrl(resultUrl.startsWith('/api') ? resultUrl : `/api/v1/search/${resultUrl}/result`);
+    // DEV-ONLY: Guard against relative URLs (would hit CloudFront instead of API)
+    if (!environment.production && typeof window !== 'undefined') {
+      if (resultUrl.startsWith('/')) {
+        console.error(
+          `[SearchAPI] ❌ CRITICAL: pollResult called with relative URL!\n` +
+          `URL: ${resultUrl}\n` +
+          `This will cause CloudFront 301 redirects in production!\n` +
+          `Use buildApiUrl() to construct absolute URLs.`
+        );
+      }
+    }
     
-    return this.http.get<AsyncSearchPending | SearchResponse>(fullUrl, { observe: 'response' }).pipe(
+    return this.http.get<AsyncSearchPending | SearchResponse>(resultUrl, { observe: 'response' }).pipe(
       map((response: HttpResponse<AsyncSearchPending | SearchResponse>) => {
         const body = response.body!;
         

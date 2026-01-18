@@ -390,6 +390,15 @@ router.post('/', async (req: Request, res: Response) => {
 const getResultHandler = async (req: Request, res: Response) => {
   const { requestId } = req.params;
 
+  // Log deprecated trailing slash usage for monitoring
+  if (req.path.endsWith('/')) {
+    logger.warn({
+      requestId,
+      path: req.path,
+      msg: '[GET /result] DEPRECATED: Trailing slash used (client should normalize URLs)'
+    });
+  }
+
   if (!requestId) {
     logger.warn({ msg: '[GET /result] Missing requestId' });
     return res.status(400).json({

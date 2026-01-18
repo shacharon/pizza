@@ -54,16 +54,49 @@ export const ENDPOINTS = {
 } as const;
 
 /**
+ * Build full API URL from path segment
+ * ALWAYS returns absolute URL (never relative)
+ * 
+ * @param path - Path segment (e.g., "/search/req-123/result")
+ * @returns Absolute URL (e.g., "https://api.going2eat.food/api/v1/search/req-123/result")
+ * 
+ * @example
+ * buildApiUrl("/search/req-123/result")
+ * // Returns: "https://api.going2eat.food/api/v1/search/req-123/result"
+ */
+export function buildApiUrl(path: string): string {
+  // Ensure path starts with /
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  
+  // Build absolute URL
+  const absoluteUrl = `${API_BASE}${cleanPath}`;
+  
+  // DEV-ONLY: Guard against accidental relative URLs
+  if (!environment.production && typeof window !== 'undefined') {
+    if (absoluteUrl.startsWith(window.location.origin) && !absoluteUrl.includes(environment.apiUrl)) {
+      console.error(
+        `[API Config] ❌ CRITICAL: Detected relative URL construction!\n` +
+        `URL: ${absoluteUrl}\n` +
+        `Expected API origin: ${environment.apiUrl}\n` +
+        `Current origin: ${window.location.origin}\n` +
+        `This will cause CloudFront 301 redirects in production!`
+      );
+    }
+  }
+  
+  return absoluteUrl;
+}
+
+/**
  * Check if a URL is an API request (PRODUCTION-SAFE)
  * Used by interceptors to determine if session headers should be added
  * 
  * IMPORTANT: Must correctly handle:
- * - Relative URLs: /api/v1/search
  * - Absolute URLs: https://api.domain.com/api/v1/search
  * - Edge case: malformed URLs should return false
  * 
  * @param url - Request URL to check
- * @returns true if URL is an API request (starts with /api/)
+ * @returns true if URL is an API request (contains /api/)
  */
 export function isApiRequest(url: string): boolean {
   try {
@@ -71,9 +104,8 @@ export function isApiRequest(url: string): boolean {
     const urlObj = new URL(url, window.location.origin);
     const pathname = urlObj.pathname;
     
-    // Check if pathname starts with /api/
-    // Using startsWith (NOT includes) to match actual API routes only
-    return pathname.startsWith('/api/');
+    // Check if pathname contains /api/
+    return pathname.includes('/api/');
   } catch {
     // Malformed URL - assume not an API request
     return false;
