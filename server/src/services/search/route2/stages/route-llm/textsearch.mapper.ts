@@ -98,7 +98,7 @@ export async function executeTextSearchMapper(
       { role: 'user', content: userPrompt }
     ];
 
-    const mapping = await llmProvider.completeJSON(
+    const response = await llmProvider.completeJSON(
       messages,
       TextSearchMappingSchema,
       {
@@ -115,6 +115,14 @@ export async function executeTextSearchMapper(
       },
       TEXTSEARCH_JSON_SCHEMA
     );
+
+    const mapping = response.data;
+    const tokenUsage = {
+      ...(response.usage?.prompt_tokens !== undefined && { input: response.usage.prompt_tokens }),
+      ...(response.usage?.completion_tokens !== undefined && { output: response.usage.completion_tokens }),
+      ...(response.usage?.total_tokens !== undefined && { total: response.usage.total_tokens }),
+      ...(response.model !== undefined && { model: response.model })
+    };
 
     // Apply location bias logic (TEXTSEARCH always returns null)
     const biasResult = applyLocationBias(mapping, intent, request, requestId);
@@ -156,7 +164,8 @@ export async function executeTextSearchMapper(
       biasNullReason: biasResult.nullReason || null,
       region: mapping.region,
       language: mapping.language,
-      reason: mapping.reason
+      reason: mapping.reason,
+      tokenUsage
     }, '[ROUTE2] textsearch_mapper completed');
 
     return mapping;

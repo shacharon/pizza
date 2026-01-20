@@ -139,10 +139,11 @@ export async function executeGate2Stage(
 
     let llmResult: z.infer<typeof Gate2LLMSchema> | null = null;
     let lastError: any = null;
+    let tokenUsage: { input?: number; output?: number; total?: number; model?: string } | undefined;
 
     // Attempt 1: Initial LLM call with 2.5s timeout
     try {
-      llmResult = await llmProvider.completeJSON(
+      const response = await llmProvider.completeJSON(
         messages,
         Gate2LLMSchema,
         {
@@ -159,6 +160,13 @@ export async function executeGate2Stage(
         },
         GATE2_JSON_SCHEMA
       );
+      llmResult = response.data;
+      tokenUsage = {
+        ...(response.usage?.prompt_tokens !== undefined && { input: response.usage.prompt_tokens }),
+        ...(response.usage?.completion_tokens !== undefined && { output: response.usage.completion_tokens }),
+        ...(response.usage?.total_tokens !== undefined && { total: response.usage.total_tokens }),
+        ...(response.model !== undefined && { model: response.model })
+      };
     } catch (err: any) {
       lastError = err;
       const errorMsg = err?.message || String(err);
@@ -182,7 +190,7 @@ export async function executeGate2Stage(
 
         // Attempt 2: Retry once
         try {
-          llmResult = await llmProvider.completeJSON(
+          const retryResponse = await llmProvider.completeJSON(
             messages,
             Gate2LLMSchema,
             {
@@ -199,6 +207,13 @@ export async function executeGate2Stage(
             },
             GATE2_JSON_SCHEMA
           );
+          llmResult = retryResponse.data;
+          tokenUsage = {
+            ...(retryResponse.usage?.prompt_tokens !== undefined && { input: retryResponse.usage.prompt_tokens }),
+            ...(retryResponse.usage?.completion_tokens !== undefined && { output: retryResponse.usage.completion_tokens }),
+            ...(retryResponse.usage?.total_tokens !== undefined && { total: retryResponse.usage.total_tokens }),
+            ...(retryResponse.model !== undefined && { model: retryResponse.model })
+          };
           
           logger.info({
             requestId,
@@ -254,7 +269,8 @@ export async function executeGate2Stage(
       durationMs,
       route: gate.route,
       foodSignal: gate.foodSignal,
-      confidence: gate.confidence
+      confidence: gate.confidence,
+      ...(tokenUsage && { tokenUsage })
     }, '[ROUTE2] gate2 completed');
 
     return { gate };

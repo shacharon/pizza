@@ -4,39 +4,53 @@
 
   <header class="search-header">
     <h1 class="page-title">Find Your Perfect Restaurant</h1>
-    <app-search-bar [loading]="facade.loading()" (search)="onSearch($event)" (inputChange)="onInputChange($event)"
-      (clear)="onClear()" />
-
-    <!-- Location Controls -->
-    <div class="location-controls">
-      <button class="location-btn" [class.location-on]="locationState() === 'ON'"
-        [class.location-requesting]="locationState() === 'REQUESTING'"
-        [class.location-denied]="locationState() === 'DENIED'" [class.location-error]="locationState() === 'ERROR'"
-        [disabled]="locationState() === 'REQUESTING'" (click)="onLocationToggle()">
-        @if (locationState() === 'REQUESTING') {
-        <span class="location-icon">⏳</span> Requesting...
-        } @else if (locationState() === 'ON') {
-        <span class="location-icon">📍</span> Location On
-        } @else if (locationState() === 'DENIED') {
-        <span class="location-icon">🚫</span> Location Denied
-        } @else if (locationState() === 'ERROR') {
-        <span class="location-icon">⚠️</span> Location Error
-        } @else {
-        <span class="location-icon">📍</span> Enable Location
-        }
-      </button>
-      <span class="location-status">
-        @if (locationState() === 'ON' && locationCoords()) {
-        Location: On ({{ locationCoords()!.lat.toFixed(2) }}, {{ locationCoords()!.lng.toFixed(2) }})
-        } @else if (locationState() === 'DENIED') {
-        Location: Denied
-        } @else {
-        Location: Off
-        }
-      </span>
+    
+    <!-- Search Card: Input + Meta Row -->
+    <div class="search-card">
+      <app-search-bar [loading]="facade.loading()" (search)="onSearch($event)" (inputChange)="onInputChange($event)"
+        (clear)="onClear()" />
+      
+      <!-- Meta Row: Location + Assistant Line -->
+      <div class="search-meta-row">
+        <!-- Location Toggle (compact) -->
+        <button class="location-chip" 
+          [class.location-on]="locationState() === 'ON'"
+          [class.location-requesting]="locationState() === 'REQUESTING'"
+          [class.location-denied]="locationState() === 'DENIED'" 
+          [class.location-error]="locationState() === 'ERROR'"
+          [disabled]="locationState() === 'REQUESTING'" 
+          (click)="onLocationToggle()"
+          [title]="getLocationTooltip()">
+          @if (locationState() === 'REQUESTING') {
+            <span class="location-icon">⏳</span>
+          } @else if (locationState() === 'ON') {
+            <span class="location-icon">📍</span>
+          } @else if (locationState() === 'DENIED') {
+            <span class="location-icon">🚫</span>
+          } @else if (locationState() === 'ERROR') {
+            <span class="location-icon">⚠️</span>
+          } @else {
+            <span class="location-icon">📍</span>
+          }
+          <span class="location-label">
+            @if (locationState() === 'ON') {
+              Location
+            } @else if (locationState() === 'DENIED') {
+              Denied
+            } @else if (locationState() === 'ERROR') {
+              Error
+            } @else {
+              Location
+            }
+          </span>
+        </button>
+        
+        <!-- Assistant Line (inline in meta row) -->
+        <app-assistant-line />
+      </div>
     </div>
 
-    <!-- Assistant Summary (after search bar) -->
+    <!-- Assistant Summary (after search card) -->
     @if (showAssistant()) {
     <app-assistant-summary [text]="asyncAssistantMessage()" [status]="facade.assistantState()"
       [error]="facade.assistantError()" />

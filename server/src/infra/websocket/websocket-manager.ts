@@ -23,6 +23,14 @@ export interface WebSocketManagerConfig {
  */
 type SubscriptionKey = string;
 
+/**
+ * Backlog entry for messages published before subscribers
+ */
+interface BacklogEntry {
+  items: WSServerMessage[];
+  expiresAt: number;
+}
+
 export class WebSocketManager {
   private wss: WebSocketServer;
   // Unified subscription map: key = "channel:requestId" or "channel:sessionId"
@@ -31,6 +39,11 @@ export class WebSocketManager {
   private heartbeatInterval: NodeJS.Timeout | undefined;
   private config: WebSocketManagerConfig;
   private requestStateStore: IRequestStateStore | undefined;
+  
+  // Message backlog for late subscribers
+  private backlog = new Map<SubscriptionKey, BacklogEntry>();
+  private readonly BACKLOG_TTL_MS = 2 * 60 * 1000; // 2 minutes
+  private readonly BACKLOG_MAX_ITEMS = 50;
 
   constructor(server: HTTPServer, config?: Partial<WebSocketManagerConfig>) {
     this.config = {
@@ -440,6 +453,9 @@ export class WebSocketManager {
   ): void {
     const key = this.buildSubscriptionKey(channel, requestId, sessionId);
 
+    // Cleanup expired backlogs
+    this.cleanupExpiredBacklogs();
+
     // Add to subscriptions map
     if (!this.subscriptions.has(key)) {
       this.subscriptions.set(key, new Set());
@@ -458,6 +474,9 @@ export class WebSocketManager {
       sessionId: sessionId || 'none',
       subscriberCount: this.subscriptions.get(key)!.size
     }, 'WebSocket subscribed to channel');
+
+    // Drain backlog if exists
+    this.drainBacklog(key, client, channel, requestId);
   }
 
   /**
@@ -509,13 +528,19 @@ export class WebSocketManager {
     message: WSServerMessage
   ): void {
     const key = this.buildSubscriptionKey(channel, requestId, sessionId);
+    
+    // Cleanup expired backlogs
+    this.cleanupExpiredBacklogs();
+    
     const clients = this.subscriptions.get(key);
 
+    // If no subscribers, enqueue to backlog
     if (!clients || clients.size === 0) {
-      logger.debug({ channel, requestId, sessionId: sessionId || 'none' }, 'No subscribers for channel key');
+      this.enqueueToBacklog(key, message, channel, requestId);
       return;
     }
 
+    // Send to active subscribers
     const data = JSON.stringify(message);
     let sent = 0;
 
@@ -659,6 +684,117 @@ export class WebSocketManager {
   }
 
   /**
+   * Enqueue message to backlog (no active subscribers)
+   */
+  private enqueueToBacklog(
+    key: SubscriptionKey,
+    message: WSServerMessage,
+    channel: WSChannel,
+    requestId: string
+  ): void {
+    let entry = this.backlog.get(key);
+    
+    if (!entry) {
+      // Create new backlog entry
+      entry = {
+        items: [],
+        expiresAt: Date.now() + this.BACKLOG_TTL_MS
+      };
+      this.backlog.set(key, entry);
+      
+      logger.info({
+        channel,
+        requestId,
+        event: 'backlog_created'
+      }, 'WebSocket backlog created for late subscribers');
+    }
+    
+    // Add message (drop oldest if at max)
+    if (entry.items.length >= this.BACKLOG_MAX_ITEMS) {
+      entry.items.shift(); // Drop oldest
+    }
+    entry.items.push(message);
+    
+    logger.debug({
+      channel,
+      requestId,
+      backlogSize: entry.items.length,
+      event: 'backlog_enqueued'
+    }, 'WebSocket message enqueued to backlog');
+  }
+
+  /**
+   * Drain backlog to newly subscribed client
+   */
+  private drainBacklog(
+    key: SubscriptionKey,
+    client: WebSocket,
+    channel: WSChannel,
+    requestId: string
+  ): void {
+    const entry = this.backlog.get(key);
+    
+    if (!entry) {
+      return; // No backlog
+    }
+    
+    // Check if expired
+    if (entry.expiresAt < Date.now()) {
+      this.backlog.delete(key);
+      logger.debug({
+        channel,
+        requestId,
+        event: 'backlog_expired'
+      }, 'WebSocket backlog expired, not drained');
+      return;
+    }
+    
+    // Send all backlog items in FIFO order
+    let sent = 0;
+    for (const message of entry.items) {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify(message));
+        sent++;
+      }
+    }
+    
+    // Clear backlog
+    this.backlog.delete(key);
+    
+    logger.info({
+      channel,
+      requestId,
+      count: sent,
+      event: 'backlog_drained'
+    }, 'WebSocket backlog drained to late subscriber');
+  }
+
+  /**
+   * Cleanup expired backlogs
+   */
+  private cleanupExpiredBacklogs(): void {
+    const now = Date.now();
+    const expiredKeys: SubscriptionKey[] = [];
+    
+    for (const [key, entry] of this.backlog.entries()) {
+      if (entry.expiresAt < now) {
+        expiredKeys.push(key);
+      }
+    }
+    
+    for (const key of expiredKeys) {
+      this.backlog.delete(key);
+    }
+    
+    if (expiredKeys.length > 0) {
+      logger.debug({
+        expiredCount: expiredKeys.length,
+        event: 'backlog_cleanup'
+      }, 'WebSocket expired backlogs cleaned up');
+    }
+  }
+
+  /**
    * Generate unique client ID for logging
    */
   private generateClientId(): string {
@@ -672,12 +808,14 @@ export class WebSocketManager {
     connections: number;
     subscriptions: number;
     requestIdsTracked: number;
+    backlogCount: number;
   } {
     return {
       connections: this.wss.clients.size,
       subscriptions: Array.from(this.subscriptions.values())
         .reduce((sum, set) => sum + set.size, 0),
-      requestIdsTracked: this.subscriptions.size
+      requestIdsTracked: this.subscriptions.size,
+      backlogCount: this.backlog.size
     };
   }
 }

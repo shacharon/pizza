@@ -20,8 +20,10 @@ import type { Route2Context } from '../../services/search/route2/index.js';
 import { CONTRACTS_VERSION } from '../../contracts/search.contracts.js';
 import { searchAsyncStore } from '../../search-async/searchAsync.store.js';
 import { publishSearchEvent } from '../../infra/websocket/search-ws.publisher.js';
+import { publishAssistantProgress, publishAssistantSuggestion, setAssistantLanguage, finalizeAssistantSession } from '../../infra/websocket/assistant-ws.publisher.js';
 import type { SearchRequest } from '../../services/search/types/search-request.dto.js';
 import { searchJobStore } from '../../services/search/job-store/index.js';
+import { ASSISTANT_MODE } from '../../config/assistant.flags.js';
 
 
 const router = Router();
@@ -200,6 +202,12 @@ router.post('/', async (req: Request, res: Response) => {
       // Start background job (do NOT await)
       void (async () => {
         try {
+          // TO_MAYBE: assistant flow (disabled for MVP)
+          if (ASSISTANT_MODE !== 'OFF') {
+            setAssistantLanguage(requestId, 'auto', 'friendly');
+            publishAssistantProgress(requestId, `שמעתי: ${validation.data!.query}`, 'query_received');
+          }
+
           // Set status to RUNNING + publish progress
           await searchJobStore.setStatus(requestId, 'RUNNING', 0);
           publishSearchEvent(requestId, {
@@ -238,8 +246,23 @@ router.post('/', async (req: Request, res: Response) => {
             message: 'Processing search'
           });
 
+          // TO_MAYBE: assistant flow (disabled for MVP)
+          if (ASSISTANT_MODE !== 'OFF') {
+            publishAssistantProgress(requestId, 'שולח לגוגל ומביא תוצאות…', 'google_call');
+          }
+
           // Execute search
           const response = await searchRoute2(validation.data!, detachedContext);
+
+          // TO_MAYBE: assistant flow (disabled for MVP)
+          if (ASSISTANT_MODE !== 'OFF') {
+            publishAssistantProgress(requestId, `נמצאו ${response.results.length} תוצאות.`, 'results_received');
+
+            // Smart suggestion (only if few results)
+            if (response.results.length <= 2) {
+              publishAssistantSuggestion(requestId, 'אם תרצה יותר אפשרויות, אפשר להרחיב קצת את האזור.', 'suggestion_expand');
+            }
+          }
 
           // Publish progress at 90% (pipeline complete, storing result)
           await searchJobStore.setStatus(requestId, 'RUNNING', 90);

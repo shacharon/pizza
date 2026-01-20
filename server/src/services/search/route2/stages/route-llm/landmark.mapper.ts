@@ -102,7 +102,7 @@ export async function executeLandmarkMapper(
       { role: 'user', content: userPrompt }
     ];
 
-    const mapping = await llmProvider.completeJSON(
+    const response = await llmProvider.completeJSON(
       messages,
       LandmarkMappingSchema,
       {
@@ -120,6 +120,7 @@ export async function executeLandmarkMapper(
       LANDMARK_JSON_SCHEMA
     );
 
+    const mapping = response.data;
     const durationMs = Date.now() - startTime;
 
     // Debug dump
@@ -135,7 +136,13 @@ export async function executeLandmarkMapper(
       keyword: mapping.keyword,
       region: mapping.region,
       language: mapping.language,
-      reason: mapping.reason
+      reason: mapping.reason,
+      tokenUsage: {
+        ...(response.usage?.prompt_tokens !== undefined && { input: response.usage.prompt_tokens }),
+        ...(response.usage?.completion_tokens !== undefined && { output: response.usage.completion_tokens }),
+        ...(response.usage?.total_tokens !== undefined && { total: response.usage.total_tokens }),
+        ...(response.model !== undefined && { model: response.model })
+      }
     }, '[ROUTE2] landmark_mapper completed');
 
     return mapping;

@@ -66,6 +66,16 @@ function removeMetadata(schema: unknown): Record<string, unknown> {
     return cleaned;
 }
 
+export interface LLMCompletionResult<T> {
+    data: T;
+    usage?: {
+        prompt_tokens?: number;
+        completion_tokens?: number;
+        total_tokens?: number;
+    };
+    model?: string;
+}
+
 export interface LLMProvider {
     completeJSON<T extends z.ZodTypeAny>(
         messages: Message[],
@@ -84,7 +94,7 @@ export interface LLMProvider {
             stage?: string;       // For stage identification (e.g., "intent_gate")
         },
         staticJsonSchema?: any  // Optional static JSON Schema (bypasses Zod conversion)
-    ): Promise<z.infer<T>>;
+    ): Promise<LLMCompletionResult<z.infer<T>>>;
 
     complete(
         messages: Message[],

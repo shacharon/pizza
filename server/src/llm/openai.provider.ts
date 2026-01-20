@@ -2,7 +2,7 @@ import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { createHash } from "crypto";
 import { performance } from "node:perf_hooks";
-import type { LLMProvider, Message } from "./types.js";
+import type { LLMProvider, LLMCompletionResult, Message } from "./types.js";
 import OpenAI from "openai";
 import {
     DEFAULT_LLM_MODEL,
@@ -83,7 +83,7 @@ export class OpenAiProvider implements LLMProvider {
             stage?: string;       // For stage identification (e.g., "intent_gate")
         },
         staticJsonSchema?: any  // Optional static JSON Schema (bypasses Zod conversion)
-    ): Promise<z.infer<T>> {
+    ): Promise<LLMCompletionResult<z.infer<T>>> {
         const temperature = opts?.temperature ?? 0;
         const timeoutMs = opts?.timeout ?? LLM_JSON_TIMEOUT_MS;
         const maxAttempts = LLM_RETRY_ATTEMPTS;
@@ -302,7 +302,15 @@ export class OpenAiProvider implements LLMProvider {
                     schemaHash
                 }, '[LLM] Structured Outputs completion successful');
 
-                return validated;
+                return {
+                    data: validated,
+                    usage: {
+                        prompt_tokens: inputTokens ?? undefined,
+                        completion_tokens: outputTokens ?? undefined,
+                        total_tokens: (inputTokens && outputTokens) ? inputTokens + outputTokens : undefined
+                    },
+                    model
+                };
             } catch (e: any) {
                 clearTimeout(t);
                 lastErr = e;

@@ -106,10 +106,11 @@ export async function executeNearbyMapper(
 
     let mapping: NearbyMapping | null = null;
     let lastError: any = null;
+    let tokenUsage: { input?: number; output?: number; total?: number; model?: string } | undefined;
 
     // Attempt 1: Initial LLM call with 4.5s timeout
     try {
-      mapping = await llmProvider.completeJSON(
+      const response = await llmProvider.completeJSON(
         messages,
         NearbyMappingSchema,
         {
@@ -126,6 +127,13 @@ export async function executeNearbyMapper(
         },
         NEARBY_JSON_SCHEMA
       );
+      mapping = response.data;
+      tokenUsage = {
+        ...(response.usage?.prompt_tokens !== undefined && { input: response.usage.prompt_tokens }),
+        ...(response.usage?.completion_tokens !== undefined && { output: response.usage.completion_tokens }),
+        ...(response.usage?.total_tokens !== undefined && { total: response.usage.total_tokens }),
+        ...(response.model !== undefined && { model: response.model })
+      };
     } catch (err: any) {
       lastError = err;
       const errorMsg = err?.message || String(err);
@@ -148,7 +156,7 @@ export async function executeNearbyMapper(
 
         // Attempt 2: Retry once
         try {
-          mapping = await llmProvider.completeJSON(
+          const retryResponse = await llmProvider.completeJSON(
             messages,
             NearbyMappingSchema,
             {
@@ -165,6 +173,13 @@ export async function executeNearbyMapper(
             },
             NEARBY_JSON_SCHEMA
           );
+          mapping = retryResponse.data;
+          tokenUsage = {
+            ...(retryResponse.usage?.prompt_tokens !== undefined && { input: retryResponse.usage.prompt_tokens }),
+            ...(retryResponse.usage?.completion_tokens !== undefined && { output: retryResponse.usage.completion_tokens }),
+            ...(retryResponse.usage?.total_tokens !== undefined && { total: retryResponse.usage.total_tokens }),
+            ...(retryResponse.model !== undefined && { model: retryResponse.model })
+          };
 
           logger.info({
             requestId,
@@ -213,7 +228,8 @@ export async function executeNearbyMapper(
       radiusMeters: mapping.radiusMeters,
       region: mapping.region,
       language: mapping.language,
-      reason: mapping.reason
+      reason: mapping.reason,
+      ...(tokenUsage && { tokenUsage })
     }, '[ROUTE2] nearby_mapper completed');
 
     return mapping;

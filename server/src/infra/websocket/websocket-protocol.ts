@@ -92,12 +92,28 @@ export interface WSServerError {
   message: string;
 }
 
+export interface WSServerAssistantProgress {
+  type: 'assistant_progress';
+  requestId: string;
+  seq: number;
+  message: string;
+}
+
+export interface WSServerAssistantSuggestion {
+  type: 'assistant_suggestion';
+  requestId: string;
+  seq: number;
+  message: string;
+}
+
 export type WSServerMessage =
   | WSServerStatus
   | WSServerStreamDelta
   | WSServerStreamDone
   | WSServerRecommendation
-  | WSServerError;
+  | WSServerError
+  | WSServerAssistantProgress
+  | WSServerAssistantSuggestion;
 
 // ============================================================================
 // Validation Helpers

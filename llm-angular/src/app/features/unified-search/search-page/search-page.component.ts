@@ -9,6 +9,7 @@ import { SearchFacade } from '../../../facades/search.facade';
 import { SearchBarComponent } from '../components/search-bar/search-bar.component';
 import { RestaurantCardComponent } from '../components/restaurant-card/restaurant-card.component';
 import { AssistantBottomSheetComponent } from '../components/assistant-bottom-sheet/assistant-bottom-sheet.component';
+import { AssistantLineComponent } from '../components/assistant-line/assistant-line.component';
 import { ClarificationBlockComponent } from '../components/clarification-block/clarification-block.component';
 import { AssistantSummaryComponent } from '../components/assistant-summary/assistant-summary.component';
 import { WsStatusBannerComponent } from '../../../shared/components/ws-status-banner/ws-status-banner.component';
@@ -24,6 +25,7 @@ import type { ActionType, ActionLevel } from '../../../domain/types/action.types
     SearchBarComponent,
     RestaurantCardComponent,
     AssistantBottomSheetComponent,
+    AssistantLineComponent,
     ClarificationBlockComponent,
     AssistantSummaryComponent,
     WsStatusBannerComponent
@@ -49,6 +51,26 @@ export class SearchPageComponent implements OnInit, OnDestroy {
     const assist = this.response()?.assist;
     return assist?.mode || 'NORMAL';
   });
+
+  /**
+   * Get location tooltip text
+   */
+  getLocationTooltip(): string {
+    const state = this.locationState();
+    const coords = this.locationCoords();
+    
+    if (state === 'ON' && coords) {
+      return `Location: On (${coords.lat.toFixed(2)}, ${coords.lng.toFixed(2)})`;
+    } else if (state === 'DENIED') {
+      return 'Location: Denied';
+    } else if (state === 'ERROR') {
+      return 'Location: Error';
+    } else if (state === 'REQUESTING') {
+      return 'Requesting location...';
+    } else {
+      return 'Click to enable location';
+    }
+  }
   readonly isRecoveryMode = computed(() => this.currentMode() === 'RECOVERY');
   readonly isClarifyMode = computed(() => this.currentMode() === 'CLARIFY');
 

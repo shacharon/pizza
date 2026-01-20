@@ -37,12 +37,20 @@ describe('TEXTSEARCH Mapper - Bias Cleanup', () => {
     // Mock context with LLM provider
     const mockLLMProvider = {
       completeJSON: async () => ({
-        providerMethod: 'textSearch' as const,
-        textQuery: 'מסעדות איטלקיות בגדרה',
-        region: 'IL',
-        language: 'he',
-        bias: null, // LLM correctly returns null
-        reason: 'original_preserved'
+        data: {
+          providerMethod: 'textSearch' as const,
+          textQuery: 'מסעדות איטלקיות בגדרה',
+          region: 'IL',
+          language: 'he',
+          bias: null, // LLM correctly returns null
+          reason: 'original_preserved'
+        },
+        usage: {
+          prompt_tokens: 100,
+          completion_tokens: 50,
+          total_tokens: 150
+        },
+        model: 'gpt-4o-mini'
       }),
       complete: async () => '',
       completeStream: async () => ''
@@ -103,12 +111,20 @@ describe('TEXTSEARCH Mapper - Bias Cleanup', () => {
 
     const mockLLMProvider = {
       completeJSON: async () => ({
-        providerMethod: 'textSearch' as const,
-        textQuery: 'מסעדות איטלקיות בגדרה', // Preserves "ב"
-        region: 'IL',
-        language: 'he',
-        bias: null,
-        reason: 'original_preserved'
+        data: {
+          providerMethod: 'textSearch' as const,
+          textQuery: 'מסעדות איטלקיות בגדרה', // Preserves "ב"
+          region: 'IL',
+          language: 'he',
+          bias: null,
+          reason: 'original_preserved'
+        },
+        usage: {
+          prompt_tokens: 100,
+          completion_tokens: 50,
+          total_tokens: 150
+        },
+        model: 'gpt-4o-mini'
       }),
       complete: async () => '',
       completeStream: async () => ''

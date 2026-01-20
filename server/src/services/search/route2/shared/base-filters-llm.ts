@@ -203,7 +203,7 @@ export async function resolveBaseFiltersLLM(params: {
             { role: 'user', content: query }
         ];
 
-        const result = await llmProvider.completeJSON(
+        const response = await llmProvider.completeJSON(
             messages,
             PreGoogleBaseFiltersSchema,
             {
@@ -221,6 +221,7 @@ export async function resolveBaseFiltersLLM(params: {
             BASE_FILTERS_JSON_SCHEMA_MANUAL // Use manual schema for OpenAI strict mode compatibility
         );
 
+        const result = response.data;
         const validatedRegionHint = validateRegionHint(result.regionHint, requestId);
 
         const validatedResult: PreGoogleBaseFilters = {
@@ -247,7 +248,13 @@ export async function resolveBaseFiltersLLM(params: {
                 ...(result.regionHint !== validatedResult.regionHint && {
                     regionHintSanitized: true,
                     rawRegionHint: result.regionHint
-                })
+                }),
+                tokenUsage: {
+                    ...(response.usage?.prompt_tokens !== undefined && { input: response.usage.prompt_tokens }),
+                    ...(response.usage?.completion_tokens !== undefined && { output: response.usage.completion_tokens }),
+                    ...(response.usage?.total_tokens !== undefined && { total: response.usage.total_tokens }),
+                    ...(response.model !== undefined && { model: response.model })
+                }
             },
             '[ROUTE2] Base filters LLM completed'
         );

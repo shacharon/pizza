@@ -20,7 +20,7 @@ export interface ProviderTraceEvent {
   statusCode?: number;
   errorCode?: string;
   errorReason?: string;
-  
+
   // LLM-specific fields
   model?: string;
   tokensIn?: number;
@@ -28,7 +28,7 @@ export interface ProviderTraceEvent {
   totalTokens?: number;
   estimatedCostUsd?: number;
   costUnknown?: boolean;
-  
+
   timestamp: string;
   metadata?: Record<string, any>;
 }
@@ -78,18 +78,18 @@ export async function traceProviderCall<T>(
   try {
     result = await fn();
     success = true;
-    
+
     return result;
   } catch (error: any) {
     success = false;
     errorReason = sanitizeErrorReason(error?.message || String(error));
     errorCode = error?.code || error?.type || error?.name;
     statusCode = error?.status || error?.statusCode;
-    
+
     throw error;
   } finally {
     const latencyMs = Date.now() - startTime;
-    
+
     // Build base event
     const event: ProviderTraceEvent = {
       type: 'provider_call',
@@ -135,31 +135,31 @@ export async function traceProviderCall<T>(
  */
 export function sanitizeErrorReason(message: string): string {
   if (!message) return 'Unknown error';
-  
+
   // Truncate to 500 chars
   let sanitized = message.slice(0, 500);
-  
+
   // Strip ONLY sensitive query params by name (keep others for debugging)
   const sensitiveParams = [
-    'key', 'apikey', 'api_key', 
-    'token', 'authorization', 'auth', 
+    'key', 'apikey', 'api_key',
+    'token', 'authorization', 'auth',
     'secret', 'client_secret',
     'access_token', 'refresh_token'
   ];
-  
+
   for (const param of sensitiveParams) {
     // Match param=value in URLs (case insensitive)
     const regex = new RegExp(`([?&])${param}=[^&\\s]*`, 'gi');
     sanitized = sanitized.replace(regex, `$1${param}=[REDACTED]`);
   }
-  
+
   // Redact common API key patterns anywhere in message
   sanitized = sanitized.replace(/AIza[a-zA-Z0-9_-]{35}/g, '[REDACTED_API_KEY]');
   sanitized = sanitized.replace(/sk-[a-zA-Z0-9]{48}/g, '[REDACTED_API_KEY]');
-  
+
   // Remove bearer tokens
   sanitized = sanitized.replace(/Bearer\s+[a-zA-Z0-9._-]+/gi, 'Bearer [REDACTED]');
-  
+
   return sanitized;
 }
 
@@ -175,15 +175,16 @@ export function calculateOpenAICost(
   tokensIn: number,
   tokensOut: number
 ): number | null {
-  const pricing: Record<string, { input: number; output: number }> = {
-    'gpt-4o': { input: 2.50, output: 10.00 },
+  const pricing = {
     'gpt-4o-mini': { input: 0.150, output: 0.600 },
+    'gpt-4o': { input: 2.50, output: 10.00 },
     'gpt-4-turbo': { input: 10.00, output: 30.00 },
     'gpt-4-turbo-preview': { input: 10.00, output: 30.00 },
     'gpt-4': { input: 30.00, output: 60.00 },
     'gpt-3.5-turbo': { input: 0.50, output: 1.50 },
     'gpt-3.5-turbo-16k': { input: 3.00, output: 4.00 },
   };
+
 
   // Find matching pricing (handle model variants like gpt-4o-2024-08-06)
   let rates: { input: number; output: number } | null = null;
@@ -200,6 +201,6 @@ export function calculateOpenAICost(
 
   const costIn = (tokensIn / 1_000_000) * rates.input;
   const costOut = (tokensOut / 1_000_000) * rates.output;
-  
+
   return costIn + costOut;
 }

@@ -65,7 +65,7 @@ export async function executeIntentStage(
       { role: 'user', content: request.query }
     ];
 
-    const llmResult = await llmProvider.completeJSON(
+    const response = await llmProvider.completeJSON(
       messages,
       IntentLLMSchema,
       {
@@ -83,6 +83,7 @@ export async function executeIntentStage(
       INTENT_JSON_SCHEMA
     );
 
+    const llmResult = response.data;
     const result: IntentResult = {
       route: llmResult.route,
       confidence: llmResult.confidence,
@@ -103,7 +104,13 @@ export async function executeIntentStage(
       durationMs,
       route: result.route,
       confidence: result.confidence,
-      reason: result.reason
+      reason: result.reason,
+      tokenUsage: {
+        ...(response.usage?.prompt_tokens !== undefined && { input: response.usage.prompt_tokens }),
+        ...(response.usage?.completion_tokens !== undefined && { output: response.usage.completion_tokens }),
+        ...(response.usage?.total_tokens !== undefined && { total: response.usage.total_tokens }),
+        ...(response.model !== undefined && { model: response.model })
+      }
     }, '[ROUTE2] intent completed');
 
     return result;
