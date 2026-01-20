@@ -5,6 +5,7 @@
 
 import { getConfig } from '../../../config/env.js';
 import { logger } from '../../../lib/logger/structured-logger.js';
+import { getRedisClient } from '../../../lib/redis/redis-client.js';
 import type { ISearchJobStore } from './job-store.interface.js';
 import { InMemorySearchJobStore } from './inmemory-search-job.store.js';
 import { RedisSearchJobStore } from './redis-search-job.store.js';
@@ -15,7 +16,7 @@ let searchJobStoreInstance: ISearchJobStore | null = null;
  * Get or create the search job store singleton
  * Uses Redis if enabled and configured, otherwise falls back to InMemory
  */
-export function getSearchJobStore(): ISearchJobStore {
+export async function getSearchJobStore(): Promise<ISearchJobStore> {
   if (searchJobStoreInstance) {
     return searchJobStoreInstance;
   }
@@ -27,11 +28,29 @@ export function getSearchJobStore(): ISearchJobStore {
       store: 'redis',
       redisUrl: config.redisUrl.replace(/:[^:@]+@/, ':****@'), // Hide password in logs
       ttlSeconds: config.redisJobTtlSeconds,
+      enableRedisJobStore: config.enableRedisJobStore,
       msg: '[JobStore] Initializing Redis store'
     });
 
     try {
-      searchJobStoreInstance = new RedisSearchJobStore(config.redisUrl, config.redisJobTtlSeconds);
+      // Get shared Redis client
+      const redisClient = await getRedisClient({
+        url: config.redisUrl,
+        maxRetriesPerRequest: 3,
+        connectTimeout: 2000,
+        commandTimeout: 1000, // Longer timeout for JobStore operations
+        enableOfflineQueue: false
+      });
+
+      if (redisClient) {
+        searchJobStoreInstance = new RedisSearchJobStore(redisClient, config.redisJobTtlSeconds);
+        logger.info({
+          store: 'redis',
+          msg: '[JobStore] ✓ Redis store initialized successfully'
+        });
+      } else {
+        throw new Error('Redis client connection failed');
+      }
     } catch (err) {
       logger.error({
         error: (err as Error).message,
@@ -42,6 +61,8 @@ export function getSearchJobStore(): ISearchJobStore {
   } else {
     logger.info({
       store: 'inmemory',
+      enableRedisJobStore: config.enableRedisJobStore,
+      hasRedisUrl: !!config.redisUrl,
       msg: '[JobStore] Initializing InMemory store'
     });
     searchJobStoreInstance = new InMemorySearchJobStore();
@@ -51,12 +72,23 @@ export function getSearchJobStore(): ISearchJobStore {
 }
 
 /**
- * Singleton accessor
+ * Singleton accessor with async initialization
  */
+let cachedStorePromise: Promise<ISearchJobStore> | null = null;
+
 export const searchJobStore = new Proxy({} as ISearchJobStore, {
   get(_, prop) {
-    const store = getSearchJobStore();
-    const value = (store as any)[prop];
-    return typeof value === 'function' ? value.bind(store) : value;
+    // Return a function that resolves the store first
+    return async function(...args: any[]) {
+      if (!cachedStorePromise) {
+        cachedStorePromise = getSearchJobStore();
+      }
+      const store = await cachedStorePromise;
+      const value = (store as any)[prop];
+      if (typeof value === 'function') {
+        return value.apply(store, args);
+      }
+      return value;
+    };
   }
 });

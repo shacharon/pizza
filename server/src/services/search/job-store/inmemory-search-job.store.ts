@@ -44,6 +44,7 @@ export class InMemorySearchJobStore implements ISearchJobStore {
    * Update job status and optional progress
    */
   setStatus(requestId: string, status: JobStatus, progress?: number): void {
+    const startTime = performance.now();
     const job = this.jobs.get(requestId);
     if (!job) {
       logger.warn({ requestId, msg: '[JobStore] setStatus called but job not found' });
@@ -57,10 +58,13 @@ export class InMemorySearchJobStore implements ISearchJobStore {
       job.progress = progress;
     }
 
+    const durationMs = Math.round(performance.now() - startTime);
+
     logger.info({
       requestId,
       status,
       progress,
+      durationMs,
       msg: '[JobStore] Status updated'
     });
   }
@@ -69,6 +73,7 @@ export class InMemorySearchJobStore implements ISearchJobStore {
    * Store job result
    */
   setResult(requestId: string, result: unknown): void {
+    const startTime = performance.now();
     const job = this.jobs.get(requestId);
     if (!job) {
       logger.warn({ requestId, msg: '[JobStore] setResult called but job not found' });
@@ -78,9 +83,12 @@ export class InMemorySearchJobStore implements ISearchJobStore {
     job.result = result;
     job.updatedAt = Date.now();
 
+    const durationMs = Math.round(performance.now() - startTime);
+
     logger.info({
       requestId,
       hasResult: !!result,
+      durationMs,
       msg: '[JobStore] Result stored'
     });
   }

@@ -19,11 +19,12 @@ export function httpLoggingMiddleware(
 ): void {
   const startTime = Date.now();
   
-  // Log request
+  // Log request (keep queryKeys only, not full query values to avoid logging user queries)
+  const queryKeys = Object.keys(req.query || {});
   req.log.info({
     method: req.method,
-    path: req.originalUrl,
-    query: req.query,
+    path: req.path, // Use path instead of originalUrl to avoid query string duplication
+    queryKeys: queryKeys.length > 0 ? queryKeys : undefined,
   }, 'HTTP request');
   
   // Capture response finish
@@ -35,7 +36,7 @@ export function httpLoggingMiddleware(
     
     req.log[level]({
       method: req.method,
-      path: req.originalUrl,
+      path: req.path,
       statusCode: res.statusCode,
       durationMs: duration,
     }, 'HTTP response');

@@ -3,7 +3,7 @@
  * Persistent storage that survives server restarts
  */
 
-import { Redis, type Redis as RedisClient } from 'ioredis';
+import type { Redis as RedisClient } from 'ioredis';
 import { logger } from '../../../lib/logger/structured-logger.js';
 import type { ISearchJobStore, SearchJob, JobStatus } from './job-store.interface.js';
 
@@ -14,29 +14,13 @@ export class RedisSearchJobStore implements ISearchJobStore {
   private redis: RedisClient;
   private ttlSeconds: number;
 
-  constructor(redisUrl: string, ttlSeconds: number = DEFAULT_TTL_SECONDS) {
-    this.redis = new Redis(redisUrl, {
-      maxRetriesPerRequest: 3,
-      retryStrategy: (times: number) => {
-        if (times > 3) return null;
-        return Math.min(times * 100, 2000);
-      },
-      lazyConnect: true
-    });
-
+  constructor(redisClient: RedisClient, ttlSeconds: number = DEFAULT_TTL_SECONDS) {
+    this.redis = redisClient;
     this.ttlSeconds = ttlSeconds;
 
-    this.redis.on('error', (err: Error) => {
-      logger.error({ error: err.message, msg: '[RedisJobStore] Connection error' });
-    });
-
-    this.redis.on('connect', () => {
-      logger.info({ ttlSeconds: this.ttlSeconds, msg: '[RedisJobStore] Connected' });
-    });
-
-    // Connect immediately
-    this.redis.connect().catch((err: Error) => {
-      logger.error({ error: err.message, msg: '[RedisJobStore] Failed to connect' });
+    logger.info({ 
+      ttlSeconds: this.ttlSeconds, 
+      msg: '[RedisJobStore] Initialized with shared Redis client' 
     });
   }
 

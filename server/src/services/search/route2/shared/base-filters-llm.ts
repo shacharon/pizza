@@ -7,7 +7,6 @@
 
 import { createHash } from 'crypto';
 import type { Message, LLMProvider } from '../../../../llm/types.js';
-import { buildLLMJsonSchema } from '../../../../llm/types.js';
 import { logger } from '../../../../lib/logger/structured-logger.js';
 import { PreGoogleBaseFiltersSchema, type PreGoogleBaseFilters } from './shared-filters.types.js';
 import type { MappingRoute } from '../types.js';

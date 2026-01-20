@@ -172,11 +172,14 @@ router.post('/', async (req: Request, res: Response) => {
       return;
     }
 
+    const jobCreatedAt = Date.now();
+    
     const route2Context: Route2Context = {
       requestId,
       ...(req.traceId !== undefined && { traceId: req.traceId }),
       ...(validation.data!.sessionId !== undefined && { sessionId: validation.data!.sessionId }),
-      startTime: Date.now(),
+      startTime: jobCreatedAt,
+      jobCreatedAt,
       llmProvider: llm,
       userLocation: validation.data!.userLocation ?? null,
     };

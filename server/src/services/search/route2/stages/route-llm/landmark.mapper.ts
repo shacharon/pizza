@@ -68,10 +68,8 @@ const LANDMARK_MAPPER_PROMPT_HASH = createHash('sha256')
   .update(LANDMARK_MAPPER_PROMPT, 'utf8')
   .digest('hex');
 
-const { schema: LANDMARK_JSON_SCHEMA, schemaHash: LANDMARK_SCHEMA_HASH } = buildLLMJsonSchema(
-  LandmarkMappingSchema,
-  'LandmarkMapping'
-);
+// Import static schema (zod-to-json-schema broken with Zod v4)
+import { LANDMARK_JSON_SCHEMA, LANDMARK_SCHEMA_HASH } from './static-schemas.js';
 
 /**
  * Execute Landmark Mapper

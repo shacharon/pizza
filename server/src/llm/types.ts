@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { zodToJsonSchema } from "zod-to-json-schema";
 import { createHash } from "crypto";
 
 export type Message = {
@@ -16,8 +17,8 @@ export interface LLMJsonSchemaResult {
 
 /**
  * Build JSON Schema for LLM from Zod schema
- * Uses Zod v4's native toJSONSchema() method
- * 
+ * Uses zod-to-json-schema library for consistency with OpenAI provider
+ *
  * @param zodSchema - Zod schema (source of truth)
  * @param _name - Schema name (unused, kept for API compatibility)
  * @returns JSON Schema object and 12-char hash for observability
@@ -26,44 +27,74 @@ export function buildLLMJsonSchema<T extends z.ZodTypeAny>(
     zodSchema: T,
     _name?: string
 ): LLMJsonSchemaResult {
-    // Use Zod v4's native toJSONSchema() method
-    const jsonSchema = (zodSchema as any).toJSONSchema({
-        target: 'openapi-3.0',
-        $refStrategy: 'none'
-    }) as Record<string, unknown>;
+    const jsonSchema = zodToJsonSchema(zodSchema as any, {
+        target: "openApi3",
+        $refStrategy: "none",
+    }) as unknown;
 
-    // Remove $schema and $id fields
-    const cleanSchema = removeMetadata(jsonSchema);
+    const cleanedUnknown = removeMetadata(jsonSchema);
+
+    if (typeof cleanedUnknown !== "object" || cleanedUnknown === null || Array.isArray(cleanedUnknown)) {
+        throw new Error(`buildLLMJsonSchema: root must be an object schema`);
+    }
+
+    const cleanSchema = cleanedUnknown as Record<string, unknown>;
+
+    // Ensure root is object type (required for OpenAI Structured Outputs)
+    if (cleanSchema.type !== "object") {
+        throw new Error(`buildLLMJsonSchema: root type must be "object", got "${String(cleanSchema.type)}"`);
+    }
+
+    // Ensure properties exist
+    if (!cleanSchema.properties || typeof cleanSchema.properties !== "object" || cleanSchema.properties === null) {
+        throw new Error(`buildLLMJsonSchema: root object must have "properties"`);
+    }
 
     // Compute stable hash for observability
-    const schemaString = JSON.stringify(cleanSchema);
-    const schemaHash = createHash('sha256')
-        .update(schemaString, 'utf8')
-        .digest('hex')
-        .slice(0, 12);
+    const schemaString = stableStringify(cleanSchema);
+    const schemaHash = createHash("sha256").update(schemaString, "utf8").digest("hex").slice(0, 12);
 
     return { schema: cleanSchema, schemaHash };
 }
 
-function removeMetadata(schema: unknown): Record<string, unknown> {
-    if (typeof schema !== 'object' || schema === null) {
-        return schema as Record<string, unknown>;
-    }
-    if (Array.isArray(schema)) {
-        return schema.map(removeMetadata) as unknown as Record<string, unknown>;
-    }
+/**
+ * Remove non-functional metadata fields from a JSON schema.
+ * Preserves structure and types (object/array/primitives).
+ */
+function removeMetadata(value: unknown): unknown {
+    if (value === null) return null;
+    if (Array.isArray(value)) return value.map(removeMetadata);
+    if (typeof value !== "object") return value;
+
+    const obj = value as Record<string, unknown>;
     const cleaned: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(schema)) {
-        if (key === '$schema' || key === '$id') continue;
-        if (Array.isArray(value)) {
-            cleaned[key] = value.map(removeMetadata);
-        } else if (typeof value === 'object' && value !== null) {
-            cleaned[key] = removeMetadata(value);
-        } else {
-            cleaned[key] = value;
-        }
+
+    for (const [key, v] of Object.entries(obj)) {
+        if (key === "$schema" || key === "$id") continue;
+        cleaned[key] = removeMetadata(v);
     }
+
     return cleaned;
+}
+
+/**
+ * Deterministic JSON stringify (sorts keys recursively).
+ */
+function stableStringify(value: unknown): string {
+    return JSON.stringify(sortKeysDeep(value));
+}
+
+function sortKeysDeep(value: unknown): unknown {
+    if (value === null) return null;
+    if (Array.isArray(value)) return value.map(sortKeysDeep);
+    if (typeof value !== "object") return value;
+
+    const obj = value as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(obj).sort()) {
+        out[key] = sortKeysDeep(obj[key]);
+    }
+    return out;
 }
 
 export interface LLMCompletionResult<T> {
@@ -89,11 +120,11 @@ export interface LLMProvider {
             promptVersion?: string;
             promptHash?: string;
             promptLength?: number;
-            schemaHash?: string;  // Hash of JSON Schema for observability
-            requestId?: string;  // For timing correlation
-            stage?: string;       // For stage identification (e.g., "intent_gate")
+            schemaHash?: string;
+            requestId?: string;
+            stage?: string;
         },
-        staticJsonSchema?: any  // Optional static JSON Schema (bypasses Zod conversion)
+        staticJsonSchema?: any
     ): Promise<LLMCompletionResult<z.infer<T>>>;
 
     complete(

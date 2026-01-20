@@ -33,6 +33,7 @@ export interface PostFilterOutput {
  */
 export function applyPostFilters(input: PostFilterInput): PostFilterOutput {
   const { results, sharedFilters, requestId, pipelineVersion } = input;
+  const startTime = Date.now();
 
   const beforeCount = results.length;
   let unknownExcluded = 0;
@@ -48,11 +49,14 @@ export function applyPostFilters(input: PostFilterInput): PostFilterOutput {
   unknownExcluded = unknownCount;
 
   const afterCount = filteredResults.length;
+  const durationMs = Date.now() - startTime;
 
   logger.info({
     requestId,
     pipelineVersion,
-    event: 'post_filter_applied',
+    stage: 'post_filter',
+    event: 'stage_completed',
+    durationMs,
     openState: sharedFilters.openState,
     openAt: sharedFilters.openAt,
     openBetween: sharedFilters.openBetween,
@@ -62,7 +66,7 @@ export function applyPostFilters(input: PostFilterInput): PostFilterOutput {
       removed: beforeCount - afterCount,
       unknownExcluded
     }
-  }, '[ROUTE2] Post-filters applied');
+  }, '[ROUTE2] post_filter completed');
 
   return {
     resultsFiltered: filteredResults,

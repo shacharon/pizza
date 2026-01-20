@@ -23,6 +23,7 @@ export interface Route2Context {
   traceId?: string;
   sessionId?: string;
   startTime: number;
+  jobCreatedAt?: number; // Timestamp when search job was created (for queueDelayMs)
   sessionService?: any; // Optional session service for region caching
   llmProvider: LLMProvider;
   userLocation?: {
@@ -37,6 +38,16 @@ export interface Route2Context {
   sharedFilters?: {
     preGoogle?: PreGoogleBaseFilters;
     final?: FinalSharedFilters;
+  };
+  // Stage timing tracking for duration decomposition
+  timings?: {
+    gate2Ms?: number;
+    intentMs?: number;
+    routeLLMMs?: number;
+    baseFiltersMs?: number;
+    googleMapsMs?: number;
+    postFilterMs?: number;
+    responseBuildMs?: number;
   };
 }
 

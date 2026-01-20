@@ -52,10 +52,8 @@ const NEARBY_MAPPER_PROMPT_HASH = createHash('sha256')
   .update(NEARBY_MAPPER_PROMPT, 'utf8')
   .digest('hex');
 
-const { schema: NEARBY_JSON_SCHEMA, schemaHash: NEARBY_SCHEMA_HASH } = buildLLMJsonSchema(
-  NearbyMappingSchema,
-  'NearbyMapping'
-);
+// Import static schema (zod-to-json-schema broken with Zod v4)
+import { NEARBY_JSON_SCHEMA, NEARBY_SCHEMA_HASH } from './static-schemas.js';
 
 /**
  * Execute Nearby Mapper

@@ -4,8 +4,6 @@
  */
 
 import { createHash } from 'crypto';
-import { buildLLMJsonSchema } from '../../../../../llm/types.js';
-import { IntentLLMSchema } from './intent.types.js';
 
 export const INTENT_PROMPT_VERSION = 'intent_v4';
 
@@ -64,14 +62,50 @@ Rules:
 - If uncertain, choose TEXTSEARCH with lower confidence.
 `;
 
-// Generate JSON Schema from Zod (single source of truth)
-const { schema: INTENT_JSON_SCHEMA, schemaHash: INTENT_SCHEMA_HASH } = buildLLMJsonSchema(
-  IntentLLMSchema,
-  'IntentLLM'
-);
+/**
+ * Manually define the JSON Schema to avoid circular dependency issues 
+ * between the prompt and the Zod types during runtime.
+ */
+export const INTENT_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    route: {
+      type: "string",
+      enum: ["TEXTSEARCH", "NEARBY", "LANDMARK"]
+    },
+    confidence: { type: "number", minimum: 0, maximum: 1 },
+    reason: { type: "string", minLength: 1 },
+    language: {
+      type: "string",
+      enum: ["he", "en", "ru", "ar", "fr", "es", "other"]
+    },
+    region: { type: "string", pattern: "^[A-Z]{2}$" },
+    regionConfidence: { type: "number", minimum: 0, maximum: 1 },
+    regionReason: { type: "string", minLength: 1 }
+  },
+  required: [
+    "route",
+    "confidence",
+    "reason",
+    "language",
+    "region",
+    "regionConfidence",
+    "regionReason"
+  ],
+  additionalProperties: false
+};
 
-export { INTENT_JSON_SCHEMA, INTENT_SCHEMA_HASH };
+/**
+ * Generate a hash for the schema to manage versioning and caching.
+ */
+export const INTENT_SCHEMA_HASH = createHash('sha256')
+  .update(JSON.stringify(INTENT_JSON_SCHEMA))
+  .digest('hex')
+  .substring(0, 12);
 
+/**
+ * Generate a hash for the system prompt to track changes.
+ */
 export const INTENT_PROMPT_HASH = createHash('sha256')
   .update(INTENT_SYSTEM_PROMPT, 'utf8')
   .digest('hex');

@@ -24,6 +24,8 @@ import { resolveFilters } from './shared/filters-resolver.js';
 import { applyPostFilters } from './post-filters/post-results.filter.js';
 import { logger } from '../../../lib/logger/structured-logger.js';
 import { wsManager } from '../../../server.js';
+import { startStage, endStage } from '../../../lib/telemetry/stage-timer.js';
+import { sanitizeQuery } from '../../../lib/telemetry/query-sanitizer.js';
 
 /**
  * Execute ROUTE2 search pipeline
@@ -39,17 +41,23 @@ export async function searchRoute2(
   const { requestId, startTime } = ctx;
 
   // Log pipeline selection
+  const { queryLen, queryHash } = sanitizeQuery(request.query);
+  
   logger.info({
     requestId,
     pipelineVersion: 'route2',
     event: 'pipeline_selected',
-    query: request.query
+    queryLen,
+    queryHash
   }, '[ROUTE2] Pipeline selected');
 
   try {
     // Resolve user region from device
     const { userRegionCode, source: userRegionSource } = await resolveUserRegionCode(ctx);
     ctx.userRegionCode = userRegionCode;
+
+    // Initialize timings
+    if (!ctx.timings) ctx.timings = {};
 
     // STAGE 1: GATE2
     const gateResult = await executeGate2Stage(request, ctx);
@@ -222,18 +230,34 @@ export async function searchRoute2(
 
     // STAGE 4: GOOGLE_MAPS
     const googleResult = await executeGoogleMapsStage(mapping, request, ctx);
+    ctx.timings.googleMapsMs = googleResult.durationMs;
 
     // STAGE 5: POST-FILTERS (deterministic filtering after Google results)
+    const postFilterStart = startStage(ctx, 'post_filter', {
+      openState: finalFilters.openState,
+      openAt: finalFilters.openAt,
+      openBetween: finalFilters.openBetween
+    });
+    
     const postFilterResult = applyPostFilters({
       results: googleResult.results,
       sharedFilters: finalFilters,
       requestId: ctx.requestId,
       pipelineVersion: 'route2'
     });
+    
+    endStage(ctx, 'post_filter', postFilterStart, {
+      stats: postFilterResult.stats
+    });
 
     // Use filtered results for response
     const finalResults = postFilterResult.resultsFiltered;
 
+    // STAGE 6: RESPONSE BUILD
+    const responseBuildStart = startStage(ctx, 'response_build', {
+      resultCount: finalResults.length
+    });
+    
     // Build response (SKELETON: minimal valid response)
     const totalDurationMs = Date.now() - startTime;
 
@@ -278,22 +302,50 @@ export async function searchRoute2(
         failureReason: 'NONE'
       }
     };
+    endStage(ctx, 'response_build', responseBuildStart);
 
-    // Log pipeline completion
+    // Compute stage durations for decomposition from context
+    const gate2Ms = ctx.timings?.gate2Ms || 0;
+    const intentMs = ctx.timings?.intentMs || 0;
+    const routeLLMMs = ctx.timings?.routeLLMMs || 0;
+    const baseFiltersMs = ctx.timings?.baseFiltersMs || 0;
+    const googleMapsMs = ctx.timings?.googleMapsMs || 0;
+    const postFilterMs = ctx.timings?.postFilterMs || 0;
+    const responseBuildMs = ctx.timings?.responseBuildMs || 0;
+    
+    const durationsSumMs = gate2Ms + intentMs + routeLLMMs + baseFiltersMs + googleMapsMs + postFilterMs + responseBuildMs;
+    const unaccountedMs = Math.max(0, totalDurationMs - durationsSumMs);
+    
+    // Calculate queueDelayMs if jobCreatedAt available
+    const queueDelayMs = ctx.jobCreatedAt ? Math.max(0, ctx.startTime - ctx.jobCreatedAt) : 0;
+
+    // Log pipeline completion with duration decomposition
     logger.info({
       requestId,
       pipelineVersion: 'route2',
       event: 'pipeline_completed',
       durationMs: totalDurationMs,
+      durationsSumMs,
+      unaccountedMs,
+      queueDelayMs,
       resultCount: finalResults.length,
       postFilters: {
         applied: postFilterResult.applied,
         beforeCount: postFilterResult.stats.before,
         afterCount: postFilterResult.stats.after
+      },
+      durations: {
+        gate2Ms,
+        intentMs,
+        routeLLMMs,
+        baseFiltersMs,
+        googleMapsMs,
+        postFilterMs,
+        responseBuildMs
       }
     }, '[ROUTE2] Pipeline completed');
 
-    // Emit WebSocket event to subscribers
+    // STAGE 7: WebSocket publish (timing instrumented in websocket-manager)
     wsManager.publishToChannel('search', requestId, undefined, {
       type: 'status',
       requestId,

@@ -1,5 +1,6 @@
 {
   "watch": ["src", ".env"],
+  "ignore": ["dist", "node_modules"],
   "ext": "ts,env",
   "exec": "node --inspect=9229 --enable-source-maps --import tsx src/server.ts"
 }

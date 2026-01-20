@@ -8,14 +8,100 @@
  * Endpoints:
  * - POST https://places.googleapis.com/v1/places:searchText
  * - POST https://places.googleapis.com/v1/places:searchNearby
+ * 
+ * Cache Strategy:
+ * - L0: In-flight deduplication (concurrent requests share promise)
+ * - L1: In-memory (60s TTL, 500 entries max)
+ * - L2: Redis (300-900s TTL based on query intent)
  */
 
 import type { SearchRequest } from '../../types/search-request.dto.js';
 import type { Route2Context, RouteLLMMapping, GoogleMapsResult } from '../types.js';
 import { logger } from '../../../../lib/logger/structured-logger.js';
+import { GoogleCacheService } from '../../../../lib/cache/googleCacheService.js';
+import { createHash } from 'node:crypto';
+import {
+  generateSearchCacheKey,
+  generateTextSearchCacheKey,
+  type CacheKeyParams
+} from '../../../../lib/cache/googleCacheUtils.js';
+import { getConfig } from '../../../../config/env.js';
+import { getRedisClient } from '../../../../lib/redis/redis-client.js';
 
 // Field mask for Google Places API (New) - includes opening hours data
 const PLACES_FIELD_MASK = 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.priceLevel,places.currentOpeningHours,places.regularOpeningHours,places.utcOffsetMinutes,places.photos,places.types,places.googleMapsUri';
+
+// Initialize Redis and Cache Service (module-level singleton)
+let cacheService: GoogleCacheService | null = null;
+let cacheInitialized = false;
+
+async function initializeCacheService(): Promise<void> {
+  if (cacheInitialized) return;
+  cacheInitialized = true;
+
+  // Check if caching is enabled via environment flag
+  const enableCache = process.env.ENABLE_GOOGLE_CACHE !== 'false'; // Enabled by default
+  if (!enableCache) {
+    logger.info({
+      event: 'CACHE_SERVICE_READY',
+      hasRedis: false,
+      cacheEnabled: false,
+      msg: '[GoogleMapsCache] Caching disabled via ENABLE_GOOGLE_CACHE=false'
+    });
+    return;
+  }
+
+  // Get Redis URL from env or use default localhost
+  const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+  logger.info({
+    event: 'CACHE_INIT_ATTEMPT',
+    redisUrl: redisUrl.replace(/:[^:@]+@/, ':****@'),
+    msg: '[GoogleMapsCache] Attempting Redis connection'
+  });
+
+  try {
+    // Use shared Redis client
+    const redis = await getRedisClient({
+      url: redisUrl,
+      maxRetriesPerRequest: 2,
+      connectTimeout: 2000,
+      commandTimeout: 500, // 500ms command timeout for cache operations
+      enableOfflineQueue: false
+    });
+
+    if (redis) {
+      cacheService = new GoogleCacheService(redis, logger);
+      logger.info({
+        event: 'CACHE_SERVICE_READY',
+        hasRedis: true,
+        commandTimeout: 500,
+        msg: '[GoogleMapsCache] ✓ Cache service active with shared Redis client'
+      });
+    } else {
+      throw new Error('Shared Redis client unavailable');
+    }
+  } catch (err) {
+    // Non-fatal: just disable caching
+    logger.warn({
+      event: 'CACHE_SERVICE_DISABLED',
+      error: (err as Error).message,
+      msg: '[GoogleMapsCache] Redis unavailable, caching disabled (non-fatal, will use direct Google API)'
+    });
+    cacheService = null;
+  }
+}
+
+function getCacheService(): GoogleCacheService | null {
+  return cacheService;
+}
+
+// Initialize cache on module load (non-blocking)
+initializeCacheService().catch((err) => {
+  logger.warn({
+    error: err.message,
+    msg: '[GoogleMapsCache] Cache initialization failed (non-fatal)'
+  });
+});
 
 /**
  * Execute GOOGLE_MAPS stage
@@ -107,7 +193,7 @@ export async function executeGoogleMapsStage(
 
 /**
  * Execute Google Places Text Search (New API)
- * Includes retry logic for low results
+ * Includes retry logic for low results and L1/L2 caching
  */
 async function executeTextSearch(
   mapping: Extract<RouteLLMMapping, { providerMethod: 'textSearch' }>,
@@ -123,7 +209,7 @@ async function executeTextSearch(
     textQuery: mapping.textQuery,
     region: mapping.region,
     language: mapping.language,
-    hasBias: mapping.bias !== null
+    hasBias: !!mapping.bias
   }, '[GOOGLE] Calling Text Search API (New)');
 
   const apiKey = process.env.GOOGLE_API_KEY;
@@ -137,48 +223,141 @@ async function executeTextSearch(
     return [];
   }
 
-  try {
-    // First attempt
-    let results = await executeTextSearchAttempt(mapping, apiKey, requestId);
+  const cache = getCacheService();
+  const fetchFn = async (): Promise<any[]> => {
+    try {
+      // First attempt
+      let results = await executeTextSearchAttempt(mapping, apiKey, requestId);
 
-    // Retry logic for low results (Fix #4) - must materially change request
-    if (results.length <= 1 && mapping.bias !== null) {
-      logger.info({
-        requestId,
-        provider: 'google_places_new',
-        method: 'searchText',
-        event: 'textsearch_retry_low_results',
-        beforeCount: results.length,
-        reason: 'low_results_with_bias',
-        originalBias: mapping.bias,
-        originalTextQuery: mapping.textQuery,
-        originalLanguage: mapping.language
-      }, '[GOOGLE] Low results detected, retrying with bias removed');
+      // Retry logic for low results (Fix #4) - must materially change request
+      if (results.length <= 1 && mapping.bias) {
+        logger.info({
+          requestId,
+          provider: 'google_places_new',
+          method: 'searchText',
+          event: 'textsearch_retry_low_results',
+          beforeCount: results.length,
+          reason: 'low_results_with_bias',
+          originalBias: mapping.bias,
+          originalTextQuery: mapping.textQuery,
+          originalLanguage: mapping.language
+        }, '[GOOGLE] Low results detected, retrying with bias removed');
 
-      // Retry strategy: Remove bias entirely to get broader results
-      // This is the most material change that preserves intent
-      const retryMapping: Extract<RouteLLMMapping, { providerMethod: 'textSearch' }> = {
-        ...mapping,
-        bias: null  // Remove bias completely
-      };
+        // Retry strategy: Remove bias entirely to get broader results
+        const retryMapping: Extract<RouteLLMMapping, { providerMethod: 'textSearch' }> = {
+          ...mapping,
+          bias: undefined
+        };
 
-      const retryResults = await executeTextSearchAttempt(retryMapping, apiKey, requestId);
+        const retryResults = await executeTextSearchAttempt(retryMapping, apiKey, requestId);
 
-      logger.info({
-        requestId,
-        provider: 'google_places_new',
-        method: 'searchText',
-        event: 'textsearch_retry_completed',
-        beforeCount: results.length,
-        afterCount: retryResults.length,
-        strategyUsed: 'removed_bias',
-        improvement: retryResults.length - results.length
-      }, '[GOOGLE] Retry completed');
+        logger.info({
+          requestId,
+          provider: 'google_places_new',
+          method: 'searchText',
+          event: 'textsearch_retry_completed',
+          beforeCount: results.length,
+          afterCount: retryResults.length,
+          strategyUsed: 'removed_bias',
+          improvement: retryResults.length - results.length
+        }, '[GOOGLE] Retry completed');
 
-      // Use retry results if better
-      if (retryResults.length > results.length) {
-        results = retryResults;
+        if (retryResults.length > results.length) {
+          results = retryResults;
+        }
       }
+
+      return results;
+    } catch (error) {
+      // Don't cache errors - let them propagate
+      throw error;
+    }
+  };
+
+  try {
+    let results: any[];
+    let fromCache = false;
+
+    // Safe cache usage with comprehensive error handling
+    if (cache) {
+      try {
+        // Validate cache service is still operational
+        if (typeof cache.wrap !== 'function') {
+          throw new Error('Cache service wrap method not available');
+        }
+
+        // Generate cache key with all request parameters
+        const cacheKey = generateTextSearchCacheKey({
+          textQuery: mapping.textQuery,
+          languageCode: mapping.language === 'he' ? 'he' : 'en',
+          regionCode: mapping.region,
+          bias: mapping.bias ? {
+            lat: mapping.bias.center.lat,
+            lng: mapping.bias.center.lng,
+            radiusMeters: mapping.bias.radiusMeters
+          } : null,
+          fieldMask: PLACES_FIELD_MASK,
+          pipelineVersion: 'route2'
+        });
+        const ttl = cache.getTTL(mapping.textQuery);
+
+        logger.info({
+          requestId,
+          event: 'CACHE_WRAP_ENTER',
+          providerMethod: 'textSearch',
+          cacheKey,
+          ttlSeconds: ttl
+        });
+
+        // Wrap cache call with timeout to prevent hanging
+        const cachePromise = cache.wrap(cacheKey, ttl, fetchFn);
+        const timeoutPromise = new Promise<any[]>((_, reject) =>
+          setTimeout(() => reject(new Error('Cache operation timeout')), 10000)
+        );
+
+        results = await Promise.race([cachePromise, timeoutPromise]);
+        const wrapDuration = Date.now() - startTime;
+        fromCache = wrapDuration < 100;
+
+        logger.info({
+          requestId,
+          event: 'CACHE_WRAP_EXIT',
+          providerMethod: 'textSearch',
+          servedFrom: fromCache ? 'cache' : 'google_api',
+          cacheTier: fromCache ? (wrapDuration < 5 ? 'L1' : 'L2') : 'MISS',
+          durationMs: wrapDuration
+        });
+      } catch (cacheError) {
+        // Cache error: fallback to direct fetch (non-fatal)
+        logger.warn({
+          requestId,
+          error: (cacheError as Error).message,
+          stack: (cacheError as Error).stack,
+          msg: '[GOOGLE] Cache error, falling back to direct fetch (non-fatal)'
+        });
+
+        // Execute direct fetch as fallback
+        try {
+          results = await fetchFn();
+        } catch (fetchError) {
+          // If both cache and fetch fail, rethrow fetch error
+          logger.error({
+            requestId,
+            error: (fetchError as Error).message,
+            msg: '[GOOGLE] Both cache and fetch failed'
+          });
+          throw fetchError;
+        }
+      }
+    } else {
+      // No cache: direct fetch
+      logger.info({
+        requestId,
+        event: 'CACHE_BYPASS',
+        providerMethod: 'textSearch',
+        reason: 'cache_service_not_available'
+      });
+      results = await fetchFn();
     }
 
     const durationMs = Date.now() - startTime;
@@ -188,7 +367,8 @@ async function executeTextSearch(
       method: 'searchText',
       durationMs,
       resultCount: results.length,
-      fieldMaskUsed: PLACES_FIELD_MASK
+      fieldMaskUsed: PLACES_FIELD_MASK,
+      servedFrom: fromCache ? 'cache' : 'google_api'
     }, '[GOOGLE] Text Search completed');
 
     return results;
@@ -205,8 +385,6 @@ async function executeTextSearch(
       error: errorMsg
     }, '[GOOGLE] Text Search failed');
 
-    // IMPORTANT: Throw error to propagate to pipeline
-    // Do NOT return [] - that would be treated as "success with 0 results"
     throw error;
   }
 }
@@ -225,16 +403,21 @@ async function executeTextSearchAttempt(
 
   // Build request body
   const requestBody = buildTextSearchBody(mapping, requestId);
+  const textQueryNormalized = requestBody.textQuery?.trim().toLowerCase() || '';
 
-  // Log the actual request payload
+  const textQueryHash = createHash('sha256')
+    .update(textQueryNormalized)
+    .digest('hex')
+    .substring(0, 12);
+
   logger.info({
     requestId,
     event: 'textsearch_request_payload',
-    textQuery: requestBody.textQuery,
+    textQueryLen: requestBody.textQuery?.length || 0,
+    textQueryHash,
     languageCode: requestBody.languageCode,
     regionCode: requestBody.regionCode,
     hasBias: !!requestBody.locationBias,
-    bias: requestBody.locationBias || null,
     maxResultCount: maxResults
   }, '[GOOGLE] Text Search request payload');
 
@@ -291,7 +474,7 @@ function buildTextSearchBody(
   if (mapping.bias && mapping.bias.type === 'locationBias') {
     const { center, radiusMeters } = mapping.bias;
     const validatedBias = validateLocationBias(center, requestId);
-    
+
     if (validatedBias) {
       body.locationBias = {
         circle: {
@@ -614,6 +797,7 @@ function parsePriceLevel(priceLevel: string | undefined): number | undefined {
 
 /**
  * Execute Google Places Nearby Search (New API)
+ * Includes L1/L2 caching
  */
 async function executeNearbySearch(
   mapping: Extract<RouteLLMMapping, { providerMethod: 'nearbySearch' }>,
@@ -645,12 +829,22 @@ async function executeNearbySearch(
     return [];
   }
 
-  try {
+  // Prepare cache key parameters
+  const cacheKeyParams: CacheKeyParams = {
+    category: mapping.keyword,
+    lat: mapping.location.lat,
+    lng: mapping.location.lng,
+    radius: mapping.radiusMeters,
+    region: mapping.region,
+    language: mapping.language
+  };
+
+  const cache = getCacheService();
+  const fetchFn = async (): Promise<any[]> => {
     const results: any[] = [];
     let nextPageToken: string | undefined;
-    const maxResults = 20; // Limit total results across pages
+    const maxResults = 20;
 
-    // Build initial request body
     const requestBody = buildNearbySearchBody(mapping);
 
     // Fetch first page
@@ -660,9 +854,8 @@ async function executeNearbySearch(
       nextPageToken = firstResponse.nextPageToken;
     }
 
-    // Fetch additional pages if needed (up to maxResults)
+    // Fetch additional pages if needed
     while (nextPageToken && results.length < maxResults) {
-      // New API: no delay needed for pagination
       const pageBody = { ...requestBody, pageToken: nextPageToken };
       const pageResponse = await callGooglePlacesSearchNearby(pageBody, apiKey, requestId);
 
@@ -676,6 +869,69 @@ async function executeNearbySearch(
       }
     }
 
+    return results;
+  };
+
+  try {
+    let results: any[];
+    let fromCache = false;
+
+    if (cache) {
+      try {
+        // Validate cache service
+        if (typeof cache.wrap !== 'function') {
+          throw new Error('Cache service wrap method not available');
+        }
+
+        const cacheKey = generateSearchCacheKey(cacheKeyParams);
+        const ttl = cache.getTTL(mapping.keyword);
+
+        logger.debug({
+          requestId,
+          event: 'CACHE_WRAP_ENTER',
+          providerMethod: 'nearbySearch',
+          cacheKey,
+          ttlSeconds: ttl
+        });
+
+        // Wrap with timeout
+        const cachePromise = cache.wrap(cacheKey, ttl, fetchFn);
+        const timeoutPromise = new Promise<any[]>((_, reject) =>
+          setTimeout(() => reject(new Error('Cache operation timeout')), 10000)
+        );
+
+        results = await Promise.race([cachePromise, timeoutPromise]);
+        fromCache = (Date.now() - startTime) < 100;
+      } catch (cacheError) {
+        logger.warn({
+          requestId,
+          error: (cacheError as Error).message,
+          stack: (cacheError as Error).stack,
+          msg: '[GOOGLE] Cache error, falling back to direct fetch (non-fatal)'
+        });
+
+        // Execute direct fetch as fallback
+        try {
+          results = await fetchFn();
+        } catch (fetchError) {
+          logger.error({
+            requestId,
+            error: (fetchError as Error).message,
+            msg: '[GOOGLE] Both cache and fetch failed'
+          });
+          throw fetchError;
+        }
+      }
+    } else {
+      logger.info({
+        requestId,
+        event: 'CACHE_BYPASS',
+        providerMethod: 'nearbySearch',
+        reason: 'cache_service_not_available'
+      });
+      results = await fetchFn();
+    }
+
     const durationMs = Date.now() - startTime;
     logger.info({
       requestId,
@@ -683,8 +939,8 @@ async function executeNearbySearch(
       method: 'searchNearby',
       durationMs,
       resultCount: results.length,
-      hadPagination: !!nextPageToken,
-      fieldMaskUsed: PLACES_FIELD_MASK
+      fieldMaskUsed: PLACES_FIELD_MASK,
+      servedFrom: fromCache ? 'cache' : 'google_api'
     }, '[GOOGLE] Nearby Search completed');
 
     return results;
@@ -701,8 +957,6 @@ async function executeNearbySearch(
       error: errorMsg
     }, '[GOOGLE] Nearby Search failed');
 
-    // IMPORTANT: Throw error to propagate to pipeline
-    // Do NOT return [] - that would be treated as "success with 0 results"
     throw error;
   }
 }
@@ -777,80 +1031,145 @@ async function executeLandmarkPlan(
     // Phase 2: Search based on afterGeocode strategy (using New Places API)
     const searchStartTime = Date.now();
     let results: any[] = [];
+    let fromCache = false;
 
-    if (mapping.afterGeocode === 'nearbySearch') {
-      // Normalize keyword for non-IL regions
-      let normalizedKeyword = mapping.keyword;
-      if (mapping.region && mapping.region !== 'IL') {
-        // Convert to English with "restaurant" suffix
-        if (mapping.keyword.includes('איטלק') || mapping.keyword.toLowerCase().includes('italian')) {
-          normalizedKeyword = 'Italian restaurant';
-        } else {
-          // Generic: append "restaurant" if not present
-          normalizedKeyword = mapping.keyword.toLowerCase().includes('restaurant')
-            ? mapping.keyword
-            : `${mapping.keyword} restaurant`;
+    // Prepare cache key parameters using geocoded location
+    const cacheKeyParams: CacheKeyParams = {
+      category: mapping.keyword,
+      locationText: mapping.geocodeQuery, // Include landmark name for cache differentiation
+      lat: geocodeResult.lat,
+      lng: geocodeResult.lng,
+      radius: mapping.radiusMeters,
+      region: mapping.region,
+      language: mapping.language
+    };
+
+    const cache = getCacheService();
+
+    const fetchFn = async (): Promise<any[]> => {
+      if (mapping.afterGeocode === 'nearbySearch') {
+        // Normalize keyword for non-IL regions
+        let normalizedKeyword = mapping.keyword;
+        if (mapping.region && mapping.region !== 'IL') {
+          if (mapping.keyword.includes('איטלק') || mapping.keyword.toLowerCase().includes('italian')) {
+            normalizedKeyword = 'Italian restaurant';
+          } else {
+            normalizedKeyword = mapping.keyword.toLowerCase().includes('restaurant')
+              ? mapping.keyword
+              : `${mapping.keyword} restaurant`;
+          }
+        }
+
+        // Use Nearby Search centered on geocoded location
+        const requestBody = {
+          locationRestriction: {
+            circle: {
+              center: {
+                latitude: geocodeResult.lat,
+                longitude: geocodeResult.lng
+              },
+              radius: mapping.radiusMeters
+            }
+          },
+          languageCode: mapping.language === 'he' ? 'he' : 'en',
+          includedTypes: ['restaurant'],
+          rankPreference: 'DISTANCE'
+        };
+
+        if (mapping.region) {
+          (requestBody as any).regionCode = mapping.region;
+        }
+
+        logger.debug({
+          requestId,
+          originalKeyword: mapping.keyword,
+          normalizedKeyword,
+          region: mapping.region
+        }, '[GOOGLE] Keyword normalized for nearby search');
+
+        const response = await callGooglePlacesSearchNearby(requestBody, apiKey, requestId);
+        return response.places ? response.places.map((r: any) => mapGooglePlaceToResult(r)) : [];
+
+      } else {
+        // Use Text Search with location bias
+        const requestBody: any = {
+          textQuery: mapping.keyword,
+          languageCode: mapping.language === 'he' ? 'he' : 'en',
+          locationBias: {
+            circle: {
+              center: {
+                latitude: geocodeResult.lat,
+                longitude: geocodeResult.lng
+              },
+              radius: mapping.radiusMeters
+            }
+          }
+        };
+
+        if (mapping.region) {
+          requestBody.regionCode = mapping.region;
+        }
+
+        const response = await callGooglePlacesSearchText(requestBody, apiKey, requestId);
+        return response.places ? response.places.map((r: any) => mapGooglePlaceToResult(r)) : [];
+      }
+    };
+
+    // Execute with cache
+    if (cache) {
+      try {
+        // Validate cache service
+        if (typeof cache.wrap !== 'function') {
+          throw new Error('Cache service wrap method not available');
+        }
+
+        const cacheKey = generateSearchCacheKey(cacheKeyParams);
+        const ttl = cache.getTTL(mapping.keyword);
+
+        logger.debug({
+          requestId,
+          event: 'CACHE_WRAP_ENTER',
+          providerMethod: 'landmarkPlan',
+          cacheKey,
+          ttlSeconds: ttl
+        });
+
+        // Wrap with timeout
+        const cachePromise = cache.wrap(cacheKey, ttl, fetchFn);
+        const timeoutPromise = new Promise<any[]>((_, reject) =>
+          setTimeout(() => reject(new Error('Cache operation timeout')), 10000)
+        );
+
+        results = await Promise.race([cachePromise, timeoutPromise]);
+        fromCache = (Date.now() - searchStartTime) < 100;
+      } catch (cacheError) {
+        logger.warn({
+          requestId,
+          error: (cacheError as Error).message,
+          stack: (cacheError as Error).stack,
+          msg: '[GOOGLE] Cache error, falling back to direct fetch (non-fatal)'
+        });
+
+        // Execute direct fetch as fallback
+        try {
+          results = await fetchFn();
+        } catch (fetchError) {
+          logger.error({
+            requestId,
+            error: (fetchError as Error).message,
+            msg: '[GOOGLE] Both cache and fetch failed'
+          });
+          throw fetchError;
         }
       }
-
-      // Use Nearby Search centered on geocoded location
-      const requestBody = {
-        locationRestriction: {
-          circle: {
-            center: {
-              latitude: geocodeResult.lat,
-              longitude: geocodeResult.lng
-            },
-            radius: mapping.radiusMeters
-          }
-        },
-        languageCode: mapping.language === 'he' ? 'he' : 'en',
-        includedTypes: ['restaurant'],
-        rankPreference: 'DISTANCE'
-      };
-
-      if (mapping.region) {
-        (requestBody as any).regionCode = mapping.region;
-      }
-
-      logger.debug({
-        requestId,
-        originalKeyword: mapping.keyword,
-        normalizedKeyword,
-        region: mapping.region
-      }, '[GOOGLE] Keyword normalized for nearby search');
-
-      const response = await callGooglePlacesSearchNearby(requestBody, apiKey, requestId);
-      if (response.places) {
-        results = response.places.map((r: any) => mapGooglePlaceToResult(r));
-      }
-
     } else {
-      // Use Text Search with location bias
-      // NOTE: Text Search does NOT support includedTypes
-      const requestBody: any = {
-        textQuery: mapping.keyword,
-        languageCode: mapping.language === 'he' ? 'he' : 'en',
-        // Do NOT include includedTypes - not supported by searchText
-        locationBias: {
-          circle: {
-            center: {
-              latitude: geocodeResult.lat,
-              longitude: geocodeResult.lng
-            },
-            radius: mapping.radiusMeters
-          }
-        }
-      };
-
-      if (mapping.region) {
-        requestBody.regionCode = mapping.region;
-      }
-
-      const response = await callGooglePlacesSearchText(requestBody, apiKey, requestId);
-      if (response.places) {
-        results = response.places.map((r: any) => mapGooglePlaceToResult(r));
-      }
+      logger.info({
+        requestId,
+        event: 'CACHE_BYPASS',
+        providerMethod: 'landmarkPlan',
+        reason: 'cache_service_not_available'
+      });
+      results = await fetchFn();
     }
 
     const searchDurationMs = Date.now() - searchStartTime;
@@ -865,7 +1184,8 @@ async function executeLandmarkPlan(
       searchDurationMs,
       totalDurationMs,
       resultCount: results.length,
-      fieldMaskUsed: PLACES_FIELD_MASK
+      fieldMaskUsed: PLACES_FIELD_MASK,
+      servedFrom: fromCache ? 'cache' : 'google_api'
     }, '[GOOGLE] Landmark Plan completed');
 
     return results;

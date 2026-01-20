@@ -105,10 +105,13 @@ export class WebSocketManager {
   private handleConnection(ws: WebSocket, req: any): void {
     const clientId = this.generateClientId();
 
-    logger.info({
+    // Extract host from origin (no PII, no full user-agent)
+    const origin = req.headers.origin || '';
+    const originHost = origin ? new URL(origin).hostname : 'unknown';
+
+    logger.debug({
       clientId,
-      origin: req.headers.origin,
-      userAgent: req.headers['user-agent']
+      originHost
     }, 'websocket_connected');
 
     // Initialize ping/pong
@@ -527,6 +530,7 @@ export class WebSocketManager {
     sessionId: string | undefined,
     message: WSServerMessage
   ): void {
+    const startTime = performance.now();
     const key = this.buildSubscriptionKey(channel, requestId, sessionId);
     
     // Cleanup expired backlogs
@@ -542,6 +546,7 @@ export class WebSocketManager {
 
     // Send to active subscribers
     const data = JSON.stringify(message);
+    const payloadBytes = Buffer.byteLength(data, 'utf8');
     let sent = 0;
 
     for (const client of clients) {
@@ -551,10 +556,15 @@ export class WebSocketManager {
       }
     }
 
+    const durationMs = Math.round(performance.now() - startTime);
+
     logger.info({
       channel,
       requestId,
-      clientCount: sent
+      clientCount: sent,
+      payloadBytes,
+      payloadType: message.type,
+      durationMs
     }, 'websocket_published');
   }
 

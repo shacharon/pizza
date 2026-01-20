@@ -15,6 +15,8 @@ import type { Route2Context, Gate2StageOutput, Gate2Result } from '../types.js';
 import type { Message } from '../../../../llm/types.js';
 import { buildLLMJsonSchema } from '../../../../llm/types.js';
 import { logger } from '../../../../lib/logger/structured-logger.js';
+import { startStage, endStage } from '../../../../lib/telemetry/stage-timer.js';
+import { sanitizeQuery } from '../../../../lib/telemetry/query-sanitizer.js';
 
 // Gate2 Zod Schema for LLM output (before routing logic) - SOURCE OF TRUTH
 const Gate2LLMSchema = z.object({
@@ -22,11 +24,28 @@ const Gate2LLMSchema = z.object({
   confidence: z.number().min(0).max(1)
 }).strict();
 
-// Generate JSON Schema from Zod (single source of truth)
-const { schema: GATE2_JSON_SCHEMA, schemaHash: GATE2_SCHEMA_HASH } = buildLLMJsonSchema(
-  Gate2LLMSchema,
-  'Gate2LLM'
-);
+// Static JSON Schema for OpenAI (zod-to-json-schema library is broken with Zod v4)
+const GATE2_JSON_SCHEMA = {
+  type: 'object',
+  properties: {
+    foodSignal: {
+      type: 'string',
+      enum: ['NO', 'UNCERTAIN', 'YES']
+    },
+    confidence: {
+      type: 'number',
+      minimum: 0,
+      maximum: 1
+    }
+  },
+  required: ['foodSignal', 'confidence'],
+  additionalProperties: false
+} as const;
+
+const GATE2_SCHEMA_HASH = createHash('sha256')
+  .update(JSON.stringify(GATE2_JSON_SCHEMA))
+  .digest('hex')
+  .substring(0, 12);
 
 const GATE2_PROMPT_VERSION = 'gate2_v4';
 const GATE2_SYSTEM_PROMPT = `
@@ -120,15 +139,12 @@ export async function executeGate2Stage(
   context: Route2Context
 ): Promise<Gate2StageOutput> {
   const { requestId, traceId, sessionId, llmProvider } = context;
-  const startTime = Date.now();
+  const { queryLen, queryHash } = sanitizeQuery(request.query);
 
-  logger.info({
-    requestId,
-    pipelineVersion: 'route2',
-    stage: 'gate2',
-    event: 'stage_started',
-    query: request.query
-  }, '[ROUTE2] gate2 started');
+  const startTime = startStage(context, 'gate2', {
+    queryLen,
+    queryHash
+  });
 
   try {
     // Call LLM for classification
@@ -171,9 +187,9 @@ export async function executeGate2Stage(
       lastError = err;
       const errorMsg = err?.message || String(err);
       const errorType = err?.errorType || '';
-      const isTimeout = errorType === 'abort_timeout' || 
-                       errorMsg.toLowerCase().includes('abort') || 
-                       errorMsg.toLowerCase().includes('timeout');
+      const isTimeout = errorType === 'abort_timeout' ||
+        errorMsg.toLowerCase().includes('abort') ||
+        errorMsg.toLowerCase().includes('timeout');
 
       if (isTimeout) {
         logger.warn({
@@ -214,7 +230,7 @@ export async function executeGate2Stage(
             ...(retryResponse.usage?.total_tokens !== undefined && { total: retryResponse.usage.total_tokens }),
             ...(retryResponse.model !== undefined && { model: retryResponse.model })
           };
-          
+
           logger.info({
             requestId,
             traceId,
@@ -232,7 +248,7 @@ export async function executeGate2Stage(
     // If LLM failed (even after retry), return timeout error result
     if (!llmResult) {
       const durationMs = Date.now() - startTime;
-      
+
       logger.error({
         requestId,
         traceId,
@@ -245,8 +261,8 @@ export async function executeGate2Stage(
 
       // Return error result (STOP route with low confidence)
       const gate = createTimeoutErrorResult();
-      
-      return { 
+
+      return {
         gate,
         error: {
           code: 'GATE_TIMEOUT',
@@ -259,19 +275,12 @@ export async function executeGate2Stage(
     // Apply deterministic routing
     const gate = applyDeterministicRouting(llmResult);
 
-    const durationMs = Date.now() - startTime;
-
-    logger.info({
-      requestId,
-      pipelineVersion: 'route2',
-      stage: 'gate2',
-      event: 'stage_completed',
-      durationMs,
+    endStage(context, 'gate2', startTime, {
       route: gate.route,
       foodSignal: gate.foodSignal,
       confidence: gate.confidence,
       ...(tokenUsage && { tokenUsage })
-    }, '[ROUTE2] gate2 completed');
+    });
 
     return { gate };
 
@@ -291,8 +300,8 @@ export async function executeGate2Stage(
 
     // Return error result for unexpected failures
     const gate = createTimeoutErrorResult();
-    
-    return { 
+
+    return {
       gate,
       error: {
         code: 'GATE_ERROR',
