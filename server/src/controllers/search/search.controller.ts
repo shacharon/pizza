@@ -230,6 +230,9 @@ router.post('/', async (req: Request, res: Response) => {
       return;
     }
 
+    // P0 Security: Use authenticated sessionId from JWT
+    const authenticatedSessionId = req.ctx?.sessionId || queryData.sessionId;
+
     // 3. Define Context
     const route2Context: Route2Context = {
       requestId,
@@ -239,25 +242,24 @@ router.post('/', async (req: Request, res: Response) => {
       //   debug: { stopAfter: 'intent' },   // 👈 זו השורה
       // Fix: Only include optional properties if they actually have a value
       ...(req.traceId && { traceId: req.traceId }),
-      ...(queryData.sessionId && { sessionId: queryData.sessionId })
+      ...(authenticatedSessionId && { sessionId: authenticatedSessionId })
     };
 
 
     if (mode === 'async') {
-      // P0 Security: Extract session from request context for IDOR protection
-      const ownerSessionId = req.ctx?.sessionId || null;
+      // P0 Security: Use authenticated session from JWT
+      const ownerSessionId = authenticatedSessionId;
       const ownerUserId = (req as any).userId || null;
 
-      // P0 Security: Require X-Session-Id header for async job creation
       if (!ownerSessionId) {
         logger.warn({
           requestId,
           operation: 'createJob',
           decision: 'REJECTED',
           reason: 'missing_session_id'
-        }, '[P0 Security] Async job creation requires X-Session-Id header');
+        }, '[P0 Security] Async job creation requires authenticated session');
         
-        res.status(400).json(createSearchError('X-Session-Id header required for async requests', 'MISSING_SESSION_ID'));
+        res.status(401).json(createSearchError('Authentication required', 'MISSING_SESSION_ID'));
         return;
       }
 
@@ -294,6 +296,24 @@ router.post('/', async (req: Request, res: Response) => {
 
     // SYNC Mode
     const response = await searchRoute2(queryData, route2Context);
+    
+    // P0 Security: Sanitize photo URLs before returning (same as async mode)
+    if (response && typeof response === 'object' && 'results' in response) {
+      const sanitized = {
+        ...response,
+        results: sanitizePhotoUrls((response as any).results || [])
+      };
+      
+      logger.info({
+        requestId,
+        mode: 'sync',
+        photoUrlsSanitized: true,
+        resultCount: (response as any).results?.length || 0
+      }, '[P0 Security] Photo URLs sanitized (sync mode)');
+      
+      return res.json(sanitized);
+    }
+    
     res.json(response);
 
   } catch (error) {
@@ -330,32 +350,60 @@ router.get('/:requestId/result', async (req: Request, res: Response) => {
   // P0 Security: Validate session ownership
   const ownerSessionId = job.ownerSessionId;
   
-  // Missing session -> 401 Unauthorized
+  // Missing current session -> 401 Unauthorized
   if (!currentSessionId) {
     logger.warn({
       requestId,
       sessionHash: hashSessionId(currentSessionId),
       operation: 'getResult',
       decision: 'UNAUTHORIZED',
-      reason: 'missing_session_id'
-    }, '[P0 Security] Access denied: missing X-Session-Id header');
+      reason: 'missing_session_id',
+      traceId: req.traceId || 'unknown'
+    }, '[P0 Security] Access denied: missing session in request');
     
-    return res.status(401).json({ code: 'UNAUTHORIZED', message: 'X-Session-Id header required' });
+    return res.status(401).json({ 
+      code: 'UNAUTHORIZED', 
+      message: 'Authentication required',
+      traceId: req.traceId || 'unknown'
+    });
   }
   
-  // Session mismatch -> 404 to avoid disclosure (or 403 if preferred)
-  if (ownerSessionId && currentSessionId !== ownerSessionId) {
+  // P0 CRITICAL: Legacy job without owner -> 404 (secure default, no disclosure)
+  if (!ownerSessionId) {
+    logger.warn({
+      requestId,
+      currentSessionHash: hashSessionId(currentSessionId),
+      operation: 'getResult',
+      decision: 'NOT_FOUND',
+      reason: 'legacy_job_no_owner',
+      traceId: req.traceId || 'unknown'
+    }, '[P0 Security] Access denied: legacy job without owner');
+    
+    return res.status(404).json({ 
+      code: 'NOT_FOUND', 
+      requestId,
+      traceId: req.traceId || 'unknown'
+    });
+  }
+  
+  // Session mismatch -> 404 to avoid disclosure
+  if (currentSessionId !== ownerSessionId) {
     logger.warn({
       requestId,
       currentSessionHash: hashSessionId(currentSessionId),
       ownerSessionHash: hashSessionId(ownerSessionId),
       operation: 'getResult',
       decision: 'FORBIDDEN',
-      reason: 'session_mismatch'
+      reason: 'session_mismatch',
+      traceId: req.traceId || 'unknown'
     }, '[P0 Security] Access denied: session mismatch');
     
     // Return 404 to avoid leaking requestId existence
-    return res.status(404).json({ code: 'NOT_FOUND', requestId });
+    return res.status(404).json({ 
+      code: 'NOT_FOUND', 
+      requestId,
+      traceId: req.traceId || 'unknown'
+    });
   }
   
   // Log successful authorization
@@ -363,7 +411,8 @@ router.get('/:requestId/result', async (req: Request, res: Response) => {
     requestId,
     sessionHash: hashSessionId(currentSessionId),
     operation: 'getResult',
-    decision: 'AUTHORIZED'
+    decision: 'AUTHORIZED',
+    traceId: req.traceId || 'unknown'
   }, '[P0 Security] Access granted');
 
   // Authorization passed - check job status

@@ -12,15 +12,22 @@
     <app-reason-label [restaurant]="restaurant()" />
   }
 
-  @if (restaurant().photoUrl) {
+  <!-- P0 Security: Secure photo loading via backend proxy -->
+  @if (photoSrc() && !photoError()) {
     <img 
       class="restaurant-photo" 
-      [src]="restaurant().photoUrl" 
-      [alt]="restaurant().name"
+      [src]="getCurrentPhotoSrc()" 
+      [alt]="restaurant().name + ' restaurant photo'"
       loading="lazy"
+      (error)="onPhotoError()"
+      [attr.aria-label]="'Photo of ' + restaurant().name"
     />
   } @else {
-    <div class="restaurant-photo-placeholder">
+    <div 
+      class="restaurant-photo-placeholder"
+      role="img"
+      [attr.aria-label]="'Placeholder image for ' + restaurant().name"
+    >
       🍽️
     </div>
   }

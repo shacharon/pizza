@@ -15,35 +15,30 @@ import { Router } from 'express';
 import searchRouter from '../../controllers/search/search.controller.js';
 import analyticsRouter from '../../controllers/analytics/analytics.controller.js';
 import photosRouter from '../../controllers/photos/photos.controller.js';
-// OBSOLETE: Legacy routes removed
-// import { chatRouter } from '../chat.routes.js';
-// import { placesRouter } from '../places.routes.js';
-// import { dialogueRouter } from '../dialogue.routes.js';
+import { authenticateJWT } from '../../middleware/auth.middleware.js';
+import { createRateLimiter } from '../../middleware/rate-limit.middleware.js';
 
 export function createV1Router(): Router {
   const router = Router();
 
-  // Unified search endpoint
-  // Internal routes: POST /, GET /stats
-  // Exposed as: POST /search, GET /search/stats
-  router.use('/search', searchRouter);
+  // P0 Security: Search rate limiting (100 req/min per IP+session)
+  const searchRateLimiter = createRateLimiter({
+    windowMs: 60 * 1000,
+    maxRequests: 100,
+    keyPrefix: 'search'
+  });
 
-  // Analytics endpoint
-  // Internal routes: POST /events, GET /events, GET /stats, DELETE /events
-  // Exposed as: POST /analytics/events, etc.
-  router.use('/analytics', analyticsRouter);
+  // P0 Security: Protected search endpoint
+  // Requires JWT authentication
+  router.use('/search', authenticateJWT, searchRateLimiter, searchRouter);
+
+  // P0 Security: Protected analytics endpoint
+  // Requires JWT authentication
+  router.use('/analytics', authenticateJWT, analyticsRouter);
 
   // Photos proxy endpoint (P0 Security: hides Google API keys)
-  // Internal routes: GET /*
-  // Exposed as: GET /photos/places/{placeId}/photos/{photoId}
+  // Public endpoint (already has rate limiting)
   router.use('/photos', photosRouter);
-
-  // OBSOLETE: Legacy endpoints removed
-  // These endpoints are no longer supported:
-  // - POST /chat, POST /restaurants/search, POST /nlu/parse
-  // - POST /places/search
-  // - POST /dialogue
-  // Use POST /search with proper request format instead
 
   return router;
 }

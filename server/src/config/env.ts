@@ -66,6 +66,29 @@ function mustString(name: string): string {
     return value;
 }
 
+/**
+ * P0 Security: Validate JWT_SECRET in production
+ * Crashes on startup if missing or equals dev default
+ */
+function validateJwtSecret(): string {
+    const jwtSecret = process.env.JWT_SECRET;
+    const DEV_DEFAULT = 'dev-secret-change-in-production';
+    
+    if (isProd()) {
+        if (!jwtSecret || jwtSecret.trim() === '') {
+            throw new Error('[P0 Security] JWT_SECRET is required in production');
+        }
+        if (jwtSecret === DEV_DEFAULT) {
+            throw new Error('[P0 Security] JWT_SECRET cannot be dev default in production');
+        }
+        if (jwtSecret.length < 32) {
+            throw new Error('[P0 Security] JWT_SECRET must be at least 32 characters in production');
+        }
+    }
+    
+    return jwtSecret || DEV_DEFAULT;
+}
+
 function validateRedisUrl(redisUrl: string, enabled: boolean) {
     if (!enabled) return;
 
@@ -104,6 +127,11 @@ export function getConfig() {
      */
     const openaiApiKey = mustString('OPENAI_API_KEY');
     const googleApiKey = mustString('GOOGLE_API_KEY');
+    
+    /**
+     * P0 Security: JWT Secret (fail-fast in production)
+     */
+    const jwtSecret = validateJwtSecret();
 
     /**
      * Redis
@@ -183,6 +211,9 @@ export function getConfig() {
         // API
         openaiApiKey,
         googleApiKey,
+        
+        // P0 Security
+        jwtSecret,
 
         // Redis
         enableRedisJobStore,

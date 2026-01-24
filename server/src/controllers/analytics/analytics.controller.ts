@@ -1,52 +1,74 @@
 /**
  * Analytics Controller
- * Handles event tracking with in-memory storage
+ * P0 Security: User-scoped analytics with IDOR protection
  */
 
 import { Router, Request, Response } from 'express';
+import type { AuthenticatedRequest } from '../../middleware/auth.middleware.js';
+import { logger } from '../../lib/logger/structured-logger.js';
 
 const router = Router();
 
 // In-memory storage (reset on server restart)
+// P0: Events bound to userId/sessionId
 const events: Array<{
   event: string;
   data: any;
   timestamp: string;
+  userId?: string;
+  sessionId: string;
 }> = [];
 
 const MAX_EVENTS = 1000;
 
 /**
  * POST /api/analytics/events
- * Track an analytics event
+ * P0 Security: Track event bound to authenticated user/session
  */
 router.post('/events', (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
   const { event, data } = req.body;
+  const userId = authReq.userId;
+  const sessionId = authReq.sessionId || 'unknown';
 
-  // Validate request
   if (!event) {
-    return res.status(400).json({ error: 'Event name is required' });
+    return res.status(400).json({
+      error: 'Event name is required',
+      code: 'VALIDATION_ERROR'
+    });
   }
 
-  // Store in memory
-  events.push({
+  // P0: Bind event to authenticated user/session
+  const eventEntry: {
+    event: string;
+    data: any;
+    timestamp: string;
+    userId?: string;
+    sessionId: string;
+  } = {
     event,
     data: data || {},
-    timestamp: new Date().toISOString()
-  });
+    timestamp: new Date().toISOString(),
+    sessionId
+  };
+  
+  if (userId !== undefined) {
+    eventEntry.userId = userId;
+  }
+  
+  events.push(eventEntry);
 
-  // Keep only last MAX_EVENTS events (FIFO)
   if (events.length > MAX_EVENTS) {
     events.shift();
   }
 
-  // Log to console for visibility
-  console.log(`[Analytics] ${event}`, {
+  logger.info({
+    event,
+    userId,
+    sessionId,
     query: data?.query,
-    count: data?.count,
-    durationMs: data?.durationMs,
-    sessionId: data?.sessionId
-  });
+    count: data?.count
+  }, '[Analytics] Event tracked');
 
   res.status(200).json({ 
     received: true,
@@ -56,59 +78,96 @@ router.post('/events', (req: Request, res: Response) => {
 
 /**
  * GET /api/analytics/events
- * Query recent events (for debugging)
+ * P0 Security: Query only own events (IDOR protection)
  */
 router.get('/events', (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
   const limit = parseInt(req.query.limit as string) || 100;
   const eventType = req.query.event as string | undefined;
+  const userId = authReq.userId;
+  const sessionId = authReq.sessionId || 'unknown';
 
-  let filtered = events;
+  // P0: Filter by authenticated user/session
+  let filtered = events.filter(e => 
+    e.sessionId === sessionId || 
+    (userId && e.userId === userId)
+  );
 
-  // Filter by event type if specified
   if (eventType) {
-    filtered = events.filter(e => e.event === eventType);
+    filtered = filtered.filter(e => e.event === eventType);
   }
+
+  logger.debug({
+    userId,
+    sessionId,
+    total: filtered.length
+  }, '[Analytics] Events queried');
 
   res.json({
     total: filtered.length,
     limit,
-    events: filtered.slice(-limit).reverse() // Most recent first
+    events: filtered.slice(-limit).reverse()
   });
 });
 
 /**
  * GET /api/analytics/stats
- * Get analytics statistics
+ * P0 Security: Stats for own events only (IDOR protection)
  */
 router.get('/stats', (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
+  const userId = authReq.userId;
+  const sessionId = authReq.sessionId || 'unknown';
+
+  // P0: Filter by authenticated user/session
+  const userEvents = events.filter(e => 
+    e.sessionId === sessionId || 
+    (userId && e.userId === userId)
+  );
+
   const eventCounts: Record<string, number> = {};
-  
-  events.forEach(e => {
+  userEvents.forEach(e => {
     eventCounts[e.event] = (eventCounts[e.event] || 0) + 1;
   });
 
   res.json({
-    totalEvents: events.length,
+    totalEvents: userEvents.length,
     maxCapacity: MAX_EVENTS,
     eventTypes: eventCounts,
-    oldestEvent: events[0]?.timestamp,
-    newestEvent: events[events.length - 1]?.timestamp
+    oldestEvent: userEvents[0]?.timestamp,
+    newestEvent: userEvents[userEvents.length - 1]?.timestamp
   });
 });
 
 /**
  * DELETE /api/analytics/events
- * Clear all stored events (for testing)
+ * P0 Security: Clear only own events (IDOR protection)
  */
 router.delete('/events', (req: Request, res: Response) => {
-  const count = events.length;
-  events.length = 0; // Clear array
+  const authReq = req as AuthenticatedRequest;
+  const userId = authReq.userId;
+  const sessionId = authReq.sessionId || 'unknown';
+
+  // P0: Remove only own events
+  const before = events.length;
+  const remaining = events.filter(e => 
+    e.sessionId !== sessionId && 
+    (!userId || e.userId !== userId)
+  );
   
-  console.log('[Analytics] Cleared all events');
+  const cleared = before - remaining.length;
+  events.length = 0;
+  events.push(...remaining);
+
+  logger.info({
+    userId,
+    sessionId,
+    cleared
+  }, '[Analytics] Events cleared');
   
   res.json({ 
-    cleared: count,
-    message: 'All events cleared'
+    cleared,
+    message: 'Events cleared'
   });
 });
 

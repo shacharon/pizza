@@ -1,13 +1,16 @@
 /**
  * Restaurant Card Component
  * Presentational component for displaying restaurant with quick actions
+ * 
+ * P0 Security: Uses secure photo proxy (no API key exposure)
  */
 
-import { Component, input, output, ChangeDetectionStrategy } from '@angular/core';
+import { Component, input, output, ChangeDetectionStrategy, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReasonLabelComponent } from '../reason-label/reason-label.component';
 import type { Restaurant } from '../../../../domain/types/search.types';
 import type { ActionType, ActionLevel } from '../../../../domain/types/action.types';
+import { buildPhotoSrc, getPhotoPlaceholder } from '../../../../utils/photo-src.util';
 
 @Component({
   selector: 'app-restaurant-card',
@@ -28,6 +31,13 @@ export class RestaurantCardComponent {
   // Outputs
   readonly cardClick = output<Restaurant>();
   readonly actionClick = output<{type: ActionType; level: ActionLevel}>();
+
+  // P0 Security: Secure photo URL (no API key exposure)
+  readonly photoSrc = computed(() => buildPhotoSrc(this.restaurant()));
+  readonly photoPlaceholder = getPhotoPlaceholder();
+  
+  // Photo error state (for broken images)
+  readonly photoError = signal(false);
 
   onCardClick(): void {
     this.cardClick.emit(this.restaurant());
@@ -134,6 +144,36 @@ export class RestaurantCardComponent {
       case 'unknown': return 'Hours unverified';
       default: return '';
     }
+  }
+
+  /**
+   * Handle photo load error
+   * Set error state to show placeholder (prevents retry loops)
+   */
+  onPhotoError(): void {
+    if (!this.photoError()) {
+      console.warn('[RestaurantCard] Failed to load photo', {
+        placeId: this.restaurant().placeId,
+        name: this.restaurant().name,
+        photoSrc: this.photoSrc()?.substring(0, 100)
+      });
+      this.photoError.set(true);
+    }
+  }
+
+  /**
+   * Get current photo source (with fallback)
+   * Returns placeholder if error occurred or no photo available
+   */
+  getCurrentPhotoSrc(): string {
+    const src = this.photoSrc();
+    const hasError = this.photoError();
+    
+    if (hasError || !src) {
+      return this.photoPlaceholder;
+    }
+    
+    return src;
   }
 }
 

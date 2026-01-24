@@ -26,8 +26,28 @@ export function createApp() {
   app.use(securityHeadersMiddleware);
 
   app.use(compression());
-  // JSON body limit to prevent Payload-based DoS attacks
+  
+  // JSON body parser with limit and error handling
   app.use(express.json({ limit: '1mb' }));
+  
+  // P0 Security: Handle JSON parsing errors (return 400 instead of 500)
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (err instanceof SyntaxError && 'body' in err) {
+      logger.warn({
+        traceId: req.traceId || 'unknown',
+        method: req.method,
+        path: req.path,
+        error: err.message
+      }, '[Security] Invalid JSON in request body');
+      
+      return res.status(400).json({
+        error: 'Invalid JSON in request body',
+        code: 'INVALID_JSON',
+        traceId: req.traceId || 'unknown'
+      });
+    }
+    next(err);
+  });
 
   // ─────────────────────────────────────────────
   // 2. CORS (ENV-aware, unified with WebSocket)

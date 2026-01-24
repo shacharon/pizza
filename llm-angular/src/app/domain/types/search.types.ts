@@ -40,7 +40,12 @@ export interface Restaurant {
   userRatingsTotal?: number;
   priceLevel?: number;
   openNow?: VerifiableBoolean;  // Tri-state: true | false | 'UNKNOWN'
-  photoUrl?: string;
+  
+  // P0 Security: New photo fields (backend proxy)
+  photoReference?: string;        // Photo reference (no API key): places/ChIJ.../photos/...
+  photoReferences?: string[];     // Array of photo references
+  photoUrl?: string;              // DEPRECATED: May still be present from backend (sanitized or internal proxy URL)
+  
   phoneNumber?: string;
   website?: string;
   tags?: string[];

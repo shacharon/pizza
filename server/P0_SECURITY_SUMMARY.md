@@ -15,22 +15,34 @@
 - ✅ Backend proxy endpoint: `GET /api/v1/photos/*`
 - ✅ Sanitize legacy `photoUrl` fields before sending to client
 - ✅ No `key=` parameters in any response
+- ✅ **NEW**: Sync mode sanitization (was missing, now fixed)
+- ✅ **NEW**: Rate limiting (60 req/min per IP)
+- ✅ **NEW**: Zod input validation
+- ✅ **NEW**: JSON parsing error handler (400 instead of 500)
+- ✅ **NEW**: Comprehensive tests
 
 ---
 
 ## 📁 Files Touched
 
-### New Files (4)
+### New Files (8)
 - `server/src/utils/security.utils.ts` - Security utilities
 - `server/src/utils/security.utils.test.ts` - Security tests
-- `server/src/controllers/photos/photos.controller.ts` - Photo proxy
+- `server/src/controllers/photos/photos.controller.ts` - Photo proxy (enhanced)
 - `server/src/controllers/search/search.controller.security.test.ts` - IDOR tests
+- `server/src/middleware/rate-limit.middleware.ts` - **NEW** Rate limiter
+- `server/tests/photos.controller.test.ts` - **NEW** Photo proxy tests
+- `server/tests/photos-integration.test.ts` - **NEW** Integration tests
+- `server/docs/SECURITY_PHOTOS_PROXY.md` - **NEW** Security documentation
 
-### Modified Files (5)
-- `server/src/controllers/search/search.controller.ts` - IDOR protection
+### Modified Files (7)
+- `server/src/controllers/search/search.controller.ts` - IDOR protection + **sync mode sanitization**
 - `server/src/services/search/route2/stages/google-maps.stage.ts` - Photo references
 - `server/src/services/search/types/search.types.ts` - Type definitions
 - `server/src/routes/v1/index.ts` - Route registration
+- `server/src/app.ts` - **NEW** JSON error handler
+- `server/src/controllers/photos/photos.controller.ts` - **ENHANCED** Rate limiting + validation
+- `server/package.json` - **NEW** Test scripts
 
 ---
 
@@ -38,13 +50,22 @@
 
 ### Run Tests
 ```bash
-npm test -- security
+# Run all tests
+npm test
+
+# Run security tests only
+npm run test:security
+
+# Run with verbose output
+node --test --test-reporter=spec --import tsx tests/photos.controller.test.ts
 ```
 
 ### Expected Results
 ✅ All tests passing  
 ✅ IDOR protection tests: 8 passing  
 ✅ Photo sanitization tests: 12 passing  
+✅ Photo proxy tests: 20+ passing  
+✅ Integration tests: 15+ passing  
 
 ---
 
@@ -105,7 +126,7 @@ curl http://localhost:3000/api/v1/photos/places/ChIJ.../photos/ABC?maxWidthPx=80
 
 ---
 
-### Test 6: No API Keys in Search Response
+### Test 6: No API Keys in Search Response (Sync Mode)
 ```bash
 curl -X POST http://localhost:3000/api/v1/search \
   -H "Content-Type: application/json" \
@@ -113,6 +134,59 @@ curl -X POST http://localhost:3000/api/v1/search \
   | grep "key="
 ```
 **Expected**: No matches (empty output)
+
+---
+
+### Test 7: No API Keys in Search Response (Async Mode)
+```bash
+# Create async job
+REQ_ID=$(curl -X POST "http://localhost:3000/api/v1/search?mode=async" \
+  -H "Content-Type: application/json" \
+  -H "X-Session-Id: sess_test_123" \
+  -d '{"query":"pizza","userLocation":{"lat":32.0853,"lng":34.7818}}' \
+  | jq -r '.requestId')
+
+# Wait for completion and check result
+sleep 5
+curl "http://localhost:3000/api/v1/search/$REQ_ID/result" \
+  -H "X-Session-Id: sess_test_123" \
+  | grep "key="
+```
+**Expected**: No matches (empty output)
+
+---
+
+### Test 8: Rate Limiting
+```bash
+# Send 65 requests rapidly (exceeds 60/min limit)
+for i in {1..65}; do
+  STATUS=$(curl -s -w "%{http_code}" -o /dev/null \
+    "http://localhost:3000/api/v1/photos/places/ChIJ123/photos/ABC?maxWidthPx=800")
+  echo "Request $i: HTTP $STATUS"
+done
+```
+**Expected**: First ~60 return 200, remaining return 429
+
+---
+
+### Test 9: Invalid JSON (should return 400, not 500)
+```bash
+curl -X POST http://localhost:3000/api/v1/search \
+  -H "Content-Type: application/json" \
+  -d '{"query":"pizza",' \
+  -w "\nHTTP Status: %{http_code}\n"
+```
+**Expected**: HTTP 400 with `INVALID_JSON` code (not 500)
+
+---
+
+### Test 10: Input Validation (Photo Proxy)
+```bash
+# Invalid photo reference
+curl "http://localhost:3000/api/v1/photos/invalid-reference" \
+  -w "\nHTTP Status: %{http_code}\n"
+```
+**Expected**: HTTP 400 with `VALIDATION_ERROR`
 
 ---
 
