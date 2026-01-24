@@ -270,7 +270,8 @@ export type FailureReason =
   | 'TIMEOUT'
   | 'QUOTA_EXCEEDED'
   | 'LIVE_DATA_UNAVAILABLE'
-  | 'WEAK_MATCHES';
+  | 'WEAK_MATCHES'
+  | 'LOCATION_REQUIRED';
 
 // Live data verification metadata (for safety rules)
 export interface LiveDataVerification {

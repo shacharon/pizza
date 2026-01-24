@@ -48,30 +48,32 @@ const GATE2_SCHEMA_HASH = createHash('sha256')
   .substring(0, 12);
 
 const GATE2_PROMPT_VERSION = 'gate2_v4';
-const GATE2_SYSTEM_PROMPT = `
-You are Gate2 for food search. Return ONLY JSON.
+const GATE2_SYSTEM_PROMPT = `You are Gate2 for FOOD SEARCH DOMAIN. Return ONLY JSON.
 
-Output schema:
-{"foodSignal":"NO|UNCERTAIN|YES","confidence":0..1}
+Schema: {"foodSignal":"NO|YES|UNCERTAIN","confidence":0..1}
 
-Rules:
-- YES: user is asking to find/order food, restaurants, cuisines, dishes, or places to eat.
-- UNCERTAIN: food-ish but missing clarity (no food category and no place/near-me intent).
-- NO: not about food/restaurants OR mainly profanity/insult without a food request.
+Decide foodSignal:
+- YES: user wants food. Includes:
+  1) Food/venue terms even without verbs (pizza, sushi, מסעדה, שווארמיה, סופגניה, מלאווח).
+  2) Food actions: find/order/recommend/near me/open now/delivery/“מה לאכול”.
+  3) Hunger expressions.
 
-Confidence calibration:
-- YES clear: 0.85-0.95
-- UNCERTAIN: 0.35-0.65
-- NO clear: 0.85-1.0
+- UNCERTAIN: generic “open now/near me/what’s here” with no food terms.
+
+- NO: clearly not food (weather/news/tourism) OR pure profanity with no food intent.
+
+Confidence:
+- Clear food term or explicit food ask: 0.90-1.0
+- Generic “open now/near me” without food: UNCERTAIN 0.45-0.65
+- Clear non-food: 0.95-1.0
+- Profanity-only: NO 1.0
 
 Examples:
-"pizza in tel aviv" -> {"foodSignal":"YES","confidence":0.9}
-"אני רעב מה יש לך להציע" -> {"foodSignal":"UNCERTAIN","confidence":0.55}
-"what is the weather?" -> {"foodSignal":"NO","confidence":0.95}
-"לך תזדיין" -> {"foodSignal":"NO","confidence":1.0}
-"מסעדה בתחת של אמא שלך" -> {"foodSignal":"UNCERTAIN","confidence":0.6}
-
-
+"pizza" -> {"foodSignal":"YES","confidence":0.95}
+"שווארמיה בתל אביב" -> {"foodSignal":"YES","confidence":0.98}
+"מה פתוח עכשיו" -> {"foodSignal":"UNCERTAIN","confidence":0.55}
+"מה פתוח עכשיו לאכול" -> {"foodSignal":"YES","confidence":0.80}
+"weather in London" -> {"foodSignal":"NO","confidence":1.0}
 `;
 /*
 //Return ONLY JSON.

@@ -13,8 +13,11 @@ import { TextSearchLLMResponseSchema, type TextSearchMapping } from './schemas.j
 
 const TEXTSEARCH_MAPPER_VERSION = 'textsearch_mapper_v2';
 
-const TEXTSEARCH_MAPPER_PROMPT = `
+const TEXTSEARCH_MAPPER_PROMPT = `// Use English comments for code/prompts as requested
+// Context: userLatitude: {{lat}}, userLongitude: {{lng}}, hasUserLocation: {{hasLocation}}
+
 You are a query rewriter for Google Places Text Search API.
+Your goal is to transform user input into a highly effective search string for Google.
 
 Output ONLY JSON with these fields:
 {
@@ -22,15 +25,16 @@ Output ONLY JSON with these fields:
   "textQuery": "string",
   "region": "IL|FR|US|etc",
   "language": "he|en|ru|ar|fr|es|other",
+  "locationBias": { "lat": number, "lng": number } | null,
   "reason": "token"
 }
 
 Rules:
-1) Preserve the original query structure as much as possible.
+1) Preserve the original query structure.
 2) Remove only filler/politeness words.
-3) Keep prepositions like "ב" (in).
+3) If the user says "near me" (לידי/בקרבתי) and hasUserLocation is true, DO NOT include "near me" in textQuery. Instead, set the locationBias field with the provided coordinates and keep the textQuery focused on the entity (e.g., "מסעדות").
 4) If place-type is missing (e.g., "dairy in Ashdod"), add "restaurant" (מסעדה) prefix.
-5) Reason must be: "original_preserved", "place_type_added", or "filler_removed".
+5) Reason must be: "original_preserved", "place_type_added", "filler_removed", or "location_bias_applied".
 `;
 
 const TEXTSEARCH_MAPPER_PROMPT_HASH = createHash('sha256')
@@ -79,8 +83,14 @@ export async function executeTextSearchMapper(
       TextSearchLLMResponseSchema,  // Use LLM response schema (no bias)
       {
         temperature: 0,
-        timeout: 3500, // Increased timeout for stability
-        stage: 'textsearch_mapper'
+        timeout: 3500,
+        requestId,
+        ...(context.traceId && { traceId: context.traceId }),
+        ...(context.sessionId && { sessionId: context.sessionId }),
+        stage: 'textsearch_mapper',
+        promptVersion: TEXTSEARCH_MAPPER_VERSION,
+        promptHash: TEXTSEARCH_MAPPER_PROMPT_HASH,
+        schemaHash: TEXTSEARCH_SCHEMA_HASH
       },
       TEXTSEARCH_JSON_SCHEMA // Use the simplified schema defined above
     );

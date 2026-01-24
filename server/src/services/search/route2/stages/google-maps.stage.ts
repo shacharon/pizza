@@ -416,7 +416,8 @@ async function executeTextSearchAttempt(
     textQueryLen: requestBody.textQuery?.length || 0,
     textQueryHash,
     languageCode: requestBody.languageCode,
-    regionCode: requestBody.regionCode,
+    regionCode: requestBody.regionCode || null,
+    regionCodeSent: !!requestBody.regionCode,
     hasBias: !!requestBody.locationBias,
     maxResultCount: maxResults
   }, '[GOOGLE] Text Search request payload');
@@ -611,7 +612,7 @@ function buildNearbySearchBody(
     rankPreference: 'DISTANCE'
   };
 
-  // Add region code
+  // Add region code (only if valid)
   if (mapping.region) {
     body.regionCode = mapping.region;
   }

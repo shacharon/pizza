@@ -24,7 +24,8 @@ export interface PostFilterOutput {
     before: number;
     after: number;
     removed: number;
-    unknownExcluded: number;
+    unknownKept: number;
+    unknownRemoved: number;
   };
 }
 
@@ -33,40 +34,22 @@ export interface PostFilterOutput {
  */
 export function applyPostFilters(input: PostFilterInput): PostFilterOutput {
   const { results, sharedFilters, requestId, pipelineVersion } = input;
-  const startTime = Date.now();
 
   const beforeCount = results.length;
-  let unknownExcluded = 0;
 
   // Apply open/closed filter ONLY if explicitly requested
-  const { filtered, unknownCount } = filterByOpenState(
+  const { filtered, unknownKept, unknownRemoved } = filterByOpenState(
     results,
     sharedFilters.openState,
     sharedFilters.openAt,
     sharedFilters.openBetween
   );
   const filteredResults = filtered;
-  unknownExcluded = unknownCount;
 
   const afterCount = filteredResults.length;
-  const durationMs = Date.now() - startTime;
 
-  logger.info({
-    requestId,
-    pipelineVersion,
-    stage: 'post_filter',
-    event: 'stage_completed',
-    durationMs,
-    openState: sharedFilters.openState,
-    openAt: sharedFilters.openAt,
-    openBetween: sharedFilters.openBetween,
-    stats: {
-      before: beforeCount,
-      after: afterCount,
-      removed: beforeCount - afterCount,
-      unknownExcluded
-    }
-  }, '[ROUTE2] post_filter completed');
+  // Note: Timing/logging owned by orchestrator (startStage/endStage)
+  // This function only returns data for orchestrator to log
 
   return {
     resultsFiltered: filteredResults,
@@ -77,7 +60,8 @@ export function applyPostFilters(input: PostFilterInput): PostFilterOutput {
       before: beforeCount,
       after: afterCount,
       removed: beforeCount - afterCount,
-      unknownExcluded
+      unknownKept,
+      unknownRemoved
     }
   };
 }
@@ -87,72 +71,117 @@ export function applyPostFilters(input: PostFilterInput): PostFilterOutput {
  *
  * Rules:
  * - null: no filtering
- * - OPEN_NOW: keep only openNow === true
- * - CLOSED_NOW: keep only openNow === false
- * - OPEN_AT / OPEN_BETWEEN: evaluate structured opening hours
- * - Missing/unparseable data: exclude (defensive)
+ * - OPEN_NOW: keep openNow === true, KEEP unknown (default policy)
+ * - CLOSED_NOW: keep openNow === false, KEEP unknown (default policy)
+ * - OPEN_AT / OPEN_BETWEEN: evaluate structured opening hours, KEEP unknown
+ * - Unknown policy: KEEP by default (better UX than removing all results)
  */
 function filterByOpenState(
   results: any[],
   openState: OpenState,
   openAt: any,
   openBetween: any
-): { filtered: any[]; unknownCount: number } {
+): { filtered: any[]; unknownKept: number; unknownRemoved: number } {
   if (openState == null) {
-    return { filtered: results, unknownCount: 0 };
+    return { filtered: results, unknownKept: 0, unknownRemoved: 0 };
   }
 
-  let unknownCount = 0;
+  let unknownKept = 0;
+  let unknownRemoved = 0;
 
   if (openState === 'OPEN_NOW') {
     const filtered = results.filter(place => {
       const openNow = place.openNow ?? place.currentOpeningHours?.openNow;
-      if (openNow === undefined || openNow === null) {
-        unknownCount++;
-        return false; // exclude UNKNOWN
+      
+      // Explicit status: apply filter
+      if (openNow === true) {
+        return true; // KEEP open places
       }
-      return openNow === true;
+      if (openNow === false) {
+        return false; // REMOVE closed places
+      }
+      
+      // Unknown status: KEEP by default (better UX)
+      if (openNow === undefined || openNow === null || openNow === 'UNKNOWN') {
+        unknownKept++;
+        return true; // KEEP unknown
+      }
+      
+      return false;
     });
-    return { filtered, unknownCount };
+    return { filtered, unknownKept, unknownRemoved };
   }
 
   if (openState === 'CLOSED_NOW') {
     const filtered = results.filter(place => {
       const openNow = place.openNow ?? place.currentOpeningHours?.openNow;
-      if (openNow === undefined || openNow === null) {
-        unknownCount++;
-        return false; // exclude UNKNOWN
+      
+      // Explicit status: apply filter
+      if (openNow === false) {
+        return true; // KEEP closed places
       }
-      return openNow === false;
+      if (openNow === true) {
+        return false; // REMOVE open places
+      }
+      
+      // Unknown status: KEEP by default
+      if (openNow === undefined || openNow === null || openNow === 'UNKNOWN') {
+        unknownKept++;
+        return true; // KEEP unknown
+      }
+      
+      return false;
     });
-    return { filtered, unknownCount };
+    return { filtered, unknownKept, unknownRemoved };
   }
 
   if (openState === 'OPEN_AT' && openAt) {
     const filtered = results.filter(place => {
       const isOpen = evaluateOpenAt(place, openAt);
-      if (isOpen === null) {
-        unknownCount++;
-        return false; // exclude UNKNOWN
+      
+      // Explicit evaluation result
+      if (isOpen === true) {
+        return true;
       }
-      return isOpen;
+      if (isOpen === false) {
+        return false;
+      }
+      
+      // Unknown/unparseable: KEEP by default
+      if (isOpen === null) {
+        unknownKept++;
+        return true; // KEEP unknown
+      }
+      
+      return false;
     });
-    return { filtered, unknownCount };
+    return { filtered, unknownKept, unknownRemoved };
   }
 
   if (openState === 'OPEN_BETWEEN' && openBetween) {
     const filtered = results.filter(place => {
       const isOpen = evaluateOpenBetween(place, openBetween);
-      if (isOpen === null) {
-        unknownCount++;
-        return false; // exclude UNKNOWN
+      
+      // Explicit evaluation result
+      if (isOpen === true) {
+        return true;
       }
-      return isOpen;
+      if (isOpen === false) {
+        return false;
+      }
+      
+      // Unknown/unparseable: KEEP by default
+      if (isOpen === null) {
+        unknownKept++;
+        return true; // KEEP unknown
+      }
+      
+      return false;
     });
-    return { filtered, unknownCount };
+    return { filtered, unknownKept, unknownRemoved };
   }
 
-  return { filtered: results, unknownCount };
+  return { filtered: results, unknownKept: 0, unknownRemoved: 0 };
 }
 
 /**

@@ -23,6 +23,8 @@ export interface Route2Context {
   traceId?: string;
   sessionId?: string;
   startTime: number;
+  debug?: { stopAfter: string }; // ← הוסף רק את זה
+
   jobCreatedAt?: number; // Timestamp when search job was created (for queueDelayMs)
   sessionService?: any; // Optional session service for region caching
   llmProvider: LLMProvider;
