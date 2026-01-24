@@ -22,7 +22,7 @@ describe('RestaurantCardComponent', () => {
     openNow: true,
     phoneNumber: '+33123456789',
     website: 'https://example.com',
-    photoUrl: 'https://example.com/photo.jpg',
+    photoReference: 'places/ChIJ123/photos/ABC456',
     tags: ['Italian', 'Pizza']
   };
 
@@ -87,14 +87,16 @@ describe('RestaurantCardComponent', () => {
     expect(closedStatus.textContent.trim()).toBe('Closed');
   });
 
-  it('should display photo', () => {
+  it('should display photo via proxy', () => {
     const photo = fixture.nativeElement.querySelector('.restaurant-photo');
     expect(photo).not.toBeNull();
-    expect(photo.src).toContain('photo.jpg');
+    // Photo should use backend proxy URL
+    expect(photo.src).toContain('/photos/places/');
+    expect(photo.src).toContain('maxWidthPx=');
   });
 
-  it('should display placeholder when no photo', () => {
-    const noPhotoRestaurant = { ...mockRestaurant, photoUrl: undefined };
+  it('should display placeholder when no photoReference', () => {
+    const noPhotoRestaurant = { ...mockRestaurant, photoReference: undefined };
     fixture.componentRef.setInput('restaurant', noPhotoRestaurant);
     fixture.detectChanges();
 

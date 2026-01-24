@@ -12,39 +12,60 @@ import type { Restaurant } from '../domain/types/search.types';
 /**
  * Build secure photo URL for a restaurant
  * 
+ * CRITICAL: ONLY uses backend proxy - NO direct Google URLs
+ * 
  * Priority:
- * 1. If photoUrl exists and is internal (starts with /api), use it
- * 2. If photoReference exists, build internal proxy URL
- * 3. Otherwise, return null (use placeholder)
+ * 1. If photoReference exists, build internal proxy URL
+ * 2. Otherwise, return null (use placeholder)
  * 
  * @param restaurant - Restaurant object from search results
- * @param maxWidthPx - Desired image width (default 800)
+ * @param maxWidthPx - Desired image width (default 400 for mobile-first)
  * @returns Secure photo URL or null
  */
-export function buildPhotoSrc(restaurant: Restaurant, maxWidthPx: number = 800): string | null {
-  // P0 Security: Dev-mode assertion to catch API key leaks
-  if (!environment.production && restaurant.photoUrl) {
-    assertNoApiKeyLeak(restaurant.photoUrl);
-  }
-
-  // Priority 1: Internal proxy URL (already sanitized by backend)
-  if (restaurant.photoUrl && isInternalUrl(restaurant.photoUrl)) {
-    return restaurant.photoUrl;
-  }
-
-  // Priority 2: Photo reference (build proxy URL)
+export function buildPhotoSrc(restaurant: Restaurant, maxWidthPx: number = 400): string | null {
+  // CRITICAL: Use photoReference ONLY - ignore photoUrl to prevent CORS
   if (restaurant.photoReference) {
-    return buildProxyUrl(restaurant.photoReference, maxWidthPx);
+    const photoRef = restaurant.photoReference;
+    
+    // HARD GUARD: Block if photoReference is actually a full Google URL
+    if (isGoogleUrl(photoRef)) {
+      console.error('[PhotoSrc] BLOCKED - photoReference contains Google URL', {
+        placeId: restaurant.placeId,
+        refPrefix: photoRef.substring(0, 100)
+      });
+      return null;
+    }
+    
+    // VALIDATION: Ensure photoReference is in correct format (places/xxx/photos/xxx)
+    if (!photoRef.startsWith('places/')) {
+      console.error('[PhotoSrc] INVALID photoReference format - must start with "places/"', {
+        placeId: restaurant.placeId,
+        refPrefix: photoRef.substring(0, 50)
+      });
+      return null;
+    }
+    
+    const proxyUrl = buildProxyUrl(photoRef, maxWidthPx);
+    
+    // DOUBLE GUARD: If somehow a Google URL got through, return null
+    if (isGoogleUrl(proxyUrl)) {
+      console.error('[PhotoSrc] BLOCKED Google URL in final proxy URL', {
+        placeId: restaurant.placeId,
+        urlPrefix: proxyUrl.substring(0, 100)
+      });
+      return null;
+    }
+    
+    return proxyUrl;
   }
 
-  // Priority 3: Legacy photoUrl that should have been sanitized
-  // This should not happen in production, but handle gracefully
-  if (restaurant.photoUrl && !containsApiKey(restaurant.photoUrl)) {
-    console.warn('[PhotoSrc] Using legacy photoUrl - should be migrated to photoReference', {
+  // Dev-mode warning if photoUrl exists but no photoReference
+  if (!environment.production && restaurant.photoUrl) {
+    console.warn('[PhotoSrc] photoUrl present but no photoReference - images will not load', {
       placeId: restaurant.placeId,
-      name: restaurant.name
+      name: restaurant.name,
+      photoUrlPrefix: restaurant.photoUrl?.substring(0, 50)
     });
-    return restaurant.photoUrl;
   }
 
   // No photo available
@@ -53,51 +74,28 @@ export function buildPhotoSrc(restaurant: Restaurant, maxWidthPx: number = 800):
 
 /**
  * Build internal proxy URL from photo reference
- * Format: /api/v1/photos/{photoReference}?maxWidthPx=800
+ * Format: /api/v1/photos/{photoReference}?maxWidthPx=400
+ * CRITICAL: Backend proxy endpoint - prevents CORS and API key exposure
  */
 function buildProxyUrl(photoReference: string, maxWidthPx: number): string {
   const baseUrl = `${environment.apiUrl}${environment.apiBasePath}`;
   
   // Photo reference format: places/{placeId}/photos/{photoId}
-  // Already URL-safe, no need to encode
+  // Backend route: GET /photos/places/:placeId/photos/:photoId
+  // DO NOT encode - backend expects path parameters, not encoded string
   return `${baseUrl}/photos/${photoReference}?maxWidthPx=${maxWidthPx}`;
 }
 
 /**
- * Check if URL is internal (points to our API)
+ * HARD GUARD: Check if URL is a Google URL that would cause CORS
+ * Returns true if URL should be blocked
  */
-function isInternalUrl(url: string): boolean {
-  return url.startsWith('/api') || 
-         url.includes(environment.apiUrl) ||
-         url.startsWith('http://localhost') ||
-         url.startsWith('https://api.going2eat.food');
-}
-
-/**
- * Check if URL contains API key (security check)
- */
-function containsApiKey(url: string): boolean {
-  return url.includes('key=') || 
-         url.includes('AIza') ||
+function isGoogleUrl(url: string): boolean {
+  return url.includes('googleusercontent.com') ||
+         url.includes('gstatic.com') ||
+         url.includes('googleapis.com') ||
+         url.includes('maps.googleapis.com') ||
          url.includes('places.googleapis.com');
-}
-
-/**
- * Dev-mode assertion to catch API key leaks
- * Throws error in development if API key detected
- */
-function assertNoApiKeyLeak(url: string): void {
-  if (containsApiKey(url)) {
-    console.error('🚨 SECURITY VIOLATION: API key detected in photo URL!', {
-      url: url.substring(0, 100) + '...',
-      detected: 'Google API key or direct googleapis.com URL'
-    });
-    
-    // In development, throw to fail fast
-    if (!environment.production) {
-      throw new Error('P0 Security: API key detected in photo URL. Backend must sanitize all URLs.');
-    }
-  }
 }
 
 /**
@@ -112,13 +110,31 @@ export function getPhotoPlaceholder(): string {
 /**
  * Build srcset for responsive images
  * Generates multiple sizes for different screen densities
+ * CRITICAL: ONLY uses backend proxy with photoReference
  * 
  * @param restaurant - Restaurant object
  * @returns srcset string or null
  */
 export function buildPhotoSrcset(restaurant: Restaurant): string | null {
+  // CRITICAL: Use photoReference ONLY - ignore photoUrl to prevent CORS
   const photoRef = restaurant.photoReference;
   if (!photoRef) return null;
+
+  // HARD GUARD: Block if photoReference is actually a full Google URL
+  if (isGoogleUrl(photoRef)) {
+    console.error('[PhotoSrcset] BLOCKED - photoReference contains Google URL', {
+      placeId: restaurant.placeId
+    });
+    return null;
+  }
+
+  // VALIDATION: Ensure photoReference is in correct format
+  if (!photoRef.startsWith('places/')) {
+    console.error('[PhotoSrcset] INVALID photoReference format', {
+      placeId: restaurant.placeId
+    });
+    return null;
+  }
 
   const baseUrl = `${environment.apiUrl}${environment.apiBasePath}`;
   const sizes = [400, 800, 1200];

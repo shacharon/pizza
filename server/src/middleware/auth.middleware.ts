@@ -7,7 +7,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { logger } from '../lib/logger/structured-logger.js';
 import jwt from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET || '';
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
 
 export interface AuthenticatedRequest extends Request {
   userId?: string;

@@ -26,23 +26,11 @@ describe('PhotoSrcUtil - P0 Security', () => {
 
       expect(result).toBeTruthy();
       expect(result).toContain('/api/v1/photos/');
-      expect(result).toContain('maxWidthPx=800');
+      expect(result).toContain('places/ChIJ123/photos/ABC456');
+      expect(result).toContain('maxWidthPx=400');
       expect(result).not.toContain('key=');
       expect(result).not.toContain('AIza');
       expect(result).not.toContain('places.googleapis.com');
-    });
-
-    it('should use internal photoUrl if already sanitized', () => {
-      const restaurant: Restaurant = {
-        ...mockRestaurantBase,
-        photoUrl: '/api/v1/photos/places/ChIJ123/photos/ABC?maxWidthPx=800'
-      };
-
-      const result = buildPhotoSrc(restaurant);
-
-      expect(result).toBe(restaurant.photoUrl);
-      expect(result).not.toContain('key=');
-      expect(result).not.toContain('AIza');
     });
 
     it('should return null when no photo data is available', () => {
@@ -63,12 +51,7 @@ describe('PhotoSrcUtil - P0 Security', () => {
         },
         {
           ...mockRestaurantBase,
-          photoUrl: '/api/v1/photos/places/ChIJ123/photos/ABC'
-        },
-        {
-          ...mockRestaurantBase,
-          photoReference: 'places/ChIJ456/photos/XYZ',
-          photoUrl: '/api/v1/photos/places/ChIJ456/photos/XYZ'
+          photoReference: 'places/ChIJ456/photos/XYZ'
         }
       ];
 
@@ -116,7 +99,7 @@ describe('PhotoSrcUtil - P0 Security', () => {
       expect(result).toContain('maxWidthPx=1200');
     });
 
-    it('should prioritize photoReference over legacy photoUrl', () => {
+    it('should ONLY use photoReference and ignore photoUrl completely', () => {
       const restaurant: Restaurant = {
         ...mockRestaurantBase,
         photoReference: 'places/ChIJ123/photos/NEW',
@@ -125,9 +108,22 @@ describe('PhotoSrcUtil - P0 Security', () => {
 
       const result = buildPhotoSrc(restaurant);
 
-      // Should build from photoReference, not use photoUrl
+      // CRITICAL: Should ONLY use photoReference, never photoUrl
       expect(result).toContain('places/ChIJ123/photos/NEW');
+      expect(result).toContain('/api/v1/photos/');
       expect(result).not.toContain('old-url.com');
+    });
+
+    it('should return null when only photoUrl exists (no photoReference)', () => {
+      const restaurant: Restaurant = {
+        ...mockRestaurantBase,
+        photoUrl: 'https://example.com/photo.jpg'
+      };
+
+      const result = buildPhotoSrc(restaurant);
+
+      // CRITICAL: Should return null, not use photoUrl
+      expect(result).toBeNull();
     });
 
     it('should handle missing photo gracefully', () => {
@@ -200,33 +196,27 @@ describe('PhotoSrcUtil - P0 Security', () => {
   });
 
   describe('Security Regression Tests', () => {
-    it('should NEVER accept direct Google Places URLs', () => {
-      // This should never happen, but test defensive behavior
+    it('should NEVER accept direct Google Places URLs in photoUrl', () => {
+      // CRITICAL: Even if backend accidentally sends photoUrl with Google URL, ignore it
       const restaurant: Restaurant = {
         ...mockRestaurantBase,
         photoUrl: 'https://places.googleapis.com/v1/places/ChIJ123/photos/ABC/media?key=AIzaSyXXXX'
       };
 
-      // In dev mode, this would throw
-      // In prod mode, it should not use this URL
-      expect(() => {
-        const result = buildPhotoSrc(restaurant);
-        if (result) {
-          expect(result).not.toContain('key=');
-          expect(result).not.toContain('AIza');
-          expect(result).not.toContain('places.googleapis.com');
-        }
-      }).not.toThrow(); // Should handle gracefully, not crash
+      const result = buildPhotoSrc(restaurant);
+      
+      // Should return null (no photoReference), never use photoUrl
+      expect(result).toBeNull();
     });
 
-    it('should reject URLs with query parameter "key="', () => {
-      const maliciousUrls = [
-        'https://example.com/photo?key=secret123',
-        'https://api.test.com/image?maxWidth=800&key=AIzaSyXXX',
-        '/api/photos?key=leaked'
+    it('should ignore photoUrl even if it looks safe', () => {
+      const urlsToIgnore = [
+        'https://example.com/photo.jpg',
+        'https://api.test.com/image?maxWidth=800',
+        '/some/local/path/photo.jpg'
       ];
 
-      for (const url of maliciousUrls) {
+      for (const url of urlsToIgnore) {
         const restaurant: Restaurant = {
           ...mockRestaurantBase,
           photoUrl: url
@@ -234,10 +224,8 @@ describe('PhotoSrcUtil - P0 Security', () => {
 
         const result = buildPhotoSrc(restaurant);
         
-        // Should either return null or a safe URL without key
-        if (result) {
-          expect(result).not.toContain('key=');
-        }
+        // CRITICAL: Should return null, NEVER use photoUrl
+        expect(result).toBeNull();
       }
     });
 
@@ -274,7 +262,7 @@ describe('PhotoSrcUtil - P0 Security', () => {
 
       const result = buildPhotoSrc(restaurant);
 
-      expect(result).toMatch(/^http:\/\/localhost:3000\/api\/v1\/photos\/places\/[^/]+\/photos\/[^?]+\?maxWidthPx=\d+$/);
+      expect(result).toMatch(/^http:\/\/localhost:3000\/api\/v1\/photos\/places\/[^/]+\/photos\/[^?]+\?maxWidthPx=400$/);
     });
 
     it('should URL-encode special characters if needed', () => {
@@ -299,7 +287,7 @@ describe('PhotoSrcUtil - P0 Security', () => {
 
       const result = buildPhotoSrc(restaurant);
 
-      // Empty string should be treated as no photo
+      // Empty string is falsy, should be treated as no photo
       expect(result).toBeNull();
     });
 

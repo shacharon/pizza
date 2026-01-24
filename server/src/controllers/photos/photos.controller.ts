@@ -203,6 +203,14 @@ router.get('/places/:placeId/photos/:photoId', async (req: Request, res: Respons
       });
     }
 
+    // CRITICAL: CORS headers for cross-origin image loading
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Max-Age', '86400');
+    
+    // CRITICAL: Override Helmet's default to allow cross-origin image loading
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    
     // Set cache headers (photos are immutable)
     res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'public, max-age=86400, immutable'); // 24 hours

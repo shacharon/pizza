@@ -26,10 +26,10 @@ export function createApp() {
   app.use(securityHeadersMiddleware);
 
   app.use(compression());
-  
+
   // JSON body parser with limit and error handling
   app.use(express.json({ limit: '1mb' }));
-  
+
   // P0 Security: Handle JSON parsing errors (return 400 instead of 500)
   app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (err instanceof SyntaxError && 'body' in err) {
@@ -39,7 +39,7 @@ export function createApp() {
         path: req.path,
         error: err.message
       }, '[Security] Invalid JSON in request body');
-      
+
       return res.status(400).json({
         error: 'Invalid JSON in request body',
         code: 'INVALID_JSON',

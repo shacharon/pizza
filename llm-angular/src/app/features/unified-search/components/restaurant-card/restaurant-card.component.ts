@@ -164,16 +164,37 @@ export class RestaurantCardComponent {
   /**
    * Get current photo source (with fallback)
    * Returns placeholder if error occurred or no photo available
+   * CRITICAL: HARD GUARD against Google URLs to prevent CORS
    */
   getCurrentPhotoSrc(): string {
     const src = this.photoSrc();
     const hasError = this.photoError();
+    
+    // HARD GUARD: Block any Google URLs (CORS protection)
+    if (src && this.isGoogleUrl(src)) {
+      console.error('[RestaurantCard] BLOCKED Google URL in getCurrentPhotoSrc', {
+        placeId: this.restaurant().placeId,
+        urlPrefix: src.substring(0, 100)
+      });
+      return this.photoPlaceholder;
+    }
     
     if (hasError || !src) {
       return this.photoPlaceholder;
     }
     
     return src;
+  }
+
+  /**
+   * HARD GUARD: Check if URL is a Google URL that would cause CORS
+   */
+  private isGoogleUrl(url: string): boolean {
+    return url.includes('googleusercontent.com') ||
+           url.includes('gstatic.com') ||
+           url.includes('googleapis.com') ||
+           url.includes('maps.googleapis.com') ||
+           url.includes('places.googleapis.com');
   }
 }
 

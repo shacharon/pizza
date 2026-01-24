@@ -2,6 +2,7 @@ import { ApplicationConfig, provideZoneChangeDetection, APP_INITIALIZER } from '
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { provideRouter } from '@angular/router';
 import { routes } from './app.routes';
+import { authInterceptor } from './core/interceptors/auth.interceptor';
 import { httpTimeoutRetryInterceptor } from './core/interceptors/http-timeout-retry.interceptor';
 import { httpErrorInterceptor } from './core/interceptors/http-error.interceptor';
 import { apiSessionInterceptor } from './shared/http/api-session.interceptor';
@@ -23,9 +24,10 @@ export const appConfig: ApplicationConfig = {
   providers: [
     provideZoneChangeDetection({ eventCoalescing: true }),
     provideHttpClient(withInterceptors([
-      apiSessionInterceptor,           // 1st: attach x-session-id (before retry/error)
-      httpTimeoutRetryInterceptor,     // 2nd: timeout + retry (needs session already present)
-      httpErrorInterceptor             // 3rd: error normalization (after retries exhausted)
+      authInterceptor,                 // 1st: attach Authorization Bearer token (JWT)
+      apiSessionInterceptor,           // 2nd: attach x-session-id (before retry/error)
+      httpTimeoutRetryInterceptor,     // 3rd: timeout + retry (needs auth + session)
+      httpErrorInterceptor             // 4th: error normalization (after retries exhausted)
     ])),
     provideRouter(routes),
     // Initialize feature flags on startup
