@@ -14,6 +14,7 @@ import type { IRequestStateStore } from '../state/request-state.store.js';
 import { verifyJWT } from '../../lib/auth/jwt-verifier.js';
 import type { ISearchJobStore } from '../../services/search/job-store/job-store.interface.js';
 import Redis from 'ioredis';
+import { validateOrigin, getSafeOriginSummary } from '../../lib/security/origin-validator.js';
 
 // @server/src/infra/websocket/websocket-manager.ts
 
@@ -60,9 +61,10 @@ export class WebSocketManager {
   private messagesFailed = 0;
 
   constructor(server: HTTPServer, config?: Partial<WebSocketManagerConfig>) {
-    // 1. Resolve allowedOrigins from ENV (highest priority)
-    const allowedOriginsEnv = process.env.ALLOWED_ORIGINS || '';
-    const envAllowedOrigins = allowedOriginsEnv
+    // 1. Resolve allowedOrigins from ENV (unified with CORS)
+    // Priority: FRONTEND_ORIGINS > ALLOWED_ORIGINS (backward compat) > config
+    const frontendOriginsEnv = process.env.FRONTEND_ORIGINS || process.env.ALLOWED_ORIGINS || '';
+    const envAllowedOrigins = frontendOriginsEnv
       .split(',')
       .map(o => o.trim())
       .filter(Boolean);
@@ -138,20 +140,17 @@ export class WebSocketManager {
     this.wss.on('connection', this.handleConnection.bind(this));
     this.startHeartbeat();
 
-    // 6. Final authoritative boot log with clear origin list
-    const originSummary = this.config.allowedOrigins.includes('*')
-      ? 'ALL origins (*) - DEV ONLY'
-      : this.config.allowedOrigins.join(', ');
-
+    // 6. Final authoritative boot log with safe origin summary
     logger.info(
       {
         path: this.config.path,
-        allowedOrigins: this.config.allowedOrigins,
+        originsCount: this.config.allowedOrigins.length,
+        originsSummary: getSafeOriginSummary(this.config.allowedOrigins),
         env: process.env.NODE_ENV || 'development',
         redisEnabled: !!this.redis,
         hasStateStore: !!this.requestStateStore,
       },
-      `WebSocketManager initialized | Allowed origins: ${originSummary}`
+      'WebSocketManager: Initialized'
     );
   }
 
@@ -163,57 +162,46 @@ export class WebSocketManager {
       (info.req?.headers?.['x-forwarded-for']?.toString().split(',')[0]?.trim()) ||
       info.req?.socket?.remoteAddress;
 
-    // Phase 1: Origin + basic prod fail-closed
+    // Phase 1: Production security gates
     if (isProduction) {
-      if (this.config.allowedOrigins.includes('*')) return false;
-      if (this.config.allowedOrigins.includes('__PRODUCTION_MISCONFIGURED__')) return false;
+      if (this.config.allowedOrigins.includes('*')) {
+        logger.error({ ip }, 'WS: Rejected - wildcard forbidden in production');
+        return false;
+      }
+      if (this.config.allowedOrigins.includes('__PRODUCTION_MISCONFIGURED__')) {
+        logger.error({ ip }, 'WS: Rejected - misconfigured origins');
+        return false;
+      }
 
       // Enforce HTTPS via proxy header (TLS terminates at ALB)
       const xfProto = (info.req?.headers?.['x-forwarded-proto'] ?? '').toString();
-      if (xfProto && xfProto !== 'https') return false;
+      if (xfProto && xfProto !== 'https') {
+        logger.warn({ ip, protocol: xfProto }, 'WS: Rejected - non-HTTPS in production');
+        return false;
+      }
     }
 
+    // Phase 2: Origin validation using shared utility
     const rawOrigin = (info.origin ?? info.req?.headers?.origin)?.toString();
 
-    // Origin required in prod; allow localhost missing origin only in dev
-    if (!rawOrigin || rawOrigin === 'null') {
-      const isLocal = ip === '127.0.0.1' || ip === '::1';
-      if (!isProduction && isLocal) {
-        // Allow localhost in dev without origin
-      } else {
-        logger.warn({ ip }, 'WS: Rejected - missing/invalid Origin');
-        return false;
-      }
-    } else {
-      let origin: string;
-      let hostname: string;
+    // Special case: localhost without origin in dev
+    const isLocal = ip === '127.0.0.1' || ip === '::1';
+    const allowNoOrigin = !isProduction && isLocal;
 
-      try {
-        const u = new URL(rawOrigin);
-        origin = u.origin;
-        hostname = u.hostname;
-      } catch {
-        logger.warn({ ip, rawOrigin }, 'WS: Rejected - invalid Origin format');
-        return false;
-      }
+    const result = validateOrigin(rawOrigin, {
+      allowedOrigins: this.config.allowedOrigins,
+      allowNoOrigin,
+      isProduction,
+      allowWildcardInDev: true,
+      context: 'websocket'
+    });
 
-      // Exact origin or explicit *.domain rules only (no startsWith)
-      const allowAll = !isProduction && this.config.allowedOrigins.includes('*');
-      const allowed =
-        allowAll ||
-        this.config.allowedOrigins.some((rule) => {
-          if (rule === origin) return true;
-          if (rule.startsWith('*.')) {
-            const base = rule.slice(2);
-            return hostname === base || hostname.endsWith(`.${base}`);
-          }
-          return false;
-        });
-
-      if (!allowed) {
-        logger.warn({ ip, origin, allowedOrigins: this.config.allowedOrigins }, 'WS: Rejected - origin not allowed');
-        return false;
-      }
+    if (!result.allowed) {
+      logger.warn(
+        { ip, origin: rawOrigin, reason: result.reason },
+        'WS: Connection rejected'
+      );
+      return false;
     }
 
     // Phase 1: Authentication (production only)
@@ -889,13 +877,14 @@ export class WebSocketManager {
 
   /**
    * Publish to a specific channel
+   * Returns summary: { attempted, sent, failed }
    */
   publishToChannel(
     channel: WSChannel,
     requestId: string,
     sessionId: string | undefined,
     message: WSServerMessage
-  ): void {
+  ): { attempted: number; sent: number; failed: number } {
     const startTime = performance.now();
     const key = this.buildSubscriptionKey(channel, requestId, sessionId);
 
@@ -907,17 +896,19 @@ export class WebSocketManager {
     // If no subscribers, enqueue to backlog
     if (!clients || clients.size === 0) {
       this.enqueueToBacklog(key, message, channel, requestId);
-      return;
+      return { attempted: 0, sent: 0, failed: 0 };
     }
 
     // Send to active subscribers
     const data = JSON.stringify(message);
     const payloadBytes = Buffer.byteLength(data, 'utf8');
+    let attempted = 0;
     let sent = 0;
     let failed = 0;
 
     for (const client of clients) {
       if (client.readyState === WebSocket.OPEN) {
+        attempted++;
         try {
           client.send(data);
           sent++;
@@ -926,10 +917,10 @@ export class WebSocketManager {
           failed++;
           this.messagesFailed++;
           logger.warn({
-            channel,
+            clientId: (client as any).clientId,
             requestId,
-            error: err instanceof Error ? err.message : 'unknown',
-            clientId: (client as any).clientId
+            channel,
+            error: err instanceof Error ? err.message : 'unknown'
           }, 'WebSocket send failed in publishToChannel');
           // Cleanup failed connection
           this.cleanup(client);
@@ -948,14 +939,17 @@ export class WebSocketManager {
       payloadType: message.type,
       durationMs
     }, 'websocket_published');
+
+    return { attempted, sent, failed };
   }
 
   /**
    * Legacy: Publish a message to all WebSockets subscribed to a requestId
    * @deprecated Use publishToChannel with channel parameter
+   * Returns summary: { attempted, sent, failed }
    */
-  publish(requestId: string, message: WSServerMessage): void {
-    this.publishToChannel('search', requestId, undefined, message);
+  publish(requestId: string, message: WSServerMessage): { attempted: number; sent: number; failed: number } {
+    return this.publishToChannel('search', requestId, undefined, message);
   }
 
 

@@ -32,10 +32,11 @@ export const TextSearchLLMResponseSchema = z.object({
 
 /**
  * 2. This is for your App logic
- * Includes the bias field.
+ * Includes the bias field and cityText.
  */
 export const TextSearchMappingSchema = TextSearchLLMResponseSchema.extend({
-  bias: LocationBiasSchema.nullable().optional()
+  bias: LocationBiasSchema.nullable().optional(),
+  cityText: z.string().min(1).optional()
 }).strict();
 
 export type TextSearchMapping = z.infer<typeof TextSearchMappingSchema>;

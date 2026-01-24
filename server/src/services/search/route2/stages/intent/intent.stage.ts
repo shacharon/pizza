@@ -131,7 +131,8 @@ export async function executeIntentStage(
         language: llmResult.language,
         region: llmResult.region,
         regionConfidence: llmResult.regionConfidence,
-        regionReason: llmResult.regionReason
+        regionReason: llmResult.regionReason,
+        ...(llmResult.cityText && { cityText: llmResult.cityText })
       };
     }
     endStage(context, 'intent', startTime, {
@@ -147,7 +148,8 @@ export async function executeIntentStage(
       language: llmResult.language,
       region: llmResult.region,
       regionConfidence: llmResult.regionConfidence,
-      regionReason: llmResult.regionReason
+      regionReason: llmResult.regionReason,
+      ...(llmResult.cityText && { cityText: llmResult.cityText })
     };
 
   } catch (error) {

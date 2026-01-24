@@ -245,7 +245,7 @@ router.post('/', async (req: Request, res: Response) => {
     if (mode === 'async') {
       // Phase 1 Security: Extract authenticated identity from request context
       const ownerUserId = (req as any).userId || null;
-      const ownerSessionId = queryData.sessionId || req.ctx?.sessionId || null;
+      const ownerSessionId = (req as any).sessionId || null;
 
       // P0 Fix: Non-fatal Redis write - if job creation fails, return 202 anyway
       // Background execution will still proceed, just without Redis tracking

@@ -47,7 +47,8 @@ export const INTENT_JSON_SCHEMA = {
     },
     region: { type: "string", pattern: "^[A-Z]{2}$" },
     regionConfidence: { type: "number", minimum: 0, maximum: 1 },
-    regionReason: { type: "string", minLength: 1 }
+    regionReason: { type: "string", minLength: 1 },
+    cityText: { type: "string", minLength: 1 }
   },
   required: [
     "route",

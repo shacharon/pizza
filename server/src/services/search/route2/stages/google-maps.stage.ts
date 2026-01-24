@@ -246,7 +246,8 @@ async function executeTextSearch(
     textQuery: mapping.textQuery,
     region: mapping.region,
     language: mapping.language,
-    hasBias: !!mapping.bias
+    hasBias: !!mapping.bias || !!mapping.cityText,
+    ...(mapping.cityText && { cityText: mapping.cityText })
   }, '[GOOGLE] Calling Text Search API (New)');
 
   const apiKey = process.env.GOOGLE_API_KEY;
@@ -434,8 +435,52 @@ async function executeTextSearchAttempt(
   let nextPageToken: string | undefined;
   const maxResults = 20; // Limit total results across pages
 
+  // If cityText exists and no bias is set, geocode the city to create location bias
+  let enrichedMapping = mapping;
+  if (mapping.cityText && !mapping.bias) {
+    try {
+      const cityCoords = await callGoogleGeocodingAPI(
+        mapping.cityText,
+        mapping.region,
+        apiKey,
+        requestId
+      );
+
+      if (cityCoords) {
+        logger.info({
+          requestId,
+          cityText: mapping.cityText,
+          coords: cityCoords,
+          event: 'city_geocoded_for_bias'
+        }, '[GOOGLE] City geocoded successfully, applying location bias');
+
+        enrichedMapping = {
+          ...mapping,
+          bias: {
+            type: 'locationBias' as const,
+            center: cityCoords,
+            radiusMeters: 20000 // 20km radius for city-level bias
+          }
+        };
+      } else {
+        logger.warn({
+          requestId,
+          cityText: mapping.cityText,
+          event: 'city_geocoding_failed'
+        }, '[GOOGLE] City geocoding returned no results, proceeding without bias');
+      }
+    } catch (error) {
+      logger.warn({
+        requestId,
+        cityText: mapping.cityText,
+        error: error instanceof Error ? error.message : 'unknown',
+        event: 'city_geocoding_error'
+      }, '[GOOGLE] City geocoding failed, proceeding without bias');
+    }
+  }
+
   // Build request body
-  const requestBody = buildTextSearchBody(mapping, requestId);
+  const requestBody = buildTextSearchBody(enrichedMapping, requestId);
   const textQueryNormalized = requestBody.textQuery?.trim().toLowerCase() || '';
 
   const textQueryHash = createHash('sha256')
@@ -452,6 +497,7 @@ async function executeTextSearchAttempt(
     regionCode: requestBody.regionCode || null,
     regionCodeSent: !!requestBody.regionCode,
     hasBias: !!requestBody.locationBias,
+    biasSource: enrichedMapping.cityText && enrichedMapping.bias ? 'cityText_geocoded' : (mapping.bias ? 'provided' : null),
     maxResultCount: maxResults
   }, '[GOOGLE] Text Search request payload');
 

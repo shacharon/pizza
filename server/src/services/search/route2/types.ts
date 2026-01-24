@@ -94,6 +94,7 @@ export interface IntentResult {
   region: string; // ISO-3166-1 alpha-2 (e.g., "IL", "FR", "US")
   regionConfidence: number;
   regionReason: string;
+  cityText?: string; // Optional city name for location bias (e.g., "גדרה", "אשקלון")
 }
 
 // Intent2 specific types (DEPRECATED - will be removed)

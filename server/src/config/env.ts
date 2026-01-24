@@ -47,8 +47,12 @@ function mustNumber(name: string, fallback?: number): number {
 
     return value!;
 }
-function parseAllowedOrigins(): string[] | null {
-    const raw = process.env.CORS_ALLOWED_ORIGINS?.trim();
+/**
+ * Parse frontend origins from env (unified for CORS + WebSocket)
+ * Priority: FRONTEND_ORIGINS > CORS_ALLOWED_ORIGINS (backward compat)
+ */
+function parseFrontendOrigins(): string[] | null {
+    const raw = (process.env.FRONTEND_ORIGINS || process.env.CORS_ALLOWED_ORIGINS)?.trim();
     if (!raw) return null;
     const items = raw.split(',').map(s => s.trim()).filter(Boolean);
     return items.length ? items : null;
@@ -130,10 +134,17 @@ export function getConfig() {
     validateRedisUrl(redisUrl, enableRedisJobStore || enableRedisCache);
 
     /**
- * CORS
- */
-    const corsAllowedOrigins = parseAllowedOrigins();
+     * Frontend Origins (unified for CORS + WebSocket)
+     */
+    const frontendOrigins = parseFrontendOrigins();
     const corsAllowNoOrigin = process.env.CORS_ALLOW_NO_ORIGIN !== 'false'; // default true
+    
+    /**
+     * Security: Forbid wildcard (*) when credentials enabled
+     */
+    if (isProd() && frontendOrigins?.includes('*')) {
+        throw new Error('[Config] FRONTEND_ORIGINS cannot include "*" in production (credentials enabled)');
+    }
 
     /**
      * Boot log (safe)
@@ -158,7 +169,8 @@ export function getConfig() {
         redisJobTtlSeconds,
         googleCacheTtlSeconds,
         cacheIntentEnabled,
-        cacheIntentTtlSeconds
+        cacheIntentTtlSeconds,
+        frontendOriginsCount: frontendOrigins?.length ?? 0
     });
 
     return {
@@ -185,8 +197,9 @@ export function getConfig() {
         // Intent cache
         cacheIntentEnabled,
         cacheIntentTtlSeconds,
-        // CORS
-        corsAllowedOrigins,
+        
+        // Frontend Origins (unified CORS + WebSocket)
+        frontendOrigins,
         corsAllowNoOrigin,
     };
 }

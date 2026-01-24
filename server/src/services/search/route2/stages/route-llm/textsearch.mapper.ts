@@ -170,6 +170,11 @@ export async function executeTextSearchMapper(
     // and downstream types remain compatible.
     mapping.bias = undefined;
 
+    // Propagate cityText from intent if present
+    if (intent.cityText) {
+      mapping.cityText = intent.cityText;
+    }
+
     // Apply your existing location bias logic based on user metadata/intent
     const biasResult = applyLocationBias(mapping, intent, request, requestId);
     mapping.bias = biasResult.bias;
@@ -202,7 +207,8 @@ function buildDeterministicMapping(
     region: intent.region,
     language: intent.language,
     bias: undefined,
-    reason: 'deterministic_fallback'
+    reason: 'deterministic_fallback',
+    ...(intent.cityText && { cityText: intent.cityText })
   };
 
   return mapping;
