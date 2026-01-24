@@ -21,6 +21,7 @@ import {
 } from '../../infra/websocket/assistant-ws.publisher.js';
 import { searchJobStore } from '../../services/search/job-store/index.js';
 import { ASSISTANT_MODE } from '../../config/assistant.flags.js';
+import { hashSessionId, sanitizePhotoUrls } from '../../utils/security.utils.js';
 
 const router = Router();
 
@@ -243,9 +244,22 @@ router.post('/', async (req: Request, res: Response) => {
 
 
     if (mode === 'async') {
-      // Phase 1 Security: Extract authenticated identity from request context
+      // P0 Security: Extract session from request context for IDOR protection
+      const ownerSessionId = req.ctx?.sessionId || null;
       const ownerUserId = (req as any).userId || null;
-      const ownerSessionId = (req as any).sessionId || null;
+
+      // P0 Security: Require X-Session-Id header for async job creation
+      if (!ownerSessionId) {
+        logger.warn({
+          requestId,
+          operation: 'createJob',
+          decision: 'REJECTED',
+          reason: 'missing_session_id'
+        }, '[P0 Security] Async job creation requires X-Session-Id header');
+        
+        res.status(400).json(createSearchError('X-Session-Id header required for async requests', 'MISSING_SESSION_ID'));
+        return;
+      }
 
       // P0 Fix: Non-fatal Redis write - if job creation fails, return 202 anyway
       // Background execution will still proceed, just without Redis tracking
@@ -256,6 +270,13 @@ router.post('/', async (req: Request, res: Response) => {
           ownerUserId,
           ownerSessionId
         });
+        
+        logger.info({
+          requestId,
+          sessionHash: hashSessionId(ownerSessionId),
+          operation: 'createJob',
+          decision: 'ACCEPTED'
+        }, '[P0 Security] Job created with session binding');
       } catch (redisErr) {
         logger.error({ 
           requestId, 
@@ -282,28 +303,100 @@ router.post('/', async (req: Request, res: Response) => {
 
 /**
  * GET /search/:requestId/result
+ * P0 Security: IDOR protection via session binding
  */
 router.get('/:requestId/result', async (req: Request, res: Response) => {
   const { requestId } = req.params;
   if (!requestId) return res.status(400).json({ code: 'MISSING_ID' });
 
-  const statusInfo = await searchJobStore.getStatus(requestId);
-  if (!statusInfo) return res.status(404).json({ code: 'NOT_FOUND', requestId });
-
-  if (statusInfo.status === 'DONE_FAILED') {
-    return res.status(500).json({ requestId, status: 'FAILED', error: statusInfo.error });
+  // P0 Security: Extract session from request
+  const currentSessionId = req.ctx?.sessionId;
+  
+  // P0 Security: Get full job to check ownership
+  const job = await searchJobStore.getJob(requestId);
+  
+  if (!job) {
+    logger.warn({
+      requestId,
+      sessionHash: hashSessionId(currentSessionId),
+      operation: 'getResult',
+      decision: 'NOT_FOUND',
+      reason: 'job_not_found'
+    }, '[P0 Security] Job not found');
+    
+    return res.status(404).json({ code: 'NOT_FOUND', requestId });
   }
 
-  if (statusInfo.status === 'PENDING' || statusInfo.status === 'RUNNING') {
+  // P0 Security: Validate session ownership
+  const ownerSessionId = job.ownerSessionId;
+  
+  // Missing session -> 401 Unauthorized
+  if (!currentSessionId) {
+    logger.warn({
+      requestId,
+      sessionHash: hashSessionId(currentSessionId),
+      operation: 'getResult',
+      decision: 'UNAUTHORIZED',
+      reason: 'missing_session_id'
+    }, '[P0 Security] Access denied: missing X-Session-Id header');
+    
+    return res.status(401).json({ code: 'UNAUTHORIZED', message: 'X-Session-Id header required' });
+  }
+  
+  // Session mismatch -> 404 to avoid disclosure (or 403 if preferred)
+  if (ownerSessionId && currentSessionId !== ownerSessionId) {
+    logger.warn({
+      requestId,
+      currentSessionHash: hashSessionId(currentSessionId),
+      ownerSessionHash: hashSessionId(ownerSessionId),
+      operation: 'getResult',
+      decision: 'FORBIDDEN',
+      reason: 'session_mismatch'
+    }, '[P0 Security] Access denied: session mismatch');
+    
+    // Return 404 to avoid leaking requestId existence
+    return res.status(404).json({ code: 'NOT_FOUND', requestId });
+  }
+  
+  // Log successful authorization
+  logger.info({
+    requestId,
+    sessionHash: hashSessionId(currentSessionId),
+    operation: 'getResult',
+    decision: 'AUTHORIZED'
+  }, '[P0 Security] Access granted');
+
+  // Authorization passed - check job status
+  if (job.status === 'DONE_FAILED') {
+    return res.status(500).json({ requestId, status: 'FAILED', error: job.error });
+  }
+
+  if (job.status === 'PENDING' || job.status === 'RUNNING') {
     return res.status(202).json({
       requestId,
-      status: statusInfo.status,
-      progress: statusInfo.progress,
+      status: job.status,
+      progress: job.progress,
       contractsVersion: CONTRACTS_VERSION
     });
   }
 
-  const result = await searchJobStore.getResult(requestId);
+  // P0 Security: Sanitize photo URLs before returning result
+  const result = job.result;
+  if (result && typeof result === 'object' && 'results' in result) {
+    const sanitized = {
+      ...result,
+      results: sanitizePhotoUrls((result as any).results || [])
+    };
+    
+    logger.info({
+      requestId,
+      photoUrlsSanitized: true,
+      resultCount: (result as any).results?.length || 0
+    }, '[P0 Security] Photo URLs sanitized');
+    
+    return res.json(sanitized);
+  }
+  
   return result ? res.json(result) : res.status(500).json({ code: 'RESULT_MISSING' });
 });
 

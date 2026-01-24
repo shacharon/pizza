@@ -35,20 +35,16 @@ Output JSON Format:
 export const INTENT_JSON_SCHEMA = {
   type: "object",
   properties: {
-    route: {
-      type: "string",
-      enum: ["TEXTSEARCH", "NEARBY", "LANDMARK"]
-    },
+    route: { type: "string", enum: ["TEXTSEARCH", "NEARBY", "LANDMARK"] },
     confidence: { type: "number", minimum: 0, maximum: 1 },
     reason: { type: "string", minLength: 1 },
-    language: {
-      type: "string",
-      enum: ["he", "en", "ru", "ar", "fr", "es", "other"]
-    },
+    language: { type: "string", enum: ["he", "en", "ru", "ar", "fr", "es", "other"] },
     region: { type: "string", pattern: "^[A-Z]{2}$" },
     regionConfidence: { type: "number", minimum: 0, maximum: 1 },
     regionReason: { type: "string", minLength: 1 },
-    cityText: { type: "string", minLength: 1 }
+
+    // ✅ must be present but can be null
+    cityText: { type: ["string", "null"], minLength: 1 }
   },
   required: [
     "route",
@@ -57,10 +53,12 @@ export const INTENT_JSON_SCHEMA = {
     "language",
     "region",
     "regionConfidence",
-    "regionReason"
+    "regionReason",
+    "cityText" // ✅ add
   ],
   additionalProperties: false
 };
+
 
 /**
  * Generate a hash for the schema to manage versioning and caching.

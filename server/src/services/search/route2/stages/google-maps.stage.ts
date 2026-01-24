@@ -815,6 +815,7 @@ async function callGoogleGeocodingAPI(
 
 /**
  * Map Google Place result (New API) to internal RestaurantResult shape
+ * P0 Security Fix: Returns photo references only (no API keys)
  * 
  * New API response structure:
  * {
@@ -851,24 +852,28 @@ function mapGooglePlaceToResult(place: any): any {
     openNow: place.currentOpeningHours?.openNow !== undefined
       ? place.currentOpeningHours.openNow
       : 'UNKNOWN',
-    photoUrl: place.photos?.[0]
-      ? buildPhotoUrl(place.photos[0].name)
+    // P0 Security: Return photo reference only (no key)
+    photoReference: place.photos?.[0]
+      ? buildPhotoReference(place.photos[0].name)
       : undefined,
-    photos: place.photos?.slice(0, 5).map((photo: any) =>
-      buildPhotoUrl(photo.name)
-    ),
+    photoReferences: place.photos?.slice(0, 5).map((photo: any) =>
+      buildPhotoReference(photo.name)
+    ) || [],
     googleMapsUrl: place.googleMapsUri || `https://www.google.com/maps/place/?q=place_id:${placeId}`,
     tags: place.types || []
   };
 }
 
 /**
- * Build photo URL for New Places API
+ * Build photo reference for New Places API
+ * P0 Security Fix: Returns photo reference only (no API key)
+ * Client must use backend proxy endpoint to fetch actual photo
  * Uses resource name format: places/ChIJ.../photos/...
  */
-function buildPhotoUrl(photoName: string): string {
-  const apiKey = process.env.GOOGLE_API_KEY;
-  return `https://places.googleapis.com/v1/${photoName}/media?maxWidthPx=800&key=${apiKey}`;
+function buildPhotoReference(photoName: string): string {
+  // P0 Security: Return reference only, no key parameter
+  // Format: places/{placeId}/photos/{photoId}
+  return photoName;
 }
 
 /**

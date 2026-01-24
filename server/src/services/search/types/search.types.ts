@@ -165,9 +165,13 @@ export interface RestaurantResult {
   website?: string;
   googleMapsUrl?: string;
 
-  // Media
-  photoUrl?: string;
-  photos?: string[];
+  // Media (P0 Security: Use photo references, not URLs with API keys)
+  photoReference?: string;      // Photo reference (not URL) - fetch via /api/v1/photos/{ref}
+  photoReferences?: string[];   // Array of photo references
+  
+  // DEPRECATED: Use photoReference instead
+  photoUrl?: string;            // Legacy: Direct URL (may contain API key)
+  photos?: string[];            // Legacy: Array of URLs (may contain API keys)
 
   // Enrichment
   tags?: string[];  // ['pizza', 'romantic', 'fast-food']
