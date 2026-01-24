@@ -50,7 +50,18 @@ async function executeBackgroundSearch(params: BackgroundParams): Promise<void> 
     }
 
     // Step 1: Accepted
-    await searchJobStore.setStatus(requestId, 'RUNNING', 10);
+    // P0 Fix: Non-fatal Redis write (job tracking is optional)
+    try {
+      await searchJobStore.setStatus(requestId, 'RUNNING', 10);
+    } catch (redisErr) {
+      logger.error({ 
+        requestId, 
+        error: redisErr instanceof Error ? redisErr.message : 'unknown',
+        operation: 'setStatus',
+        stage: 'accepted'
+      }, 'Redis JobStore write failed (non-fatal) - continuing pipeline');
+    }
+    
     publishSearchEvent(requestId, {
       channel: 'search',
       contractsVersion: CONTRACTS_VERSION,
@@ -64,7 +75,18 @@ async function executeBackgroundSearch(params: BackgroundParams): Promise<void> 
     });
 
     // Step 2: Processing (route_llm)
-    await searchJobStore.setStatus(requestId, 'RUNNING', 50);
+    // P0 Fix: Non-fatal Redis write
+    try {
+      await searchJobStore.setStatus(requestId, 'RUNNING', 50);
+    } catch (redisErr) {
+      logger.error({ 
+        requestId, 
+        error: redisErr instanceof Error ? redisErr.message : 'unknown',
+        operation: 'setStatus',
+        stage: 'route_llm'
+      }, 'Redis JobStore write failed (non-fatal) - continuing pipeline');
+    }
+    
     publishSearchEvent(requestId, {
       channel: 'search',
       contractsVersion: CONTRACTS_VERSION,
@@ -95,8 +117,27 @@ async function executeBackgroundSearch(params: BackgroundParams): Promise<void> 
       wsEventType = 'clarify';
     }
 
-    await searchJobStore.setResult(requestId, response);
-    await searchJobStore.setStatus(requestId, terminalStatus, 100);
+    // P0 Fix: Non-fatal Redis writes
+    try {
+      await searchJobStore.setResult(requestId, response);
+    } catch (redisErr) {
+      logger.error({ 
+        requestId, 
+        error: redisErr instanceof Error ? redisErr.message : 'unknown',
+        operation: 'setResult'
+      }, 'Redis JobStore write failed (non-fatal) - result not persisted');
+    }
+    
+    try {
+      await searchJobStore.setStatus(requestId, terminalStatus, 100);
+    } catch (redisErr) {
+      logger.error({ 
+        requestId, 
+        error: redisErr instanceof Error ? redisErr.message : 'unknown',
+        operation: 'setStatus',
+        stage: 'done'
+      }, 'Redis JobStore write failed (non-fatal) - status not persisted');
+    }
 
     // Final WS Notification
     if (wsEventType === 'clarify') {
@@ -129,8 +170,27 @@ async function executeBackgroundSearch(params: BackgroundParams): Promise<void> 
     const isAborted = abortController.signal.aborted;
     let errorCode = isAborted ? 'TIMEOUT' : 'SEARCH_FAILED';
 
-    await searchJobStore.setError(requestId, errorCode, message, 'SEARCH_FAILED');
-    await searchJobStore.setStatus(requestId, 'DONE_FAILED', 100);
+    // P0 Fix: Non-fatal Redis writes
+    try {
+      await searchJobStore.setError(requestId, errorCode, message, 'SEARCH_FAILED');
+    } catch (redisErr) {
+      logger.error({ 
+        requestId, 
+        error: redisErr instanceof Error ? redisErr.message : 'unknown',
+        operation: 'setError'
+      }, 'Redis JobStore write failed (non-fatal) - error not persisted');
+    }
+    
+    try {
+      await searchJobStore.setStatus(requestId, 'DONE_FAILED', 100);
+    } catch (redisErr) {
+      logger.error({ 
+        requestId, 
+        error: redisErr instanceof Error ? redisErr.message : 'unknown',
+        operation: 'setStatus',
+        stage: 'error'
+      }, 'Redis JobStore write failed (non-fatal) - status not persisted');
+    }
 
     publishSearchEvent(requestId, {
       channel: 'search',
@@ -183,10 +243,26 @@ router.post('/', async (req: Request, res: Response) => {
 
 
     if (mode === 'async') {
-      await searchJobStore.createJob(requestId, {
-        sessionId: queryData.sessionId || 'new',
-        query: queryData.query
-      });
+      // Phase 1 Security: Extract authenticated identity from request context
+      const ownerUserId = (req as any).userId || null;
+      const ownerSessionId = queryData.sessionId || req.ctx?.sessionId || null;
+
+      // P0 Fix: Non-fatal Redis write - if job creation fails, return 202 anyway
+      // Background execution will still proceed, just without Redis tracking
+      try {
+        await searchJobStore.createJob(requestId, {
+          sessionId: queryData.sessionId || 'new',
+          query: queryData.query,
+          ownerUserId,
+          ownerSessionId
+        });
+      } catch (redisErr) {
+        logger.error({ 
+          requestId, 
+          error: redisErr instanceof Error ? redisErr.message : 'unknown',
+          operation: 'createJob'
+        }, 'Redis JobStore write failed (non-fatal) - job not tracked, but search will proceed');
+      }
 
       const resultUrl = `/api/v1/search/${requestId}/result`;
       res.status(202).json({ requestId, resultUrl, contractsVersion: CONTRACTS_VERSION });

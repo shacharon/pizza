@@ -19,13 +19,16 @@ export interface SearchJob {
   };
   createdAt: number;
   updatedAt: number;
+  // Phase 1 Security: Ownership tracking for WebSocket authorization
+  ownerUserId?: string | null;
+  ownerSessionId?: string | null;
 }
 
 export interface ISearchJobStore {
   /**
    * Create a new job
    */
-  createJob(requestId: string, params: { sessionId: string; query: string }): Promise<void> | void;
+  createJob(requestId: string, params: { sessionId: string; query: string; ownerUserId?: string | null; ownerSessionId?: string | null }): Promise<void> | void;
 
   /**
    * Set job status and progress

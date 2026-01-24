@@ -78,22 +78,89 @@ export async function executeTextSearchMapper(
       schemaHash: TEXTSEARCH_SCHEMA_HASH
     });
 
-    const response = await llmProvider.completeJSON(
-      messages,
-      TextSearchLLMResponseSchema,  // Use LLM response schema (no bias)
-      {
-        temperature: 0,
-        timeout: 3500,
+    let response: any = null;
+    let lastError: any = null;
+
+    // Attempt 1: Initial LLM call
+    try {
+      response = await llmProvider.completeJSON(
+        messages,
+        TextSearchLLMResponseSchema,  // Use LLM response schema (no bias)
+        {
+          temperature: 0,
+          timeout: 3500,
+          requestId,
+          ...(context.traceId && { traceId: context.traceId }),
+          ...(context.sessionId && { sessionId: context.sessionId }),
+          stage: 'textsearch_mapper',
+          promptVersion: TEXTSEARCH_MAPPER_VERSION,
+          promptHash: TEXTSEARCH_MAPPER_PROMPT_HASH,
+          schemaHash: TEXTSEARCH_SCHEMA_HASH
+        },
+        TEXTSEARCH_JSON_SCHEMA // Use the simplified schema defined above
+      );
+    } catch (err: any) {
+      lastError = err;
+      const errorMsg = err?.message || String(err);
+      const errorType = err?.errorType || '';
+      const isTimeout = errorType === 'abort_timeout' ||
+        errorMsg.toLowerCase().includes('abort') ||
+        errorMsg.toLowerCase().includes('timeout');
+
+      if (isTimeout) {
+        logger.warn({
+          requestId,
+          stage: 'textsearch_mapper',
+          errorType,
+          attempt: 1,
+          msg: '[ROUTE2] textsearch_mapper timeout, retrying once'
+        });
+
+        // Jittered backoff: 100-200ms (gate2 pattern)
+        await new Promise(resolve => setTimeout(resolve, 100 + Math.random() * 100));
+
+        // Attempt 2: Retry once
+        try {
+          response = await llmProvider.completeJSON(
+            messages,
+            TextSearchLLMResponseSchema,
+            {
+              temperature: 0,
+              timeout: 3500,
+              requestId,
+              ...(context.traceId && { traceId: context.traceId }),
+              ...(context.sessionId && { sessionId: context.sessionId }),
+              stage: 'textsearch_mapper',
+              promptVersion: TEXTSEARCH_MAPPER_VERSION,
+              promptHash: TEXTSEARCH_MAPPER_PROMPT_HASH,
+              schemaHash: TEXTSEARCH_SCHEMA_HASH
+            },
+            TEXTSEARCH_JSON_SCHEMA
+          );
+
+          logger.info({
+            requestId,
+            stage: 'textsearch_mapper',
+            attempt: 2,
+            msg: '[ROUTE2] textsearch_mapper retry succeeded'
+          });
+        } catch (retryErr) {
+          // Retry failed - will use fallback below
+          lastError = retryErr;
+        }
+      }
+    }
+
+    // If LLM failed (even after retry), use fallback
+    if (!response) {
+      logger.warn({
         requestId,
-        ...(context.traceId && { traceId: context.traceId }),
-        ...(context.sessionId && { sessionId: context.sessionId }),
         stage: 'textsearch_mapper',
-        promptVersion: TEXTSEARCH_MAPPER_VERSION,
-        promptHash: TEXTSEARCH_MAPPER_PROMPT_HASH,
-        schemaHash: TEXTSEARCH_SCHEMA_HASH
-      },
-      TEXTSEARCH_JSON_SCHEMA // Use the simplified schema defined above
-    );
+        error: lastError?.message || String(lastError),
+        msg: '[ROUTE2] textsearch_mapper LLM failed, using fallback'
+      });
+      return buildDeterministicMapping(intent, request, requestId);
+    }
 
     // Using 'as any' because the LLM response doesn't contain 'bias' anymore
     const mapping = response.data as any;

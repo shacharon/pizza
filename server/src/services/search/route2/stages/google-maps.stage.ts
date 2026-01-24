@@ -27,6 +27,7 @@ import {
 } from '../../../../lib/cache/googleCacheUtils.js';
 import { getConfig } from '../../../../config/env.js';
 import { getRedisClient } from '../../../../lib/redis/redis-client.js';
+import { fetchWithTimeout } from '../../../../utils/fetch-with-timeout.js';
 
 // Field mask for Google Places API (New) - includes opening hours data
 const PLACES_FIELD_MASK = 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.priceLevel,places.currentOpeningHours,places.regularOpeningHours,places.utcOffsetMinutes,places.photos,places.types,places.googleMapsUri';
@@ -34,6 +35,42 @@ const PLACES_FIELD_MASK = 'places.id,places.displayName,places.formattedAddress,
 // Initialize Redis and Cache Service (module-level singleton)
 let cacheService: GoogleCacheService | null = null;
 let cacheInitialized = false;
+
+/**
+ * P0 Fix: Wrapper for Promise.race that properly cleans up timeout
+ * Prevents zombie promises and memory leaks from dangling timeouts
+ * 
+ * @param cachePromise - The cache operation promise
+ * @param timeoutMs - Timeout in milliseconds
+ * @returns Result from cache or throws timeout error
+ */
+async function raceWithCleanup<T>(
+  cachePromise: Promise<T>,
+  timeoutMs: number
+): Promise<T> {
+  let timeoutId: NodeJS.Timeout | undefined;
+  
+  try {
+    const timeoutPromise = new Promise<T>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error('Cache operation timeout')), timeoutMs);
+    });
+    
+    // Race between cache and timeout
+    const result = await Promise.race([cachePromise, timeoutPromise]);
+    
+    return result;
+    
+  } finally {
+    // P0 Fix: Always clear timeout to prevent memory leak
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
+    }
+    
+    // Note: cachePromise continues running if it loses the race
+    // This is acceptable - Redis will complete the operation
+    // The important fix is clearing the timeout to prevent memory leaks
+  }
+}
 
 async function initializeCacheService(): Promise<void> {
   if (cacheInitialized) return;
@@ -309,13 +346,9 @@ async function executeTextSearch(
           ttlSeconds: ttl
         });
 
-        // Wrap cache call with timeout to prevent hanging
+        // P0 Fix: Use raceWithCleanup to prevent timeout memory leaks
         const cachePromise = cache.wrap(cacheKey, ttl, fetchFn);
-        const timeoutPromise = new Promise<any[]>((_, reject) =>
-          setTimeout(() => reject(new Error('Cache operation timeout')), 10000)
-        );
-
-        results = await Promise.race([cachePromise, timeoutPromise]);
+        results = await raceWithCleanup(cachePromise, 10000);
         const wrapDuration = Date.now() - startTime;
         fromCache = wrapDuration < 100;
 
@@ -547,7 +580,7 @@ async function callGooglePlacesSearchText(
 ): Promise<any> {
   const url = 'https://places.googleapis.com/v1/places:searchText';
 
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -555,6 +588,11 @@ async function callGooglePlacesSearchText(
       'X-Goog-FieldMask': PLACES_FIELD_MASK
     },
     body: JSON.stringify(body)
+  }, {
+    timeoutMs: 8000,
+    requestId,
+    stage: 'google_maps',
+    provider: 'google_places'
   });
 
   if (!response.ok) {
@@ -630,7 +668,7 @@ async function callGooglePlacesSearchNearby(
 ): Promise<any> {
   const url = 'https://places.googleapis.com/v1/places:searchNearby';
 
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -638,6 +676,11 @@ async function callGooglePlacesSearchNearby(
       'X-Goog-FieldMask': PLACES_FIELD_MASK
     },
     body: JSON.stringify(body)
+  }, {
+    timeoutMs: 8000,
+    requestId,
+    stage: 'google_maps',
+    provider: 'google_places'
   });
 
   if (!response.ok) {
@@ -681,11 +724,16 @@ async function callGoogleGeocodingAPI(
 
   const url = `https://maps.googleapis.com/maps/api/geocode/json?${params.toString()}`;
 
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     method: 'GET',
     headers: {
       'Accept': 'application/json'
     }
+  }, {
+    timeoutMs: 8000,
+    requestId,
+    stage: 'google_maps',
+    provider: 'google_geocoding'
   });
 
   if (!response.ok) {
@@ -895,13 +943,9 @@ async function executeNearbySearch(
           ttlSeconds: ttl
         });
 
-        // Wrap with timeout
+        // P0 Fix: Use raceWithCleanup to prevent timeout memory leaks
         const cachePromise = cache.wrap(cacheKey, ttl, fetchFn);
-        const timeoutPromise = new Promise<any[]>((_, reject) =>
-          setTimeout(() => reject(new Error('Cache operation timeout')), 10000)
-        );
-
-        results = await Promise.race([cachePromise, timeoutPromise]);
+        results = await raceWithCleanup(cachePromise, 10000);
         fromCache = (Date.now() - startTime) < 100;
       } catch (cacheError) {
         logger.warn({
@@ -1135,13 +1179,9 @@ async function executeLandmarkPlan(
           ttlSeconds: ttl
         });
 
-        // Wrap with timeout
+        // P0 Fix: Use raceWithCleanup to prevent timeout memory leaks
         const cachePromise = cache.wrap(cacheKey, ttl, fetchFn);
-        const timeoutPromise = new Promise<any[]>((_, reject) =>
-          setTimeout(() => reject(new Error('Cache operation timeout')), 10000)
-        );
-
-        results = await Promise.race([cachePromise, timeoutPromise]);
+        results = await raceWithCleanup(cachePromise, 10000);
         fromCache = (Date.now() - searchStartTime) < 100;
       } catch (cacheError) {
         logger.warn({

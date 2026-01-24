@@ -39,11 +39,15 @@ const server = app.listen(port, () => {
 });
 
 // Phase 3: Initialize WebSocket manager
+// Import jobStore for Phase 1 authorization
+import { searchJobStore } from './services/search/job-store/index.js';
+
 export const wsManager = new WebSocketManager(server, {
     path: '/ws',
     heartbeatIntervalMs: 30_000,
     allowedOrigins: process.env.WS_ALLOWED_ORIGINS?.split(',') || ['*'],
-    requestStateStore // Phase 3: Enable late-subscriber replay
+    requestStateStore, // Phase 3: Enable late-subscriber replay
+    jobStore: searchJobStore // Phase 1: Enable ownership verification
 });
 
 function shutdown(signal: NodeJS.Signals) {

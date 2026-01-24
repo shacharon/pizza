@@ -6,18 +6,25 @@
 
 import { WebSocketServer, WebSocket } from 'ws';
 import type { Server as HTTPServer } from 'http';
+import crypto from 'crypto';
 import { logger } from '../../lib/logger/structured-logger.js';
 import type { WSClientMessage, WSServerMessage, WSChannel } from './websocket-protocol.js';
 import { isWSClientMessage, normalizeToCanonical } from './websocket-protocol.js';
 import type { IRequestStateStore } from '../state/request-state.store.js';
+import { verifyJWT } from '../../lib/auth/jwt-verifier.js';
+import type { ISearchJobStore } from '../../services/search/job-store/job-store.interface.js';
+import Redis from 'ioredis';
+
+// @server/src/infra/websocket/websocket-manager.ts
 
 export interface WebSocketManagerConfig {
   path: string;
   heartbeatIntervalMs: number;
   allowedOrigins: string[];
-  requestStateStore?: IRequestStateStore; // Phase 3: For late-subscriber replay
+  requestStateStore?: IRequestStateStore;
+  jobStore?: ISearchJobStore;  // Phase 1: For ownership verification
+  redisUrl?: string;
 }
-
 /**
  * Subscription key: channel:requestId or channel:sessionId
  */
@@ -39,92 +46,292 @@ export class WebSocketManager {
   private heartbeatInterval: NodeJS.Timeout | undefined;
   private config: WebSocketManagerConfig;
   private requestStateStore: IRequestStateStore | undefined;
-  
+  private jobStore: ISearchJobStore | undefined;  // Phase 1: For ownership verification
+
   // Message backlog for late subscribers
   private backlog = new Map<SubscriptionKey, BacklogEntry>();
   private readonly BACKLOG_TTL_MS = 2 * 60 * 1000; // 2 minutes
   private readonly BACKLOG_MAX_ITEMS = 50;
 
+  private redis: Redis.Redis | null = null;
+
+  // Send operation counters
+  private messagesSent = 0;
+  private messagesFailed = 0;
+
   constructor(server: HTTPServer, config?: Partial<WebSocketManagerConfig>) {
+    // 1. Resolve allowedOrigins from ENV (highest priority)
+    const allowedOriginsEnv = process.env.ALLOWED_ORIGINS || '';
+    const envAllowedOrigins = allowedOriginsEnv
+      .split(',')
+      .map(o => o.trim())
+      .filter(Boolean);
+
+    const isProduction = process.env.NODE_ENV === 'production';
+
+    // 2. Dev/local defaults: explicitly allow localhost:4200 for Angular dev server
+    const devDefaults = ['http://localhost:4200', 'http://127.0.0.1:4200'];
+
+    // 3. Resolve base config
     this.config = {
       path: config?.path || '/ws',
       heartbeatIntervalMs: config?.heartbeatIntervalMs || 30_000,
-      allowedOrigins: config?.allowedOrigins || ['*'],
+      allowedOrigins:
+        envAllowedOrigins.length > 0
+          ? envAllowedOrigins
+          : config?.allowedOrigins || (isProduction ? [] : devDefaults),
     };
 
     this.requestStateStore = config?.requestStateStore;
+    this.jobStore = config?.jobStore;
 
-    // Phase 3: Production origin check
-    if (process.env.NODE_ENV === 'production') {
-      if (!this.config.allowedOrigins || this.config.allowedOrigins.length === 0 || this.config.allowedOrigins.includes('*')) {
-        logger.error({
-          allowedOrigins: this.config.allowedOrigins,
-          env: process.env.NODE_ENV
-        }, 'SECURITY: WebSocket allowedOrigins must be explicitly set in production (not *)');
+    // 3. Initialize Redis Connection (CTO addition for shared backlog)
+    const redisUrl = config?.redisUrl || process.env.REDIS_URL;
+    if (redisUrl) {
+      this.redis = new Redis.Redis(redisUrl, {
+        maxRetriesPerRequest: 3,
+        enableReadyCheck: true
+      });
+      // Added English comment as per your persistent instructions
+      logger.info({ redisUrl: redisUrl.split('@')[1] || 'local' }, 'WebSocketManager: Redis backlog enabled');
+    }
 
-        // In production, reject all if misconfigured
+    // 4. Production security gate with Fallback Logic
+    // IMPORTANT: In production, NEVER allow wildcard (*) or empty allowlist
+    if (isProduction) {
+      if (
+        this.config.allowedOrigins.length === 0 ||
+        this.config.allowedOrigins.includes('*')
+      ) {
+        const fallbackOrigin =
+          process.env.WS_FALLBACK_ORIGIN || 'https://app.going2eat.food';
+
+        logger.warn(
+          {
+            fallbackOrigin,
+            current: this.config.allowedOrigins,
+          },
+          'SECURITY: Production WS origins invalid, applying fallback domain'
+        );
+
+        this.config.allowedOrigins = [fallbackOrigin];
+      }
+
+      // Final safety check to prevent accidental wildcard leak
+      if (this.config.allowedOrigins.includes('*')) {
+        logger.error(
+          { env: process.env.NODE_ENV, allowedOrigins: this.config.allowedOrigins },
+          'SECURITY: WebSocket wildcard (*) BLOCKED in production'
+        );
         this.config.allowedOrigins = ['__PRODUCTION_MISCONFIGURED__'];
       }
     }
 
+    // 5. Init WebSocket server with Security Limits
     this.wss = new WebSocketServer({
       server,
       path: this.config.path,
       verifyClient: this.verifyClient.bind(this),
+      maxPayload: 1024 * 1024, // CTO Security: Prevent OOM attacks by limiting payload to 1MB
     });
 
     this.wss.on('connection', this.handleConnection.bind(this));
     this.startHeartbeat();
 
-    logger.info({
-      path: this.config.path,
-      heartbeatMs: this.config.heartbeatIntervalMs,
-      allowedOrigins: this.config.allowedOrigins,
-      hasStateStore: !!this.requestStateStore
-    }, 'WebSocketManager initialized');
-  }
+    // 6. Final authoritative boot log with clear origin list
+    const originSummary = this.config.allowedOrigins.includes('*')
+      ? 'ALL origins (*) - DEV ONLY'
+      : this.config.allowedOrigins.join(', ');
 
-  private verifyClient(info: { origin: string; req: any }): boolean {
-    // MVP: Allow all origins or check allowlist
-    if (this.config.allowedOrigins.includes('*')) {
-      return true;
-    }
-
-    const origin = info.origin || info.req.headers.origin;
-    const allowed = this.config.allowedOrigins.some(allowedOrigin =>
-      origin?.includes(allowedOrigin)
+    logger.info(
+      {
+        path: this.config.path,
+        allowedOrigins: this.config.allowedOrigins,
+        env: process.env.NODE_ENV || 'development',
+        redisEnabled: !!this.redis,
+        hasStateStore: !!this.requestStateStore,
+      },
+      `WebSocketManager initialized | Allowed origins: ${originSummary}`
     );
+  }
 
-    if (!allowed) {
-      logger.warn({ origin }, 'WebSocket connection rejected: origin not allowed');
+  private verifyClient(info: { origin?: string; req: any; secure?: boolean }): boolean {
+    const isProduction = process.env.NODE_ENV === 'production';
+
+    // Prefer XFF (behind ALB/Proxy), fallback to socket remoteAddress
+    const ip =
+      (info.req?.headers?.['x-forwarded-for']?.toString().split(',')[0]?.trim()) ||
+      info.req?.socket?.remoteAddress;
+
+    // Phase 1: Origin + basic prod fail-closed
+    if (isProduction) {
+      if (this.config.allowedOrigins.includes('*')) return false;
+      if (this.config.allowedOrigins.includes('__PRODUCTION_MISCONFIGURED__')) return false;
+
+      // Enforce HTTPS via proxy header (TLS terminates at ALB)
+      const xfProto = (info.req?.headers?.['x-forwarded-proto'] ?? '').toString();
+      if (xfProto && xfProto !== 'https') return false;
     }
 
-    return allowed;
+    const rawOrigin = (info.origin ?? info.req?.headers?.origin)?.toString();
+
+    // Origin required in prod; allow localhost missing origin only in dev
+    if (!rawOrigin || rawOrigin === 'null') {
+      const isLocal = ip === '127.0.0.1' || ip === '::1';
+      if (!isProduction && isLocal) {
+        // Allow localhost in dev without origin
+      } else {
+        logger.warn({ ip }, 'WS: Rejected - missing/invalid Origin');
+        return false;
+      }
+    } else {
+      let origin: string;
+      let hostname: string;
+
+      try {
+        const u = new URL(rawOrigin);
+        origin = u.origin;
+        hostname = u.hostname;
+      } catch {
+        logger.warn({ ip, rawOrigin }, 'WS: Rejected - invalid Origin format');
+        return false;
+      }
+
+      // Exact origin or explicit *.domain rules only (no startsWith)
+      const allowAll = !isProduction && this.config.allowedOrigins.includes('*');
+      const allowed =
+        allowAll ||
+        this.config.allowedOrigins.some((rule) => {
+          if (rule === origin) return true;
+          if (rule.startsWith('*.')) {
+            const base = rule.slice(2);
+            return hostname === base || hostname.endsWith(`.${base}`);
+          }
+          return false;
+        });
+
+      if (!allowed) {
+        logger.warn({ ip, origin, allowedOrigins: this.config.allowedOrigins }, 'WS: Rejected - origin not allowed');
+        return false;
+      }
+    }
+
+    // Phase 1: Authentication (production only)
+    if (isProduction) {
+      // Extract token from query param OR Sec-WebSocket-Protocol (fallback)
+      const url = new URL(info.req.url || '', 'ws://dummy');
+      const tokenFromQuery = url.searchParams.get('token');
+
+      const protoRaw = info.req?.headers?.['sec-websocket-protocol'];
+      const proto =
+        Array.isArray(protoRaw) ? protoRaw.join(',') : (protoRaw ?? '').toString();
+
+      // If protocol is "g2e,<jwt>" (or multiple), take last segment as token
+      const tokenFromProto = proto
+        ? proto.split(',').map((s: string) => s.trim()).filter(Boolean).pop()
+        : null;
+
+      const token = tokenFromQuery || tokenFromProto;
+
+      if (!token) {
+        logger.warn({ ip, origin: rawOrigin }, 'WS: Rejected - no auth token in production');
+        return false;
+      }
+
+      // Verify JWT
+      const payload = verifyJWT(token);
+      if (!payload) {
+        logger.warn({ ip, origin: rawOrigin, reason: 'invalid_token' }, 'WS: Rejected - token verification failed');
+        return false;
+      }
+
+      // Attach identity to request for handleConnection
+      (info.req as any).userId = payload.sub;
+      (info.req as any).sessionId = payload.sessionId || payload.sid || null;
+
+      logger.debug(
+        {
+          ip,
+          userId: typeof payload.sub === 'string' ? payload.sub.substring(0, 8) + '...' : 'unknown',
+          hasSessionId: !!(info.req as any).sessionId
+        },
+        'WS: Authenticated'
+      );
+    }
+
+    return true;
   }
+
+
 
   private handleConnection(ws: WebSocket, req: any): void {
     const clientId = this.generateClientId();
 
-    // Extract host from origin (no PII, no full user-agent)
-    const origin = req.headers.origin || '';
-    const originHost = origin ? new URL(origin).hostname : 'unknown';
+    // Phase 1: Attach authenticated identity to WebSocket
+    (ws as any).userId = req.userId ?? undefined;
+    (ws as any).sessionId = req.sessionId ?? undefined;
 
-    logger.debug({
-      clientId,
-      originHost
-    }, 'websocket_connected');
+    // Prefer XFF (behind ALB/Proxy), fallback to socket remoteAddress
+    const ip =
+      (req?.headers?.['x-forwarded-for']?.toString().split(',')[0]?.trim()) ||
+      req?.socket?.remoteAddress;
+
+    // Extract host from origin safely (never throw)
+    const rawOrigin = (req?.headers?.origin ?? '').toString();
+    let originHost = 'unknown';
+    if (rawOrigin) {
+      try {
+        originHost = new URL(rawOrigin).hostname;
+      } catch {
+        originHost = 'invalid';
+      }
+    }
+
+    logger.debug(
+      {
+        clientId,
+        ip,
+        originHost,
+        authenticated: !!((ws as any).userId || (ws as any).sessionId)
+      },
+      'websocket_connected'
+    );
 
     // Initialize ping/pong
     (ws as any).isAlive = true;
-    (ws as any).clientId = clientId; // Store for heartbeat logging
+    (ws as any).clientId = clientId;
+
     ws.on('pong', () => {
       (ws as any).isAlive = true;
     });
 
-    ws.on('message', (data) => this.handleMessage(ws, data, clientId));
-    ws.on('close', (code, reason) => this.handleClose(ws, clientId, code, reason));
+    // Optional: idle timeout (15 min). Remove if you already have heartbeat-based cleanup elsewhere.
+    let idleTimer: NodeJS.Timeout | undefined;
+    const armIdle = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        try {
+          ws.close(1000, 'Idle timeout');
+        } catch {
+          // ignore
+        }
+      }, 15 * 60 * 1000);
+    };
+    armIdle();
+
+    ws.on('message', (data) => {
+      armIdle();
+      this.handleMessage(ws, data, clientId);
+    });
+
+    ws.on('close', (code, reason) => {
+      if (idleTimer) clearTimeout(idleTimer);
+      this.handleClose(ws, clientId, code, reason);
+    });
+
     ws.on('error', (err) => this.handleError(ws, err, clientId));
   }
+
 
   private handleMessage(ws: WebSocket, data: any, clientId: string): void {
     let message: any;
@@ -228,6 +435,10 @@ export class WebSocketManager {
     message: WSClientMessage,
     clientId: string
   ): Promise<void> {
+    const isProduction = process.env.NODE_ENV === 'production';
+    const wsUserId = (ws as any).userId as string | undefined;
+    const wsSessionId = (ws as any).sessionId as string | undefined;
+
     switch (message.type) {
       case 'subscribe': {
         // Normalize legacy to canonical
@@ -235,32 +446,168 @@ export class WebSocketManager {
         const envelope = canonical as any;
 
         const channel: WSChannel = envelope.channel || 'search';
-        const requestId = envelope.requestId;
-        const sessionId = envelope.sessionId;
+        const requestId = envelope.requestId as string | undefined;
+        const sessionIdFromClient = envelope.sessionId as string | undefined;
+
+        // Phase 1: Authorization - require authenticated identity in production
+        if (isProduction && !wsUserId && !wsSessionId) {
+          logger.warn(
+            { clientId, channel, requestIdHash: this.hashRequestId(requestId) },
+            'WS: Subscribe rejected - not authenticated'
+          );
+          this.sendError(ws, 'unauthorized', 'Authentication required');
+          return;
+        }
+
+        // Basic validation
+        if (!requestId && channel === 'search') {
+          logger.warn({ clientId, channel }, 'WS: Subscribe rejected - missing requestId');
+          this.sendError(ws, 'invalid_request', 'Missing requestId');
+          return;
+        }
+
+        // Phase 1: Ownership verification
+        if (channel === 'assistant') {
+          // Assistant channel: must have authenticated sessionId in production
+          if (isProduction && !wsSessionId) {
+            logger.warn(
+              { clientId, channel, requestIdHash: this.hashRequestId(requestId) },
+              'WS: Subscribe rejected - missing authenticated session'
+            );
+            this.sendError(ws, 'unauthorized', 'Authentication required');
+            return;
+          }
+
+          // If client provided a sessionId, it must match authenticated sessionId
+          if (isProduction && sessionIdFromClient && wsSessionId && sessionIdFromClient !== wsSessionId) {
+            logger.warn(
+              {
+                clientId,
+                channel,
+                requestIdHash: this.hashRequestId(requestId),
+                reason: 'session_mismatch'
+              },
+              'WS: Subscribe rejected - unauthorized session'
+            );
+            this.sendError(ws, 'unauthorized', 'Not authorized for this session');
+            return;
+          }
+        } else if (channel === 'search') {
+          const rid = requestId as string;
+
+          let owner: { userId?: string | null; sessionId?: string | null } | null = null;
+          try {
+            owner = await this.getRequestOwner(rid);
+          } catch (err) {
+            logger.warn(
+              {
+                clientId,
+                channel,
+                requestIdHash: this.hashRequestId(rid),
+                reason: 'owner_lookup_failed'
+              },
+              'WS: Subscribe rejected - owner lookup failed'
+            );
+            if (isProduction) {
+              this.sendError(ws, 'unauthorized', 'Not authorized for this request');
+              return;
+            }
+          }
+
+          // Production: fail-closed if owner is missing
+          if (isProduction && !owner) {
+            logger.warn(
+              {
+                clientId,
+                channel,
+                requestIdHash: this.hashRequestId(rid),
+                reason: 'owner_missing'
+              },
+              'WS: Subscribe rejected - owner missing'
+            );
+            this.sendError(ws, 'unauthorized', 'Not authorized for this request');
+            return;
+          }
+
+          if (owner) {
+            // Prefer userId ownership when present
+            if (owner.userId) {
+              if (!wsUserId || owner.userId !== wsUserId) {
+                logger.warn(
+                  {
+                    clientId,
+                    channel,
+                    requestIdHash: this.hashRequestId(rid),
+                    reason: 'user_mismatch'
+                  },
+                  'WS: Subscribe rejected - unauthorized request (user mismatch)'
+                );
+                this.sendError(ws, 'unauthorized', 'Not authorized for this request');
+                return;
+              }
+            } else if (owner.sessionId) {
+              if (!wsSessionId || owner.sessionId !== wsSessionId) {
+                logger.warn(
+                  {
+                    clientId,
+                    channel,
+                    requestIdHash: this.hashRequestId(rid),
+                    reason: 'session_mismatch'
+                  },
+                  'WS: Subscribe rejected - unauthorized request (session mismatch)'
+                );
+                this.sendError(ws, 'unauthorized', 'Not authorized for this request');
+                return;
+              }
+            } else if (isProduction) {
+              // Owner object exists but has no usable identity: reject in prod
+              logger.warn(
+                {
+                  clientId,
+                  channel,
+                  requestIdHash: this.hashRequestId(rid),
+                  reason: 'owner_identity_missing'
+                },
+                'WS: Subscribe rejected - owner identity missing'
+              );
+              this.sendError(ws, 'unauthorized', 'Not authorized for this request');
+              return;
+            }
+          }
+        }
 
         // Subscribe using channel-based key
-        this.subscribeToChannel(channel, requestId, sessionId, ws);
+        // IMPORTANT: for assistant channel, use authenticated sessionId (never trust client-supplied)
+        const effectiveSessionId = channel === 'assistant' ? wsSessionId : sessionIdFromClient;
+        const safeRequestId = requestId || 'unknown';
+        this.subscribeToChannel(channel, safeRequestId, effectiveSessionId, ws);
 
-        // Minimal logging (no status check for search)
+        // Logging (prod-safe)
         if (channel === 'search') {
-          logger.info({
-            clientId,
-            channel,
-            requestId
-          }, 'websocket_subscribed');
+          logger.info(
+            {
+              clientId,
+              channel,
+              requestIdHash: isProduction ? this.hashRequestId(requestId) : requestId
+            },
+            'websocket_subscribed'
+          );
 
-          // Phase 3: Late-subscriber replay
-          this.replayStateIfAvailable(requestId, ws, clientId);
+
+          // Late-subscriber replay
+          this.replayStateIfAvailable(safeRequestId, ws, clientId);
         } else {
-          // Assistant channel: include sessionId and status
-          const requestStatus = await this.getRequestStatus(requestId);
-          logger.info({
-            clientId,
-            channel,
-            requestId,
-            sessionId: sessionId || 'none',
-            status: requestStatus
-          }, 'websocket_subscribed');
+          const requestStatus = await this.getRequestStatus(safeRequestId);
+          logger.info(
+            {
+              clientId,
+              channel,
+              requestIdHash: isProduction ? this.hashRequestId(requestId || 'unknown') : (requestId || 'unknown'),
+              ...(isProduction ? {} : { sessionId: effectiveSessionId || 'none' }),
+              status: requestStatus
+            },
+            'websocket_subscribed'
+          );
         }
         break;
       }
@@ -268,49 +615,63 @@ export class WebSocketManager {
       case 'unsubscribe': {
         const envelope = message as any;
         const channel: WSChannel = envelope.channel;
-        const requestId = envelope.requestId;
-        const sessionId = envelope.sessionId;
+        const requestId = envelope.requestId as string | undefined;
+        const sessionIdFromClient = envelope.sessionId as string | undefined;
 
-        this.unsubscribeFromChannel(channel, requestId, sessionId, ws);
+        const effectiveSessionId = channel === 'assistant' ? wsSessionId : sessionIdFromClient;
+        this.unsubscribeFromChannel(channel, requestId || 'unknown', effectiveSessionId, ws);
 
-        logger.info({
-          clientId,
-          channel,
-          requestId,
-          sessionId: sessionId || 'none'
-        }, 'websocket_unsubscribed');
+        logger.info(
+          {
+            clientId,
+            channel,
+            requestIdHash: isProduction ? this.hashRequestId(requestId) : requestId,
+            ...(isProduction ? {} : { sessionId: effectiveSessionId || 'none' })
+          },
+          'websocket_unsubscribed'
+        );
         break;
       }
 
       case 'event': {
         const envelope = message as any;
-        logger.debug({
-          clientId,
-          channel: envelope.channel,
-          requestId: envelope.requestId
-        }, 'websocket_event_received');
+        logger.debug(
+          {
+            clientId,
+            channel: envelope.channel,
+            requestIdHash: isProduction ? this.hashRequestId(envelope.requestId) : envelope.requestId
+          },
+          'websocket_event_received'
+        );
         // TODO: Handle custom events
         break;
       }
 
       case 'action_clicked':
-        logger.info({
-          clientId,
-          requestId: message.requestId,
-          actionId: message.actionId
-        }, 'websocket_action_clicked');
+        logger.info(
+          {
+            clientId,
+            requestIdHash: isProduction ? this.hashRequestId((message as any).requestId) : (message as any).requestId,
+            actionId: (message as any).actionId
+          },
+          'websocket_action_clicked'
+        );
         // TODO Phase 4: Handle action clicks
         break;
 
       case 'ui_state_changed':
-        logger.debug({
-          clientId,
-          requestId: message.requestId
-        }, 'websocket_ui_state_changed');
+        logger.debug(
+          {
+            clientId,
+            requestIdHash: isProduction ? this.hashRequestId((message as any).requestId) : (message as any).requestId
+          },
+          'websocket_ui_state_changed'
+        );
         // TODO Phase 4: Handle UI state changes
         break;
     }
   }
+
 
   /**
    * Get request status for logging
@@ -368,7 +729,7 @@ export class WebSocketManager {
       }
 
       // Send current status
-      this.sendTo(ws, {
+      const statusSent = this.sendTo(ws, {
         type: 'status',
         requestId,
         status: state.assistantStatus
@@ -390,6 +751,11 @@ export class WebSocketManager {
           requestId,
           actions: state.recommendations
         });
+      }
+
+      // If initial status send failed, no point continuing replay
+      if (!statusSent) {
+        return;
       }
 
       logger.info({
@@ -532,10 +898,10 @@ export class WebSocketManager {
   ): void {
     const startTime = performance.now();
     const key = this.buildSubscriptionKey(channel, requestId, sessionId);
-    
+
     // Cleanup expired backlogs
     this.cleanupExpiredBacklogs();
-    
+
     const clients = this.subscriptions.get(key);
 
     // If no subscribers, enqueue to backlog
@@ -548,11 +914,26 @@ export class WebSocketManager {
     const data = JSON.stringify(message);
     const payloadBytes = Buffer.byteLength(data, 'utf8');
     let sent = 0;
+    let failed = 0;
 
     for (const client of clients) {
       if (client.readyState === WebSocket.OPEN) {
-        client.send(data);
-        sent++;
+        try {
+          client.send(data);
+          sent++;
+          this.messagesSent++;
+        } catch (err) {
+          failed++;
+          this.messagesFailed++;
+          logger.warn({
+            channel,
+            requestId,
+            error: err instanceof Error ? err.message : 'unknown',
+            clientId: (client as any).clientId
+          }, 'WebSocket send failed in publishToChannel');
+          // Cleanup failed connection
+          this.cleanup(client);
+        }
       }
     }
 
@@ -562,6 +943,7 @@ export class WebSocketManager {
       channel,
       requestId,
       clientCount: sent,
+      ...(failed > 0 && { failedCount: failed }),
       payloadBytes,
       payloadType: message.type,
       durationMs
@@ -576,14 +958,32 @@ export class WebSocketManager {
     this.publishToChannel('search', requestId, undefined, message);
   }
 
+
   /**
    * Send a message to a specific WebSocket
+   * Returns true if sent successfully, false otherwise
    */
-  private sendTo(ws: WebSocket, message: WSServerMessage): void {
+  private sendTo(ws: WebSocket, message: WSServerMessage): boolean {
     if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(message));
+      try {
+        ws.send(JSON.stringify(message));
+        this.messagesSent++;
+        return true;
+      } catch (err) {
+        this.messagesFailed++;
+        logger.warn({
+          error: err instanceof Error ? err.message : 'unknown',
+          messageType: message.type,
+          clientId: (ws as any).clientId
+        }, 'WebSocket send failed in sendTo');
+        // Cleanup failed connection
+        this.cleanup(ws);
+        return false;
+      }
     }
+    return false;
   }
+
 
   /**
    * Send error message to a specific WebSocket
@@ -602,7 +1002,18 @@ export class WebSocketManager {
    */
   private sendValidationError(ws: WebSocket, errorPayload: any): void {
     if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(errorPayload));
+      try {
+        ws.send(JSON.stringify(errorPayload));
+        this.messagesSent++;
+      } catch (err) {
+        this.messagesFailed++;
+        logger.warn({
+          error: err instanceof Error ? err.message : 'unknown',
+          clientId: (ws as any).clientId
+        }, 'WebSocket send failed in sendValidationError');
+        // Cleanup failed connection
+        this.cleanup(ws);
+      }
     }
   }
 
@@ -703,7 +1114,7 @@ export class WebSocketManager {
     requestId: string
   ): void {
     let entry = this.backlog.get(key);
-    
+
     if (!entry) {
       // Create new backlog entry
       entry = {
@@ -711,20 +1122,20 @@ export class WebSocketManager {
         expiresAt: Date.now() + this.BACKLOG_TTL_MS
       };
       this.backlog.set(key, entry);
-      
+
       logger.info({
         channel,
         requestId,
         event: 'backlog_created'
       }, 'WebSocket backlog created for late subscribers');
     }
-    
+
     // Add message (drop oldest if at max)
     if (entry.items.length >= this.BACKLOG_MAX_ITEMS) {
       entry.items.shift(); // Drop oldest
     }
     entry.items.push(message);
-    
+
     logger.debug({
       channel,
       requestId,
@@ -743,11 +1154,11 @@ export class WebSocketManager {
     requestId: string
   ): void {
     const entry = this.backlog.get(key);
-    
+
     if (!entry) {
       return; // No backlog
     }
-    
+
     // Check if expired
     if (entry.expiresAt < Date.now()) {
       this.backlog.delete(key);
@@ -758,23 +1169,40 @@ export class WebSocketManager {
       }, 'WebSocket backlog expired, not drained');
       return;
     }
-    
+
     // Send all backlog items in FIFO order
     let sent = 0;
+    let failed = 0;
     for (const message of entry.items) {
       if (client.readyState === WebSocket.OPEN) {
-        client.send(JSON.stringify(message));
-        sent++;
+        try {
+          client.send(JSON.stringify(message));
+          sent++;
+          this.messagesSent++;
+        } catch (err) {
+          failed++;
+          this.messagesFailed++;
+          logger.warn({
+            channel,
+            requestId,
+            error: err instanceof Error ? err.message : 'unknown',
+            clientId: (client as any).clientId
+          }, 'WebSocket send failed in drainBacklog');
+          // Cleanup failed connection and stop draining
+          this.cleanup(client);
+          break;
+        }
       }
     }
-    
+
     // Clear backlog
     this.backlog.delete(key);
-    
+
     logger.info({
       channel,
       requestId,
       count: sent,
+      ...(failed > 0 && { failedCount: failed }),
       event: 'backlog_drained'
     }, 'WebSocket backlog drained to late subscriber');
   }
@@ -785,17 +1213,17 @@ export class WebSocketManager {
   private cleanupExpiredBacklogs(): void {
     const now = Date.now();
     const expiredKeys: SubscriptionKey[] = [];
-    
+
     for (const [key, entry] of this.backlog.entries()) {
       if (entry.expiresAt < now) {
         expiredKeys.push(key);
       }
     }
-    
+
     for (const key of expiredKeys) {
       this.backlog.delete(key);
     }
-    
+
     if (expiredKeys.length > 0) {
       logger.debug({
         expiredCount: expiredKeys.length,
@@ -812,6 +1240,44 @@ export class WebSocketManager {
   }
 
   /**
+   * Phase 1: Hash requestId for production logs (SHA-256, 12 chars)
+   */
+  private hashRequestId(requestId?: string): string {
+    if (!requestId) return 'none';
+    return crypto.createHash('sha256').update(requestId).digest('hex').substring(0, 12);
+  }
+
+
+  /**
+   * Phase 1: Get request owner from JobStore
+   * Returns userId and/or sessionId of the request owner
+   */
+  private async getRequestOwner(requestId: string): Promise<{ userId?: string; sessionId?: string } | null> {
+    if (!this.jobStore) {
+      return null;
+    }
+
+    try {
+      const job = await this.jobStore.getJob(requestId);
+      if (!job) {
+        return null;
+      }
+
+      const result: { userId?: string; sessionId?: string } = {};
+      if (job.ownerUserId) result.userId = job.ownerUserId;
+      if (job.ownerSessionId) result.sessionId = job.ownerSessionId;
+
+      return Object.keys(result).length > 0 ? result : null;
+    } catch (err) {
+      logger.debug({
+        requestId: this.hashRequestId(requestId),
+        error: err instanceof Error ? err.message : 'unknown'
+      }, 'WS: Failed to get request owner');
+      return null;
+    }
+  }
+
+  /**
    * Get stats for monitoring
    */
   getStats(): {
@@ -819,13 +1285,17 @@ export class WebSocketManager {
     subscriptions: number;
     requestIdsTracked: number;
     backlogCount: number;
+    messagesSent: number;
+    messagesFailed: number;
   } {
     return {
       connections: this.wss.clients.size,
       subscriptions: Array.from(this.subscriptions.values())
         .reduce((sum, set) => sum + set.size, 0),
       requestIdsTracked: this.subscriptions.size,
-      backlogCount: this.backlog.size
+      backlogCount: this.backlog.size,
+      messagesSent: this.messagesSent,
+      messagesFailed: this.messagesFailed
     };
   }
 }

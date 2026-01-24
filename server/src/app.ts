@@ -6,6 +6,7 @@ import helmet from 'helmet';
 import { requestContextMiddleware } from './middleware/requestContext.middleware.js';
 import { httpLoggingMiddleware } from './middleware/httpLogging.middleware.js';
 import { errorMiddleware } from './middleware/error.middleware.js';
+import { securityHeadersMiddleware } from './middleware/security-headers.middleware.js';
 import { createV1Router } from './routes/v1/index.js';
 import { getExistingRedisClient } from './lib/redis/redis-client.js';
 import { healthCheckHandler } from './controllers/health.controler.js';
@@ -17,6 +18,7 @@ export function createApp() {
 
   // Security & perf
   app.use(helmet());
+  app.use(securityHeadersMiddleware); // HSTS + security headers (production only)
   app.use(compression());
   app.use(express.json({ limit: '1mb' }));
 

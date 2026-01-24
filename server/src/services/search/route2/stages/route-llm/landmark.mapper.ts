@@ -100,25 +100,113 @@ export async function executeLandmarkMapper(
       { role: 'user', content: userPrompt }
     ];
 
-    const response = await llmProvider.completeJSON(
-      messages,
-      LandmarkMappingSchema,
-      {
-        temperature: 0,
-        timeout: 4000,
-        promptVersion: LANDMARK_MAPPER_VERSION,
-        promptHash: LANDMARK_MAPPER_PROMPT_HASH,
-        promptLength: LANDMARK_MAPPER_PROMPT.length,
-        schemaHash: LANDMARK_SCHEMA_HASH,
-        ...(traceId && { traceId }),
-        ...(sessionId && { sessionId }),
-        ...(requestId && { requestId }),
-        stage: 'landmark_mapper'
-      },
-      LANDMARK_JSON_SCHEMA
-    );
+    let mapping: LandmarkMapping | null = null;
+    let lastError: any = null;
+    let tokenUsage: { input?: number; output?: number; total?: number; model?: string } | undefined;
 
-    const mapping = response.data;
+    // Attempt 1: Initial LLM call
+    try {
+      const response = await llmProvider.completeJSON(
+        messages,
+        LandmarkMappingSchema,
+        {
+          temperature: 0,
+          timeout: 4000,
+          promptVersion: LANDMARK_MAPPER_VERSION,
+          promptHash: LANDMARK_MAPPER_PROMPT_HASH,
+          promptLength: LANDMARK_MAPPER_PROMPT.length,
+          schemaHash: LANDMARK_SCHEMA_HASH,
+          ...(traceId && { traceId }),
+          ...(sessionId && { sessionId }),
+          ...(requestId && { requestId }),
+          stage: 'landmark_mapper'
+        },
+        LANDMARK_JSON_SCHEMA
+      );
+      mapping = response.data;
+      tokenUsage = {
+        ...(response.usage?.prompt_tokens !== undefined && { input: response.usage.prompt_tokens }),
+        ...(response.usage?.completion_tokens !== undefined && { output: response.usage.completion_tokens }),
+        ...(response.usage?.total_tokens !== undefined && { total: response.usage.total_tokens }),
+        ...(response.model !== undefined && { model: response.model })
+      };
+    } catch (err: any) {
+      lastError = err;
+      const errorMsg = err?.message || String(err);
+      const errorType = err?.errorType || '';
+      const isTimeout = errorType === 'abort_timeout' ||
+        errorMsg.toLowerCase().includes('abort') ||
+        errorMsg.toLowerCase().includes('timeout');
+
+      if (isTimeout) {
+        logger.warn({
+          requestId,
+          stage: 'landmark_mapper',
+          errorType,
+          attempt: 1,
+          msg: '[ROUTE2] landmark_mapper timeout, retrying once'
+        });
+
+        // Jittered backoff: 100-200ms (gate2 pattern)
+        await new Promise(resolve => setTimeout(resolve, 100 + Math.random() * 100));
+
+        // Attempt 2: Retry once
+        try {
+          const retryResponse = await llmProvider.completeJSON(
+            messages,
+            LandmarkMappingSchema,
+            {
+              temperature: 0,
+              timeout: 4000,
+              promptVersion: LANDMARK_MAPPER_VERSION,
+              promptHash: LANDMARK_MAPPER_PROMPT_HASH,
+              promptLength: LANDMARK_MAPPER_PROMPT.length,
+              schemaHash: LANDMARK_SCHEMA_HASH,
+              ...(traceId && { traceId }),
+              ...(sessionId && { sessionId }),
+              ...(requestId && { requestId }),
+              stage: 'landmark_mapper'
+            },
+            LANDMARK_JSON_SCHEMA
+          );
+          mapping = retryResponse.data;
+          tokenUsage = {
+            ...(retryResponse.usage?.prompt_tokens !== undefined && { input: retryResponse.usage.prompt_tokens }),
+            ...(retryResponse.usage?.completion_tokens !== undefined && { output: retryResponse.usage.completion_tokens }),
+            ...(retryResponse.usage?.total_tokens !== undefined && { total: retryResponse.usage.total_tokens }),
+            ...(retryResponse.model !== undefined && { model: retryResponse.model })
+          };
+
+          logger.info({
+            requestId,
+            stage: 'landmark_mapper',
+            attempt: 2,
+            msg: '[ROUTE2] landmark_mapper retry succeeded'
+          });
+        } catch (retryErr) {
+          // Retry failed - will throw below
+          lastError = retryErr;
+        }
+      }
+    }
+
+    // If LLM failed (even after retry), throw error
+    if (!mapping) {
+      const durationMs = Date.now() - startTime;
+      const errorMsg = lastError instanceof Error ? lastError.message : 'unknown';
+
+      logger.error({
+        requestId,
+        pipelineVersion: 'route2',
+        stage: 'landmark_mapper',
+        event: 'stage_failed',
+        durationMs,
+        error: errorMsg
+      }, '[ROUTE2] landmark_mapper failed');
+
+      throw lastError || new Error('LLM failed to return mapping');
+    }
+
     const durationMs = Date.now() - startTime;
 
     // Debug dump
@@ -135,12 +223,7 @@ export async function executeLandmarkMapper(
       region: mapping.region,
       language: mapping.language,
       reason: mapping.reason,
-      tokenUsage: {
-        ...(response.usage?.prompt_tokens !== undefined && { input: response.usage.prompt_tokens }),
-        ...(response.usage?.completion_tokens !== undefined && { output: response.usage.completion_tokens }),
-        ...(response.usage?.total_tokens !== undefined && { total: response.usage.total_tokens }),
-        ...(response.model !== undefined && { model: response.model })
-      }
+      ...(tokenUsage && { tokenUsage })
     }, '[ROUTE2] landmark_mapper completed');
 
     return mapping;
