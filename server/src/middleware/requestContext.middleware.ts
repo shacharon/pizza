@@ -1,12 +1,11 @@
 /**
  * Request Context Middleware
- * Phase 2: TraceId + SessionId propagation for deterministic debugging
- * 
+ * Phase 2: TraceId propagation for deterministic debugging
+ *
  * Ensures every request has proper context:
- * - traceId: Reuses x-trace-id from client or generates UUID
- * - sessionId: Extracts from x-session-id header (optional)
- * - Attaches req.ctx = { traceId, sessionId }
- * - Attaches req.log (child logger with traceId + sessionId)
+ * - traceId: Reuses x-trace-id from client (sanitized) or generates UUID
+ * - Attaches req.ctx = { traceId }
+ * - Attaches req.log (child logger with traceId)
  * - Returns x-trace-id in response header
  */
 
@@ -16,7 +15,6 @@ import { logger } from '../lib/logger/structured-logger.js';
 
 export interface RequestContext {
   traceId: string;
-  sessionId?: string;
 }
 
 declare global {
@@ -29,33 +27,33 @@ declare global {
   }
 }
 
+function resolveTraceId(req: Request): string {
+  const raw = req.headers['x-trace-id'];
+  const rawTraceId = typeof raw === 'string' ? raw : undefined;
+
+  // Allow only safe chars, bounded length; block CR/LF implicitly
+  if (rawTraceId && rawTraceId.length <= 128 && /^[a-zA-Z0-9_-]+$/.test(rawTraceId)) {
+    return rawTraceId;
+  }
+
+  return uuidv4();
+}
+
 export function requestContextMiddleware(
   req: Request,
   res: Response,
   next: NextFunction
 ): void {
-  // Get or generate traceId
-  const traceId = (req.headers['x-trace-id'] as string) || uuidv4();
-  
-  // Extract sessionId from header (optional)
-  const sessionId = req.headers['x-session-id'] as string | undefined;
-  
-  // Create context object
-  const ctx: RequestContext = {
-    traceId,
-    ...(sessionId && { sessionId }),
-  };
-  
-  // Attach to request
+  const traceId = resolveTraceId(req);
+
+  const ctx: RequestContext = { traceId };
+
   req.traceId = traceId;
   req.ctx = ctx;
-  
-  // Create child logger with traceId + sessionId
+
   req.log = logger.child(ctx);
-  
-  // Add traceId to response headers
+
   res.setHeader('x-trace-id', traceId);
-  
+
   next();
 }
-

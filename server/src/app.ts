@@ -1,3 +1,5 @@
+
+
 import express from 'express';
 import cors from 'cors';
 import compression from 'compression';
@@ -7,6 +9,8 @@ import { requestContextMiddleware } from './middleware/requestContext.middleware
 import { httpLoggingMiddleware } from './middleware/httpLogging.middleware.js';
 import { errorMiddleware } from './middleware/error.middleware.js';
 import { securityHeadersMiddleware } from './middleware/security-headers.middleware.js';
+import { createRateLimiter } from './middleware/rate-limit.middleware.js';
+
 import { createV1Router } from './routes/v1/index.js';
 import { getExistingRedisClient } from './lib/redis/redis-client.js';
 import { healthCheckHandler } from './controllers/health.controler.js';
@@ -19,41 +23,76 @@ export function createApp() {
   const config = getConfig();
   const isProduction = config.env === 'production';
 
-  // 1. Core Security Headers & Performance
-  // Helmet sets basic security headers (X-Content-Type-Options, X-Frame-Options, etc.)
-  app.use(helmet());
-  // Custom middleware for HSTS, CSP and other prod-specific headers
-  app.use(securityHeadersMiddleware);
+  // ─────────────────────────────────────────────
+  // P0: Global Rate Limiting (covers /healthz, legacy /api, 404s, etc.)
+  // ─────────────────────────────────────────────
+  const globalRateLimiter = createRateLimiter({
+    windowMs: 60 * 1000,
+    maxRequests: 300, // 300 req/min per IP
+    keyPrefix: 'global'
+  });
+  app.use(globalRateLimiter);
 
+  // ─────────────────────────────────────────────
+  // P0: Request/Response timeouts (basic Slowloris mitigation)
+  // ─────────────────────────────────────────────
+  app.use((req, res, next) => {
+    req.setTimeout(30_000);
+    res.setTimeout(30_000);
+    next();
+  });
+
+  // 1. Core Security Headers & Performance
+  app.use(helmet());
+  app.use(securityHeadersMiddleware);
   app.use(compression());
 
-  // JSON body parser with limit and error handling
+  // 2. Body parsers with limits
   app.use(express.json({ limit: '1mb' }));
+  app.use(express.urlencoded({ limit: '1mb', extended: true }));
 
-  // P0 Security: Handle JSON parsing errors (return 400 instead of 500)
-  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-    if (err instanceof SyntaxError && 'body' in err) {
-      logger.warn({
-        traceId: req.traceId || 'unknown',
-        method: req.method,
-        path: req.path,
-        error: err.message
-      }, '[Security] Invalid JSON in request body');
+  // 3. Request Identity & Logging (ensure traceId exists early)
+  app.use(requestContextMiddleware);
+  app.use(httpLoggingMiddleware);
+
+  // P0: Handle JSON parsing errors AFTER requestContextMiddleware (traceId available)
+  app.use((err: any, req: any, res: any, next: any) => {
+    const isJsonSyntaxError =
+      err instanceof SyntaxError && typeof err?.message === 'string' && 'body' in err;
+
+    if (isJsonSyntaxError) {
+      logger.warn(
+        {
+          traceId: req?.traceId ?? 'missing',
+          method: req.method,
+          path: req.path,
+          error: err.message
+        },
+        '[Security] Invalid JSON in request body'
+      );
 
       return res.status(400).json({
         error: 'Invalid JSON in request body',
         code: 'INVALID_JSON',
-        traceId: req.traceId || 'unknown'
+        traceId: req?.traceId ?? 'missing'
       });
     }
-    next(err);
+
+    return next(err);
   });
 
+  app.get('/healthz', (req, res) => {
+    const redisClient = getExistingRedisClient();
+    Promise.resolve(healthCheckHandler(req as any, res as any, redisClient ?? undefined)).catch((err) =>
+      (req as any)?.log?.error?.({ err }, 'healthz_failed')
+    );
+  });
+
+
   // ─────────────────────────────────────────────
-  // 2. CORS (ENV-aware, unified with WebSocket)
+  // 4. CORS (ENV-aware, unified with WebSocket)
   // ─────────────────────────────────────────────
 
-  // Safe boot logging
   logger.info(
     {
       env: config.env,
@@ -83,11 +122,10 @@ export function createApp() {
           if (result.allowed) return cb(null, true);
           return cb(new Error(`CORS: ${result.reason || 'origin not allowed'}`));
         },
-        credentials: true, // Required for secure cookie/auth headers
+        credentials: true
       })
     );
   } else {
-    // Development Mode
     if (config.frontendOrigins && config.frontendOrigins.length > 0) {
       app.use(
         cors({
@@ -101,7 +139,7 @@ export function createApp() {
             });
             cb(null, result.allowed);
           },
-          credentials: true,
+          credentials: true
         })
       );
     } else {
@@ -109,13 +147,8 @@ export function createApp() {
     }
   }
 
-  // 3. Request Identity & Logging
-  app.use(requestContextMiddleware);
-  app.use(httpLoggingMiddleware);
-
-  // 4. Debug & Diagnostics (Protected in Production)
+  // 5. Debug & Diagnostics (Protected in Production)
   app.get('/api/v1/debug/env', (req, res) => {
-    // SECURITY: Never leak environment details in production
     if (isProduction) {
       return res.status(403).json({
         error: 'Forbidden',
@@ -128,19 +161,19 @@ export function createApp() {
       hostname: process.env.HOSTNAME ?? null,
       nodeEnv: process.env.NODE_ENV ?? null,
       env: process.env.ENV ?? null,
-      hasGoogleKey: Boolean(key),
-      googleKeyLast4: key ? key.slice(-4) : null,
+      hasGoogleKey: Boolean(key)
+      // googleKeyLast4 intentionally removed
     });
   });
 
-  // 5. Routing
+  // 6. Routing
   const v1Router = createV1Router();
   app.use('/api/v1', v1Router);
 
   // Legacy API wrapper with Sunset headers
   app.use(
     '/api',
-    (req, res, next) => {
+    (req: any, res, next) => {
       res.setHeader('Deprecation', 'true');
       res.setHeader('Sunset', process.env.API_SUNSET_DATE || 'Sun, 01 Jun 2026 00:00:00 GMT');
       res.setHeader('Link', '</api/v1>; rel="alternate"');
@@ -156,13 +189,10 @@ export function createApp() {
     v1Router
   );
 
-  // 6. Infrastructure & Health
-  app.get('/healthz', async (req, res) => {
-    const redisClient = getExistingRedisClient();
-    return await healthCheckHandler(req, res, redisClient ?? undefined);
-  });
+  // 7. Infrastructure & Health
 
-  // 7. Global Error Handling (Must be last)
+
+  // 8. Global Error Handling (Must be last)
   app.use(errorMiddleware);
 
   return app;

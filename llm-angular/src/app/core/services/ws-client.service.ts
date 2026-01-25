@@ -17,7 +17,8 @@ import { isWSServerMessage } from '../models/ws-protocol.types';
 @Injectable({ providedIn: 'root' })
 export class WsClientService {
   private ws?: WebSocket;
-  private readonly wsUrl = `${environment.wsBaseUrl}/ws`;
+  private readonly wsBaseUrl = environment.wsBaseUrl;
+
 
   // Connection status signal
   readonly connectionStatus = signal<ConnectionStatus>('disconnected');
@@ -47,11 +48,18 @@ export class WsClientService {
       return;
     }
 
-    console.log('[WS] Connecting to', this.wsUrl);
+    // console.log('[WS] Connecting to', this.wsUrl);
     this.connectionStatus.set('connecting');
 
     try {
-      this.ws = new WebSocket(this.wsUrl);
+      const token = localStorage.getItem('authToken');
+
+      const wsUrl = token
+        ? `${this.wsBaseUrl}/ws?token=${encodeURIComponent(token)}`
+        : `${this.wsBaseUrl}/ws`;
+      console.log('[WS] Connecting to', wsUrl);
+      this.ws = new WebSocket(wsUrl);
+
 
       this.ws.onopen = () => {
         console.log('[WS] Connected successfully');
