@@ -13,10 +13,9 @@ import { LanguageService } from './core/services/language.service';
 })
 export class AppComponent implements OnInit {
   private languageService = inject(LanguageService);
-  
+
   ngOnInit(): void {
-    // Language service initializes automatically via constructor
-    // HTML dir attribute is set based on browser language
+    console.log('[BUILD]', '2026-01-25 ws-ticket-fix v4'); // <— marker חד פעמי
     console.log('[App] Initialized with language:', this.languageService.currentLang());
   }
 }
