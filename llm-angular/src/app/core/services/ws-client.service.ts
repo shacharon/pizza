@@ -98,6 +98,13 @@ export class WsClientService {
       // STEP 3: Connect with ticket in URL query param
       console.log('[WS] Step 3/3: Connecting with ticket...');
       const wsUrl = `${this.wsBaseUrl}/ws?ticket=${encodeURIComponent(ticketResponse.ticket)}`;
+      
+      // Safety guard: verify URL contains ticket parameter
+      if (!wsUrl.includes('ticket=')) {
+        console.error('[WS] CRITICAL: WebSocket URL missing ticket parameter', { wsUrl });
+        throw new Error('WebSocket URL must contain ticket parameter');
+      }
+      
       this.ws = new WebSocket(wsUrl);
 
 
