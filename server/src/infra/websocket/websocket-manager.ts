@@ -580,7 +580,9 @@ export class WebSocketManager {
                     clientId,
                     channel,
                     requestIdHash: this.hashRequestId(rid),
-                    reason: 'user_mismatch'
+                    reason: 'user_mismatch',
+                    wsUserId: wsUserId ? 'present' : 'missing',
+                    ownerUserId: 'present'
                   },
                   'WS: Subscribe rejected - unauthorized request (user mismatch)'
                 );
@@ -594,13 +596,27 @@ export class WebSocketManager {
                     clientId,
                     channel,
                     requestIdHash: this.hashRequestId(rid),
-                    reason: 'session_mismatch'
+                    reason: 'session_mismatch',
+                    wsSessionId: wsSessionId ? wsSessionId.substring(0, 12) + '...' : 'missing',
+                    ownerSessionId: owner.sessionId.substring(0, 12) + '...'
                   },
                   'WS: Subscribe rejected - unauthorized request (session mismatch)'
                 );
                 this.sendError(ws, 'unauthorized', 'Not authorized for this request');
                 return;
               }
+              
+              // Session match - log success
+              logger.debug(
+                {
+                  clientId,
+                  channel,
+                  requestIdHash: this.hashRequestId(rid),
+                  sessionIdMatch: true,
+                  sessionIdPrefix: wsSessionId.substring(0, 12) + '...'
+                },
+                'WS: Subscribe authorized - session match'
+              );
             } else if (requireAuth) {
               // Owner object exists but has no usable identity: reject when auth is enabled
               logger.warn(

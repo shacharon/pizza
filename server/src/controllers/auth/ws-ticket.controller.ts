@@ -51,7 +51,8 @@ router.get('/', async (req: Request, res: Response) => {
   const traceId = req.traceId || 'unknown';
 
   try {
-    // Extract authenticated identity from JWT middleware
+    // P0 Security: Extract ONLY JWT-authenticated identity (canonical source)
+    // NEVER read sessionId from headers, body, or query params
     const userId = authReq.userId;
     const sessionId = authReq.sessionId;
 

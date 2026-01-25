@@ -15,6 +15,7 @@ import { logger } from '../lib/logger/structured-logger.js';
 
 export interface RequestContext {
   traceId: string;
+  sessionId?: string; // Added for JWT session tracking
 }
 
 declare global {

@@ -4,6 +4,7 @@
  */
 
 import { Router, type Request, type Response } from 'express';
+import type { AuthenticatedRequest } from '../../middleware/auth.middleware.js';
 import { safeParseSearchRequest } from '../../services/search/types/search-request.dto.js';
 import { createSearchError } from '../../services/search/types/search-response.dto.js';
 import { createLLMProvider } from '../../llm/factory.js';
@@ -230,8 +231,9 @@ router.post('/', async (req: Request, res: Response) => {
       return;
     }
 
-    // P0 Security: Use authenticated sessionId from JWT
-    const authenticatedSessionId = req.ctx?.sessionId || queryData.sessionId;
+    // P0 Security: Use ONLY authenticated sessionId from JWT (no fallbacks)
+    // Never trust client-provided sessionId for ownership binding
+    const authenticatedSessionId = (req as AuthenticatedRequest).sessionId || req.ctx?.sessionId;
 
     // 3. Define Context
     const route2Context: Route2Context = {
@@ -247,19 +249,22 @@ router.post('/', async (req: Request, res: Response) => {
 
 
     if (mode === 'async') {
-      // P0 Security: Use authenticated session from JWT
+      // P0 Security: Use ONLY authenticated session from JWT (canonical identity)
       const ownerSessionId = authenticatedSessionId;
-      const ownerUserId = (req as any).userId || null;
+      const ownerUserId = (req as AuthenticatedRequest).userId || null;
 
-      if (!ownerSessionId) {
+      // Production: fail-closed if no authenticated session
+      const isProduction = process.env.NODE_ENV === 'production';
+      if (isProduction && !ownerSessionId) {
         logger.warn({
           requestId,
           operation: 'createJob',
           decision: 'REJECTED',
-          reason: 'missing_session_id'
-        }, '[P0 Security] Async job creation requires authenticated session');
+          reason: 'missing_authenticated_session',
+          env: 'production'
+        }, '[P0 Security] Async job creation requires JWT-authenticated session in production');
         
-        res.status(401).json(createSearchError('Authentication required', 'MISSING_SESSION_ID'));
+        res.status(401).json(createSearchError('Authentication required', 'MISSING_AUTH_SESSION'));
         return;
       }
 
@@ -267,18 +272,19 @@ router.post('/', async (req: Request, res: Response) => {
       // Background execution will still proceed, just without Redis tracking
       try {
         await searchJobStore.createJob(requestId, {
-          sessionId: queryData.sessionId || 'new',
+          sessionId: ownerSessionId || 'anonymous', // Use JWT session, not client-provided
           query: queryData.query,
           ownerUserId,
-          ownerSessionId
+          ownerSessionId: ownerSessionId || null // Convert undefined to null for type safety
         });
         
         logger.info({
           requestId,
-          sessionHash: hashSessionId(ownerSessionId),
+          sessionHash: hashSessionId(ownerSessionId || 'anonymous'),
+          hasUserId: Boolean(ownerUserId),
           operation: 'createJob',
           decision: 'ACCEPTED'
-        }, '[P0 Security] Job created with session binding');
+        }, '[P0 Security] Job created with JWT session binding');
       } catch (redisErr) {
         logger.error({ 
           requestId, 
@@ -326,11 +332,15 @@ router.post('/', async (req: Request, res: Response) => {
  * P0 Security: IDOR protection via session binding
  */
 router.get('/:requestId/result', async (req: Request, res: Response) => {
-  const { requestId } = req.params;
+  const requestIdParam = req.params.requestId;
+  if (!requestIdParam) return res.status(400).json({ code: 'MISSING_ID' });
+  
+  // Ensure requestId is a string (not an array)
+  const requestId = Array.isArray(requestIdParam) ? requestIdParam[0] : requestIdParam;
   if (!requestId) return res.status(400).json({ code: 'MISSING_ID' });
 
-  // P0 Security: Extract session from request
-  const currentSessionId = req.ctx?.sessionId;
+  // P0 Security: Extract ONLY JWT-authenticated session (canonical identity)
+  const currentSessionId = (req as AuthenticatedRequest).sessionId || req.ctx?.sessionId;
   
   // P0 Security: Get full job to check ownership
   const job = await searchJobStore.getJob(requestId);
@@ -338,7 +348,7 @@ router.get('/:requestId/result', async (req: Request, res: Response) => {
   if (!job) {
     logger.warn({
       requestId,
-      sessionHash: hashSessionId(currentSessionId),
+      sessionHash: hashSessionId(currentSessionId || undefined),
       operation: 'getResult',
       decision: 'NOT_FOUND',
       reason: 'job_not_found'
@@ -453,7 +463,11 @@ router.get('/:requestId/result', async (req: Request, res: Response) => {
  * GET /search/:requestId
  */
 router.get('/:requestId', async (req: Request, res: Response) => {
-  const { requestId } = req.params;
+  const requestIdParam = req.params.requestId;
+  if (!requestIdParam) return res.status(400).end();
+  
+  // Ensure requestId is a string (not an array)
+  const requestId = Array.isArray(requestIdParam) ? requestIdParam[0] : requestIdParam;
   if (!requestId) return res.status(400).end();
 
   const statusInfo = await searchJobStore.getStatus(requestId);
