@@ -62,20 +62,9 @@ export class WsClientService {
     this.connectionStatus.set('connecting');
 
     try {
-      // Get JWT token from AuthService (cached or fetch)
-      console.log('[WS] Getting JWT token...');
-      const authToken = await this.authService.getToken();
-      
-      if (!authToken) {
-        console.error('[WS] No auth token available');
-        this.connectionStatus.set('disconnected');
-        this.scheduleReconnect();
-        return;
-      }
-
-      // Request one-time ticket from server (secure HTTP with Authorization header)
+      // Request one-time ticket from server (auth interceptor handles JWT)
       console.log('[WS] Requesting ticket...');
-      const ticketResponse = await firstValueFrom(this.authApi.requestWSTicket(authToken));
+      const ticketResponse = await firstValueFrom(this.authApi.requestWSTicket());
       
       console.log('[WS] Ticket obtained, connecting...');
 

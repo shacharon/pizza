@@ -38,17 +38,9 @@ export class AuthApiService {
 
   /**
    * Request a one-time WebSocket ticket
-   * Protected endpoint - requires JWT in Authorization header
+   * Protected endpoint - requires JWT via auth interceptor
    */
-  requestWSTicket(authToken: string): Observable<WSTicketResponse> {
-    const headers = new HttpHeaders({
-      'Authorization': `Bearer ${authToken}`
-    });
-
-    return this.http.post<WSTicketResponse>(
-      `${this.baseUrl}/ws-ticket`,
-      {},
-      { headers }
-    );
+  requestWSTicket(): Observable<WSTicketResponse> {
+    return this.http.get<WSTicketResponse>(`${this.baseUrl}/ws-ticket`);
   }
 }

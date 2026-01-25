@@ -30,6 +30,7 @@ export const API_BASE = resolveApiBase();
 export const ENDPOINTS = {
   // Auth
   AUTH_TOKEN: `${API_BASE}/auth/token`,
+  WS_TICKET: `${API_BASE}/ws-ticket`,
   
   // Search v1
   SEARCH: `${API_BASE}/search`,

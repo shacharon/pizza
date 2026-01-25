@@ -30,7 +30,7 @@ function generateTicket(): string {
 }
 
 /**
- * POST /api/v1/ws-ticket
+ * GET /api/v1/ws-ticket
  * Generate one-time WebSocket ticket
  * 
  * Headers:
@@ -46,7 +46,7 @@ function generateTicket(): string {
  * - Ticket is deleted on first use (one-time)
  * - Short TTL prevents abuse
  */
-router.post('/ws-ticket', async (req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
   const traceId = req.traceId || 'unknown';
 
