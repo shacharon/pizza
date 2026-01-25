@@ -1,5 +1,3 @@
-
-
 import express from 'express';
 import cors from 'cors';
 import compression from 'compression';
@@ -45,6 +43,17 @@ export function createApp() {
   // 1. Core Security Headers & Performance
   app.use(helmet());
   app.use(securityHeadersMiddleware);
+
+  /**
+   * Photos are served from the API domain but embedded in the web app domain (<img src="...">).
+   * Helmet defaults CORP to `same-origin`, which triggers browser blocking (NotSameOrigin).
+   * Override CORP only for /api/v1/photos/* to allow cross-origin embedding of image resources.
+   */
+  app.use('/api/v1/photos', (req, res, next) => {
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    next();
+  });
+
   app.use(compression());
 
   // 2. Body parsers with limits
@@ -88,11 +97,9 @@ export function createApp() {
     );
   });
 
-
   // ─────────────────────────────────────────────
   // 4. CORS (ENV-aware, unified with WebSocket)
   // ─────────────────────────────────────────────
-
   logger.info(
     {
       env: config.env,
@@ -122,7 +129,11 @@ export function createApp() {
           if (result.allowed) return cb(null, true);
           return cb(new Error(`CORS: ${result.reason || 'origin not allowed'}`));
         },
-        credentials: true
+        credentials: true,
+        allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-Id'],
+        methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+        preflightContinue: false,
+        optionsSuccessStatus: 204
       })
     );
   } else {
@@ -139,7 +150,11 @@ export function createApp() {
             });
             cb(null, result.allowed);
           },
-          credentials: true
+          credentials: true,
+          allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-Id'],
+          methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+          preflightContinue: false,
+          optionsSuccessStatus: 204
         })
       );
     } else {
@@ -190,7 +205,6 @@ export function createApp() {
   );
 
   // 7. Infrastructure & Health
-
 
   // 8. Global Error Handling (Must be last)
   app.use(errorMiddleware);

@@ -1,10 +1,10 @@
 /**
  * WebSocket Status Banner - Phase 6 + Silent Reconnect
- * Shows minimal connection status - only reconnecting banner (optional)
+ * Shows minimal connection status - only after 30s of disconnection
  * NO error UI for transient failures
  */
 
-import { Component, inject } from '@angular/core';
+import { Component, inject, signal, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { WsClientService } from '../../../core/services/ws-client.service';
 
@@ -13,10 +13,10 @@ import { WsClientService } from '../../../core/services/ws-client.service';
   standalone: true,
   imports: [CommonModule],
   template: `
-    @if (status() === 'reconnecting') {
+    @if (showBanner()) {
       <div class="ws-banner reconnecting">
         <span class="icon">⟳</span>
-        <span>Reconnecting...</span>
+        <span>Connection issue - reconnecting...</span>
       </div>
     }
   `,
@@ -69,4 +69,30 @@ export class WsStatusBannerComponent {
   private wsClient = inject(WsClientService);
   
   readonly status = this.wsClient.connectionStatus;
+  readonly showBanner = signal(false);
+  
+  private disconnectTimer?: number;
+
+  constructor() {
+    // Only show banner after 30s of being disconnected/reconnecting
+    effect(() => {
+      const currentStatus = this.status();
+      
+      if (currentStatus === 'connected') {
+        // Clear timer and hide banner immediately on connect
+        if (this.disconnectTimer) {
+          clearTimeout(this.disconnectTimer);
+          this.disconnectTimer = undefined;
+        }
+        this.showBanner.set(false);
+      } else if (currentStatus === 'disconnected' || currentStatus === 'reconnecting') {
+        // Start 30s timer if not already running
+        if (!this.disconnectTimer) {
+          this.disconnectTimer = window.setTimeout(() => {
+            this.showBanner.set(true);
+          }, 30_000); // 30 seconds
+        }
+      }
+    });
+  }
 }

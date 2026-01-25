@@ -1,0 +1,115 @@
+# Production Environment Variables for CORS Fix
+
+# ============================================
+# REQUIRED: Frontend Origins (CORS Allowlist)
+# ============================================
+# Add this to your ECS Task Definition environment variables
+# 
+# This controls which domains can make authenticated requests to the API
+# Must be comma-separated list of EXACT origins (with protocol)
+# No wildcards allowed in production for security
+
+FRONTEND_ORIGINS=https://www.going2eat.food,https://app.going2eat.food
+
+# ============================================
+# How to Add to ECS Task Definition
+# ============================================
+#
+# AWS Console:
+# 1. Go to ECS → Task Definitions
+# 2. Select your task → Create new revision
+# 3. Container Definitions → Click your container
+# 4. Scroll to "Environment Variables"
+# 5. Add key: FRONTEND_ORIGINS
+# 6. Add value: https://www.going2eat.food,https://app.going2eat.food
+# 7. Save and deploy new revision
+#
+# AWS CLI:
+# aws ecs describe-task-definition --task-definition YOUR_TASK > task-def.json
+# # Edit task-def.json to add FRONTEND_ORIGINS to environment array
+# aws ecs register-task-definition --cli-input-json file://task-def.json
+# aws ecs update-service --cluster YOUR_CLUSTER --service YOUR_SERVICE --task-definition YOUR_TASK:NEW_REVISION
+#
+# Terraform:
+# environment = [
+#   {
+#     name  = "FRONTEND_ORIGINS"
+#     value = "https://www.going2eat.food,https://app.going2eat.food"
+#   }
+# ]
+
+# ============================================
+# Verification
+# ============================================
+#
+# After deployment, verify the environment variable is set:
+#
+# 1. Check running task:
+#    aws ecs describe-tasks --cluster YOUR_CLUSTER --tasks TASK_ID
+#
+# 2. Check logs for startup message:
+#    Look for: "CORS: Initialized" with originsCount: 2
+#
+# 3. Test from browser console:
+#    fetch('https://your-api.com/api/v1/auth/token', {
+#      method: 'POST',
+#      headers: { 'Content-Type': 'application/json' },
+#      body: JSON.stringify({}),
+#      credentials: 'include'
+#    }).then(r => r.json()).then(console.log);
+
+# ============================================
+# Additional Frontend Domains (if needed)
+# ============================================
+#
+# To add more domains, update the comma-separated list:
+# FRONTEND_ORIGINS=https://www.going2eat.food,https://app.going2eat.food,https://admin.going2eat.food
+#
+# Each domain must:
+# - Use HTTPS (not HTTP) in production
+# - Be an exact match (including www subdomain)
+# - Include the protocol (https://)
+# - NOT include trailing slashes
+
+# ============================================
+# Development/Staging Considerations
+# ============================================
+#
+# For development environments, you can add localhost:
+# FRONTEND_ORIGINS=http://localhost:4200,https://www.going2eat.food,https://app.going2eat.food
+#
+# For staging environments, add staging domains:
+# FRONTEND_ORIGINS=https://staging.going2eat.food,https://www.going2eat.food,https://app.going2eat.food
+
+# ============================================
+# Wildcard Support (NOT recommended for prod)
+# ============================================
+#
+# The origin-validator.ts supports wildcard subdomains:
+# FRONTEND_ORIGINS=*.going2eat.food
+#
+# This would allow:
+# - https://www.going2eat.food
+# - https://app.going2eat.food
+# - https://any-subdomain.going2eat.food
+#
+# However, for maximum security, we recommend explicit allowlist in production.
+
+# ============================================
+# Troubleshooting
+# ============================================
+#
+# Issue: CORS errors still occurring
+# Fix: Ensure FRONTEND_ORIGINS exactly matches browser origin
+#      Check: https://www.going2eat.food vs https://going2eat.food
+#
+# Issue: Environment variable not being read
+# Fix: Verify new task revision is deployed
+#      Check logs for "CORS: Initialized" message
+#
+# Issue: Wrong origins in logs
+# Fix: Deploy new ECS task revision with updated environment
+#
+# Issue: Still blocked in production
+# Fix: Ensure ENV=production or NODE_ENV=production is also set
+#      Production mode requires FRONTEND_ORIGINS to be set

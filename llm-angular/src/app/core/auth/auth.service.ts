@@ -142,9 +142,19 @@ export class AuthService {
       const body = existingSessionId ? { sessionId: existingSessionId } : {};
       
       // Use proper auth token endpoint
-      const response = await firstValueFrom(
-        this.http.post<TokenResponse>(ENDPOINTS.AUTH_TOKEN, body)
-      );
+      let response: TokenResponse;
+      try {
+        response = await firstValueFrom(
+          this.http.post<TokenResponse>(ENDPOINTS.AUTH_TOKEN, body)
+        );
+      } catch (error: any) {
+        // Handle EmptyError as retryable
+        if (error?.name === 'EmptyError' || error?.message?.includes('no elements in sequence')) {
+          console.warn('[Auth] EmptyError fetching token - treating as transient failure');
+          throw new Error('Failed to fetch token: no response from server');
+        }
+        throw error; // Re-throw other errors
+      }
 
       const { token, sessionId } = response;
       

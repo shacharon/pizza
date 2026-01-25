@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CORS + Auth Token Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .input-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 500;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            display: none;
+        }
+        .result.success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+            display: block;
+        }
+        .result.error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+            display: block;
+        }
+        .result h3 {
+            margin-top: 0;
+        }
+        pre {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+        .info-box {
+            background: #e7f3ff;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .info-box strong {
+            display: block;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 CORS + Auth Token Test</h1>
+        <p class="subtitle">Test POST /api/v1/auth/token with CORS from production domains</p>
+
+        <div class="info-box">
+            <strong>Current Origin:</strong>
+            <code id="current-origin"></code>
+            <br><br>
+            <strong>Expected Behavior:</strong>
+            <ul>
+                <li>✅ Should work from: https://www.going2eat.food</li>
+                <li>✅ Should work from: https://app.going2eat.food</li>
+                <li>❌ Should fail from: other origins</li>
+            </ul>
+        </div>
+
+        <div class="input-group">
+            <label for="api-url">API Base URL:</label>
+            <input type="text" id="api-url" placeholder="https://api.going2eat.food" value="http://localhost:3000">
+        </div>
+
+        <button onclick="testAuthToken()" id="test-btn">Test Auth Token Endpoint</button>
+        <button onclick="clearResults()">Clear Results</button>
+
+        <div id="result" class="result"></div>
+    </div>
+
+    <script>
+        // Display current origin
+        document.getElementById('current-origin').textContent = window.location.origin;
+
+        async function testAuthToken() {
+            const apiUrl = document.getElementById('api-url').value.trim();
+            const endpoint = `${apiUrl}/api/v1/auth/token`;
+            const resultDiv = document.getElementById('result');
+            const testBtn = document.getElementById('test-btn');
+
+            // Reset
+            resultDiv.className = 'result';
+            resultDiv.innerHTML = '<p>Testing...</p>';
+            resultDiv.style.display = 'block';
+            testBtn.disabled = true;
+
+            try {
+                // Make the request
+                const startTime = performance.now();
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({}),
+                    credentials: 'include'
+                });
+                const endTime = performance.now();
+                const duration = Math.round(endTime - startTime);
+
+                // Parse response
+                const data = await response.json();
+
+                // Get response headers
+                const corsHeaders = {
+                    'Access-Control-Allow-Origin': response.headers.get('Access-Control-Allow-Origin'),
+                    'Access-Control-Allow-Credentials': response.headers.get('Access-Control-Allow-Credentials'),
+                    'Access-Control-Allow-Headers': response.headers.get('Access-Control-Allow-Headers'),
+                    'Access-Control-Allow-Methods': response.headers.get('Access-Control-Allow-Methods'),
+                };
+
+                if (response.ok) {
+                    // Success
+                    resultDiv.className = 'result success';
+                    resultDiv.innerHTML = `
+                        <h3>✅ Success!</h3>
+                        <p><strong>Status:</strong> ${response.status} ${response.statusText}</p>
+                        <p><strong>Duration:</strong> ${duration}ms</p>
+                        <p><strong>Response Data:</strong></p>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                        <p><strong>CORS Headers:</strong></p>
+                        <pre>${JSON.stringify(corsHeaders, null, 2)}</pre>
+                    `;
+                } else {
+                    // HTTP error
+                    resultDiv.className = 'result error';
+                    resultDiv.innerHTML = `
+                        <h3>❌ HTTP Error</h3>
+                        <p><strong>Status:</strong> ${response.status} ${response.statusText}</p>
+                        <p><strong>Duration:</strong> ${duration}ms</p>
+                        <p><strong>Response Data:</strong></p>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                        <p><strong>CORS Headers:</strong></p>
+                        <pre>${JSON.stringify(corsHeaders, null, 2)}</pre>
+                    `;
+                }
+            } catch (error) {
+                // Network or CORS error
+                resultDiv.className = 'result error';
+                
+                let errorMessage = error.message;
+                let isCorsError = false;
+                
+                if (error.message.includes('CORS') || error.message.includes('fetch')) {
+                    isCorsError = true;
+                }
+
+                resultDiv.innerHTML = `
+                    <h3>❌ ${isCorsError ? 'CORS Error' : 'Network Error'}</h3>
+                    <p><strong>Error:</strong> ${errorMessage}</p>
+                    ${isCorsError ? `
+                        <p><strong>This is likely because:</strong></p>
+                        <ul>
+                            <li>The server is not sending proper CORS headers</li>
+                            <li>Your origin (${window.location.origin}) is not in the FRONTEND_ORIGINS allowlist</li>
+                            <li>The server is not running or unreachable</li>
+                        </ul>
+                        <p><strong>To fix:</strong></p>
+                        <ol>
+                            <li>Ensure FRONTEND_ORIGINS includes: <code>${window.location.origin}</code></li>
+                            <li>Restart the server</li>
+                            <li>Check browser console for more details</li>
+                        </ol>
+                    ` : ''}
+                `;
+            } finally {
+                testBtn.disabled = false;
+            }
+        }
+
+        function clearResults() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.className = 'result';
+            resultDiv.style.display = 'none';
+        }
+
+        // Auto-detect API URL based on current origin
+        window.addEventListener('load', () => {
+            const origin = window.location.origin;
+            const apiUrlInput = document.getElementById('api-url');
+            
+            // If we're on a production domain, suggest production API
+            if (origin.includes('going2eat.food')) {
+                apiUrlInput.value = 'https://api.going2eat.food'; // Update with actual API domain
+            } else if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+                apiUrlInput.value = 'http://localhost:3000';
+            }
+        });
+    </script>
+</body>
+</html>

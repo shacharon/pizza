@@ -186,6 +186,14 @@ export function getConfig() {
             })()
             : 'disabled';
 
+    // Safe frontend origins summary for logging
+    const frontendOriginsSummary = (() => {
+        if (!frontendOrigins || frontendOrigins.length === 0) return '(none)';
+        if (frontendOrigins.includes('*')) return '* (wildcard)';
+        if (frontendOrigins.length > 5) return `${frontendOrigins.length} origins`;
+        return frontendOrigins.join(', ');
+    })();
+
     console.info('[Config] Loaded', {
         env: CURRENT_ENV,
         port,
@@ -196,7 +204,8 @@ export function getConfig() {
         googleCacheTtlSeconds,
         cacheIntentEnabled,
         cacheIntentTtlSeconds,
-        frontendOriginsCount: frontendOrigins?.length ?? 0
+        frontendOriginsCount: frontendOrigins?.length ?? 0,
+        frontendOrigins: frontendOriginsSummary
     });
 
     return {

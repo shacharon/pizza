@@ -53,6 +53,7 @@ export class WsClientService {
   private lastRequestId?: string;
   private hardFailureLogged = false; // Log hard failures only once per page load
   private shouldReconnect = true; // Flag to stop reconnect on hard failures
+  private connectInFlight = false; // Mutex: prevent concurrent connect attempts
 
   /**
    * Connect to WebSocket server
@@ -71,32 +72,43 @@ export class WsClientService {
    * Backoff applies to the entire sequence (JWT + ticket + connect).
    */
   async connect(): Promise<void> {
+    // Mutex: prevent concurrent connect attempts
+    if (this.connectInFlight) {
+      return;
+    }
+
     if (this.ws?.readyState === WebSocket.OPEN) {
-      console.log('[WS] Already connected');
       return;
     }
 
     if (this.ws?.readyState === WebSocket.CONNECTING) {
-      console.log('[WS] Connection in progress');
       return;
     }
 
+    this.connectInFlight = true;
     this.connectionStatus.set('connecting');
 
     try {
       // STEP 1: Ensure JWT exists before requesting ticket
-      console.log('[WS] Step 1/3: Ensuring JWT token exists...');
       await this.authService.getToken();
-      console.log('[WS] JWT ready');
 
       // STEP 2: Request NEW one-time ticket (CRITICAL: fetch fresh ticket every time)
-      console.log('[WS] Step 2/3: Requesting NEW WebSocket ticket (one-time, 30s TTL)...');
-      const ticketResponse = await firstValueFrom(this.authApi.requestWSTicket());
+      let ticketResponse: any;
+      try {
+        ticketResponse = await firstValueFrom(this.authApi.requestWSTicket());
+      } catch (error: any) {
+        // Handle EmptyError as retryable
+        if (error?.name === 'EmptyError' || error?.message?.includes('no elements in sequence')) {
+          console.warn('[WS] EmptyError fetching ticket - will retry');
+          this.scheduleReconnect();
+          return;
+        }
+        throw error; // Re-throw other errors
+      }
       
-      console.log('[WS] Ticket obtained, connecting to WebSocket...');
+      console.log('[WS] Ticket OK, connecting...');
 
       // STEP 3: Connect with ticket in URL query param
-      console.log('[WS] Step 3/3: Connecting with ticket...');
       const wsUrl = `${this.wsBaseUrl}/ws?ticket=${encodeURIComponent(ticketResponse.ticket)}`;
       
       // Safety guard: verify URL contains ticket parameter
@@ -117,7 +129,6 @@ export class WsClientService {
 
         // Resubscribe to last requestId if we had one
         if (this.lastRequestId) {
-          console.log('[WS] Resubscribing to', this.lastRequestId);
           this.subscribe(this.lastRequestId);
         }
       };
@@ -139,6 +150,7 @@ export class WsClientService {
         console.log('[WS] Disconnected', { code, reason, wasClean });
 
         this.connectionStatus.set('disconnected');
+        this.connectInFlight = false;
 
         // Classify hard vs soft failures
         if (isHardCloseReason(reason)) {
@@ -146,9 +158,6 @@ export class WsClientService {
           if (!this.hardFailureLogged) {
             console.error('[WS] Hard failure - stopping reconnect', { code, reason, wasClean });
             this.hardFailureLogged = true;
-            
-            // TODO: Send analytics/log event to backend (once per page load)
-            // this.sendHardFailureLog(code, reason);
           }
           
           this.shouldReconnect = false;
@@ -161,8 +170,9 @@ export class WsClientService {
         }
       };
     } catch (error: any) {
-      console.error('[WS] Failed to connect', error);
+      console.error('[WS] Connection error', error);
       this.connectionStatus.set('disconnected');
+      this.connectInFlight = false;
       
       // Classify ticket request failures
       if (error?.status === 401) {
@@ -181,7 +191,7 @@ export class WsClientService {
       
       if (error?.status === 503) {
         // Soft failure: service unavailable (Redis down)
-        console.warn('[WS] Soft failure - service unavailable (503), will retry');
+        console.warn('[WS] Service unavailable (503) - will retry');
         // Continue to reconnect with backoff
       }
       
@@ -306,8 +316,10 @@ export class WsClientService {
    * - WebSocket connect
    */
   private scheduleReconnect(): void {
+    // Clear any existing timer before scheduling new one
     if (this.reconnectTimer) {
-      return; // Already scheduled
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = undefined;
     }
 
     // Exponential backoff: 250ms * 2^attempts, capped at 5s
@@ -321,7 +333,7 @@ export class WsClientService {
     const delay = Math.round(exponentialDelay + jitter);
 
     // Silent: only log to console, never show in UI
-    console.log(`[WS] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts + 1}) - will fetch NEW ticket`);
+    console.log(`[WS] Reconnect in ${delay}ms (attempt ${this.reconnectAttempts + 1})`);
     
     this.connectionStatus.set('reconnecting');
 
