@@ -19,7 +19,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { ENDPOINTS } from '../../shared/api/api.config';
 import { firstValueFrom } from 'rxjs';
 
-const TOKEN_STORAGE_KEY = 'jwt-token';
+const TOKEN_STORAGE_KEY = 'g2e_jwt';
 const SESSION_STORAGE_KEY = 'api-session-id';
 
 interface TokenResponse {
@@ -141,12 +141,9 @@ export class AuthService {
       const existingSessionId = this.getExistingSessionId();
       const body = existingSessionId ? { sessionId: existingSessionId } : {};
       
-      // Build token endpoint URL
-      // Note: We construct the URL manually to avoid circular dependency with interceptor
-      const tokenUrl = `${ENDPOINTS.SEARCH.replace('/search', '/auth/token')}`;
-      
+      // Use proper auth token endpoint
       const response = await firstValueFrom(
-        this.http.post<TokenResponse>(tokenUrl, body)
+        this.http.post<TokenResponse>(ENDPOINTS.AUTH_TOKEN, body)
       );
 
       const { token, sessionId } = response;

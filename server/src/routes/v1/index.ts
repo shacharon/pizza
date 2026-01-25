@@ -4,6 +4,7 @@
  * 
  * Route Structure:
  * - /api/v1/auth                POST /token (public - generates JWT)
+ * - /api/v1/ws-ticket           POST / (protected - generates WS ticket)
  * - /api/v1/search              POST /, GET /stats (protected)
  * - /api/v1/analytics/*         POST /events, GET /events, GET /stats, DELETE /events (protected)
  * - /api/v1/photos/*            GET /* (proxy to Google Places photos, public)
@@ -17,6 +18,7 @@ import searchRouter from '../../controllers/search/search.controller.js';
 import analyticsRouter from '../../controllers/analytics/analytics.controller.js';
 import photosRouter from '../../controllers/photos/photos.controller.js';
 import authRouter from '../../controllers/auth/auth.controller.js';
+import wsTicketRouter from '../../controllers/auth/ws-ticket.controller.js';
 import { authenticateJWT } from '../../middleware/auth.middleware.js';
 import { createRateLimiter } from '../../middleware/rate-limit.middleware.js';
 
@@ -33,6 +35,10 @@ export function createV1Router(): Router {
   // Auth endpoint (public - generates JWT tokens)
   // Rate limited by default middleware
   router.use('/auth', authRouter);
+
+  // P0 Security: WebSocket ticket endpoint (protected)
+  // Requires JWT authentication
+  router.use('/ws-ticket', authenticateJWT, wsTicketRouter);
 
   // P0 Security: Protected search endpoint
   // Requires JWT authentication

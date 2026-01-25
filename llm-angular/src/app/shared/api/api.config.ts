@@ -28,6 +28,9 @@ export const API_BASE = resolveApiBase();
  * MANDATORY: Use these constants in all services
  */
 export const ENDPOINTS = {
+  // Auth
+  AUTH_TOKEN: `${API_BASE}/auth/token`,
+  
   // Search v1
   SEARCH: `${API_BASE}/search`,
   SEARCH_STATS: `${API_BASE}/search/stats`,

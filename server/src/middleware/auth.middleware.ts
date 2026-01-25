@@ -9,13 +9,24 @@ import jwt from 'jsonwebtoken';
 
 /**
  * Fail-fast JWT secret resolver (TypeScript-safe)
+ * In production: requires non-default secret >= 32 chars
+ * In development: allows any secret >= 32 chars
  */
 function requireJwtSecret(): string {
   const secret = process.env.JWT_SECRET;
+  const isProduction = process.env.NODE_ENV === 'production';
+  const LEGACY_DEV_DEFAULT = 'dev-secret-change-in-production';
 
-  if (!secret || secret === 'dev-secret-change-in-production' || secret.length < 32) {
+  if (!secret || secret.length < 32) {
     throw new Error(
-      '[P0 Security] JWT_SECRET must be set to a secure value (>=32 chars) and must not be the dev default'
+      '[P0 Security] JWT_SECRET must be set and at least 32 characters'
+    );
+  }
+
+  // In production, disallow the old legacy dev default
+  if (isProduction && secret === LEGACY_DEV_DEFAULT) {
+    throw new Error(
+      '[P0 Security] JWT_SECRET cannot be the legacy dev default in production'
     );
   }
 

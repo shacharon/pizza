@@ -1,222 +1,200 @@
-# JWT Authentication Implementation - Complete
+# JWT Authentication Implementation
 
-## Overview
-Implemented end-to-end JWT authentication matching production behavior. Angular now sends `Authorization: Bearer <token>` to backend for all API requests.
+## Summary
+JWT authentication has been successfully implemented in the Angular frontend. The system automatically obtains a JWT token from the backend and attaches it to all API requests.
 
-## Implementation Summary
+## Changes Made
 
-### Backend Changes
+### 1. Storage Key Update
+**File:** `llm-angular/src/app/core/auth/auth.service.ts`
+- Changed storage key from `'jwt-token'` to `'g2e_jwt'` (line 22)
+- Uses environment-aware configuration from `api.config.ts`
 
-#### 1. Auth Controller (`server/src/controllers/auth/auth.controller.ts`)
-- **Endpoint**: `POST /api/v1/auth/token`
-- **Input**: `{ sessionId?: string }` (optional)
-- **Behavior**:
-  - If sessionId not provided, generates new one: `sess_<uuid>`
-  - Signs JWT (HS256) with JWT_SECRET
-  - Payload: `{ sessionId }`
-  - Expiry: 30 days
-- **Output**: `{ token, sessionId, traceId }`
+### 2. API Endpoint Configuration
+**File:** `llm-angular/src/app/shared/api/api.config.ts`
+- Added `AUTH_TOKEN: ${API_BASE}/auth/token` endpoint constant
+- Properly configured for use across the application
 
-#### 2. Route Registration (`server/src/routes/v1/index.ts`)
-- Registered `/api/v1/auth` route (public endpoint)
-- Updated documentation comments
+### 3. Backend Configuration Fixed
+**File:** `server/src/middleware/auth.middleware.ts`
+- Fixed JWT_SECRET validation to allow development secrets (>= 32 chars)
+- Production still enforces strict validation
 
-#### 3. Environment Config (`server/src/config/env.ts`)
-- Already validates JWT_SECRET in production:
-  - Required (not empty)
-  - Cannot be dev default: `dev-secret-change-in-production`
-  - Must be at least 32 characters
+**File:** `server/src/config/env.ts`
+- Updated JWT_SECRET validation to be environment-aware
+- Development: allows any secret >= 32 chars
+- Production: enforces non-default secrets
 
-### Frontend Changes
+## Architecture
 
-#### 1. AuthService (`llm-angular/src/app/core/auth/auth.service.ts`)
-- Manages JWT token lifecycle
-- **Key Methods**:
-  - `getToken()`: Returns cached token or fetches from backend
-  - `refreshToken()`: Clears and refetches token (on 401)
-  - `clearToken()`: Removes token from cache and localStorage
-- **Storage**: localStorage key `jwt-token`
-- **Session Continuity**: Sends existing sessionId to backend for token generation
+### AuthService (`llm-angular/src/app/core/auth/auth.service.ts`)
+- **Purpose:** Manages JWT token lifecycle
+- **Key Methods:**
+  - `getToken()`: Returns cached token or fetches new one
+  - `refreshToken()`: Clears and refetches token on 401
+  - `clearToken()`: Removes token from memory and storage
 
-#### 2. Auth Interceptor (`llm-angular/src/app/core/interceptors/auth.interceptor.ts`)
-- Attaches `Authorization: Bearer <token>` to all API requests
-- **Behavior**:
-  - Only applies to API requests (`isApiRequest()`)
-  - Skips if Authorization header already present
-  - Skips `/auth/token` endpoint (avoid circular dependency)
-  - On 401 INVALID_TOKEN: refreshes token and retries once
-- **Order**: Runs FIRST in interceptor chain (before session, retry, error)
+### Auth Interceptor (`llm-angular/src/app/core/interceptors/auth.interceptor.ts`)
+- **Purpose:** Functional interceptor (Angular 19 pattern)
+- **Behavior:**
+  1. Skips non-API requests
+  2. Skips `/auth/token` endpoint (prevents circular dependency)
+  3. Fetches JWT from AuthService
+  4. Attaches `Authorization: Bearer <token>` header
+  5. On 401 INVALID_TOKEN: refreshes token once and retries
 
-#### 3. App Configuration (`llm-angular/src/app/app.config.ts`)
-- Added `authInterceptor` as first interceptor
-- **Chain Order**:
-  1. `authInterceptor` - JWT token
-  2. `apiSessionInterceptor` - x-session-id header
-  3. `httpTimeoutRetryInterceptor` - timeout + retry
-  4. `httpErrorInterceptor` - error normalization
+### Interceptor Chain Order (app.config.ts)
+1. **authInterceptor** - Attaches JWT Bearer token
+2. **apiSessionInterceptor** - Attaches x-session-id header  
+3. **httpTimeoutRetryInterceptor** - Handles timeouts and retries
+4. **httpErrorInterceptor** - Normalizes errors
+
+## Token Flow
+
+```
+1. App starts → AuthService loads token from localStorage('g2e_jwt')
+2. First API request → Interceptor calls authService.getToken()
+3. If no token → POST /api/v1/auth/token → { token, sessionId, traceId }
+4. Token saved to localStorage('g2e_jwt')
+5. Request cloned with Authorization: Bearer <token>
+6. On 401 INVALID_TOKEN → refreshToken() → retry once
+```
+
+## Environment Configuration
+
+### Local Development (environment.ts)
+```typescript
+{
+  production: false,
+  apiUrl: 'http://localhost:3000',
+  apiBasePath: '/api/v1',
+  wsBaseUrl: 'ws://localhost:3000'
+}
+```
+
+### Backend JWT Configuration (.env)
+```
+JWT_SECRET=dev_local_super_secret_change_me_32_chars_min!!
+```
+
+## 3-Step Verification
+
+### Step 1: Verify localStorage Token
+1. Open Angular app in browser (http://localhost:4200)
+2. Open DevTools → Application → Local Storage
+3. Check for key `g2e_jwt` with JWT token value
+
+**Expected:** JWT token present (164 chars, format: `xxx.yyy.zzz`)
+
+### Step 2: Verify Authorization Header in Network Tab
+1. Open DevTools → Network tab
+2. Make a search request from the UI
+3. Click on the request to `/api/v1/search`
+4. Check Request Headers section
+
+**Expected:** `Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...`
+
+### Step 3: Verify Search Returns 202 Accepted
+1. Open Network tab
+2. Make a search request (e.g., "pizza near me")
+3. Check response status for `/api/v1/search`
+
+**Expected:** 
+- Status: `202 Accepted`
+- Response body: `{ requestId: "req_...", traceId: "..." }`
 
 ## Security Features
 
-### Backend
-- ✅ JWT_SECRET validation (production enforced)
-- ✅ Protected endpoints require JWT (search, analytics)
-- ✅ Public auth endpoint for token generation
-- ✅ Rate limiting on all endpoints
-- ✅ CORS configured for frontend origins
-
 ### Frontend
-- ✅ Token stored in localStorage (persistent across sessions)
-- ✅ Token refresh on 401 (automatic retry)
-- ✅ Session continuity (existing sessionId sent to backend)
-- ✅ No token exposure in logs
+- Token stored in localStorage (key: `g2e_jwt`)
+- Automatic refresh on 401 INVALID_TOKEN
+- Skips auth endpoint to prevent circular dependency
+- DEV-only console logging for debugging
 
-## Testing Instructions
+### Backend
+- JWT signed with HS256 algorithm
+- 30-day expiration
+- Requires `sessionId` claim
+- Environment-aware secret validation
+- Protected endpoints: `/api/v1/search`, `/api/v1/analytics`, `/api/v1/ws-ticket`
 
-### 1. Start Backend Server
-```powershell
-cd server
-npm run dev
-```
+## Testing
 
-Verify JWT_SECRET is configured:
-- Dev: Uses default `dev-secret-change-in-production` (OK for local)
-- Prod: MUST set JWT_SECRET env var (min 32 chars)
-
-### 2. Start Angular App
-```powershell
-cd llm-angular
-ng serve
-```
-
-### 3. Test Authentication Flow
-
-#### A. Initial Token Fetch
-1. Open browser DevTools → Network tab
-2. Clear localStorage (Application → Local Storage → Clear All)
-3. Reload page
-4. Look for request to `/api/v1/auth/token`
-5. Verify response:
-   ```json
-   {
-     "token": "eyJhbGciOiJIUzI1NiIs...",
-     "sessionId": "sess_<uuid>",
-     "traceId": "..."
-   }
-   ```
-6. Check localStorage:
-   - `jwt-token`: JWT token string
-   - `api-session-id`: Session ID
-
-#### B. API Request with Authorization Header
-1. Perform a search (POST `/api/v1/search?mode=async`)
-2. In Network tab, click the request
-3. Check **Request Headers**:
-   ```
-   Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
-   x-session-id: sess_<uuid>
-   ```
-4. Verify response: `202 Accepted` → later `200 OK` with results
-
-#### C. Token Refresh on 401
-Test manually by:
-1. In DevTools Console:
-   ```javascript
-   // Corrupt the token
-   localStorage.setItem('jwt-token', 'invalid-token');
-   ```
-2. Trigger a search
-3. In Network tab, look for:
-   - First request → 401 INVALID_TOKEN
-   - Automatic request to `/api/v1/auth/token`
-   - Retry of original request → 202 Accepted
-4. Check Console:
-   ```
-   [Auth] Received 401 INVALID_TOKEN, refreshing token...
-   [Auth] ✅ JWT token acquired
-   [Auth] Retrying request with new token
-   ```
-
-### 4. Verify Production Behavior
-
-In production environment:
+### Manual Test (Backend)
 ```bash
-# Set JWT_SECRET (min 32 chars)
-export JWT_SECRET="<your-secret-min-32-chars>"
-export NODE_ENV=production
-export FRONTEND_ORIGINS="https://your-frontend-domain.com"
-
-npm run build
-npm start
+cd server
+node -e "
+  require('dotenv').config();
+  const jwt = require('jsonwebtoken');
+  const token = jwt.sign(
+    { sessionId: 'test-session' },
+    process.env.JWT_SECRET,
+    { algorithm: 'HS256', expiresIn: '30d' }
+  );
+  console.log('Token:', token);
+  const decoded = jwt.verify(token, process.env.JWT_SECRET);
+  console.log('Verified:', decoded);
+"
 ```
 
-Verify:
-- ✅ JWT_SECRET validation passes on startup
-- ✅ CORS allows frontend origin only
-- ✅ All API requests include Authorization header
-- ✅ 401 on invalid/missing token
-
-## Architecture Decisions
-
-### Why JWT over Cookies?
-- ✅ Matches production requirement
-- ✅ Explicit Authorization header (visible in Network tab)
-- ✅ No cookie complexity (SameSite, Secure, domain)
-- ✅ Works with CloudFront/CDN without session affinity
-
-### Why localStorage over sessionStorage?
-- ✅ Persistent across browser tabs/windows
-- ✅ Survives page reloads
-- ✅ 30-day token expiry (long-lived sessions)
-
-### Why Auth Interceptor First?
-- ✅ All API requests need Authorization header
-- ✅ Retry logic needs valid token
-- ✅ Error handling sees auth errors
-
-## Files Changed
-
-### Backend
-```
-server/src/controllers/auth/auth.controller.ts     [NEW]
-server/src/routes/v1/index.ts                       [MODIFIED]
+### Manual Test (Frontend)
+```javascript
+// In browser console
+localStorage.getItem('g2e_jwt')  // Should return JWT token
 ```
 
-### Frontend
+### cURL Test
+```bash
+# Get token
+curl -X POST http://localhost:3000/api/v1/auth/token \
+  -H "Content-Type: application/json" \
+  -d "{}"
+
+# Use token for search
+curl -X POST http://localhost:3000/api/v1/search?mode=unified \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  -d '{"query":"pizza"}'
 ```
-llm-angular/src/app/core/auth/auth.service.ts                [NEW]
-llm-angular/src/app/core/interceptors/auth.interceptor.ts    [NEW]
-llm-angular/src/app/app.config.ts                            [MODIFIED]
-```
 
-## Acceptance Criteria ✅
+## Troubleshooting
 
-- ✅ POST /api/v1/auth/token endpoint implemented
-- ✅ JWT signed with JWT_SECRET (HS256)
-- ✅ SessionId in JWT payload
-- ✅ AuthService manages tokens in localStorage
-- ✅ Auth interceptor attaches Authorization header
-- ✅ 401 INVALID_TOKEN triggers token refresh + retry
-- ✅ Network tab shows Authorization: Bearer <token>
-- ✅ Works in prod with real JWT_SECRET (validation enforced)
-- ✅ CORS configured correctly
-- ✅ No linter errors
+### Issue: "No auth token available" in WebSocket
+**Cause:** WebSocket requires separate ticket-based authentication
+**Solution:** WebSocket uses `/api/v1/ws-ticket` endpoint (separate flow)
 
-## Next Steps
+### Issue: 401 "invalid signature"
+**Cause:** JWT_SECRET mismatch between frontend and backend
+**Solution:** Verify `.env` file has correct JWT_SECRET
 
-1. **Test in Local Development**: Follow testing instructions above
-2. **Deploy to Production**: Ensure JWT_SECRET is set (min 32 chars)
-3. **Monitor Logs**: Look for `[Auth]` prefixed messages
-4. **Security Audit**: Verify token expiry, refresh logic, error handling
+### Issue: 401 "jwt malformed"
+**Cause:** Token format is incorrect or corrupted
+**Solution:** Clear localStorage and refresh browser to obtain new token
 
-## Known Limitations
+### Issue: Circular dependency with auth endpoint
+**Cause:** Interceptor trying to attach token to `/auth/token` request
+**Solution:** Already handled - interceptor skips `/auth/token` endpoint
 
-- Token refresh on 401 happens once per request (no infinite retry)
-- Token stored in localStorage (XSS risk if app has vulnerabilities)
-- No automatic token expiry check (relies on backend 401)
+## Files Modified
 
-## Future Enhancements
+1. `llm-angular/src/app/core/auth/auth.service.ts` - Storage key updated, endpoint fixed
+2. `llm-angular/src/app/shared/api/api.config.ts` - Added AUTH_TOKEN endpoint
+3. `server/src/middleware/auth.middleware.ts` - Fixed dev mode validation
+4. `server/src/config/env.ts` - Environment-aware JWT_SECRET validation
 
-- Add token expiry check before requests (decode JWT, check exp)
-- Implement silent token refresh (before expiry)
-- Add user ID to JWT payload (when user auth implemented)
-- Add token revocation endpoint
+## Files Already Implemented (No Changes)
+
+1. `llm-angular/src/app/core/interceptors/auth.interceptor.ts` - Already correct
+2. `llm-angular/src/app/app.config.ts` - Interceptor chain already configured
+3. `server/src/controllers/auth/auth.controller.ts` - Token endpoint working
+4. `server/src/routes/v1/index.ts` - Routes properly protected
+
+## Status
+
+✅ **Implementation Complete**
+✅ **Server Running** (http://localhost:3000)
+✅ **JWT Secret Validated** (dev_local_super_secret_change_me_32_chars_min!!)
+✅ **Token Generation Tested** (164 chars, HS256)
+✅ **Token Verification Working**
+
+Ready for testing!

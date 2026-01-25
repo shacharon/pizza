@@ -11,7 +11,6 @@ import { logger } from '../../lib/logger/structured-logger.js';
 import type { WSClientMessage, WSServerMessage, WSChannel } from './websocket-protocol.js';
 import { isWSClientMessage, normalizeToCanonical } from './websocket-protocol.js';
 import type { IRequestStateStore } from '../state/request-state.store.js';
-import { verifyJWT } from '../../lib/auth/jwt-verifier.js';
 import type { ISearchJobStore } from '../../services/search/job-store/job-store.interface.js';
 import Redis from 'ioredis';
 import { validateOrigin, getSafeOriginSummary } from '../../lib/security/origin-validator.js';
@@ -87,15 +86,24 @@ export class WebSocketManager {
     this.requestStateStore = config?.requestStateStore;
     this.jobStore = config?.jobStore;
 
-    // 3. Initialize Redis Connection (CTO addition for shared backlog)
+    // 3. Initialize Redis Connection (CTO addition for shared backlog + WS ticket auth)
     const redisUrl = config?.redisUrl || process.env.REDIS_URL;
     if (redisUrl) {
       this.redis = new Redis.Redis(redisUrl, {
         maxRetriesPerRequest: 3,
         enableReadyCheck: true
       });
-      // Added English comment as per your persistent instructions
-      logger.info({ redisUrl: redisUrl.split('@')[1] || 'local' }, 'WebSocketManager: Redis backlog enabled');
+      logger.info({ redisUrl: redisUrl.split('@')[1] || 'local' }, 'WebSocketManager: Redis enabled');
+    }
+
+    // 3a. Security: Redis required for ticket-based auth
+    const requireAuth = process.env.WS_REQUIRE_AUTH !== 'false'; // default true
+    if (requireAuth && !this.redis) {
+      logger.error(
+        { isProduction, requireAuth },
+        'SECURITY: Redis required for WebSocket ticket authentication'
+      );
+      throw new Error('Redis connection required for WebSocket ticket authentication');
     }
 
     // 4. Production security gate with Fallback Logic
@@ -133,7 +141,15 @@ export class WebSocketManager {
     this.wss = new WebSocketServer({
       server,
       path: this.config.path,
-      verifyClient: this.verifyClient.bind(this),
+      verifyClient: (info, callback) => {
+        // Wrap async verifyClient in callback pattern
+        this.verifyClient(info)
+          .then((allowed) => callback(allowed))
+          .catch((err) => {
+            logger.error({ error: err instanceof Error ? err.message : 'unknown' }, 'WS: verifyClient error');
+            callback(false);
+          });
+      },
       maxPayload: 1024 * 1024, // CTO Security: Prevent OOM attacks by limiting payload to 1MB
     });
 
@@ -154,7 +170,7 @@ export class WebSocketManager {
     );
   }
 
-  private verifyClient(info: { origin?: string; req: any; secure?: boolean }): boolean {
+  private async verifyClient(info: { origin?: string; req: any; secure?: boolean }): Promise<boolean> {
     const isProduction = process.env.NODE_ENV === 'production';
 
     // Auth is REQUIRED by default. Disable only explicitly (prefer local dev only).
@@ -206,54 +222,73 @@ export class WebSocketManager {
 
     // Phase 3: Authentication (default ON; can be disabled explicitly, ideally local dev only)
     if (requireAuth) {
-      // Extract token from query param OR Sec-WebSocket-Protocol (fallback)
+      // Extract ticket from query param (SECURE: one-time ticket, not JWT)
       const url = new URL(info.req.url || '', 'ws://dummy');
-      const tokenFromQuery = url.searchParams.get('token');
+      const ticket = url.searchParams.get('ticket');
 
-      const protoRaw = info.req?.headers?.['sec-websocket-protocol'];
-      const proto = Array.isArray(protoRaw) ? protoRaw.join(',') : (protoRaw ?? '').toString();
-
-      // If protocol is "g2e,<jwt>" (or multiple), take last segment as token
-      const tokenFromProto = proto
-        ? proto
-          .split(',')
-          .map((s: string) => s.trim())
-          .filter(Boolean)
-          .pop()
-        : null;
-
-      const token = tokenFromQuery || tokenFromProto;
-
-      if (!token) {
-        logger.warn({ ip, origin: rawOrigin }, 'WS: Rejected - no auth token');
+      if (!ticket) {
+        logger.warn({ ip, origin: rawOrigin }, 'WS: Rejected - no auth ticket');
         return false;
       }
 
-      // Verify JWT
-      const payload = verifyJWT(token);
-      if (!payload) {
-        logger.warn(
-          { ip, origin: rawOrigin, reason: 'invalid_token' },
-          'WS: Rejected - token verification failed'
+      // Verify ticket with Redis (one-time use)
+      if (!this.redis) {
+        logger.error({ ip, origin: rawOrigin }, 'WS: Rejected - Redis unavailable for ticket verification');
+        return false;
+      }
+
+      try {
+        const redisKey = `ws_ticket:${ticket}`;
+        
+        // Get and delete ticket atomically (one-time use)
+        const ticketData = await this.redis.get(redisKey);
+        
+        if (!ticketData) {
+          logger.warn(
+            { 
+              ip, 
+              origin: rawOrigin, 
+              ticketHash: crypto.createHash('sha256').update(ticket).digest('hex').substring(0, 12)
+            },
+            'WS: Rejected - ticket invalid or expired'
+          );
+          return false;
+        }
+
+        // Delete ticket immediately (one-time use)
+        await this.redis.del(redisKey);
+
+        // Parse ticket data
+        const ticketPayload = JSON.parse(ticketData) as {
+          userId?: string | null;
+          sessionId: string;
+          createdAt: number;
+        };
+
+        // Attach identity to request for handleConnection
+        (info.req as any).userId = ticketPayload.userId || undefined;
+        (info.req as any).sessionId = ticketPayload.sessionId;
+
+        logger.debug(
+          {
+            ip,
+            sessionId: ticketPayload.sessionId.substring(0, 12) + '...',
+            hasUserId: Boolean(ticketPayload.userId),
+            ticketAgeMs: Date.now() - ticketPayload.createdAt
+          },
+          'WS: Authenticated via ticket'
+        );
+      } catch (error) {
+        logger.error(
+          {
+            ip,
+            origin: rawOrigin,
+            error: error instanceof Error ? error.message : 'unknown'
+          },
+          'WS: Rejected - ticket verification error'
         );
         return false;
       }
-
-      // Attach identity to request for handleConnection
-      (info.req as any).userId = payload.sub;
-      (info.req as any).sessionId = payload.sessionId || payload.sid || null;
-
-      logger.debug(
-        {
-          ip,
-          userId:
-            typeof payload.sub === 'string'
-              ? payload.sub.substring(0, 8) + '...'
-              : 'unknown',
-          hasSessionId: !!(info.req as any).sessionId
-        },
-        'WS: Authenticated'
-      );
     } else {
       // If you intentionally disable auth, keep an explicit log line.
       logger.warn(

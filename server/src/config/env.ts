@@ -72,21 +72,19 @@ function mustString(name: string): string {
  */
 function validateJwtSecret(): string {
     const jwtSecret = process.env.JWT_SECRET;
-    const DEV_DEFAULT = 'dev-secret-change-in-production';
+    const LEGACY_DEV_DEFAULT = 'dev-secret-change-in-production';
     
-    if (isProd()) {
-        if (!jwtSecret || jwtSecret.trim() === '') {
-            throw new Error('[P0 Security] JWT_SECRET is required in production');
-        }
-        if (jwtSecret === DEV_DEFAULT) {
-            throw new Error('[P0 Security] JWT_SECRET cannot be dev default in production');
-        }
-        if (jwtSecret.length < 32) {
-            throw new Error('[P0 Security] JWT_SECRET must be at least 32 characters in production');
-        }
+    // Always require JWT_SECRET to be set and >= 32 chars
+    if (!jwtSecret || jwtSecret.trim() === '' || jwtSecret.length < 32) {
+        throw new Error('[P0 Security] JWT_SECRET must be set and at least 32 characters');
     }
     
-    return jwtSecret || DEV_DEFAULT;
+    // In production, disallow the old legacy dev default
+    if (isProd() && jwtSecret === LEGACY_DEV_DEFAULT) {
+        throw new Error('[P0 Security] JWT_SECRET cannot be the legacy dev default in production');
+    }
+    
+    return jwtSecret;
 }
 
 function validateRedisUrl(redisUrl: string, enabled: boolean) {

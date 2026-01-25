@@ -1,11 +1,18 @@
 /**
- * WebSocket Client Service - Phase 6
+ * WebSocket Client Service - Phase 6 + Secure Ticket Auth
  * Manages WebSocket connection, reconnection, and message streaming
+ * 
+ * Security:
+ * - Uses one-time tickets from /api/v1/ws-ticket (no JWT in URL)
+ * - Ticket stored in memory only (never localStorage)
+ * - Obtains new ticket for each connection attempt
  */
 
-import { Injectable, signal } from '@angular/core';
-import { Subject } from 'rxjs';
+import { Injectable, signal, inject } from '@angular/core';
+import { Subject, firstValueFrom } from 'rxjs';
 import { environment } from '../../../environments/environment';
+import { AuthApiService } from './auth-api.service';
+import { AuthService } from '../auth/auth.service';
 import type {
   WSClientMessage,
   WSServerMessage,
@@ -16,6 +23,8 @@ import { isWSServerMessage } from '../models/ws-protocol.types';
 
 @Injectable({ providedIn: 'root' })
 export class WsClientService {
+  private readonly authApi = inject(AuthApiService);
+  private readonly authService = inject(AuthService);
   private ws?: WebSocket;
   private readonly wsBaseUrl = environment.wsBaseUrl;
 
@@ -36,8 +45,10 @@ export class WsClientService {
   /**
    * Connect to WebSocket server
    * Safe to call multiple times (idempotent)
+   * 
+   * Security: Obtains one-time ticket before connecting (no JWT in localStorage)
    */
-  connect(): void {
+  async connect(): Promise<void> {
     if (this.ws?.readyState === WebSocket.OPEN) {
       console.log('[WS] Already connected');
       return;
@@ -48,16 +59,28 @@ export class WsClientService {
       return;
     }
 
-    // console.log('[WS] Connecting to', this.wsUrl);
     this.connectionStatus.set('connecting');
 
     try {
-      const token = localStorage.getItem('authToken');
+      // Get JWT token from AuthService (cached or fetch)
+      console.log('[WS] Getting JWT token...');
+      const authToken = await this.authService.getToken();
+      
+      if (!authToken) {
+        console.error('[WS] No auth token available');
+        this.connectionStatus.set('disconnected');
+        this.scheduleReconnect();
+        return;
+      }
 
-      const wsUrl = token
-        ? `${this.wsBaseUrl}/ws?token=${encodeURIComponent(token)}`
-        : `${this.wsBaseUrl}/ws`;
-      console.log('[WS] Connecting to', wsUrl);
+      // Request one-time ticket from server (secure HTTP with Authorization header)
+      console.log('[WS] Requesting ticket...');
+      const ticketResponse = await firstValueFrom(this.authApi.requestWSTicket(authToken));
+      
+      console.log('[WS] Ticket obtained, connecting...');
+
+      // Connect with ticket (NOT JWT)
+      const wsUrl = `${this.wsBaseUrl}/ws?ticket=${encodeURIComponent(ticketResponse.ticket)}`;
       this.ws = new WebSocket(wsUrl);
 
 
@@ -87,7 +110,7 @@ export class WsClientService {
         this.scheduleReconnect();
       };
     } catch (error) {
-      console.error('[WS] Failed to create WebSocket', error);
+      console.error('[WS] Failed to connect', error);
       this.connectionStatus.set('disconnected');
       this.scheduleReconnect();
     }
