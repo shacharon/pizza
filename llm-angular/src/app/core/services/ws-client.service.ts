@@ -1,11 +1,19 @@
 /**
- * WebSocket Client Service - Phase 6 + Secure Ticket Auth
+ * WebSocket Client Service - Phase 6 + Secure Ticket Auth + Silent Reconnect
  * Manages WebSocket connection, reconnection, and message streaming
  * 
  * Security:
  * - Uses one-time tickets from /api/v1/ws-ticket (no JWT in URL)
  * - Ticket stored in memory only (never localStorage)
- * - Obtains new ticket for each connection attempt
+ * - CRITICAL: Obtains NEW ticket for EVERY connection attempt (initial + reconnect)
+ * - Tickets are one-time use with 30s TTL - NEVER reused
+ * 
+ * Reconnection:
+ * - Silent reconnection with exponential backoff + jitter
+ * - Classifies HARD vs SOFT failures (stops reconnect for HARD)
+ * - No UI noise for transient failures
+ * - Logs structured close reasons to console only
+ * - Backoff applies to entire sequence: JWT check → NEW ticket → connect
  */
 
 import { Injectable, signal, inject } from '@angular/core';
@@ -20,6 +28,7 @@ import type {
   WSChannel
 } from '../models/ws-protocol.types';
 import { isWSServerMessage } from '../models/ws-protocol.types';
+import { isHardCloseReason } from '../models/ws-close-reasons';
 
 @Injectable({ providedIn: 'root' })
 export class WsClientService {
@@ -36,17 +45,30 @@ export class WsClientService {
   private messagesSubject = new Subject<WSServerMessage>();
   readonly messages$ = this.messagesSubject.asObservable();
 
-  // Reconnection state
+  // Reconnection state with exponential backoff + jitter
   private reconnectAttempts = 0;
-  private readonly maxReconnectDelay = 30_000; // 30 seconds
+  private readonly maxReconnectDelay = 5_000; // 5 seconds max
+  private readonly baseReconnectDelay = 250; // Start at 250ms
   private reconnectTimer?: number;
   private lastRequestId?: string;
+  private hardFailureLogged = false; // Log hard failures only once per page load
+  private shouldReconnect = true; // Flag to stop reconnect on hard failures
 
   /**
    * Connect to WebSocket server
    * Safe to call multiple times (idempotent)
    * 
-   * Security: Obtains one-time ticket before connecting (no JWT in localStorage)
+   * CRITICAL: Fetches a NEW one-time ticket for EVERY connection attempt.
+   * - Initial connection: fetches ticket
+   * - Every reconnect: fetches NEW ticket (30s TTL, one-time use)
+   * - NEVER reuse tickets
+   * 
+   * Security Flow:
+   * 1. Ensure JWT exists (fetch if needed)
+   * 2. Request NEW one-time ticket (JWT-protected, 30s TTL)
+   * 3. Connect WebSocket with ticket in URL query param
+   * 
+   * Backoff applies to the entire sequence (JWT + ticket + connect).
    */
   async connect(): Promise<void> {
     if (this.ws?.readyState === WebSocket.OPEN) {
@@ -62,21 +84,29 @@ export class WsClientService {
     this.connectionStatus.set('connecting');
 
     try {
-      // Request one-time ticket from server (auth interceptor handles JWT)
-      console.log('[WS] Requesting ticket...');
+      // STEP 1: Ensure JWT exists before requesting ticket
+      console.log('[WS] Step 1/3: Ensuring JWT token exists...');
+      await this.authService.getToken();
+      console.log('[WS] JWT ready');
+
+      // STEP 2: Request NEW one-time ticket (CRITICAL: fetch fresh ticket every time)
+      console.log('[WS] Step 2/3: Requesting NEW WebSocket ticket (one-time, 30s TTL)...');
       const ticketResponse = await firstValueFrom(this.authApi.requestWSTicket());
       
-      console.log('[WS] Ticket obtained, connecting...');
+      console.log('[WS] Ticket obtained, connecting to WebSocket...');
 
-      // Connect with ticket (NOT JWT)
+      // STEP 3: Connect with ticket in URL query param
+      console.log('[WS] Step 3/3: Connecting with ticket...');
       const wsUrl = `${this.wsBaseUrl}/ws?ticket=${encodeURIComponent(ticketResponse.ticket)}`;
       this.ws = new WebSocket(wsUrl);
 
 
       this.ws.onopen = () => {
-        console.log('[WS] Connected successfully');
+        console.log('[WS] Connected');
         this.connectionStatus.set('connected');
         this.reconnectAttempts = 0;
+        this.shouldReconnect = true;
+        this.hardFailureLogged = false;
 
         // Resubscribe to last requestId if we had one
         if (this.lastRequestId) {
@@ -90,18 +120,68 @@ export class WsClientService {
       };
 
       this.ws.onerror = (error) => {
-        console.error('[WS] Error', error);
+        // Don't log noisy errors - they're handled in onclose
       };
 
       this.ws.onclose = (event) => {
-        console.log('[WS] Disconnected', { code: event.code, reason: event.reason });
+        const reason = event.reason || '';
+        const wasClean = event.wasClean;
+        const code = event.code;
+
+        // Always log close to console for debugging
+        console.log('[WS] Disconnected', { code, reason, wasClean });
+
         this.connectionStatus.set('disconnected');
-        this.scheduleReconnect();
+
+        // Classify hard vs soft failures
+        if (isHardCloseReason(reason)) {
+          // HARD failure: log once and stop reconnecting
+          if (!this.hardFailureLogged) {
+            console.error('[WS] Hard failure - stopping reconnect', { code, reason, wasClean });
+            this.hardFailureLogged = true;
+            
+            // TODO: Send analytics/log event to backend (once per page load)
+            // this.sendHardFailureLog(code, reason);
+          }
+          
+          this.shouldReconnect = false;
+          return;
+        }
+
+        // SOFT failure or unknown: reconnect with backoff
+        if (this.shouldReconnect) {
+          this.scheduleReconnect();
+        }
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('[WS] Failed to connect', error);
       this.connectionStatus.set('disconnected');
-      this.scheduleReconnect();
+      
+      // Classify ticket request failures
+      if (error?.status === 401) {
+        // Hard failure: auth error (JWT invalid/missing sessionId)
+        const errorCode = error?.error?.code;
+        console.error('[WS] Hard failure - auth error', { status: 401, code: errorCode });
+        
+        if (!this.hardFailureLogged) {
+          console.error('[WS] Ticket request failed: 401 UNAUTHORIZED - stopping reconnect');
+          this.hardFailureLogged = true;
+        }
+        
+        this.shouldReconnect = false;
+        return;
+      }
+      
+      if (error?.status === 503) {
+        // Soft failure: service unavailable (Redis down)
+        console.warn('[WS] Soft failure - service unavailable (503), will retry');
+        // Continue to reconnect with backoff
+      }
+      
+      // Only reconnect if we haven't hit a hard failure
+      if (this.shouldReconnect) {
+        this.scheduleReconnect();
+      }
     }
   }
 
@@ -109,7 +189,7 @@ export class WsClientService {
    * Disconnect from WebSocket server
    */
   disconnect(): void {
-    console.log('[WS] Disconnecting');
+    this.shouldReconnect = false; // Explicit disconnect stops auto-reconnect
 
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
@@ -209,26 +289,39 @@ export class WsClientService {
   }
 
   /**
-   * Schedule reconnection with exponential backoff
+   * Schedule reconnection with exponential backoff + jitter
+   * Backoff: 250ms → 500ms → 1s → 2s → 4s → 5s (max)
+   * Jitter: ±25% randomization to prevent thundering herd
+   * 
+   * IMPORTANT: Backoff applies to the ENTIRE connection sequence:
+   * - JWT check
+   * - NEW ticket request (one-time, 30s TTL)
+   * - WebSocket connect
    */
   private scheduleReconnect(): void {
     if (this.reconnectTimer) {
       return; // Already scheduled
     }
 
-    // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 30s (max)
-    const delay = Math.min(
-      1000 * Math.pow(2, this.reconnectAttempts),
+    // Exponential backoff: 250ms * 2^attempts, capped at 5s
+    const exponentialDelay = Math.min(
+      this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts),
       this.maxReconnectDelay
     );
 
-    console.log(`[WS] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts + 1})`);
+    // Add jitter: ±25%
+    const jitter = exponentialDelay * 0.25 * (Math.random() * 2 - 1);
+    const delay = Math.round(exponentialDelay + jitter);
+
+    // Silent: only log to console, never show in UI
+    console.log(`[WS] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts + 1}) - will fetch NEW ticket`);
+    
     this.connectionStatus.set('reconnecting');
 
     this.reconnectTimer = window.setTimeout(() => {
       this.reconnectTimer = undefined;
       this.reconnectAttempts++;
-      this.connect();
+      this.connect(); // Fetches NEW ticket every time
     }, delay);
   }
 }

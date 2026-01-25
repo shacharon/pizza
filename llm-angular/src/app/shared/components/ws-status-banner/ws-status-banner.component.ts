@@ -1,6 +1,7 @@
 /**
- * WebSocket Status Banner - Phase 6
- * Shows connection status and reconnection UI
+ * WebSocket Status Banner - Phase 6 + Silent Reconnect
+ * Shows minimal connection status - only reconnecting banner (optional)
+ * NO error UI for transient failures
  */
 
 import { Component, inject } from '@angular/core';
@@ -15,14 +16,7 @@ import { WsClientService } from '../../../core/services/ws-client.service';
     @if (status() === 'reconnecting') {
       <div class="ws-banner reconnecting">
         <span class="icon">⟳</span>
-        <span>Reconnecting to server...</span>
-      </div>
-    }
-    @if (status() === 'disconnected') {
-      <div class="ws-banner disconnected">
-        <span class="icon">⚠️</span>
-        <span>Connection lost. Results may be outdated.</span>
-        <button class="retry-btn" (click)="retry()">Retry</button>
+        <span>Reconnecting...</span>
       </div>
     }
   `,
@@ -56,28 +50,17 @@ import { WsClientService } from '../../../core/services/ws-client.service';
       border-bottom: 1px solid #ffc107;
     }
 
-    .disconnected {
-      background: #f8d7da;
-      color: #721c24;
-      border-bottom: 1px solid #f5c6cb;
-    }
-
     .icon {
       font-size: 1.2rem;
+      animation: rotate 1s linear infinite;
     }
 
-    .retry-btn {
-      margin-left: auto;
-      padding: 0.25rem 0.75rem;
-      background: white;
-      border: 1px solid currentColor;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 0.85rem;
-      transition: all 0.2s;
-
-      &:hover {
-        background: rgba(0, 0, 0, 0.05);
+    @keyframes rotate {
+      from {
+        transform: rotate(0deg);
+      }
+      to {
+        transform: rotate(360deg);
       }
     }
   `]
@@ -86,8 +69,4 @@ export class WsStatusBannerComponent {
   private wsClient = inject(WsClientService);
   
   readonly status = this.wsClient.connectionStatus;
-  
-  retry() {
-    this.wsClient.connect();
-  }
 }

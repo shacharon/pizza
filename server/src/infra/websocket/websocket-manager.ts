@@ -14,6 +14,7 @@ import type { IRequestStateStore } from '../state/request-state.store.js';
 import type { ISearchJobStore } from '../../services/search/job-store/job-store.interface.js';
 import Redis from 'ioredis';
 import { validateOrigin, getSafeOriginSummary } from '../../lib/security/origin-validator.js';
+import { HARD_CLOSE_REASONS, SOFT_CLOSE_REASONS } from './ws-close-reasons.js';
 
 // @server/src/infra/websocket/websocket-manager.ts
 
@@ -217,6 +218,8 @@ export class WebSocketManager {
 
     if (!result.allowed) {
       logger.warn({ ip, origin: rawOrigin, reason: result.reason }, 'WS: Connection rejected');
+      // Store rejection reason for later (we can't close here in verifyClient)
+      (info.req as any).wsRejectReason = HARD_CLOSE_REASONS.ORIGIN_BLOCKED;
       return false;
     }
 
@@ -228,6 +231,7 @@ export class WebSocketManager {
 
       if (!ticket) {
         logger.warn({ ip, origin: rawOrigin }, 'WS: Rejected - no auth ticket');
+        (info.req as any).wsRejectReason = HARD_CLOSE_REASONS.NOT_AUTHORIZED;
         return false;
       }
 
@@ -252,6 +256,7 @@ export class WebSocketManager {
             },
             'WS: Rejected - ticket invalid or expired'
           );
+          (info.req as any).wsRejectReason = HARD_CLOSE_REASONS.NOT_AUTHORIZED;
           return false;
         }
 
@@ -287,6 +292,7 @@ export class WebSocketManager {
           },
           'WS: Rejected - ticket verification error'
         );
+        (info.req as any).wsRejectReason = HARD_CLOSE_REASONS.NOT_AUTHORIZED;
         return false;
       }
     } else {
@@ -350,7 +356,7 @@ export class WebSocketManager {
       if (idleTimer) clearTimeout(idleTimer);
       idleTimer = setTimeout(() => {
         try {
-          ws.close(1000, 'Idle timeout');
+          ws.close(1000, SOFT_CLOSE_REASONS.IDLE_TIMEOUT);
         } catch {
           // ignore
         }
@@ -497,6 +503,7 @@ export class WebSocketManager {
             'WS: Subscribe rejected - not authenticated'
           );
           this.sendError(ws, 'unauthorized', 'Authentication required');
+          ws.close(1008, HARD_CLOSE_REASONS.NOT_AUTHORIZED);
           return;
         }
 
@@ -504,6 +511,7 @@ export class WebSocketManager {
         if (!requestId && channel === 'search') {
           logger.warn({ clientId, channel }, 'WS: Subscribe rejected - missing requestId');
           this.sendError(ws, 'invalid_request', 'Missing requestId');
+          ws.close(1008, HARD_CLOSE_REASONS.BAD_SUBSCRIBE);
           return;
         }
 
@@ -516,6 +524,7 @@ export class WebSocketManager {
               'WS: Subscribe rejected - missing authenticated session'
             );
             this.sendError(ws, 'unauthorized', 'Authentication required');
+            ws.close(1008, HARD_CLOSE_REASONS.NOT_AUTHORIZED);
             return;
           }
 
@@ -531,6 +540,7 @@ export class WebSocketManager {
               'WS: Subscribe rejected - unauthorized session'
             );
             this.sendError(ws, 'unauthorized', 'Not authorized for this session');
+            ws.close(1008, HARD_CLOSE_REASONS.NOT_AUTHORIZED);
             return;
           }
         } else if (channel === 'search') {
@@ -552,6 +562,7 @@ export class WebSocketManager {
             // If auth is enabled, fail-closed in ALL environments (not just production)
             if (requireAuth) {
               this.sendError(ws, 'unauthorized', 'Not authorized for this request');
+              ws.close(1008, HARD_CLOSE_REASONS.NOT_AUTHORIZED);
               return;
             }
           }
@@ -568,6 +579,7 @@ export class WebSocketManager {
               'WS: Subscribe rejected - owner missing'
             );
             this.sendError(ws, 'unauthorized', 'Not authorized for this request');
+            ws.close(1008, HARD_CLOSE_REASONS.NOT_AUTHORIZED);
             return;
           }
 
@@ -587,6 +599,7 @@ export class WebSocketManager {
                   'WS: Subscribe rejected - unauthorized request (user mismatch)'
                 );
                 this.sendError(ws, 'unauthorized', 'Not authorized for this request');
+                ws.close(1008, HARD_CLOSE_REASONS.NOT_AUTHORIZED);
                 return;
               }
             } else if (owner.sessionId) {
@@ -603,6 +616,7 @@ export class WebSocketManager {
                   'WS: Subscribe rejected - unauthorized request (session mismatch)'
                 );
                 this.sendError(ws, 'unauthorized', 'Not authorized for this request');
+                ws.close(1008, HARD_CLOSE_REASONS.NOT_AUTHORIZED);
                 return;
               }
               
@@ -629,6 +643,7 @@ export class WebSocketManager {
                 'WS: Subscribe rejected - owner identity missing'
               );
               this.sendError(ws, 'unauthorized', 'Not authorized for this request');
+              ws.close(1008, HARD_CLOSE_REASONS.NOT_AUTHORIZED);
               return;
             }
           }
@@ -646,6 +661,7 @@ export class WebSocketManager {
             'WS: Subscribe rejected - missing authenticated session'
           );
           this.sendError(ws, 'unauthorized', 'Authentication required');
+          ws.close(1008, HARD_CLOSE_REASONS.NOT_AUTHORIZED);
           return;
         }
 
@@ -693,6 +709,7 @@ export class WebSocketManager {
         // If auth is enabled and we don't have session, block unsubscribe as well (prevents tampering)
         if (requireAuth && !effectiveSessionId) {
           this.sendError(ws, 'unauthorized', 'Authentication required');
+          ws.close(1008, HARD_CLOSE_REASONS.NOT_AUTHORIZED);
           return;
         }
 
@@ -1134,6 +1151,12 @@ export class WebSocketManager {
           // Mark termination source for disconnect logging
           ws.terminatedBy = 'server_heartbeat';
           this.cleanup(ws);
+          // Close with structured reason before terminate
+          try {
+            ws.close(1000, SOFT_CLOSE_REASONS.HEARTBEAT_TIMEOUT);
+          } catch {
+            // If close fails, proceed with terminate
+          }
           ws.terminate();
           terminatedCount++;
 
@@ -1177,7 +1200,7 @@ export class WebSocketManager {
 
     this.wss.clients.forEach(ws => {
       this.cleanup(ws);
-      ws.close(1001, 'Server shutting down');
+      ws.close(1001, SOFT_CLOSE_REASONS.SERVER_SHUTDOWN);
     });
 
     this.wss.close();
