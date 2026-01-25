@@ -157,6 +157,9 @@ export class WebSocketManager {
   private verifyClient(info: { origin?: string; req: any; secure?: boolean }): boolean {
     const isProduction = process.env.NODE_ENV === 'production';
 
+    // Auth is REQUIRED by default. Disable only explicitly (prefer local dev only).
+    const requireAuth = process.env.WS_REQUIRE_AUTH !== 'false'; // default true
+
     // Prefer XFF (behind ALB/Proxy), fallback to socket remoteAddress
     const ip =
       (info.req?.headers?.['x-forwarded-for']?.toString().split(',')[0]?.trim()) ||
@@ -197,39 +200,42 @@ export class WebSocketManager {
     });
 
     if (!result.allowed) {
-      logger.warn(
-        { ip, origin: rawOrigin, reason: result.reason },
-        'WS: Connection rejected'
-      );
+      logger.warn({ ip, origin: rawOrigin, reason: result.reason }, 'WS: Connection rejected');
       return false;
     }
 
-    // Phase 1: Authentication (production only)
-    if (isProduction) {
+    // Phase 3: Authentication (default ON; can be disabled explicitly, ideally local dev only)
+    if (requireAuth) {
       // Extract token from query param OR Sec-WebSocket-Protocol (fallback)
       const url = new URL(info.req.url || '', 'ws://dummy');
       const tokenFromQuery = url.searchParams.get('token');
 
       const protoRaw = info.req?.headers?.['sec-websocket-protocol'];
-      const proto =
-        Array.isArray(protoRaw) ? protoRaw.join(',') : (protoRaw ?? '').toString();
+      const proto = Array.isArray(protoRaw) ? protoRaw.join(',') : (protoRaw ?? '').toString();
 
       // If protocol is "g2e,<jwt>" (or multiple), take last segment as token
       const tokenFromProto = proto
-        ? proto.split(',').map((s: string) => s.trim()).filter(Boolean).pop()
+        ? proto
+          .split(',')
+          .map((s: string) => s.trim())
+          .filter(Boolean)
+          .pop()
         : null;
 
       const token = tokenFromQuery || tokenFromProto;
 
       if (!token) {
-        logger.warn({ ip, origin: rawOrigin }, 'WS: Rejected - no auth token in production');
+        logger.warn({ ip, origin: rawOrigin }, 'WS: Rejected - no auth token');
         return false;
       }
 
       // Verify JWT
       const payload = verifyJWT(token);
       if (!payload) {
-        logger.warn({ ip, origin: rawOrigin, reason: 'invalid_token' }, 'WS: Rejected - token verification failed');
+        logger.warn(
+          { ip, origin: rawOrigin, reason: 'invalid_token' },
+          'WS: Rejected - token verification failed'
+        );
         return false;
       }
 
@@ -240,15 +246,25 @@ export class WebSocketManager {
       logger.debug(
         {
           ip,
-          userId: typeof payload.sub === 'string' ? payload.sub.substring(0, 8) + '...' : 'unknown',
+          userId:
+            typeof payload.sub === 'string'
+              ? payload.sub.substring(0, 8) + '...'
+              : 'unknown',
           hasSessionId: !!(info.req as any).sessionId
         },
         'WS: Authenticated'
+      );
+    } else {
+      // If you intentionally disable auth, keep an explicit log line.
+      logger.warn(
+        { ip, isProduction },
+        'WS: Authentication disabled via WS_REQUIRE_AUTH=false'
       );
     }
 
     return true;
   }
+
 
 
 
@@ -424,6 +440,8 @@ export class WebSocketManager {
     clientId: string
   ): Promise<void> {
     const isProduction = process.env.NODE_ENV === 'production';
+    const requireAuth = process.env.WS_REQUIRE_AUTH !== 'false'; // default true
+
     const wsUserId = (ws as any).userId as string | undefined;
     const wsSessionId = (ws as any).sessionId as string | undefined;
 
@@ -437,8 +455,8 @@ export class WebSocketManager {
         const requestId = envelope.requestId as string | undefined;
         const sessionIdFromClient = envelope.sessionId as string | undefined;
 
-        // Phase 1: Authorization - require authenticated identity in production
-        if (isProduction && !wsUserId && !wsSessionId) {
+        // Phase 1: Authorization - require authenticated identity when auth is enabled
+        if (requireAuth && !wsUserId && !wsSessionId) {
           logger.warn(
             { clientId, channel, requestIdHash: this.hashRequestId(requestId) },
             'WS: Subscribe rejected - not authenticated'
@@ -454,10 +472,10 @@ export class WebSocketManager {
           return;
         }
 
-        // Phase 1: Ownership verification
+        // Phase 2: Ownership verification
         if (channel === 'assistant') {
-          // Assistant channel: must have authenticated sessionId in production
-          if (isProduction && !wsSessionId) {
+          // Assistant channel: must have authenticated sessionId when auth is enabled
+          if (requireAuth && !wsSessionId) {
             logger.warn(
               { clientId, channel, requestIdHash: this.hashRequestId(requestId) },
               'WS: Subscribe rejected - missing authenticated session'
@@ -466,8 +484,8 @@ export class WebSocketManager {
             return;
           }
 
-          // If client provided a sessionId, it must match authenticated sessionId
-          if (isProduction && sessionIdFromClient && wsSessionId && sessionIdFromClient !== wsSessionId) {
+          // If client provided a sessionId, it must match authenticated sessionId (defense-in-depth)
+          if (requireAuth && sessionIdFromClient && wsSessionId && sessionIdFromClient !== wsSessionId) {
             logger.warn(
               {
                 clientId,
@@ -496,14 +514,15 @@ export class WebSocketManager {
               },
               'WS: Subscribe rejected - owner lookup failed'
             );
-            if (isProduction) {
+            // If auth is enabled, fail-closed in ALL environments (not just production)
+            if (requireAuth) {
               this.sendError(ws, 'unauthorized', 'Not authorized for this request');
               return;
             }
           }
 
-          // Production: fail-closed if owner is missing
-          if (isProduction && !owner) {
+          // Fail-closed when auth is enabled if owner is missing
+          if (requireAuth && !owner) {
             logger.warn(
               {
                 clientId,
@@ -547,8 +566,8 @@ export class WebSocketManager {
                 this.sendError(ws, 'unauthorized', 'Not authorized for this request');
                 return;
               }
-            } else if (isProduction) {
-              // Owner object exists but has no usable identity: reject in prod
+            } else if (requireAuth) {
+              // Owner object exists but has no usable identity: reject when auth is enabled
               logger.warn(
                 {
                   clientId,
@@ -565,8 +584,20 @@ export class WebSocketManager {
         }
 
         // Subscribe using channel-based key
-        // IMPORTANT: for assistant channel, use authenticated sessionId (never trust client-supplied)
-        const effectiveSessionId = channel === 'assistant' ? wsSessionId : sessionIdFromClient;
+        // IMPORTANT: never trust client-supplied sessionId for subscription keys.
+        // Use authenticated wsSessionId when available.
+        const effectiveSessionId = wsSessionId;
+
+        // If auth is enabled and we still don't have a sessionId, block (defense-in-depth)
+        if (requireAuth && !effectiveSessionId) {
+          logger.warn(
+            { clientId, channel, requestIdHash: this.hashRequestId(requestId), reason: 'missing_ws_session' },
+            'WS: Subscribe rejected - missing authenticated session'
+          );
+          this.sendError(ws, 'unauthorized', 'Authentication required');
+          return;
+        }
+
         const safeRequestId = requestId || 'unknown';
         this.subscribeToChannel(channel, safeRequestId, effectiveSessionId, ws);
 
@@ -580,7 +611,6 @@ export class WebSocketManager {
             },
             'websocket_subscribed'
           );
-
 
           // Late-subscriber replay
           this.replayStateIfAvailable(safeRequestId, ws, clientId);
@@ -606,7 +636,15 @@ export class WebSocketManager {
         const requestId = envelope.requestId as string | undefined;
         const sessionIdFromClient = envelope.sessionId as string | undefined;
 
-        const effectiveSessionId = channel === 'assistant' ? wsSessionId : sessionIdFromClient;
+        // Never trust client-supplied sessionId; use authenticated session
+        const effectiveSessionId = wsSessionId;
+
+        // If auth is enabled and we don't have session, block unsubscribe as well (prevents tampering)
+        if (requireAuth && !effectiveSessionId) {
+          this.sendError(ws, 'unauthorized', 'Authentication required');
+          return;
+        }
+
         this.unsubscribeFromChannel(channel, requestId || 'unknown', effectiveSessionId, ws);
 
         logger.info(
@@ -659,6 +697,7 @@ export class WebSocketManager {
         break;
     }
   }
+
 
 
   /**
