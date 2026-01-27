@@ -4,113 +4,105 @@
 }
 
 .search-header {
-  background: #fafafa;
-  padding: 2rem 1rem 1.5rem;
+  background: linear-gradient(180deg, #ffffff 0%, #f9fafb 100%);
+  padding: 1.5rem 1rem 1.25rem;
   border-bottom: 1px solid #e5e7eb;
   position: sticky;
   top: 0;
   z-index: 100;
 }
 
-.page-title {
+// Hero Section (title + subtitle + location)
+.hero-section {
   text-align: center;
-  margin: 0 0 1.25rem 0;
-  font-size: 2rem;
+  margin: 0 auto 1rem;
+  max-width: 700px;
+}
+
+.page-title {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.75rem;
   font-weight: 700;
   color: #111827;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
 }
 
-// Search Card: Unified container for input + meta row
-.search-card {
-  max-width: 700px;
-  margin: 0 auto;
-  background: white;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-  overflow: hidden;
-  
-  &:hover {
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-  }
-}
-
-// Meta Row: Location chip + Assistant line
-.search-meta-row {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.75rem 1rem;
-  background: #fafafa;
-  border-top: 1px solid #f0f0f0;
-  min-height: 44px;
-}
-
-// Location Chip (compact toggle)
-.location-chip {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.375rem 0.75rem;
-  font-size: 0.8125rem;
-  font-weight: 500;
+.page-subtitle {
+  margin: 0 0 0.75rem 0;
+  font-size: 0.9375rem;
   color: #6b7280;
-  background: white;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  flex-shrink: 0;
+  font-weight: 400;
+  line-height: 1.4;
+}
 
-  &:hover:not(:disabled) {
-    border-color: #667eea;
-    color: #667eea;
-  }
+// Location Status (inline, automatic feel)
+.location-status {
+  margin-bottom: 0.5rem;
+  font-size: 0.8125rem;
+  color: #6b7280;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
 
-  &:disabled {
-    cursor: not-allowed;
-    opacity: 0.5;
-  }
+.location-text {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-weight: 500;
 
-  &.location-on {
-    background: white;
-    border-color: #667eea;
-    color: #667eea;
-
-    .location-icon {
-      animation: pulse 2s ease-in-out infinite;
-    }
-  }
-
-  &.location-requesting {
-    background: white;
-    border-color: #f59e0b;
-    color: #f59e0b;
-  }
-
-  &.location-denied,
   &.location-error {
-    background: white;
-    border-color: #ef4444;
     color: #ef4444;
   }
 }
 
-.location-icon {
-  font-size: 1rem;
-  line-height: 1;
+.location-link {
+  background: none;
+  border: none;
+  color: #3b82f6;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+
+  &:hover {
+    color: #2563eb;
+  }
 }
 
-.location-label {
-  font-size: 0.8125rem;
-  line-height: 1;
+// Search Card: Unified container for input + assistant line
+.search-card {
+  max-width: 700px;
+  margin: 0 auto;
+  background: white;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  overflow: visible;
+  padding: 1rem;
+  
+  &:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    border-color: #d1d5db;
+  }
+}
+
+// Meta Row: Assistant line (always shown - includes WS status)
+.search-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 0 0.25rem;
+  min-height: 32px;
 }
 
 .search-content {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 2rem;
+  padding: 1.5rem 1rem;
 }
 
 // NEW: Mobile-First Layout
@@ -641,16 +633,20 @@
 
 @media (max-width: 768px) {
   .search-header {
-    padding: 2rem 1.25rem;
+    padding: 1.25rem 1rem 1rem;
   }
 
   .page-title {
-    font-size: 1.75rem;
-    margin-bottom: 2rem;
+    font-size: 1.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .page-subtitle {
+    font-size: 0.875rem;
   }
 
   .search-content {
-    padding: 1.5rem;
+    padding: 1rem;
   }
 
   .popular-searches {

@@ -1,51 +1,36 @@
 <div class="search-page">
-  <!-- Phase 6: WebSocket Status Banner -->
-  <app-ws-status-banner />
-
   <header class="search-header">
-    <h1 class="page-title">Find Your Perfect Restaurant</h1>
+    <div class="hero-section">
+      <h1 class="page-title">AI-powered food search that understands you</h1>
+      <p class="page-subtitle">Ask in your own words—find exactly what you're craving</p>
+      
+      <!-- Location Status (automatic, inline) -->
+      <div class="location-status">
+        @if (locationState() === 'ON') {
+          <span class="location-text">📍 Using your location</span>
+        } @else if (locationState() === 'REQUESTING') {
+          <span class="location-text">⏳ Getting location...</span>
+        } @else if (locationState() === 'DENIED') {
+          <span class="location-text location-error">🚫 Location access denied</span>
+        } @else if (locationState() === 'ERROR') {
+          <span class="location-text location-error">⚠️ Location unavailable</span>
+        } @else {
+          <button class="location-link" (click)="onLocationToggle()">Enable location for better results</button>
+        }
+      </div>
+    </div>
     
-    <!-- Search Card: Input + Meta Row -->
+    <!-- Search Card: Input + Assistant Line -->
     <div class="search-card">
-      <app-search-bar [loading]="facade.loading()" (search)="onSearch($event)" (inputChange)="onInputChange($event)"
+      <app-search-bar 
+        [loading]="facade.loading()" 
+        [placeholder]="'What are you hungry for?'"
+        (search)="onSearch($event)" 
+        (inputChange)="onInputChange($event)"
         (clear)="onClear()" />
       
-      <!-- Meta Row: Location + Assistant Line -->
+      <!-- Assistant Line (always shown - includes WS status) -->
       <div class="search-meta-row">
-        <!-- Location Toggle (compact) -->
-        <button class="location-chip" 
-          [class.location-on]="locationState() === 'ON'"
-          [class.location-requesting]="locationState() === 'REQUESTING'"
-          [class.location-denied]="locationState() === 'DENIED'" 
-          [class.location-error]="locationState() === 'ERROR'"
-          [disabled]="locationState() === 'REQUESTING'" 
-          (click)="onLocationToggle()"
-          [title]="getLocationTooltip()">
-          @if (locationState() === 'REQUESTING') {
-            <span class="location-icon">⏳</span>
-          } @else if (locationState() === 'ON') {
-            <span class="location-icon">📍</span>
-          } @else if (locationState() === 'DENIED') {
-            <span class="location-icon">🚫</span>
-          } @else if (locationState() === 'ERROR') {
-            <span class="location-icon">⚠️</span>
-          } @else {
-            <span class="location-icon">📍</span>
-          }
-          <span class="location-label">
-            @if (locationState() === 'ON') {
-              Location
-            } @else if (locationState() === 'DENIED') {
-              Denied
-            } @else if (locationState() === 'ERROR') {
-              Error
-            } @else {
-              Location
-            }
-          </span>
-        </button>
-        
-        <!-- Assistant Line (inline in meta row) -->
         <app-assistant-line />
       </div>
     </div>

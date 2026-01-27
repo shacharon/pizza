@@ -12,7 +12,6 @@ import { AssistantBottomSheetComponent } from '../components/assistant-bottom-sh
 import { AssistantLineComponent } from '../components/assistant-line/assistant-line.component';
 import { ClarificationBlockComponent } from '../components/clarification-block/clarification-block.component';
 import { AssistantSummaryComponent } from '../components/assistant-summary/assistant-summary.component';
-import { WsStatusBannerComponent } from '../../../shared/components/ws-status-banner/ws-status-banner.component';
 import { LocationService } from '../../../services/location.service';
 import type { Restaurant, ClarificationChoice, Coordinates } from '../../../domain/types/search.types';
 import type { ActionType, ActionLevel } from '../../../domain/types/action.types';
@@ -27,8 +26,7 @@ import type { ActionType, ActionLevel } from '../../../domain/types/action.types
     AssistantBottomSheetComponent,
     AssistantLineComponent,
     ClarificationBlockComponent,
-    AssistantSummaryComponent,
-    WsStatusBannerComponent
+    AssistantSummaryComponent
   ],
   providers: [SearchFacade],
   changeDetection: ChangeDetectionStrategy.OnPush,

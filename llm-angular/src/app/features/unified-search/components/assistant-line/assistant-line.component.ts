@@ -1,13 +1,14 @@
 /**
  * Assistant Line Component
- * Single-line status showing the latest assistant message
- * Replaces the multi-message AssistantPanel with a calm inline status
+ * Single-line status showing the latest assistant message OR WebSocket connection status
+ * WebSocket status is shown as a fallback when no assistant messages are active
  */
 
-import { Component, OnInit, OnDestroy, ChangeDetectionStrategy, signal } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectionStrategy, signal, computed, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { WsClientService } from '../../../../core/services/ws-client.service';
 import { Subscription } from 'rxjs';
+import type { ConnectionStatus } from '../../../../core/models/ws-protocol.types';
 
 interface AssistantMessage {
   requestId: string;
@@ -16,16 +17,24 @@ interface AssistantMessage {
   type: 'assistant_progress' | 'assistant_suggestion';
 }
 
+interface WSStatusMessage {
+  type: 'ws_status';
+  message: string;
+  status: ConnectionStatus;
+}
+
 @Component({
   selector: 'app-assistant-line',
   standalone: true,
   imports: [CommonModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    @if (displayMessage()) {
-    <div class="assistant-line">
-      <span class="assistant-text">{{ displayMessage() }}</span>
-      <button class="clear-btn" (click)="clearMessage()" type="button" aria-label="Clear">✕</button>
+    @if (finalMessage()) {
+    <div class="assistant-line" [class.ws-status]="isWsStatusMessage()">
+      <span class="assistant-text" [class.ws-warning]="isWsWarning()">{{ finalMessage() }}</span>
+      @if (!isWsStatusMessage() || isWsDisconnected()) {
+        <button class="clear-btn" (click)="clearMessage()" type="button" aria-label="Clear">✕</button>
+      }
     </div>
     }
   `,
@@ -47,6 +56,10 @@ interface AssistantMessage {
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+
+      &.ws-warning {
+        color: #f59e0b;
+      }
     }
 
     .clear-btn {
@@ -83,29 +96,74 @@ interface AssistantMessage {
   `]
 })
 export class AssistantLineComponent implements OnInit, OnDestroy {
-  // Currently displayed message
-  readonly displayMessage = signal<string | null>(null);
-  
+  // Assistant message (higher priority)
+  private readonly assistantMessage = signal<string | null>(null);
+
+  // WebSocket status message (lower priority, fallback)
+  private readonly wsStatusMessage = signal<WSStatusMessage | null>(null);
+
+  // Final message to display (assistant takes priority)
+  readonly finalMessage = computed(() => {
+    return this.assistantMessage() || this.wsStatusMessage()?.message || null;
+  });
+
+  // Check if currently showing WS status message
+  readonly isWsStatusMessage = computed(() => {
+    return !this.assistantMessage() && !!this.wsStatusMessage();
+  });
+
+  // Check if WS is disconnected
+  readonly isWsDisconnected = computed(() => {
+    const status = this.wsStatusMessage()?.status;
+    return status === 'disconnected' || status === 'reconnecting';
+  });
+
+  // Check if should show warning color
+  readonly isWsWarning = computed(() => {
+    return this.isWsStatusMessage() && this.isWsDisconnected();
+  });
+
   // Current requestId being tracked
   private currentRequestId: string | null = null;
-  
+
   // Queue for staggered updates
   private messageQueue: AssistantMessage[] = [];
   private isProcessingQueue = false;
-  
-  // WebSocket subscription
+
+  // WebSocket subscriptions
   private wsSubscription?: Subscription;
-  
-  constructor(private wsClient: WsClientService) {}
-  
+
+  // Anti-flicker state tracking
+  private wsStateSince: number = Date.now();
+  private lastWsState: ConnectionStatus | null = null;
+  private wsDebounceTimer?: number;
+  private lastRenderedMessage: string | null = null;
+  private lastMessageUpdateTime: number = 0;
+
+  // Debounce threshold (don't show connecting unless it lasts > 1s)
+  private readonly WS_DEBOUNCE_MS = 1000;
+  // Minimum time between message updates (anti-flicker)
+  private readonly MESSAGE_UPDATE_THROTTLE_MS = 2000;
+
+  constructor(private wsClient: WsClientService) {
+    // Track WebSocket connection status with debouncing
+    effect(() => {
+      const status = this.wsClient.connectionStatus();
+      this.handleWsStatusChangeDebounced(status);
+    });
+  }
+
   ngOnInit(): void {
     this.subscribeToWebSocket();
   }
-  
+
   ngOnDestroy(): void {
     this.wsSubscription?.unsubscribe();
+    if (this.wsDebounceTimer) {
+      clearTimeout(this.wsDebounceTimer);
+    }
   }
-  
+
   /**
    * Subscribe to WebSocket messages
    */
@@ -117,7 +175,74 @@ export class AssistantLineComponent implements OnInit, OnDestroy {
       }
     });
   }
-  
+
+  /**
+   * Handle WebSocket connection status changes WITH DEBOUNCING
+   * Prevents flickering by requiring state to be stable for 1 second
+   */
+  private handleWsStatusChangeDebounced(status: ConnectionStatus): void {
+    // Clear any pending debounce timer
+    if (this.wsDebounceTimer) {
+      clearTimeout(this.wsDebounceTimer);
+      this.wsDebounceTimer = undefined;
+    }
+
+    // Track state change timestamp
+    if (this.lastWsState !== status) {
+      this.lastWsState = status;
+      this.wsStateSince = Date.now();
+    }
+
+    // CONNECTED: Silently remove message immediately (no success flash)
+    if (status === 'connected') {
+      this.wsStatusMessage.set(null);
+      this.lastRenderedMessage = null;
+      return;
+    }
+
+    // CONNECTING/RECONNECTING: Debounce to prevent flicker
+    // Collapse both states into single "connecting" message
+    if (status === 'connecting' || status === 'reconnecting') {
+      // Wait 1 second before showing "connecting" message
+      this.wsDebounceTimer = window.setTimeout(() => {
+        this.updateWsMessage('מתחבר לעוזרת…', status);
+      }, this.WS_DEBOUNCE_MS);
+      return;
+    }
+
+    // DISCONNECTED: Show immediately (hard failure)
+    if (status === 'disconnected') {
+      this.updateWsMessage('Connecting to assistant...', status);
+    }
+  }
+
+  /**
+   * Update WS message with throttling to prevent rapid text changes
+   */
+  private updateWsMessage(message: string, status: ConnectionStatus): void {
+    const now = Date.now();
+
+    // Anti-flicker: Don't update message if we updated recently (< 2s ago)
+    // UNLESS the message is actually different
+    if (
+      this.lastRenderedMessage === message ||
+      (now - this.lastMessageUpdateTime < this.MESSAGE_UPDATE_THROTTLE_MS)
+    ) {
+      // Message is same or updated too recently - skip
+      return;
+    }
+
+    // Update the message
+    this.wsStatusMessage.set({
+      type: 'ws_status',
+      message,
+      status
+    });
+
+    this.lastRenderedMessage = message;
+    this.lastMessageUpdateTime = now;
+  }
+
   /**
    * Handle incoming assistant message
    */
@@ -126,9 +251,9 @@ export class AssistantLineComponent implements OnInit, OnDestroy {
     if (!msg.requestId || typeof msg.seq !== 'number' || !msg.message) {
       return;
     }
-    
+
     const { requestId, seq, message, type } = msg;
-    
+
     // Check if this is a new requestId
     if (this.currentRequestId !== requestId) {
       // New search - clear queue and display
@@ -136,7 +261,7 @@ export class AssistantLineComponent implements OnInit, OnDestroy {
       this.currentRequestId = requestId;
       this.isProcessingQueue = false;
     }
-    
+
     // Add to queue
     this.messageQueue.push({
       requestId,
@@ -144,16 +269,16 @@ export class AssistantLineComponent implements OnInit, OnDestroy {
       message,
       type: type as 'assistant_progress' | 'assistant_suggestion'
     });
-    
+
     // Sort queue by seq
     this.messageQueue.sort((a, b) => a.seq - b.seq);
-    
+
     // Process queue if not already processing
     if (!this.isProcessingQueue) {
       this.processQueue();
     }
   }
-  
+
   /**
    * Process message queue with staggered updates (250ms delay)
    */
@@ -161,37 +286,43 @@ export class AssistantLineComponent implements OnInit, OnDestroy {
     if (this.isProcessingQueue || this.messageQueue.length === 0) {
       return;
     }
-    
+
     this.isProcessingQueue = true;
-    
+
     while (this.messageQueue.length > 0) {
       const msg = this.messageQueue.shift();
       if (msg && msg.requestId === this.currentRequestId) {
         // Update display
-        this.displayMessage.set(msg.message);
-        
+        this.assistantMessage.set(msg.message);
+
         // Wait 250ms before next update (stagger effect)
         if (this.messageQueue.length > 0) {
           await this.delay(250);
         }
       }
     }
-    
+
     this.isProcessingQueue = false;
   }
-  
+
   /**
    * Delay helper for staggered updates
    */
   private delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
-  
+
   /**
    * Clear message (user action)
    */
   clearMessage(): void {
-    this.displayMessage.set(null);
-    this.messageQueue = [];
+    // Only clear assistant messages, not WS status
+    if (!this.isWsStatusMessage()) {
+      this.assistantMessage.set(null);
+      this.messageQueue = [];
+    } else {
+      // Clear WS status message
+      this.wsStatusMessage.set(null);
+    }
   }
 }

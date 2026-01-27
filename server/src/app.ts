@@ -1,5 +1,5 @@
 import express from 'express';
-import cors from 'cors';
+import cors, { CorsOptions } from 'cors';
 import compression from 'compression';
 import helmet from 'helmet';
 
@@ -22,17 +22,17 @@ export function createApp() {
   const isProduction = config.env === 'production';
 
   // ─────────────────────────────────────────────
-  // P0: Global Rate Limiting (covers /healthz, legacy /api, 404s, etc.)
+  // P0: Global Rate Limiting
   // ─────────────────────────────────────────────
   const globalRateLimiter = createRateLimiter({
     windowMs: 60 * 1000,
-    maxRequests: 300, // 300 req/min per IP
+    maxRequests: 300,
     keyPrefix: 'global'
   });
   app.use(globalRateLimiter);
 
   // ─────────────────────────────────────────────
-  // P0: Request/Response timeouts (basic Slowloris mitigation)
+  // P0: Request/Response timeouts
   // ─────────────────────────────────────────────
   app.use((req, res, next) => {
     req.setTimeout(30_000);
@@ -43,28 +43,17 @@ export function createApp() {
   // 1. Core Security Headers & Performance
   app.use(helmet());
   app.use(securityHeadersMiddleware);
-
-  /**
-   * Photos are served from the API domain but embedded in the web app domain (<img src="...">).
-   * Helmet defaults CORP to `same-origin`, which triggers browser blocking (NotSameOrigin).
-   * Override CORP only for /api/v1/photos/* to allow cross-origin embedding of image resources.
-   */
-  app.use('/api/v1/photos', (req, res, next) => {
-    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-    next();
-  });
-
   app.use(compression());
 
   // 2. Body parsers with limits
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ limit: '1mb', extended: true }));
 
-  // 3. Request Identity & Logging (ensure traceId exists early)
+  // 3. Request Identity & Logging
   app.use(requestContextMiddleware);
   app.use(httpLoggingMiddleware);
 
-  // P0: Handle JSON parsing errors AFTER requestContextMiddleware (traceId available)
+  // P0: Handle JSON parsing errors AFTER requestContextMiddleware
   app.use((err: any, req: any, res: any, next: any) => {
     const isJsonSyntaxError =
       err instanceof SyntaxError && typeof err?.message === 'string' && 'body' in err;
@@ -110,59 +99,105 @@ export function createApp() {
     'CORS: Initialized'
   );
 
+  const corsCommon: CorsOptions = {
+    credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-Id'] as string[],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'] as string[],
+    preflightContinue: false,
+    optionsSuccessStatus: 204
+  };
+
+  /**
+   * Photo Routes Policy:
+   * Override CORP to allow cross-origin embedding of image resources.
+   * Uses origin:true to bypass validation errors and allow all origins (standard for public assets).
+   */
+  app.use('/api/v1/photos', (req, res, next) => {
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    next();
+  });
+  app.use('/api/v1/photos', cors({ ...corsCommon, origin: true }));
+
+  // ✅ DEV safety net: always allow common local frontends even if FRONTEND_ORIGINS is missing/mis-set
+  const devLocalOrigins = ['http://localhost:4200', 'http://localhost:4201', 'http://localhost:3000'];
+  const devAllowedOrigins = Array.from(
+    new Set([...(config.frontendOrigins ?? []), ...devLocalOrigins])
+  );
+
+  // Keep a reference to the active CORS middleware so we can explicitly handle OPTIONS before auth/routes
+  let activeCorsMiddleware: any = null;
+
   if (isProduction) {
     if (!config.frontendOrigins || config.frontendOrigins.length === 0) {
       throw new Error('[CORS] FRONTEND_ORIGINS is required in production');
     }
 
-    app.use(
-      cors({
+    const corsProd = cors((req, cb) => {
+      const origin = req.headers.origin as string | undefined;
+
+      // Handle cases without Origin header (curl, direct navigation)
+      if (!origin) {
+        return cb(null, { ...corsCommon, origin: false });
+      }
+
+      const result = validateOrigin(origin, {
+        allowedOrigins: config.frontendOrigins,
+        allowNoOrigin: config.corsAllowNoOrigin,
+        isProduction: true,
+        allowWildcardInDev: false,
+        context: 'cors'
+      });
+
+      // If not allowed, return origin:false (and let browser block)
+      if (!result.allowed) {
+        return cb(null, { ...corsCommon, origin: false });
+      }
+
+      return cb(null, { ...corsCommon, origin });
+    });
+
+    activeCorsMiddleware = corsProd;
+    app.use(corsProd);
+  } else {
+    // Development Environment
+    if ((config.frontendOrigins && config.frontendOrigins.length > 0) || devAllowedOrigins.length > 0) {
+      const corsDev = cors({
+        ...corsCommon,
         origin: (origin, cb) => {
+          // Allow requests without Origin (curl, healthz, etc.)
+          if (!origin) return cb(null, true);
+
           const result = validateOrigin(origin, {
-            allowedOrigins: config.frontendOrigins,
-            allowNoOrigin: config.corsAllowNoOrigin,
-            isProduction: true,
-            allowWildcardInDev: false,
+            allowedOrigins: devAllowedOrigins,
+            allowNoOrigin: true,
+            isProduction: false,
+            allowWildcardInDev: true,
             context: 'cors'
           });
 
-          if (result.allowed) return cb(null, true);
-          return cb(new Error(`CORS: ${result.reason || 'origin not allowed'}`));
-        },
-        credentials: true,
-        allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-Id'],
-        methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-        preflightContinue: false,
-        optionsSuccessStatus: 204
-      })
-    );
-  } else {
-    if (config.frontendOrigins && config.frontendOrigins.length > 0) {
-      app.use(
-        cors({
-          origin: (origin, cb) => {
-            const result = validateOrigin(origin, {
-              allowedOrigins: config.frontendOrigins,
-              allowNoOrigin: true,
-              isProduction: false,
-              allowWildcardInDev: true,
-              context: 'cors'
-            });
-            cb(null, result.allowed);
-          },
-          credentials: true,
-          allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-Id'],
-          methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-          preflightContinue: false,
-          optionsSuccessStatus: 204
-        })
-      );
+          // ✅ IMPORTANT: allow localhost:4200 preflight by actually whitelisting it above
+          // If not allowed -> no CORS headers -> browser blocks; but we still want preflight to finish cleanly.
+          cb(null, result.allowed ? origin : false);
+        }
+      });
+
+      activeCorsMiddleware = corsDev;
+      app.use(corsDev);
     } else {
-      app.use(cors());
+      const corsDevOpen = cors({ ...corsCommon, origin: true });
+      activeCorsMiddleware = corsDevOpen;
+      app.use(corsDevOpen);
     }
   }
 
-  // 5. Debug & Diagnostics (Protected in Production)
+  // ✅ Explicitly handle ALL preflight requests BEFORE /api/v1 routes (prevents auth 401 on OPTIONS)
+  // This makes OPTIONS return 204 early whenever CORS middleware is active.
+  // Using regex pattern instead of '*' for modern Express Router compatibility
+  if (activeCorsMiddleware) {
+    app.options(/.*/,  activeCorsMiddleware);
+  }
+
+  // 5. Debug & Diagnostics
   app.get('/api/v1/debug/env', (req, res) => {
     if (isProduction) {
       return res.status(403).json({
@@ -176,8 +211,8 @@ export function createApp() {
       hostname: process.env.HOSTNAME ?? null,
       nodeEnv: process.env.NODE_ENV ?? null,
       env: process.env.ENV ?? null,
-      hasGoogleKey: Boolean(key)
-      // googleKeyLast4 intentionally removed
+      hasGoogleKey: Boolean(key),
+      devAllowedOrigins // helpful for local debugging
     });
   });
 
@@ -185,7 +220,7 @@ export function createApp() {
   const v1Router = createV1Router();
   app.use('/api/v1', v1Router);
 
-  // Legacy API wrapper with Sunset headers
+  // Legacy API wrapper
   app.use(
     '/api',
     (req: any, res, next) => {
@@ -204,9 +239,7 @@ export function createApp() {
     v1Router
   );
 
-  // 7. Infrastructure & Health
-
-  // 8. Global Error Handling (Must be last)
+  // 8. Global Error Handling
   app.use(errorMiddleware);
 
   return app;

@@ -4,7 +4,7 @@
  */
 
 import { Injectable, inject } from '@angular/core';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
 
@@ -23,6 +23,8 @@ export interface WSTicketResponse {
 @Injectable({ providedIn: 'root' })
 export class AuthApiService {
   private readonly http = inject(HttpClient);
+
+  // apiUrl + apiBasePath (e.g. http://localhost:3000 + /api/v1)
   private readonly baseUrl = `${environment.apiUrl}${environment.apiBasePath}`;
 
   /**
@@ -41,6 +43,9 @@ export class AuthApiService {
    * Protected endpoint - requires JWT via auth interceptor
    */
   requestWSTicket(): Observable<WSTicketResponse> {
-    return this.http.get<WSTicketResponse>(`${this.baseUrl}/ws-ticket`);
+    return this.http.post<WSTicketResponse>(
+      `${this.baseUrl}/auth/ws-ticket`,
+      {}
+    );
   }
 }

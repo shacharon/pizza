@@ -359,9 +359,15 @@ export class SearchFacade {
    * Race-safe: ignores messages for old requestIds
    */
   private handleWsMessage(msg: WSServerMessage): void {
-    // Ignore messages for old requests
-    if (msg.requestId !== this.currentRequestId()) {
-      console.warn('[SearchFacade] Ignoring WS message for old request', msg.requestId);
+    // Ignore messages for old requests (debug-only for missing requestId)
+    const currentId = this.currentRequestId();
+    
+    if (msg.requestId !== currentId) {
+      // Only log if there IS a requestId but it's old (not missing/undefined)
+      if (msg.requestId) {
+        console.debug('[SearchFacade] Ignoring WS message for old request:', msg.requestId, 'current:', currentId);
+      }
+      // Silent ignore for messages without requestId (system messages, etc.)
       return;
     }
 
