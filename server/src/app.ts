@@ -128,36 +128,60 @@ export function createApp() {
   let activeCorsMiddleware: any = null;
 
   if (isProduction) {
+    // FAIL-SAFE: If FRONTEND_ORIGINS missing, allow requests without origin but reject browser requests
     if (!config.frontendOrigins || config.frontendOrigins.length === 0) {
-      throw new Error('[CORS] FRONTEND_ORIGINS is required in production');
-    }
-
-    const corsProd = cors((req, cb) => {
-      const origin = req.headers.origin as string | undefined;
-
-      // Handle cases without Origin header (curl, direct navigation)
-      if (!origin) {
+      logger.error({
+        env: 'production',
+        frontendOriginsCount: 0
+      }, '[CORS] ⚠️  FRONTEND_ORIGINS missing in production - allowing health checks but rejecting browser CORS');
+      
+      // Allow requests without Origin (curl, health checks) but reject browser CORS
+      const corsFailSafe = cors((req, cb) => {
+        const origin = req.headers.origin as string | undefined;
+        
+        if (!origin) {
+          // Allow health checks, curl, server-to-server
+          return cb(null, { ...corsCommon, origin: true });
+        }
+        
+        // Reject all browser requests with Origin header
+        logger.warn({ origin }, '[CORS] Origin rejected - FRONTEND_ORIGINS not configured');
         return cb(null, { ...corsCommon, origin: false });
-      }
+      });
+      activeCorsMiddleware = corsFailSafe;
+      app.use(corsFailSafe);
+    } else {
+      const corsProd = cors((req, cb) => {
+        const origin = req.headers.origin as string | undefined;
 
-      const result = validateOrigin(origin, {
-        allowedOrigins: config.frontendOrigins,
-        allowNoOrigin: config.corsAllowNoOrigin,
-        isProduction: true,
-        allowWildcardInDev: false,
-        context: 'cors'
+        // CRITICAL FIX: Allow requests without Origin header (curl, health checks, server-to-server)
+        // These don't need CORS headers and shouldn't be rejected
+        if (!origin) {
+          logger.debug('[CORS] Request without Origin header - allowing (health check / curl)');
+          return cb(null, { ...corsCommon, origin: true }); // Allow without CORS restrictions
+        }
+
+        // Strict validation ONLY for requests with Origin header
+        const result = validateOrigin(origin, {
+          allowedOrigins: config.frontendOrigins,
+          allowNoOrigin: config.corsAllowNoOrigin,
+          isProduction: true,
+          allowWildcardInDev: false,
+          context: 'cors'
+        });
+
+        // If not allowed, return origin:false (and let browser block)
+        if (!result.allowed) {
+          logger.warn({ origin }, '[CORS] Origin rejected by allowlist');
+          return cb(null, { ...corsCommon, origin: false });
+        }
+
+        return cb(null, { ...corsCommon, origin });
       });
 
-      // If not allowed, return origin:false (and let browser block)
-      if (!result.allowed) {
-        return cb(null, { ...corsCommon, origin: false });
-      }
-
-      return cb(null, { ...corsCommon, origin });
-    });
-
-    activeCorsMiddleware = corsProd;
-    app.use(corsProd);
+      activeCorsMiddleware = corsProd;
+      app.use(corsProd);
+    }
   } else {
     // Development Environment
     if ((config.frontendOrigins && config.frontendOrigins.length > 0) || devAllowedOrigins.length > 0) {

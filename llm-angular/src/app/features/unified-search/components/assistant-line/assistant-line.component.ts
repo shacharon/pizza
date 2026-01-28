@@ -222,26 +222,21 @@ export class AssistantLineComponent implements OnInit, OnDestroy {
   private updateWsMessage(message: string, status: ConnectionStatus): void {
     const now = Date.now();
 
-    // Anti-flicker: Don't update message if we updated recently (< 2s ago)
-    // UNLESS the message is actually different
-    if (
-      this.lastRenderedMessage === message ||
-      (now - this.lastMessageUpdateTime < this.MESSAGE_UPDATE_THROTTLE_MS)
-    ) {
-      // Message is same or updated too recently - skip
+    // Skip only if SAME message
+    if (this.lastRenderedMessage === message) return;
+
+    // Throttle ONLY if message would change too frequently,
+    // but ALWAYS allow disconnected to show immediately
+    const isHardFailure = status === 'disconnected';
+    if (!isHardFailure && now - this.lastMessageUpdateTime < this.MESSAGE_UPDATE_THROTTLE_MS) {
       return;
     }
 
-    // Update the message
-    this.wsStatusMessage.set({
-      type: 'ws_status',
-      message,
-      status
-    });
-
+    this.wsStatusMessage.set({ type: 'ws_status', message, status });
     this.lastRenderedMessage = message;
     this.lastMessageUpdateTime = now;
   }
+
 
   /**
    * Handle incoming assistant message
