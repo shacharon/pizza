@@ -32,9 +32,7 @@ import { startStage, endStage } from '../../../lib/telemetry/stage-timer.js';
 import { sanitizeQuery } from '../../../lib/telemetry/query-sanitizer.js';
 
 // Assistant Narrator imports
-import { ASSISTANT_MODE_ENABLED, DEBUG_NARRATOR_ENABLED } from '../../../config/narrator.flags.js';
-import { generateAssistantMessage } from './narrator/assistant-narrator.js';
-import { publishAssistantMessage } from './narrator/assistant-publisher.js';
+import { maybeNarrateAndPublish, publishFailureNarrator } from './narrator.integration.js';
 import type {
   NarratorGateContext,
   NarratorClarifyContext,
@@ -42,165 +40,11 @@ import type {
 } from './narrator/narrator.types.js';
 import type { FetchErrorKind } from '../../../utils/fetch-with-timeout.js';
 
-/**
- * Generate fallback assistant message for pipeline failures
- */
-function generateFailureFallbackMessage(errorKind: string | undefined, error: unknown): {
-  message: string;
-  suggestedAction: string | null;
-} {
-  const errorMsg = error instanceof Error ? error.message : 'unknown error';
-  
-  switch (errorKind) {
-    case 'DNS_FAIL':
-      return {
-        message: 'אנחנו נתקלים בבעיה בחיבור לשרתים. אנא נסה שוב בעוד מספר דקות.',
-        suggestedAction: 'retry'
-      };
-      
-    case 'TIMEOUT':
-      return {
-        message: 'החיפוש לוקח יותר זמן מהרגיל. אנא נסה שוב עם חיפוש ספציפי יותר.',
-        suggestedAction: 'refine_query'
-      };
-      
-    case 'NETWORK_ERROR':
-      return {
-        message: 'יש לנו בעיה זמנית בחיבור לשירות. נסה שוב בעוד רגע.',
-        suggestedAction: 'retry'
-      };
-      
-    case 'HTTP_ERROR':
-      if (errorMsg.includes('403') || errorMsg.includes('401')) {
-        return {
-          message: 'יש לנו בעיה זמנית בגישה לשירות החיפוש. אנחנו עובדים על זה.',
-          suggestedAction: null
-        };
-      }
-      return {
-        message: 'החיפוש נתקל בבעיה. אנא נסה שוב.',
-        suggestedAction: 'retry'
-      };
-      
-    default:
-      return {
-        message: 'משהו השתבש בחיפוש. אנא נסה שוב או שנה את החיפוש.',
-        suggestedAction: 'retry'
-      };
-  }
-}
+// Extracted helpers and constants
+import { shouldDebugStop, toNarratorLanguage, resolveSessionId } from './orchestrator.helpers.js';
+import { DEFAULT_POST_CONSTRAINTS, DEFAULT_BASE_FILTERS } from './failure-messages.js';
 
-const DEFAULT_POST_CONSTRAINTS: PostConstraints = {
-  openState: null,
-  openAt: null,
-  openBetween: null,
-  priceLevel: null,
-  isKosher: null,
-  requirements: { accessible: null, parking: null }
-};
-
-const DEFAULT_BASE_FILTERS: PreGoogleBaseFilters = {
-  language: 'he',
-  openState: null,
-  openAt: null,
-  openBetween: null,
-  regionHint: null
-};
-
-function shouldDebugStop(ctx: Route2Context, stopAfter: string): boolean {
-  return ctx.debug?.stopAfter === stopAfter;
-}
-
-function toNarratorLanguage(lang: unknown): 'he' | 'en' | 'other' {
-  // HARD-CODED: All assistant messages must be English only
-  return 'en';
-}
-
-function resolveSessionId(request: SearchRequest, ctx: Route2Context): string {
-  return request.sessionId || ctx.sessionId || 'route2-session';
-}
-
-type NarratorBaseOpts = { traceId?: string; sessionId?: string };
-
-async function maybeNarrateAndPublish(
-  ctx: Route2Context,
-  requestId: string,
-  sessionId: string,
-  narratorContext: NarratorGateContext | NarratorClarifyContext | NarratorSummaryContext,
-  fallbackHttpMessage: string,
-  preferQuestionForHttp: boolean,
-  logEventOnFail: string
-): Promise<string> {
-  // Log hook invocation (high-signal, always on)
-  logger.info(
-    {
-      requestId,
-      hookType: narratorContext.type,
-      sessionIdPresent: !!sessionId,
-      event: 'assistant_hook_called'
-    },
-    '[NARRATOR] Assistant hook invoked'
-  );
-
-  if (!ASSISTANT_MODE_ENABLED) {
-    if (DEBUG_NARRATOR_ENABLED) {
-      logger.debug(
-        { requestId, event: 'narrator_skipped', reason: 'ASSISTANT_MODE_ENABLED=false' },
-        '[NARRATOR] Skipped (feature disabled)'
-      );
-    }
-    return fallbackHttpMessage;
-  }
-
-  try {
-    if (DEBUG_NARRATOR_ENABLED) {
-      logger.debug(
-        {
-          requestId,
-          narratorType: narratorContext.type,
-          sessionIdPresent: !!sessionId,
-          event: 'narrator_invoked'
-        },
-        '[NARRATOR] Generating message'
-      );
-    }
-
-    const opts: NarratorBaseOpts = {};
-    if (ctx.traceId) opts.traceId = ctx.traceId;
-    if (ctx.sessionId) opts.sessionId = ctx.sessionId;
-
-    const narrator = await generateAssistantMessage(narratorContext, ctx.llmProvider, requestId, opts);
-
-    if (DEBUG_NARRATOR_ENABLED) {
-      logger.debug(
-        {
-          requestId,
-          narratorGenerated: true,
-          messageLength: narrator.message?.length || 0,
-          event: 'narrator_generated'
-        },
-        '[NARRATOR] Message generated successfully'
-      );
-    }
-
-    // WS publish is best-effort
-    publishAssistantMessage(wsManager, requestId, sessionId, narrator);
-
-    // HTTP assist text: for CLARIFY prefer question when exists
-    if (preferQuestionForHttp && narrator.question) return narrator.question;
-    return narrator.message || fallbackHttpMessage;
-  } catch (error) {
-    logger.warn(
-      {
-        requestId,
-        event: logEventOnFail,
-        error: error instanceof Error ? error.message : String(error)
-      },
-      '[ROUTE2] Narrator failed, using fallback'
-    );
-    return fallbackHttpMessage;
-  }
-}
+// Helper functions and constants have been extracted to separate modules
 
 export async function searchRoute2(request: SearchRequest, ctx: Route2Context): Promise<SearchResponse> {
   const { requestId, startTime } = ctx;
@@ -311,7 +155,8 @@ export async function searchRoute2(request: SearchRequest, ctx: Route2Context): 
         narratorContext,
         fallbackHttpMessage,
         false,
-        'narrator_gate_fail_error'
+        'narrator_gate_fail_error',
+        wsManager
       );
 
       return {
@@ -378,7 +223,8 @@ export async function searchRoute2(request: SearchRequest, ctx: Route2Context): 
         narratorContext,
         fallbackHttpMessage,
         true,
-        'narrator_clarify_error'
+        'narrator_clarify_error',
+        wsManager
       );
 
       return {
@@ -527,7 +373,8 @@ export async function searchRoute2(request: SearchRequest, ctx: Route2Context): 
         narratorContext,
         fallbackHttpMessage,
         true,
-        'narrator_nearme_clarify_error'
+        'narrator_nearme_clarify_error',
+        wsManager
       );
 
       return {
@@ -632,7 +479,8 @@ export async function searchRoute2(request: SearchRequest, ctx: Route2Context): 
         narratorContext,
         fallbackHttpMessage,
         true,
-        'narrator_nearby_clarify_error'
+        'narrator_nearby_clarify_error',
+        wsManager
       );
 
       return {
@@ -804,7 +652,8 @@ export async function searchRoute2(request: SearchRequest, ctx: Route2Context): 
       narratorContext,
       fallbackHttpMessage,
       false,
-      'narrator_summary_error'
+      'narrator_summary_error',
+      wsManager
     );
 
     const response: SearchResponse = {
@@ -874,72 +723,7 @@ export async function searchRoute2(request: SearchRequest, ctx: Route2Context): 
     );
     
     // Publish assistant narrator message on failure (best-effort)
-    try {
-      if (ASSISTANT_MODE_ENABLED && wsManager) {
-        let narrator: any;
-        
-        // Try to generate LLM narrator message
-        try {
-          const narratorContext: NarratorGateContext = {
-            type: 'GATE_FAIL',
-            reason: 'NO_FOOD',
-            query: request.query || '',
-            language: 'he', // Default to Hebrew for pipeline failures
-            locationKnown: !!ctx.userLocation
-          };
-          
-          const opts: NarratorBaseOpts = {};
-          if (ctx.traceId) opts.traceId = ctx.traceId;
-          if (ctx.sessionId) opts.sessionId = ctx.sessionId;
-          
-          narrator = await generateAssistantMessage(narratorContext, ctx.llmProvider, requestId, opts);
-          
-          if (DEBUG_NARRATOR_ENABLED) {
-            logger.debug({
-              requestId,
-              event: 'narrator_llm_success',
-              errorKind
-            }, '[NARRATOR] LLM narrator generated for pipeline failure');
-          }
-        } catch (narratorErr) {
-          // LLM narrator failed - use deterministic fallback
-          const fallbackMessage = generateFailureFallbackMessage(errorKind, error);
-          narrator = {
-            type: 'GATE_FAIL',
-            message: fallbackMessage.message,
-            question: null,
-            suggestedAction: fallbackMessage.suggestedAction,
-            blocksSearch: false
-          };
-          
-          if (DEBUG_NARRATOR_ENABLED) {
-            logger.debug({
-              requestId,
-              event: 'narrator_llm_failed_using_fallback',
-              errorKind,
-              narratorError: narratorErr instanceof Error ? narratorErr.message : 'unknown'
-            }, '[NARRATOR] LLM failed, using deterministic fallback');
-          }
-        }
-        
-        // Publish to search channel (where frontend subscribes)
-        publishAssistantMessage(wsManager, requestId, ctx.sessionId, narrator);
-        
-        if (DEBUG_NARRATOR_ENABLED) {
-          logger.debug({
-            requestId,
-            event: 'pipeline_failure_narrator_done',
-            errorKind
-          }, '[NARRATOR] Pipeline failure narrator published');
-        }
-      }
-    } catch (assistErr) {
-      // Swallow assistant publish errors - don't mask original error
-      logger.warn({
-        requestId,
-        error: assistErr instanceof Error ? assistErr.message : 'unknown'
-      }, '[NARRATOR] Failed to publish assistant message on pipeline failure');
-    }
+    await publishFailureNarrator(ctx, requestId, wsManager, error, errorKind);
 
     throw error;
   } finally {

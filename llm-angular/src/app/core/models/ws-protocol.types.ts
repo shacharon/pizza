@@ -120,7 +120,7 @@ export interface WSServerAssistantSuggestion {
 }
 
 /**
- * Narrator message from backend
+ * Narrator message from backend (LEGACY - kept for backward compat)
  */
 export interface WSServerAssistantMessage {
   type: 'assistant_message';
@@ -133,6 +133,21 @@ export interface WSServerAssistantMessage {
     blocksSearch: boolean;
   };
   timestamp: number;
+}
+
+/**
+ * Assistant message (CURRENT - matches backend protocol)
+ * Backend sends: { type: 'assistant', requestId, payload: {...} }
+ */
+export interface WSServerAssistant {
+  type: 'assistant';
+  requestId: string;
+  payload: {
+    type: 'GATE_FAIL' | 'CLARIFY' | 'SUMMARY';
+    message: string;
+    question: string | null;
+    blocksSearch: boolean;
+  };
 }
 
 /**
@@ -164,6 +179,7 @@ export type WSServerMessage =
   | WSServerAssistantProgress
   | WSServerAssistantSuggestion
   | WSServerAssistantMessage
+  | WSServerAssistant
   | WSServerSubAck
   | WSServerSubNack;
 

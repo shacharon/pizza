@@ -169,10 +169,13 @@ export class AssistantLineComponent implements OnInit, OnDestroy {
    */
   private subscribeToWebSocket(): void {
     this.wsSubscription = this.wsClient.messages$.subscribe((message: any) => {
-      // Handle both old format (assistant_progress/suggestion) and new format (assistant_message)
+      // Handle both old format (assistant_progress/suggestion) and new format (assistant)
       if (message.type === 'assistant_progress' || message.type === 'assistant_suggestion') {
         this.handleAssistantMessage(message);
+      } else if (message.type === 'assistant' && message.payload) {
+        this.handleNarratorMessage(message);
       } else if (message.type === 'assistant_message' && message.narrator) {
+        // Legacy format (kept for backward compatibility)
         this.handleNarratorMessage(message);
       }
     });
@@ -278,42 +281,65 @@ export class AssistantLineComponent implements OnInit, OnDestroy {
 
   /**
    * Handle narrator message (new format from backend)
+   * Supports both current format (payload) and legacy format (narrator)
    */
   private handleNarratorMessage(msg: any): void {
-    // Validate message structure
-    if (!msg.requestId || !msg.narrator || !msg.narrator.message) {
-      return;
+    try {
+      // Extract narrator data from either payload (current) or narrator (legacy)
+      const narrator = msg.payload || msg.narrator;
+      
+      // Validate message structure
+      if (!msg.requestId || !narrator || !narrator.message) {
+        console.warn('[AssistantLine] Invalid narrator message structure:', msg);
+        return;
+      }
+
+      const { requestId } = msg;
+
+      // DEBUG LOG: Message received at component level
+      console.log('[WS][assistant] received at component', {
+        requestId,
+        narratorType: narrator.type,
+        message: narrator.message
+      });
+
+      // Check if this is a new requestId
+      if (this.currentRequestId !== requestId) {
+        // New search - clear queue and display
+        this.messageQueue = [];
+        this.currentRequestId = requestId;
+        this.isProcessingQueue = false;
+      }
+
+      // Generate seq based on narrator type (GATE_FAIL=1, CLARIFY=2, SUMMARY=3)
+      const seq = narrator.type === 'GATE_FAIL' ? 1 : narrator.type === 'CLARIFY' ? 2 : 3;
+
+      // Determine type: SUMMARY -> suggestion, others -> progress
+      const type = narrator.type === 'SUMMARY' ? 'assistant_suggestion' : 'assistant_progress';
+
+      // Prefer question over message for CLARIFY
+      const displayMessage = narrator.question || narrator.message;
+
+      // Add to queue
+      this.messageQueue.push({
+        requestId,
+        seq,
+        message: displayMessage,
+        type: type as 'assistant_progress' | 'assistant_suggestion'
+      });
+
+      // Sort queue by seq
+      this.messageQueue.sort((a, b) => a.seq - b.seq);
+      
+      // DEBUG LOG: Message queued for rendering
+      console.log('[UI][assistant] queued', {
+        requestId,
+        narratorType: narrator.type,
+        queueLength: this.messageQueue.length
+      });
+    } catch (error) {
+      console.error('[AssistantLine] Failed to handle narrator message:', error, msg);
     }
-
-    const { requestId, narrator } = msg;
-
-    // Check if this is a new requestId
-    if (this.currentRequestId !== requestId) {
-      // New search - clear queue and display
-      this.messageQueue = [];
-      this.currentRequestId = requestId;
-      this.isProcessingQueue = false;
-    }
-
-    // Generate seq based on narrator type (GATE_FAIL=1, CLARIFY=2, SUMMARY=3)
-    const seq = narrator.type === 'GATE_FAIL' ? 1 : narrator.type === 'CLARIFY' ? 2 : 3;
-
-    // Determine type: SUMMARY -> suggestion, others -> progress
-    const type = narrator.type === 'SUMMARY' ? 'assistant_suggestion' : 'assistant_progress';
-
-    // Prefer question over message for CLARIFY
-    const displayMessage = narrator.question || narrator.message;
-
-    // Add to queue
-    this.messageQueue.push({
-      requestId,
-      seq,
-      message: displayMessage,
-      type: type as 'assistant_progress' | 'assistant_suggestion'
-    });
-
-    // Sort queue by seq
-    this.messageQueue.sort((a, b) => a.seq - b.seq);
 
     // Process queue if not already processing
     if (!this.isProcessingQueue) {
@@ -336,6 +362,13 @@ export class AssistantLineComponent implements OnInit, OnDestroy {
       if (msg && msg.requestId === this.currentRequestId) {
         // Update display
         this.assistantMessage.set(msg.message);
+
+        // DEBUG LOG: Message actually rendered to UI
+        console.log('[UI][assistant] rendered', {
+          requestId: msg.requestId,
+          message: msg.message,
+          type: msg.type
+        });
 
         // Wait 250ms before next update (stagger effect)
         if (this.messageQueue.length > 0) {

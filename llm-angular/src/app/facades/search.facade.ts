@@ -404,14 +404,27 @@ export class SearchFacade {
       return;
     }
 
-    // Handle assistant channel messages
+    // Handle assistant messages (no channel field in payload - inferred from type)
+    if ((msg as any).type === 'assistant' && 'payload' in (msg as any)) {
+      // DEBUG LOG: Assistant message received
+      console.log('[WS][assistant] received', {
+        requestId: msg.requestId,
+        payloadType: (msg as any).type
+      });
+      
+      const narratorMsg = msg as any;
+      const narrator = narratorMsg.payload;
+      console.log('[SearchFacade] Assistant message received:', narrator.type, narrator.message);
+      // Note: Assistant panel component will handle rendering via messages$ subscription
+      return;
+    }
+
+    // Handle assistant channel messages (legacy with channel field)
     if ('channel' in (msg as any) && (msg as any).channel === 'assistant') {
-      // Assistant messages are handled directly by assistant components
-      if ((msg as any).type === 'assistant_message' && 'narrator' in (msg as any)) {
-        const narratorMsg = msg as any;
-        const narrator = narratorMsg.narrator;
-        console.log('[SearchFacade] Assistant message received on assistant channel:', narrator.type, narrator.message);
-      }
+      // Legacy format with channel field
+      const narratorMsg = msg as any;
+      const narrator = narratorMsg.payload;
+      console.log('[SearchFacade] Assistant message received on assistant channel:', narrator.type, narrator.message);
       return;
     }
 

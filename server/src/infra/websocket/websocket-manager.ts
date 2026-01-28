@@ -725,19 +725,23 @@ export class WebSocketManager {
   }
 
   /**
-   * Build subscription key
-   * For search channel: always use requestId (ignore sessionId)
-   * For assistant channel: use sessionId if provided, else requestId
+   * Build subscription key (CTO-grade fix for assistant routing)
+   * 
+   * CANONICAL KEY STRATEGY:
+   * - search channel: requestId (unchanged)
+   * - assistant channel: requestId (FIXED: was sessionId, caused mismatch)
+   * 
+   * WHY requestId for assistant:
+   * - Client subscribes with JWT sessionId (from WebSocket auth ticket)
+   * - Publisher uses orchestrator sessionId (from job context, may differ!)
+   * - requestId is the ONLY stable identifier present in both subscribe + publish flows
+   * - This ensures subscriptionKey matches for routing
+   * 
+   * BACKWARD COMPAT:
+   * - sessionId parameter kept for logging/audit (not used in key)
    */
   private buildSubscriptionKey(channel: WSChannel, requestId: string, sessionId?: string): SubscriptionKey {
-    if (channel === 'search') {
-      return `search:${requestId}`;
-    }
-
-    // Assistant channel: prefer session-based
-    if (sessionId) {
-      return `${channel}:${sessionId}`;
-    }
+    // BOTH channels now use requestId as canonical key
     return `${channel}:${requestId}`;
   }
 
@@ -887,11 +891,14 @@ export class WebSocketManager {
       this.subscribeToChannel(channel, requestId, connSessionId, ws);
       this.sendSubAck(ws, channel, requestId, false);
 
+      // CTO-grade: log resolved subscriptionKey to prove correctness
+      const resolvedKey = this.buildSubscriptionKey(channel, requestId, connSessionId);
       logger.info({
         clientId,
         channel,
         requestIdHash,
         sessionHash,
+        subscriptionKey: resolvedKey,
         pending: false,
         event: 'ws_subscribe_ack'
       }, 'Subscribe accepted - owner match');
@@ -916,11 +923,14 @@ export class WebSocketManager {
     this.pendingSubscriptions.set(pendingKey, pendingSub);
     this.sendSubAck(ws, channel, requestId, true);
 
+    // CTO-grade: log resolved subscriptionKey to prove correctness
+    const resolvedKey = this.buildSubscriptionKey(channel, requestId, connSessionId);
     logger.info({
       clientId,
       channel,
       requestIdHash,
       sessionHash,
+      subscriptionKey: resolvedKey,
       pending: true,
       ttlMs: this.PENDING_SUB_TTL_MS,
       event: 'ws_subscribe_ack'
@@ -1138,20 +1148,41 @@ export class WebSocketManager {
     const startTime = performance.now();
     const key = this.buildSubscriptionKey(channel, requestId, sessionId);
 
+    // Hash sessionId for logging
+    const sessionHash = sessionId 
+      ? crypto.createHash('sha256').update(sessionId).digest('hex').substring(0, 12)
+      : 'none';
+
     // Cleanup expired backlogs
     this.cleanupExpiredBacklogs();
 
     const clients = this.subscriptions.get(key);
 
+    // Calculate payload size for logging
+    const data = JSON.stringify(message);
+    const payloadBytes = Buffer.byteLength(data, 'utf8');
+
     // If no subscribers, enqueue to backlog
     if (!clients || clients.size === 0) {
       this.enqueueToBacklog(key, message, channel, requestId);
+      
+      // Log even when enqueued (important for observability)
+      logger.info({
+        channel,
+        requestId,
+        sessionHash,
+        subscriptionKey: key,
+        clientCount: 0,
+        payloadBytes,
+        payloadType: message.type,
+        enqueued: true,
+        event: 'websocket_published'
+      }, 'websocket_published');
+      
       return { attempted: 0, sent: 0, failed: 0 };
     }
 
     // Send to active subscribers
-    const data = JSON.stringify(message);
-    const payloadBytes = Buffer.byteLength(data, 'utf8');
     let attempted = 0;
     let sent = 0;
     let failed = 0;
@@ -1193,6 +1224,8 @@ export class WebSocketManager {
     logger.info({
       channel,
       requestId,
+      sessionHash,
+      subscriptionKey: key,
       clientCount: sent,
       ...(failed > 0 && { failedCount: failed }),
       payloadBytes,
