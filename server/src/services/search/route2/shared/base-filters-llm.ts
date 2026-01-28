@@ -8,6 +8,7 @@
 import { createHash } from 'crypto';
 import type { Message, LLMProvider } from '../../../../llm/types.js';
 import { logger } from '../../../../lib/logger/structured-logger.js';
+import { resolveLLM } from '../../../../lib/llm/index.js';
 import { PreGoogleBaseFiltersSchema, type PreGoogleBaseFilters } from './shared-filters.types.js';
 import type { MappingRoute } from '../types.js';
 
@@ -197,6 +198,9 @@ export async function resolveBaseFiltersLLM(params: {
     );
 
     try {
+        // Resolve model and timeout for baseFilters purpose
+        const { model, timeoutMs } = resolveLLM('baseFilters');
+
         const messages: Message[] = [
             { role: 'system', content: BASE_FILTERS_PROMPT },
             { role: 'user', content: query }
@@ -206,8 +210,9 @@ export async function resolveBaseFiltersLLM(params: {
             messages,
             PreGoogleBaseFiltersSchema,
             {
+                model,
                 temperature: 0,
-                timeout: 2000,
+                timeout: timeoutMs,
                 promptVersion: BASE_FILTERS_LLM_VERSION,
                 promptHash: BASE_FILTERS_PROMPT_HASH,
                 promptLength: BASE_FILTERS_PROMPT.length,

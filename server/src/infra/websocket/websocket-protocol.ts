@@ -106,6 +106,40 @@ export interface WSServerAssistantSuggestion {
   message: string;
 }
 
+/**
+ * Assistant message (narrator output)
+ */
+export interface WSServerAssistant {
+  type: 'assistant';
+  requestId: string;
+  payload: {
+    type: 'GATE_FAIL' | 'CLARIFY' | 'SUMMARY';
+    message: string;
+    question: string | null;
+    blocksSearch: boolean;
+  };
+}
+
+/**
+ * Subscribe acknowledgment (CTO-grade protocol)
+ */
+export interface WSServerSubAck {
+  type: 'sub_ack';
+  channel: WSChannel;
+  requestId: string;
+  pending: boolean; // true if subscription is pending job creation
+}
+
+/**
+ * Subscribe negative acknowledgment (CTO-grade protocol)
+ */
+export interface WSServerSubNack {
+  type: 'sub_nack';
+  channel: WSChannel;
+  requestId: string;
+  reason: 'session_mismatch' | 'invalid_request' | 'unauthorized';
+}
+
 export type WSServerMessage =
   | WSServerStatus
   | WSServerStreamDelta
@@ -113,7 +147,10 @@ export type WSServerMessage =
   | WSServerRecommendation
   | WSServerError
   | WSServerAssistantProgress
-  | WSServerAssistantSuggestion;
+  | WSServerAssistantSuggestion
+  | WSServerAssistant
+  | WSServerSubAck
+  | WSServerSubNack;
 
 // ============================================================================
 // Validation Helpers

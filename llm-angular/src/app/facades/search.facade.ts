@@ -190,7 +190,10 @@ export class SearchFacade {
         console.log('[SearchFacade] Async 202 accepted', { requestId, resultUrl });
 
         // Subscribe to WebSocket for real-time updates
+        // 1. 'search' channel for progress/status/ready
         this.wsClient.subscribe(requestId, 'search', this.conversationId());
+        // 2. 'assistant' channel for narrator messages
+        this.wsClient.subscribe(requestId, 'assistant', this.conversationId());
 
         // Defer polling start by 3s (if WS delivers first, polling never starts)
         this.startPolling(requestId, query);
@@ -368,6 +371,47 @@ export class SearchFacade {
         console.debug('[SearchFacade] Ignoring WS message for old request:', msg.requestId, 'current:', currentId);
       }
       // Silent ignore for messages without requestId (system messages, etc.)
+      return;
+    }
+
+    // CTO-grade: Handle sub_ack/sub_nack messages
+    if ((msg as any).type === 'sub_ack') {
+      const ack = msg as any;
+      console.log('[SearchFacade] Subscription acknowledged', {
+        channel: ack.channel,
+        requestId: ack.requestId,
+        pending: ack.pending
+      });
+      // No action needed - just informational
+      return;
+    }
+
+    if ((msg as any).type === 'sub_nack') {
+      const nack = msg as any;
+      console.warn('[SearchFacade] Subscription rejected', {
+        channel: nack.channel,
+        requestId: nack.requestId,
+        reason: nack.reason
+      });
+      
+      // For assistant channel sub_nack, show inline message in assistant panel (no toast)
+      if (nack.channel === 'assistant') {
+        // TODO: Show inline message in assistant panel
+        console.log('[SearchFacade] Assistant subscription rejected - continuing with search channel only');
+      }
+      
+      // Do NOT treat as hard failure - WS stays alive, search channel still works
+      return;
+    }
+
+    // Handle assistant channel messages
+    if ('channel' in (msg as any) && (msg as any).channel === 'assistant') {
+      // Assistant messages are handled directly by assistant components
+      if ((msg as any).type === 'assistant_message' && 'narrator' in (msg as any)) {
+        const narratorMsg = msg as any;
+        const narrator = narratorMsg.narrator;
+        console.log('[SearchFacade] Assistant message received on assistant channel:', narrator.type, narrator.message);
+      }
       return;
     }
 

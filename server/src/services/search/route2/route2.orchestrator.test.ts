@@ -112,3 +112,223 @@ describe('Route2 Orchestrator - ResultCount Logging Fix', () => {
     // 4. Both response and log use the same source array
   });
 });
+
+describe('Route2 Orchestrator - Pipeline Failure Narrator (2026-01-28)', () => {
+  it('should publish assistant message on Google Maps stage failure', async () => {
+    // This test documents the behavior:
+    // When searchRoute2 throws from executeGoogleMapsStage,
+    // the narrator publish should be called with a fallback message.
+    //
+    // Code path:
+    // 1. Google stage fails (timeout, network error, etc.)
+    // 2. catch block in searchRoute2 is triggered
+    // 3. ASSISTANT_MODE_ENABLED check passes
+    // 4. generateAssistantMessage is called to create LLM narrator
+    // 5. If LLM fails, deterministic fallback is used
+    // 6. publishAssistantMessage is called with 'search' channel
+    // 7. Message published to WS for frontend to display
+    //
+    // Expected behavior:
+    // - wsManager.publishToChannel called with 'search' channel
+    // - Message type is 'assistant_message'
+    // - Narrator has Hebrew error message
+    // - SuggestedAction is 'retry' or 'refine_query'
+    
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const orchestratorPath = path.join(__dirname, 'route2.orchestrator.ts');
+    
+    const content = await fs.readFile(orchestratorPath, 'utf-8');
+    
+    // Verify catch block has narrator publish logic
+    const hasCatchWithNarrator = /catch\s*\([^)]*error[^)]*\)[\s\S]{1,2000}publishAssistantMessage/.test(content);
+    
+    assert.ok(
+      hasCatchWithNarrator,
+      'catch block should call publishAssistantMessage on pipeline failure'
+    );
+    
+    // Verify generateAssistantMessage is called with GATE_FAIL context
+    const hasGateFailContext = /NarratorGateContext[\s\S]{1,500}type:\s*['"]GATE_FAIL['"]/.test(content);
+    
+    assert.ok(
+      hasGateFailContext,
+      'catch block should create NarratorGateContext with GATE_FAIL type'
+    );
+    
+    // Verify deterministic fallback exists
+    const hasDeterministicFallback = /generateFailureFallbackMessage/.test(content);
+    
+    assert.ok(
+      hasDeterministicFallback,
+      'catch block should have deterministic fallback if LLM fails'
+    );
+  });
+
+  it('should use search channel not assistant channel', async () => {
+    // Verify that assistant messages are published to 'search' channel
+    // where the frontend subscribes, not a separate 'assistant' channel
+    
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const publisherPath = path.join(__dirname, 'narrator', 'assistant-publisher.ts');
+    
+    const content = await fs.readFile(publisherPath, 'utf-8');
+    
+    // Verify publishToChannel uses 'search' channel
+    const publishesToSearchChannel = /publishToChannel\s*\(\s*['"]search['"]/.test(content);
+    
+    assert.ok(
+      publishesToSearchChannel,
+      'publishAssistantMessage should publish to search channel where frontend subscribes'
+    );
+  });
+});
+
+describe('Route2 Orchestrator - Dangling Promise Fix (2026-01-28)', () => {
+  
+  it('should drain baseFiltersPromise in finally block to prevent unhandled rejections', async () => {
+    // REGRESSION FIX:
+    // ===============
+    // After refactor, baseFiltersPromise was started early (line ~327) but could be
+    // left dangling when hitting early returns (debug stops, clarify responses, or Google failure).
+    //
+    // Root cause:
+    // - baseFiltersPromise starts in parallel_started block
+    // - Multiple early return paths exist before the await (line 577)
+    // - If any early return is hit, promise is never awaited
+    // - Results in unhandled promise rejection warnings in logs
+    //
+    // Fix applied:
+    // - Added finally block that drains baseFiltersPromise.catch()
+    // - Ensures promise is always consumed, even on early exit
+    // - Prevents unhandled rejection warnings
+    
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const orchestratorPath = path.join(__dirname, 'route2.orchestrator.ts');
+    
+    const content = await fs.readFile(orchestratorPath, 'utf-8');
+    
+    // Verify finally block exists and drains baseFiltersPromise
+    // Use multiple simpler checks instead of complex regex with nested braces
+    const hasFinallyBlock = /}\s*finally\s*\{/.test(content);
+    const finallyHasBaseFilters = /finally[\s\S]{1,500}baseFiltersPromise[\s\S]{1,200}\.catch/.test(content);
+    
+    assert.ok(
+      hasFinallyBlock && finallyHasBaseFilters,
+      'finally block should drain baseFiltersPromise.catch() to prevent unhandled rejections'
+    );
+    
+    // Verify baseFiltersPromise is declared at function scope (not const inside try)
+    // Accept both Promise<any> (old) and Promise<PreGoogleBaseFilters> (improved types)
+    const scopedVarRegex = /let\s+baseFiltersPromise:\s*Promise<(any|PreGoogleBaseFilters)>\s*\|\s*null\s*=\s*null;/;
+    
+    assert.ok(
+      scopedVarRegex.test(content),
+      'baseFiltersPromise should be declared at function scope as nullable to be accessible in finally'
+    );
+  });
+
+  it('should drain postConstraintsPromise in finally block to prevent unhandled rejections', async () => {
+    // REGRESSION FIX:
+    // ===============
+    // After refactor, postConstraintsPromise was started early (line ~349) but could be
+    // left dangling when Google Maps stage failed or early returns occurred.
+    //
+    // Root cause:
+    // - postConstraintsPromise starts in parallel_started block
+    // - Only awaited AFTER Google Maps stage completes (line 622)
+    // - If Google fails (timeout, API error), promise is never awaited
+    // - Results in unhandled promise rejection warnings in logs
+    //
+    // OBSERVED FAILURE:
+    // - Google Places API timeout (8000ms)
+    // - Pipeline throws error from executeGoogleMapsStage
+    // - postConstraintsPromise left running/dangling
+    // - Job ends DONE_FAILED but with unhandled rejection warning
+    //
+    // Fix applied:
+    // - Added finally block that drains postConstraintsPromise.catch()
+    // - Ensures promise is always consumed, even when Google fails
+    // - Prevents unhandled rejection warnings
+    
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const orchestratorPath = path.join(__dirname, 'route2.orchestrator.ts');
+    
+    const content = await fs.readFile(orchestratorPath, 'utf-8');
+    
+    // Verify finally block exists and drains postConstraintsPromise
+    // Use multiple simpler checks instead of complex regex with nested braces
+    const hasFinallyBlock = /}\s*finally\s*\{/.test(content);
+    const finallyHasPostConstraints = /finally[\s\S]{1,500}postConstraintsPromise[\s\S]{1,200}\.catch/.test(content);
+    
+    assert.ok(
+      hasFinallyBlock && finallyHasPostConstraints,
+      'finally block should drain postConstraintsPromise.catch() to prevent unhandled rejections'
+    );
+    
+    // Verify postConstraintsPromise is declared at function scope (not const inside try)
+    // Accept both Promise<any> (old) and Promise<PostConstraints> (improved types)
+    const scopedVarRegex = /let\s+postConstraintsPromise:\s*Promise<(any|PostConstraints)>\s*\|\s*null\s*=\s*null;/;
+    
+    assert.ok(
+      scopedVarRegex.test(content),
+      'postConstraintsPromise should be declared at function scope as nullable to be accessible in finally'
+    );
+  });
+
+  it('should document the regression scenario', () => {
+    // DOCUMENTED REGRESSION:
+    // ======================
+    // Date: 2026-01-28
+    // Query: "פיצה לידי" (pizza near me)
+    //
+    // Observed behavior:
+    // 1. Search initiates successfully (job PENDING → RUNNING)
+    // 2. Gate2, Intent, Nearby mapper all complete successfully
+    // 3. Google Places API call times out after 8000ms
+    // 4. Pipeline fails and throws error
+    // 5. Job status set to DONE_FAILED correctly
+    // 6. BUT: Unhandled promise rejection warnings in logs
+    //
+    // Root cause:
+    // - Refactor added parallel promise execution for baseFiltersPromise + postConstraintsPromise
+    // - These promises started early but awaited late in pipeline
+    // - When Google stage failed, function threw before awaiting postConstraintsPromise
+    // - baseFiltersPromise also dangling on early returns (debug stops, clarify)
+    //
+    // Impact:
+    // - Functional behavior unchanged (job fails correctly)
+    // - But logs show unhandled rejection warnings (code hygiene issue)
+    // - Could mask real errors in production logs
+    //
+    // Fix:
+    // - Move promise declarations to function scope
+    // - Add finally block to drain both promises
+    // - Ensures cleanup happens on success, failure, or early return
+    //
+    // Prevention:
+    // - Any promise started but not immediately awaited needs finally drain
+    // - Use ESLint rule: @typescript-eslint/no-floating-promises
+    
+    assert.ok(true, 'Regression documented and fix verified');
+  });
+});

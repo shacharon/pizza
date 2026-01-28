@@ -11,6 +11,7 @@ import type { SearchRequest } from '../../../types/search-request.dto.js';
 import type { Route2Context, IntentResult } from '../../types.js';
 import type { Message } from '../../../../../llm/types.js';
 import { logger } from '../../../../../lib/logger/structured-logger.js';
+import { resolveLLM } from '../../../../../lib/llm/index.js';
 import { IntentLLMSchema } from './intent.types.js';
 import {
   INTENT_SYSTEM_PROMPT,
@@ -68,6 +69,9 @@ export async function executeIntentStage(
   });
 
   try {
+    // Resolve model and timeout for intent purpose
+    const { model, timeoutMs } = resolveLLM('intent');
+
     const messages: Message[] = [
       { role: 'system', content: INTENT_SYSTEM_PROMPT },
       { role: 'user', content: request.query }
@@ -77,8 +81,9 @@ export async function executeIntentStage(
       messages,
       IntentLLMSchema,
       {
+        model,
         temperature: 0.1,
-        timeout: 2500,
+        timeout: timeoutMs,
         requestId,
         ...(traceId && { traceId }),
         ...(sessionId && { sessionId }),
@@ -118,6 +123,9 @@ export async function executeIntentStage(
         originalReason: llmResult.reason
       }, '[ROUTE2] Intent NEARBY but userLocation missing');
 
+      // Normalize null to undefined for cityText
+      const cityText = llmResult.cityText ?? undefined;
+
       return {
         // אם הוספת CLARIFY בטייפים/סכימה – זה עדיף:
         // route: 'CLARIFY',
@@ -132,7 +140,7 @@ export async function executeIntentStage(
         region: llmResult.region,
         regionConfidence: llmResult.regionConfidence,
         regionReason: llmResult.regionReason,
-        ...(llmResult.cityText && { cityText: llmResult.cityText })
+        ...(cityText && { cityText })
       };
     }
     endStage(context, 'intent', startTime, {
@@ -140,6 +148,9 @@ export async function executeIntentStage(
       confidence: llmResult.confidence,
       reason: llmResult.reason
     });
+
+    // Normalize null to undefined for cityText
+    const cityText = llmResult.cityText ?? undefined;
 
     return {
       route: llmResult.route,
@@ -149,7 +160,7 @@ export async function executeIntentStage(
       region: llmResult.region,
       regionConfidence: llmResult.regionConfidence,
       regionReason: llmResult.regionReason,
-      ...(llmResult.cityText && { cityText: llmResult.cityText })
+      ...(cityText && { cityText })
     };
 
   } catch (error) {

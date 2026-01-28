@@ -17,6 +17,7 @@ import { buildLLMJsonSchema } from '../../../../llm/types.js';
 import { logger } from '../../../../lib/logger/structured-logger.js';
 import { startStage, endStage } from '../../../../lib/telemetry/stage-timer.js';
 import { sanitizeQuery } from '../../../../lib/telemetry/query-sanitizer.js';
+import { resolveLLM } from '../../../../lib/llm/index.js';
 
 // Gate2 Zod Schema for LLM output (before routing logic) - SOURCE OF TRUTH
 const Gate2LLMSchema = z.object({
@@ -159,14 +160,18 @@ export async function executeGate2Stage(
     let lastError: any = null;
     let tokenUsage: { input?: number; output?: number; total?: number; model?: string } | undefined;
 
-    // Attempt 1: Initial LLM call with 2.5s timeout
+    // Resolve model and timeout for gate purpose
+    const { model, timeoutMs } = resolveLLM('gate');
+
+    // Attempt 1: Initial LLM call with purpose-based timeout
     try {
       const response = await llmProvider.completeJSON(
         messages,
         Gate2LLMSchema,
         {
+          model,
           temperature: 0,
-          timeout: 2500,
+          timeout: timeoutMs,
           promptVersion: GATE2_PROMPT_VERSION,
           promptHash: GATE2_PROMPT_HASH,
           promptLength: GATE2_SYSTEM_PROMPT.length,
@@ -212,8 +217,9 @@ export async function executeGate2Stage(
             messages,
             Gate2LLMSchema,
             {
+              model,
               temperature: 0,
-              timeout: 2500,
+              timeout: timeoutMs,
               promptVersion: GATE2_PROMPT_VERSION,
               promptHash: GATE2_PROMPT_HASH,
               promptLength: GATE2_SYSTEM_PROMPT.length,

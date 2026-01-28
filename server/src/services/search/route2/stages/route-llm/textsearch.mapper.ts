@@ -9,6 +9,7 @@ import type { SearchRequest } from '../../../types/search-request.dto.js';
 import type { Route2Context, IntentResult } from '../../types.js';
 import type { Message } from '../../../../../llm/types.js';
 import { logger } from '../../../../../lib/logger/structured-logger.js';
+import { resolveLLM } from '../../../../../lib/llm/index.js';
 import { TextSearchLLMResponseSchema, type TextSearchMapping } from './schemas.js';
 
 const TEXTSEARCH_MAPPER_VERSION = 'textsearch_mapper_v2';
@@ -78,6 +79,9 @@ export async function executeTextSearchMapper(
       schemaHash: TEXTSEARCH_SCHEMA_HASH
     });
 
+    // Resolve model and timeout for routeMapper purpose
+    const { model, timeoutMs } = resolveLLM('routeMapper');
+
     let response: any = null;
     let lastError: any = null;
 
@@ -87,8 +91,9 @@ export async function executeTextSearchMapper(
         messages,
         TextSearchLLMResponseSchema,  // Use LLM response schema (no bias)
         {
+          model,
           temperature: 0,
-          timeout: 3500,
+          timeout: timeoutMs,
           requestId,
           ...(context.traceId && { traceId: context.traceId }),
           ...(context.sessionId && { sessionId: context.sessionId }),
@@ -125,8 +130,9 @@ export async function executeTextSearchMapper(
             messages,
             TextSearchLLMResponseSchema,
             {
+              model,
               temperature: 0,
-              timeout: 3500,
+              timeout: timeoutMs,
               requestId,
               ...(context.traceId && { traceId: context.traceId }),
               ...(context.sessionId && { sessionId: context.sessionId }),

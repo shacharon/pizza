@@ -39,6 +39,27 @@ interface BacklogEntry {
   expiresAt: number;
 }
 
+/**
+ * WebSocket connection context (CTO-grade: source of truth from ticket/JWT only)
+ */
+interface WebSocketContext {
+  sessionId: string;
+  userId?: string;
+  clientId: string;
+  connectedAt: number;
+}
+
+/**
+ * Pending subscription entry (awaiting job creation)
+ */
+interface PendingSubscription {
+  ws: WebSocket;
+  channel: WSChannel;
+  requestId: string;
+  sessionId: string;
+  expiresAt: number;
+}
+
 export class WebSocketManager {
   private wss: WebSocketServer;
   // Unified subscription map: key = "channel:requestId" or "channel:sessionId"
@@ -53,6 +74,10 @@ export class WebSocketManager {
   private backlog = new Map<SubscriptionKey, BacklogEntry>();
   private readonly BACKLOG_TTL_MS = 2 * 60 * 1000; // 2 minutes
   private readonly BACKLOG_MAX_ITEMS = 50;
+
+  // Pending subscriptions (CTO-grade: awaiting job creation)
+  private pendingSubscriptions = new Map<string, PendingSubscription>(); // key: channel:requestId:sessionId
+  private readonly PENDING_SUB_TTL_MS = 90 * 1000; // 90 seconds
 
   private redis: Redis.Redis | null = null;
 
@@ -177,7 +202,7 @@ export class WebSocketManager {
     // Auth is REQUIRED by default. Disable only explicitly (prefer local dev only).
     const requireAuth = process.env.WS_REQUIRE_AUTH !== 'false'; // default true
 
-    // Prefer XFF (behind ALB/Proxy), fallback to socket remoteAddress
+    // Prefer XFF (behind ALB/Proxy), fallback to socket remoteAddresverifyClients
     const ip =
       (info.req?.headers?.['x-forwarded-for']?.toString().split(',')[0]?.trim()) ||
       info.req?.socket?.remoteAddress;
@@ -312,9 +337,20 @@ export class WebSocketManager {
   private handleConnection(ws: WebSocket, req: any): void {
     const clientId = this.generateClientId();
 
-    // Phase 1: Attach authenticated identity to WebSocket
-    (ws as any).userId = req.userId ?? undefined;
-    (ws as any).sessionId = req.sessionId ?? undefined;
+    // CTO-grade: Store connection context from ticket/JWT (source of truth)
+    const ctx: WebSocketContext = {
+      sessionId: req.sessionId ?? 'anonymous',
+      userId: req.userId ?? undefined,
+      clientId,
+      connectedAt: Date.now()
+    };
+    (ws as any).ctx = ctx;
+
+    // Legacy fields for backward compatibility
+    (ws as any).userId = ctx.userId;
+    (ws as any).sessionId = ctx.sessionId;
+    (ws as any).clientId = clientId;
+    (ws as any).isAlive = true;
 
     // Prefer XFF (behind ALB/Proxy), fallback to socket remoteAddress
     const ip =
@@ -332,25 +368,28 @@ export class WebSocketManager {
       }
     }
 
-    logger.debug(
+    // CTO-grade logging: connection context set
+    const sessionHash = ctx.sessionId !== 'anonymous' 
+      ? crypto.createHash('sha256').update(ctx.sessionId).digest('hex').substring(0, 12)
+      : 'anonymous';
+    
+    logger.info(
       {
         clientId,
         ip,
         originHost,
-        authenticated: !!((ws as any).userId || (ws as any).sessionId)
+        sessionHash,
+        hasUserId: !!ctx.userId,
+        event: 'ws_conn_ctx_set'
       },
-      'websocket_connected'
+      'WebSocket connection context established'
     );
-
-    // Initialize ping/pong
-    (ws as any).isAlive = true;
-    (ws as any).clientId = clientId;
 
     ws.on('pong', () => {
       (ws as any).isAlive = true;
     });
 
-    // Optional: idle timeout (15 min). Remove if you already have heartbeat-based cleanup elsewhere.
+    // Idle timeout (15 min)
     let idleTimer: NodeJS.Timeout | undefined;
     const armIdle = () => {
       if (idleTimer) clearTimeout(idleTimer);
@@ -488,212 +527,8 @@ export class WebSocketManager {
 
     switch (message.type) {
       case 'subscribe': {
-        // Normalize legacy to canonical
-        const canonical = normalizeToCanonical(message);
-        const envelope = canonical as any;
-
-        const channel: WSChannel = envelope.channel || 'search';
-        const requestId = envelope.requestId as string | undefined;
-        const sessionIdFromClient = envelope.sessionId as string | undefined;
-
-        // Phase 1: Authorization - require authenticated identity when auth is enabled
-        if (requireAuth && !wsUserId && !wsSessionId) {
-          logger.warn(
-            { clientId, channel, requestIdHash: this.hashRequestId(requestId) },
-            'WS: Subscribe rejected - not authenticated'
-          );
-          this.sendError(ws, 'unauthorized', 'Authentication required');
-          ws.close(1008, HARD_CLOSE_REASONS.NOT_AUTHORIZED);
-          return;
-        }
-
-        // Basic validation
-        if (!requestId && channel === 'search') {
-          logger.warn({ clientId, channel }, 'WS: Subscribe rejected - missing requestId');
-          this.sendError(ws, 'invalid_request', 'Missing requestId');
-          ws.close(1008, HARD_CLOSE_REASONS.BAD_SUBSCRIBE);
-          return;
-        }
-
-        // Phase 2: Ownership verification
-        if (channel === 'assistant') {
-          // Assistant channel: must have authenticated sessionId when auth is enabled
-          if (requireAuth && !wsSessionId) {
-            logger.warn(
-              { clientId, channel, requestIdHash: this.hashRequestId(requestId) },
-              'WS: Subscribe rejected - missing authenticated session'
-            );
-            this.sendError(ws, 'unauthorized', 'Authentication required');
-            ws.close(1008, HARD_CLOSE_REASONS.NOT_AUTHORIZED);
-            return;
-          }
-
-          // If client provided a sessionId, it must match authenticated sessionId (defense-in-depth)
-          if (requireAuth && sessionIdFromClient && wsSessionId && sessionIdFromClient !== wsSessionId) {
-            logger.warn(
-              {
-                clientId,
-                channel,
-                requestIdHash: this.hashRequestId(requestId),
-                reason: 'session_mismatch'
-              },
-              'WS: Subscribe rejected - unauthorized session'
-            );
-            this.sendError(ws, 'unauthorized', 'Not authorized for this session');
-            ws.close(1008, HARD_CLOSE_REASONS.NOT_AUTHORIZED);
-            return;
-          }
-        } else if (channel === 'search') {
-          const rid = requestId as string;
-
-          let owner: { userId?: string | null; sessionId?: string | null } | null = null;
-          try {
-            owner = await this.getRequestOwner(rid);
-          } catch (err) {
-            logger.warn(
-              {
-                clientId,
-                channel,
-                requestIdHash: this.hashRequestId(rid),
-                reason: 'owner_lookup_failed'
-              },
-              'WS: Subscribe rejected - owner lookup failed'
-            );
-            // If auth is enabled, fail-closed in ALL environments (not just production)
-            if (requireAuth) {
-              this.sendError(ws, 'unauthorized', 'Not authorized for this request');
-              ws.close(1008, HARD_CLOSE_REASONS.NOT_AUTHORIZED);
-              return;
-            }
-          }
-
-          // Fail-closed when auth is enabled if owner is missing
-          if (requireAuth && !owner) {
-            logger.warn(
-              {
-                clientId,
-                channel,
-                requestIdHash: this.hashRequestId(rid),
-                reason: 'owner_missing'
-              },
-              'WS: Subscribe rejected - owner missing'
-            );
-            this.sendError(ws, 'unauthorized', 'Not authorized for this request');
-            ws.close(1008, HARD_CLOSE_REASONS.NOT_AUTHORIZED);
-            return;
-          }
-
-          if (owner) {
-            // Prefer userId ownership when present
-            if (owner.userId) {
-              if (!wsUserId || owner.userId !== wsUserId) {
-                logger.warn(
-                  {
-                    clientId,
-                    channel,
-                    requestIdHash: this.hashRequestId(rid),
-                    reason: 'user_mismatch',
-                    wsUserId: wsUserId ? 'present' : 'missing',
-                    ownerUserId: 'present'
-                  },
-                  'WS: Subscribe rejected - unauthorized request (user mismatch)'
-                );
-                this.sendError(ws, 'unauthorized', 'Not authorized for this request');
-                ws.close(1008, HARD_CLOSE_REASONS.NOT_AUTHORIZED);
-                return;
-              }
-            } else if (owner.sessionId) {
-              if (!wsSessionId || owner.sessionId !== wsSessionId) {
-                logger.warn(
-                  {
-                    clientId,
-                    channel,
-                    requestIdHash: this.hashRequestId(rid),
-                    reason: 'session_mismatch',
-                    wsSessionId: wsSessionId ? wsSessionId.substring(0, 12) + '...' : 'missing',
-                    ownerSessionId: owner.sessionId.substring(0, 12) + '...'
-                  },
-                  'WS: Subscribe rejected - unauthorized request (session mismatch)'
-                );
-                this.sendError(ws, 'unauthorized', 'Not authorized for this request');
-                ws.close(1008, HARD_CLOSE_REASONS.NOT_AUTHORIZED);
-                return;
-              }
-              
-              // Session match - log success
-              logger.debug(
-                {
-                  clientId,
-                  channel,
-                  requestIdHash: this.hashRequestId(rid),
-                  sessionIdMatch: true,
-                  sessionIdPrefix: wsSessionId.substring(0, 12) + '...'
-                },
-                'WS: Subscribe authorized - session match'
-              );
-            } else if (requireAuth) {
-              // Owner object exists but has no usable identity: reject when auth is enabled
-              logger.warn(
-                {
-                  clientId,
-                  channel,
-                  requestIdHash: this.hashRequestId(rid),
-                  reason: 'owner_identity_missing'
-                },
-                'WS: Subscribe rejected - owner identity missing'
-              );
-              this.sendError(ws, 'unauthorized', 'Not authorized for this request');
-              ws.close(1008, HARD_CLOSE_REASONS.NOT_AUTHORIZED);
-              return;
-            }
-          }
-        }
-
-        // Subscribe using channel-based key
-        // IMPORTANT: never trust client-supplied sessionId for subscription keys.
-        // Use authenticated wsSessionId when available.
-        const effectiveSessionId = wsSessionId;
-
-        // If auth is enabled and we still don't have a sessionId, block (defense-in-depth)
-        if (requireAuth && !effectiveSessionId) {
-          logger.warn(
-            { clientId, channel, requestIdHash: this.hashRequestId(requestId), reason: 'missing_ws_session' },
-            'WS: Subscribe rejected - missing authenticated session'
-          );
-          this.sendError(ws, 'unauthorized', 'Authentication required');
-          ws.close(1008, HARD_CLOSE_REASONS.NOT_AUTHORIZED);
-          return;
-        }
-
-        const safeRequestId = requestId || 'unknown';
-        this.subscribeToChannel(channel, safeRequestId, effectiveSessionId, ws);
-
-        // Logging (prod-safe)
-        if (channel === 'search') {
-          logger.info(
-            {
-              clientId,
-              channel,
-              requestIdHash: isProduction ? this.hashRequestId(requestId) : requestId
-            },
-            'websocket_subscribed'
-          );
-
-          // Late-subscriber replay
-          this.replayStateIfAvailable(safeRequestId, ws, clientId);
-        } else {
-          const requestStatus = await this.getRequestStatus(safeRequestId);
-          logger.info(
-            {
-              clientId,
-              channel,
-              requestIdHash: isProduction ? this.hashRequestId(requestId || 'unknown') : (requestId || 'unknown'),
-              ...(isProduction ? {} : { sessionId: effectiveSessionId || 'none' }),
-              status: requestStatus
-            },
-            'websocket_subscribed'
-          );
-        }
+        // CTO-grade subscribe: no socket kill, sub_ack/sub_nack, pending subscriptions
+        await this.handleSubscribeRequest(ws, message, clientId, requireAuth, isProduction);
         break;
       }
 
@@ -944,6 +779,314 @@ export class WebSocketManager {
   }
 
   /**
+   * CTO-grade subscribe handler: no socket kill, sub_ack/sub_nack, pending subscriptions
+   */
+  private async handleSubscribeRequest(
+    ws: WebSocket,
+    message: WSClientMessage,
+    clientId: string,
+    requireAuth: boolean,
+    isProduction: boolean
+  ): Promise<void> {
+    // Normalize legacy to canonical
+    const canonical = normalizeToCanonical(message);
+    const envelope = canonical as any;
+
+    const channel: WSChannel = envelope.channel || 'search';
+    const requestId = envelope.requestId as string | undefined;
+
+    // Get context from WebSocket (source of truth from ticket/JWT)
+    const ctx = (ws as any).ctx as WebSocketContext | undefined;
+    const connSessionId = ctx?.sessionId || 'anonymous';
+    const connUserId = ctx?.userId;
+
+    const requestIdHash = this.hashRequestId(requestId || 'unknown');
+    const sessionHash = connSessionId !== 'anonymous'
+      ? crypto.createHash('sha256').update(connSessionId).digest('hex').substring(0, 12)
+      : 'anonymous';
+
+    // CTO-grade logging: subscribe attempt
+    logger.info({
+      clientId,
+      channel,
+      requestIdHash,
+      sessionHash,
+      event: 'ws_subscribe_attempt'
+    }, 'WebSocket subscribe attempt');
+
+    // Step 1: Strict payload validation
+    if (!requestId) {
+      logger.warn({ clientId, channel, reason: 'missing_requestId' }, 'Subscribe validation failed');
+      this.sendSubNack(ws, channel, requestId || '', 'invalid_request');
+      return;
+    }
+
+    if (channel !== 'search' && channel !== 'assistant') {
+      logger.warn({ clientId, channel, requestId: requestIdHash, reason: 'invalid_channel' }, 'Subscribe validation failed');
+      this.sendSubNack(ws, channel, requestId, 'invalid_request');
+      return;
+    }
+
+    // Step 2: Auth check (if enabled)
+    if (requireAuth && connSessionId === 'anonymous') {
+      logger.warn({ clientId, channel, requestIdHash, reason: 'not_authenticated' }, 'Subscribe rejected - no auth');
+      this.sendSubNack(ws, channel, requestId, 'unauthorized');
+      return;
+    }
+
+    // Step 3: Check ownership via jobStore
+    let owner: { userId?: string | null; sessionId?: string | null } | null = null;
+    try {
+      owner = await this.getRequestOwner(requestId);
+    } catch (err) {
+      logger.warn({
+        clientId,
+        channel,
+        requestIdHash,
+        error: err instanceof Error ? err.message : 'unknown',
+        reason: 'owner_lookup_failed'
+      }, 'Subscribe ownership check failed');
+      // Don't close socket, just reject subscription
+      this.sendSubNack(ws, channel, requestId, 'invalid_request');
+      return;
+    }
+
+    // Step 4a: Owner exists - check match
+    if (owner) {
+      const ownerSessionId = owner.sessionId;
+      const ownerUserId = owner.userId;
+
+      // Check userId match if owner has userId
+      if (ownerUserId && ownerUserId !== connUserId) {
+        logger.warn({
+          clientId,
+          channel,
+          requestIdHash,
+          reason: 'session_mismatch',
+          event: 'ws_subscribe_nack'
+        }, 'Subscribe rejected - user mismatch (no socket kill)');
+        this.sendSubNack(ws, channel, requestId, 'session_mismatch');
+        return;
+      }
+
+      // Check sessionId match if owner has sessionId
+      if (ownerSessionId && ownerSessionId !== connSessionId) {
+        logger.warn({
+          clientId,
+          channel,
+          requestIdHash,
+          sessionHash,
+          reason: 'session_mismatch',
+          event: 'ws_subscribe_nack'
+        }, 'Subscribe rejected - session mismatch (no socket kill)');
+        this.sendSubNack(ws, channel, requestId, 'session_mismatch');
+        return;
+      }
+
+      // Owner matches - accept subscription
+      this.subscribeToChannel(channel, requestId, connSessionId, ws);
+      this.sendSubAck(ws, channel, requestId, false);
+
+      logger.info({
+        clientId,
+        channel,
+        requestIdHash,
+        sessionHash,
+        pending: false,
+        event: 'ws_subscribe_ack'
+      }, 'Subscribe accepted - owner match');
+
+      // Late-subscriber replay for search channel
+      if (channel === 'search') {
+        this.replayStateIfAvailable(requestId, ws, clientId);
+      }
+      return;
+    }
+
+    // Step 4b: Owner is null (job not created yet) - register pending subscription
+    const pendingKey = `${channel}:${requestId}:${connSessionId}`;
+    const pendingSub: PendingSubscription = {
+      ws,
+      channel,
+      requestId,
+      sessionId: connSessionId,
+      expiresAt: Date.now() + this.PENDING_SUB_TTL_MS
+    };
+
+    this.pendingSubscriptions.set(pendingKey, pendingSub);
+    this.sendSubAck(ws, channel, requestId, true);
+
+    logger.info({
+      clientId,
+      channel,
+      requestIdHash,
+      sessionHash,
+      pending: true,
+      ttlMs: this.PENDING_SUB_TTL_MS,
+      event: 'ws_subscribe_ack'
+    }, 'Subscribe pending - awaiting job creation');
+  }
+
+  /**
+   * Send sub_ack to client
+   */
+  private sendSubAck(ws: WebSocket, channel: WSChannel, requestId: string, pending: boolean): void {
+    const ack: any = {
+      type: 'sub_ack',
+      channel,
+      requestId,
+      pending
+    };
+    
+    if (ws.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(JSON.stringify(ack));
+      } catch (err) {
+        logger.warn({
+          clientId: (ws as any).clientId,
+          channel,
+          requestIdHash: this.hashRequestId(requestId),
+          error: err instanceof Error ? err.message : 'unknown'
+        }, 'Failed to send sub_ack');
+      }
+    }
+  }
+
+  /**
+   * Send sub_nack to client (no socket kill)
+   */
+  private sendSubNack(ws: WebSocket, channel: WSChannel, requestId: string, reason: 'session_mismatch' | 'invalid_request' | 'unauthorized'): void {
+    const nack: any = {
+      type: 'sub_nack',
+      channel,
+      requestId,
+      reason
+    };
+    
+    if (ws.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(JSON.stringify(nack));
+      } catch (err) {
+        logger.warn({
+          clientId: (ws as any).clientId,
+          channel,
+          requestIdHash: this.hashRequestId(requestId),
+          error: err instanceof Error ? err.message : 'unknown'
+        }, 'Failed to send sub_nack');
+      }
+    }
+  }
+
+  /**
+   * Activate pending subscriptions for a requestId when job is created/running
+   * Called when job is created or transitions to RUNNING state
+   */
+  activatePendingSubscriptions(requestId: string, ownerSessionId: string): void {
+    let activatedCount = 0;
+    const now = Date.now();
+
+    // Find all pending subscriptions for this requestId
+    const keysToActivate: string[] = [];
+    for (const [key, pending] of this.pendingSubscriptions.entries()) {
+      if (pending.requestId === requestId) {
+        // Check if expired
+        if (pending.expiresAt < now) {
+          this.pendingSubscriptions.delete(key);
+          logger.debug({
+            requestId: this.hashRequestId(requestId),
+            channel: pending.channel,
+            reason: 'expired'
+          }, 'Pending subscription expired before activation');
+          continue;
+        }
+
+        // Check if sessionId matches owner
+        if (pending.sessionId !== ownerSessionId) {
+          this.pendingSubscriptions.delete(key);
+          logger.warn({
+            requestId: this.hashRequestId(requestId),
+            channel: pending.channel,
+            reason: 'session_mismatch_on_activation'
+          }, 'Pending subscription rejected - session mismatch on activation');
+          
+          // Send sub_nack to client
+          this.sendSubNack(pending.ws, pending.channel, requestId, 'session_mismatch');
+          continue;
+        }
+
+        keysToActivate.push(key);
+      }
+    }
+
+    // Activate matched pending subscriptions
+    for (const key of keysToActivate) {
+      const pending = this.pendingSubscriptions.get(key);
+      if (!pending) continue;
+
+      // Move to active subscriptions
+      this.subscribeToChannel(pending.channel, pending.requestId, pending.sessionId, pending.ws);
+      
+      // Send updated sub_ack with pending:false
+      this.sendSubAck(pending.ws, pending.channel, pending.requestId, false);
+      
+      // Drain backlog if exists
+      this.drainBacklog(
+        this.buildSubscriptionKey(pending.channel, pending.requestId, pending.sessionId),
+        pending.ws,
+        pending.channel,
+        pending.requestId
+      );
+
+      this.pendingSubscriptions.delete(key);
+      activatedCount++;
+
+      logger.info({
+        clientId: (pending.ws as any).clientId,
+        channel: pending.channel,
+        requestIdHash: this.hashRequestId(requestId),
+        event: 'pending_subscription_activated'
+      }, 'Pending subscription activated');
+    }
+
+    if (activatedCount > 0) {
+      logger.info({
+        requestIdHash: this.hashRequestId(requestId),
+        activatedCount,
+        event: 'pending_subscriptions_batch_activated'
+      }, 'Pending subscriptions activated for request');
+    }
+  }
+
+  /**
+   * Cleanup expired pending subscriptions (called periodically)
+   */
+  private cleanupExpiredPendingSubscriptions(): void {
+    const now = Date.now();
+    let cleanedCount = 0;
+
+    for (const [key, pending] of this.pendingSubscriptions.entries()) {
+      if (pending.expiresAt < now) {
+        // Send sub_nack to client about expiration
+        this.sendSubNack(pending.ws, pending.channel, pending.requestId, 'invalid_request');
+        
+        this.pendingSubscriptions.delete(key);
+        cleanedCount++;
+        
+        logger.debug({
+          clientId: (pending.ws as any).clientId,
+          channel: pending.channel,
+          requestIdHash: this.hashRequestId(pending.requestId),
+          event: 'pending_subscription_expired'
+        }, 'Pending subscription expired');
+      }
+    }
+
+    if (cleanedCount > 0) {
+      logger.info({ cleanedCount, event: 'pending_subscriptions_cleanup' }, 'Expired pending subscriptions cleaned');
+    }
+  }
+
+  /**
    * Unsubscribe from a channel
    */
   private unsubscribeFromChannel(
@@ -1037,6 +1180,16 @@ export class WebSocketManager {
 
     const durationMs = Math.round(performance.now() - startTime);
 
+    // Extract error details if this is an error message
+    const errorDetails = message.type === 'error' && 'code' in message 
+      ? {
+          errorType: (message as any).code,
+          errorMessage: (message as any).message?.substring(0, 100),
+          errorStage: (message as any).stage,
+          errorKind: (message as any).errorKind
+        }
+      : {};
+
     logger.info({
       channel,
       requestId,
@@ -1044,7 +1197,8 @@ export class WebSocketManager {
       ...(failed > 0 && { failedCount: failed }),
       payloadBytes,
       payloadType: message.type,
-      durationMs
+      durationMs,
+      ...errorDetails
     }, 'websocket_published');
 
     return { attempted, sent, failed };
@@ -1181,6 +1335,12 @@ export class WebSocketManager {
           active: activeCount
         }, 'WebSocket heartbeat: terminated dead connections');
       }
+
+      // CTO-grade: Cleanup expired pending subscriptions
+      this.cleanupExpiredPendingSubscriptions();
+      
+      // Cleanup expired backlogs
+      this.cleanupExpiredBacklogs();
     }, this.config.heartbeatIntervalMs);
 
     // Non-blocking

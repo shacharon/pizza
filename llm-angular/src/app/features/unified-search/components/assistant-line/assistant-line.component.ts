@@ -169,9 +169,11 @@ export class AssistantLineComponent implements OnInit, OnDestroy {
    */
   private subscribeToWebSocket(): void {
     this.wsSubscription = this.wsClient.messages$.subscribe((message: any) => {
-      // Only process assistant_progress and assistant_suggestion events
+      // Handle both old format (assistant_progress/suggestion) and new format (assistant_message)
       if (message.type === 'assistant_progress' || message.type === 'assistant_suggestion') {
         this.handleAssistantMessage(message);
+      } else if (message.type === 'assistant_message' && message.narrator) {
+        this.handleNarratorMessage(message);
       }
     });
   }
@@ -205,7 +207,7 @@ export class AssistantLineComponent implements OnInit, OnDestroy {
     if (status === 'connecting' || status === 'reconnecting') {
       // Wait 1 second before showing "connecting" message
       this.wsDebounceTimer = window.setTimeout(() => {
-        this.updateWsMessage('מתחבר לעוזרת…', status);
+        this.updateWsMessage('Connecting to assistant...', status);
       }, this.WS_DEBOUNCE_MS);
       return;
     }
@@ -239,7 +241,7 @@ export class AssistantLineComponent implements OnInit, OnDestroy {
 
 
   /**
-   * Handle incoming assistant message
+   * Handle incoming assistant message (old format)
    */
   private handleAssistantMessage(msg: any): void {
     // Validate message structure
@@ -262,6 +264,51 @@ export class AssistantLineComponent implements OnInit, OnDestroy {
       requestId,
       seq,
       message,
+      type: type as 'assistant_progress' | 'assistant_suggestion'
+    });
+
+    // Sort queue by seq
+    this.messageQueue.sort((a, b) => a.seq - b.seq);
+
+    // Process queue if not already processing
+    if (!this.isProcessingQueue) {
+      this.processQueue();
+    }
+  }
+
+  /**
+   * Handle narrator message (new format from backend)
+   */
+  private handleNarratorMessage(msg: any): void {
+    // Validate message structure
+    if (!msg.requestId || !msg.narrator || !msg.narrator.message) {
+      return;
+    }
+
+    const { requestId, narrator } = msg;
+
+    // Check if this is a new requestId
+    if (this.currentRequestId !== requestId) {
+      // New search - clear queue and display
+      this.messageQueue = [];
+      this.currentRequestId = requestId;
+      this.isProcessingQueue = false;
+    }
+
+    // Generate seq based on narrator type (GATE_FAIL=1, CLARIFY=2, SUMMARY=3)
+    const seq = narrator.type === 'GATE_FAIL' ? 1 : narrator.type === 'CLARIFY' ? 2 : 3;
+
+    // Determine type: SUMMARY -> suggestion, others -> progress
+    const type = narrator.type === 'SUMMARY' ? 'assistant_suggestion' : 'assistant_progress';
+
+    // Prefer question over message for CLARIFY
+    const displayMessage = narrator.question || narrator.message;
+
+    // Add to queue
+    this.messageQueue.push({
+      requestId,
+      seq,
+      message: displayMessage,
       type: type as 'assistant_progress' | 'assistant_suggestion'
     });
 

@@ -119,6 +119,42 @@ export interface WSServerAssistantSuggestion {
   message: string;
 }
 
+/**
+ * Narrator message from backend
+ */
+export interface WSServerAssistantMessage {
+  type: 'assistant_message';
+  requestId: string;
+  narrator: {
+    type: 'GATE_FAIL' | 'CLARIFY' | 'SUMMARY';
+    message: string;
+    question: string | null;
+    suggestedAction: 'NONE' | 'ASK_LOCATION' | 'ASK_FOOD' | 'RELAX_OPENNOW' | 'EXPAND_RADIUS' | 'ADD_FILTER';
+    blocksSearch: boolean;
+  };
+  timestamp: number;
+}
+
+/**
+ * Subscribe acknowledgment (CTO-grade protocol)
+ */
+export interface WSServerSubAck {
+  type: 'sub_ack';
+  channel: WSChannel;
+  requestId: string;
+  pending: boolean; // true if subscription is pending job creation
+}
+
+/**
+ * Subscribe negative acknowledgment (CTO-grade protocol)
+ */
+export interface WSServerSubNack {
+  type: 'sub_nack';
+  channel: WSChannel;
+  requestId: string;
+  reason: 'session_mismatch' | 'invalid_request' | 'unauthorized';
+}
+
 export type WSServerMessage =
   | WSServerStatus
   | WSServerStreamDelta
@@ -126,7 +162,10 @@ export type WSServerMessage =
   | WSServerRecommendation
   | WSServerError
   | WSServerAssistantProgress
-  | WSServerAssistantSuggestion;
+  | WSServerAssistantSuggestion
+  | WSServerAssistantMessage
+  | WSServerSubAck
+  | WSServerSubNack;
 
 /**
  * Type guard for WebSocket server messages

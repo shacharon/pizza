@@ -13,7 +13,7 @@ export const IntentLLMSchema = z.object({
   region: z.string().regex(/^[A-Z]{2}$/), // ISO-3166-1 alpha-2
   regionConfidence: z.number().min(0).max(1),
   regionReason: z.string().min(1),
-  cityText: z.string().min(1).optional(), // City name for location bias (e.g., "גדרה", "אשקלון")
+  cityText: z.string().min(1).nullable().optional(), // City name for location bias (e.g., "גדרה", "אשקלון") - can be null or undefined
 }).strict();
 
 export type IntentLLM = z.infer<typeof IntentLLMSchema>;

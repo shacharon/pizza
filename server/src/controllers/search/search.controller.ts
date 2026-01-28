@@ -23,6 +23,7 @@ import {
 import { searchJobStore } from '../../services/search/job-store/index.js';
 import { ASSISTANT_MODE } from '../../config/assistant.flags.js';
 import { hashSessionId, sanitizePhotoUrls } from '../../utils/security.utils.js';
+import { wsManager } from '../../server.js';
 
 const router = Router();
 
@@ -46,9 +47,9 @@ async function executeBackgroundSearch(params: BackgroundParams): Promise<void> 
   const ctxWithAbort = { ...context, signal: abortController.signal } as Route2Context & { signal: AbortSignal };
 
   try {
+    // Initialize assistant session (will be checked later for gate stops)
     if (ASSISTANT_MODE !== 'OFF') {
       setAssistantLanguage(requestId, 'auto', 'friendly');
-      publishAssistantProgress(requestId, `שמעתי: ${queryData.query}`, 'query_received');
     }
 
     // Step 1: Accepted
@@ -101,13 +102,14 @@ async function executeBackgroundSearch(params: BackgroundParams): Promise<void> 
       message: 'Processing search'
     });
 
-    if (ASSISTANT_MODE !== 'OFF') {
-      publishAssistantProgress(requestId, 'שולח לגוגל ומביא תוצאות…', 'google_call');
-    }
-
     const response = await searchRoute2(queryData, ctxWithAbort);
 
-    if (ASSISTANT_MODE !== 'OFF') {
+    // IMPORTANT: Skip ALL assistant_progress for GATE_FAIL (STOP flow)
+    // Only narrator "assistant" payload should be sent for gate stops
+    const isGateStop = response.meta?.source === 'route2_gate_stop';
+    
+    if (ASSISTANT_MODE !== 'OFF' && !isGateStop) {
+      // Only send assistant_progress messages for successful searches
       publishAssistantProgress(requestId, `נמצאו ${response.results.length} תוצאות.`, 'results_received');
     }
 
@@ -285,6 +287,9 @@ router.post('/', async (req: Request, res: Response) => {
           operation: 'createJob',
           decision: 'ACCEPTED'
         }, '[P0 Security] Job created with JWT session binding');
+        
+        // CTO-grade: Activate pending subscriptions for this request
+        wsManager.activatePendingSubscriptions(requestId, ownerSessionId || 'anonymous');
       } catch (redisErr) {
         logger.error({ 
           requestId, 

@@ -1,34 +1,31 @@
 <div class="search-page">
   <header class="search-header">
     <div class="hero-section">
-      <h1 class="page-title">AI-powered food search that understands you</h1>
-      <p class="page-subtitle">Ask in your own words—find exactly what you're craving</p>
-      
+      <h1 class="page-title">Search food the way you think</h1>
+      <p class="page-subtitle">Search for food naturally, in any language.
+        Just say what you’re in the mood for.</p>
+
       <!-- Location Status (automatic, inline) -->
       <div class="location-status">
         @if (locationState() === 'ON') {
-          <span class="location-text">📍 Using your location</span>
+        <span class="location-text">📍 Using your location</span>
         } @else if (locationState() === 'REQUESTING') {
-          <span class="location-text">⏳ Getting location...</span>
+        <span class="location-text">⏳ Getting location...</span>
         } @else if (locationState() === 'DENIED') {
-          <span class="location-text location-error">🚫 Location access denied</span>
+        <span class="location-text location-error">🚫 Location access denied</span>
         } @else if (locationState() === 'ERROR') {
-          <span class="location-text location-error">⚠️ Location unavailable</span>
+        <span class="location-text location-error">⚠️ Location unavailable</span>
         } @else {
-          <button class="location-link" (click)="onLocationToggle()">Enable location for better results</button>
+        <button class="location-link" (click)="onLocationToggle()">Enable location for better results</button>
         }
       </div>
     </div>
-    
+
     <!-- Search Card: Input + Assistant Line -->
     <div class="search-card">
-      <app-search-bar 
-        [loading]="facade.loading()" 
-        [placeholder]="'What are you hungry for?'"
-        (search)="onSearch($event)" 
-        (inputChange)="onInputChange($event)"
-        (clear)="onClear()" />
-      
+      <app-search-bar [loading]="facade.loading()" [placeholder]="'What are you hungry for?'"
+        (search)="onSearch($event)" (inputChange)="onInputChange($event)" (clear)="onClear()" />
+
       <!-- Assistant Line (always shown - includes WS status) -->
       <div class="search-meta-row">
         <app-assistant-line />

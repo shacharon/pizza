@@ -62,15 +62,17 @@ export class AssistantPanelComponent implements OnInit, OnDestroy {
    */
   private subscribeToWebSocket(): void {
     this.wsSubscription = this.wsClient.messages$.subscribe((message: any) => {
-      // Only process assistant_progress and assistant_suggestion events
+      // Handle both old format (assistant_progress/suggestion) and new format (assistant_message)
       if (message.type === 'assistant_progress' || message.type === 'assistant_suggestion') {
         this.handleAssistantMessage(message);
+      } else if (message.type === 'assistant_message' && message.narrator) {
+        this.handleNarratorMessage(message);
       }
     });
   }
   
   /**
-   * Handle incoming assistant message
+   * Handle incoming assistant message (old format)
    */
   private handleAssistantMessage(msg: any): void {
     // Validate message structure
@@ -104,6 +106,59 @@ export class AssistantPanelComponent implements OnInit, OnDestroy {
       type: type as 'assistant_progress' | 'assistant_suggestion',
       timestamp: Date.now()
     };
+    
+    // Insert message in correct position (sorted by seq)
+    const currentMessages = this.allMessages();
+    const newMessages = [...currentMessages, assistantMsg].sort((a, b) => a.seq - b.seq);
+    this.allMessages.set(newMessages);
+  }
+  
+  /**
+   * Handle narrator message (new format from backend)
+   */
+  private handleNarratorMessage(msg: any): void {
+    // Validate message structure
+    if (!msg.requestId || !msg.narrator || !msg.narrator.message) {
+      console.warn('[AssistantPanel] Invalid narrator message structure:', msg);
+      return;
+    }
+    
+    const { requestId, narrator, timestamp } = msg;
+    
+    // Check if this is a new requestId
+    if (this.currentRequestId() !== requestId) {
+      // New search started - clear old messages
+      this.clearMessages();
+      this.currentRequestId.set(requestId);
+    }
+    
+    // Generate seq based on narrator type (GATE_FAIL=1, CLARIFY=2, SUMMARY=3)
+    const seq = narrator.type === 'GATE_FAIL' ? 1 : narrator.type === 'CLARIFY' ? 2 : 3;
+    
+    // Deduplicate: check if we've already seen this (requestId, seq)
+    const messageKey = `${requestId}-${seq}`;
+    if (this.seenMessages.has(messageKey)) {
+      return; // Duplicate - ignore
+    }
+    
+    // Add message
+    this.seenMessages.add(messageKey);
+    
+    // Determine type: SUMMARY -> suggestion, others -> progress
+    const type = narrator.type === 'SUMMARY' ? 'assistant_suggestion' : 'assistant_progress';
+    
+    // Prefer question over message for CLARIFY
+    const displayMessage = narrator.question || narrator.message;
+    
+    const assistantMsg: AssistantMessage = {
+      requestId,
+      seq,
+      message: displayMessage,
+      type: type as 'assistant_progress' | 'assistant_suggestion',
+      timestamp: timestamp || Date.now()
+    };
+    
+    console.log('[AssistantPanel] Narrator message added:', narrator.type, displayMessage);
     
     // Insert message in correct position (sorted by seq)
     const currentMessages = this.allMessages();

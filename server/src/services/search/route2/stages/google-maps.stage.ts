@@ -27,7 +27,7 @@ import {
 } from '../../../../lib/cache/googleCacheUtils.js';
 import { getConfig } from '../../../../config/env.js';
 import { getRedisClient } from '../../../../lib/redis/redis-client.js';
-import { fetchWithTimeout } from '../../../../utils/fetch-with-timeout.js';
+import { fetchWithTimeout, type TimeoutError, type FetchErrorKind } from '../../../../utils/fetch-with-timeout.js';
 
 // Field mask for Google Places API (New) - includes opening hours data
 const PLACES_FIELD_MASK = 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.priceLevel,places.currentOpeningHours,places.regularOpeningHours,places.utcOffsetMinutes,places.photos,places.types,places.googleMapsUri';
@@ -213,6 +213,11 @@ export async function executeGoogleMapsStage(
 
   } catch (error) {
     const durationMs = Date.now() - startTime;
+    
+    // Extract errorKind from TimeoutError if available
+    const errorKind = (error && typeof error === 'object' && 'errorKind' in error) 
+      ? (error as TimeoutError).errorKind 
+      : undefined;
 
     logger.error({
       requestId,
@@ -221,6 +226,7 @@ export async function executeGoogleMapsStage(
       event: 'stage_failed',
       durationMs,
       providerMethod: mapping.providerMethod,
+      errorKind: errorKind || 'UNKNOWN',
       error: error instanceof Error ? error.message : 'unknown'
     }, '[ROUTE2] google_maps failed');
 
@@ -625,40 +631,108 @@ async function callGooglePlacesSearchText(
   requestId: string
 ): Promise<any> {
   const url = 'https://places.googleapis.com/v1/places:searchText';
+  
+  // Allow timeout to be configurable via env (default 8000ms)
+  const timeoutMs = parseInt(process.env.GOOGLE_PLACES_TIMEOUT_MS || '8000', 10);
 
-  const response = await fetchWithTimeout(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Goog-Api-Key': apiKey,
-      'X-Goog-FieldMask': PLACES_FIELD_MASK
-    },
-    body: JSON.stringify(body)
-  }, {
-    timeoutMs: 8000,
+  // Pre-request diagnostics (safe logging - no secrets)
+  const callStartTime = Date.now();
+  logger.info({
     requestId,
-    stage: 'google_maps',
-    provider: 'google_places'
-  });
+    provider: 'google_places_new',
+    providerMethod: 'searchText',
+    endpoint: 'searchText',
+    hostname: 'places.googleapis.com',
+    path: '/v1/places:searchText',
+    timeoutMs,
+    googleApiKeyPresent: !!apiKey,
+    keyLen: apiKey?.length || 0,
+    method: 'POST',
+    event: 'google_api_call_start'
+  }, '[GOOGLE] Starting API call');
 
-  if (!response.ok) {
-    const errorText = await response.text();
+  let errorKind: FetchErrorKind | undefined;
+  let callDurationMs: number;
 
-    // Log error details for debugging
+  try {
+    const response = await fetchWithTimeout(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask': PLACES_FIELD_MASK
+      },
+      body: JSON.stringify(body)
+    }, {
+      timeoutMs,
+      requestId,
+      stage: 'google_maps',
+      provider: 'google_places',
+      enableDnsPreflight: process.env.ENABLE_DNS_PREFLIGHT === 'true'
+    });
+    
+    callDurationMs = Date.now() - callStartTime;
+
+    if (!response.ok) {
+      callDurationMs = Date.now() - callStartTime;
+      const errorText = await response.text();
+      errorKind = 'HTTP_ERROR';
+
+      // Log error details with guidance
+      logger.error({
+        requestId,
+        provider: 'google_places_new',
+        providerMethod: 'searchText',
+        endpoint: 'searchText',
+        status: response.status,
+        errorKind,
+        host: 'places.googleapis.com',
+        timeoutMs,
+        durationMs: callDurationMs,
+        errorBody: errorText.substring(0, 200),
+        guidance: 'Check: 1) API key has Places API (New) enabled, 2) Billing is active, 3) Outbound HTTPS access'
+      }, '[GOOGLE] Text Search API HTTP error');
+
+      throw new Error(`Google Places API (New) searchText failed: HTTP ${response.status} - Check API key permissions and billing`);
+    }
+
+    const data = await response.json();
+    callDurationMs = Date.now() - callStartTime;
+    
+    logger.info({
+      requestId,
+      provider: 'google_places_new',
+      providerMethod: 'searchText',
+      durationMs: callDurationMs,
+      placesCount: data.places?.length || 0,
+      event: 'google_api_call_success'
+    }, '[GOOGLE] API call succeeded');
+    
+    return data;
+    
+  } catch (err) {
+    callDurationMs = Date.now() - callStartTime;
+    
+    // Extract error kind from TimeoutError if available
+    if (!errorKind && err && typeof err === 'object' && 'errorKind' in err) {
+      errorKind = (err as TimeoutError).errorKind;
+    }
+    
+    // Log catch block error
     logger.error({
       requestId,
       provider: 'google_places_new',
-      endpoint: 'searchText',
-      status: response.status,
-      errorBody: errorText,
-      requestBody: body
-    }, '[GOOGLE] Text Search API error');
-
-    throw new Error(`Google Places API (New) searchText failed: HTTP ${response.status} - ${errorText}`);
+      providerMethod: 'searchText',
+      errorKind: errorKind || 'UNKNOWN',
+      host: 'places.googleapis.com',
+      timeoutMs,
+      durationMs: callDurationMs,
+      error: err instanceof Error ? err.message : String(err),
+      event: 'google_api_call_failed'
+    }, '[GOOGLE] API call failed in catch block');
+    
+    throw err;
   }
-
-  const data = await response.json();
-  return data;
 }
 
 /**
@@ -713,40 +787,108 @@ async function callGooglePlacesSearchNearby(
   requestId: string
 ): Promise<any> {
   const url = 'https://places.googleapis.com/v1/places:searchNearby';
+  
+  // Allow timeout to be configurable via env (default 8000ms)
+  const timeoutMs = parseInt(process.env.GOOGLE_PLACES_TIMEOUT_MS || '8000', 10);
 
-  const response = await fetchWithTimeout(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Goog-Api-Key': apiKey,
-      'X-Goog-FieldMask': PLACES_FIELD_MASK
-    },
-    body: JSON.stringify(body)
-  }, {
-    timeoutMs: 8000,
+  // Pre-request diagnostics (safe logging - no secrets)
+  const callStartTime = Date.now();
+  logger.info({
     requestId,
-    stage: 'google_maps',
-    provider: 'google_places'
-  });
+    provider: 'google_places_new',
+    providerMethod: 'searchNearby',
+    endpoint: 'searchNearby',
+    hostname: 'places.googleapis.com',
+    path: '/v1/places:searchNearby',
+    timeoutMs,
+    googleApiKeyPresent: !!apiKey,
+    keyLen: apiKey?.length || 0,
+    method: 'POST',
+    event: 'google_api_call_start'
+  }, '[GOOGLE] Starting API call');
 
-  if (!response.ok) {
-    const errorText = await response.text();
+  let errorKind: FetchErrorKind | undefined;
+  let callDurationMs: number;
 
-    // Log error details for debugging
+  try {
+    const response = await fetchWithTimeout(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask': PLACES_FIELD_MASK
+      },
+      body: JSON.stringify(body)
+    }, {
+      timeoutMs,
+      requestId,
+      stage: 'google_maps',
+      provider: 'google_places',
+      enableDnsPreflight: process.env.ENABLE_DNS_PREFLIGHT === 'true'
+    });
+    
+    callDurationMs = Date.now() - callStartTime;
+
+    if (!response.ok) {
+      callDurationMs = Date.now() - callStartTime;
+      const errorText = await response.text();
+      errorKind = 'HTTP_ERROR';
+
+      // Log error details with guidance
+      logger.error({
+        requestId,
+        provider: 'google_places_new',
+        providerMethod: 'searchNearby',
+        endpoint: 'searchNearby',
+        status: response.status,
+        errorKind,
+        host: 'places.googleapis.com',
+        timeoutMs,
+        durationMs: callDurationMs,
+        errorBody: errorText.substring(0, 200),
+        guidance: 'Check: 1) API key has Places API (New) enabled, 2) Billing is active, 3) Outbound HTTPS access'
+      }, '[GOOGLE] Nearby Search API HTTP error');
+
+      throw new Error(`Google Places API (New) searchNearby failed: HTTP ${response.status} - Check API key permissions and billing`);
+    }
+
+    const data = await response.json();
+    callDurationMs = Date.now() - callStartTime;
+    
+    logger.info({
+      requestId,
+      provider: 'google_places_new',
+      providerMethod: 'searchNearby',
+      durationMs: callDurationMs,
+      placesCount: data.places?.length || 0,
+      event: 'google_api_call_success'
+    }, '[GOOGLE] API call succeeded');
+    
+    return data;
+    
+  } catch (err) {
+    callDurationMs = Date.now() - callStartTime;
+    
+    // Extract error kind from TimeoutError if available
+    if (!errorKind && err && typeof err === 'object' && 'errorKind' in err) {
+      errorKind = (err as TimeoutError).errorKind;
+    }
+    
+    // Log catch block error
     logger.error({
       requestId,
       provider: 'google_places_new',
-      endpoint: 'searchNearby',
-      status: response.status,
-      errorBody: errorText,
-      requestBody: body
-    }, '[GOOGLE] Nearby Search API error');
-
-    throw new Error(`Google Places API (New) searchNearby failed: HTTP ${response.status} - ${errorText}`);
+      providerMethod: 'searchNearby',
+      errorKind: errorKind || 'UNKNOWN',
+      host: 'places.googleapis.com',
+      timeoutMs,
+      durationMs: callDurationMs,
+      error: err instanceof Error ? err.message : String(err),
+      event: 'google_api_call_failed'
+    }, '[GOOGLE] API call failed in catch block');
+    
+    throw err;
   }
-
-  const data = await response.json();
-  return data;
 }
 
 /**

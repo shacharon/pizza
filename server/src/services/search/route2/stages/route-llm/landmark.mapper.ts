@@ -11,6 +11,7 @@ import type { Route2Context, IntentResult } from '../../types.js';
 import type { Message } from '../../../../../llm/types.js';
 import { buildLLMJsonSchema } from '../../../../../llm/types.js';
 import { logger } from '../../../../../lib/logger/structured-logger.js';
+import { resolveLLM } from '../../../../../lib/llm/index.js';
 import { LandmarkMappingSchema, type LandmarkMapping } from './schemas.js';
 
 const LANDMARK_MAPPER_VERSION = 'landmark_mapper_v3';
@@ -100,6 +101,9 @@ export async function executeLandmarkMapper(
       { role: 'user', content: userPrompt }
     ];
 
+    // Resolve model and timeout for routeMapper purpose
+    const { model, timeoutMs } = resolveLLM('routeMapper');
+
     let mapping: LandmarkMapping | null = null;
     let lastError: any = null;
     let tokenUsage: { input?: number; output?: number; total?: number; model?: string } | undefined;
@@ -110,8 +114,9 @@ export async function executeLandmarkMapper(
         messages,
         LandmarkMappingSchema,
         {
+          model,
           temperature: 0,
-          timeout: 4000,
+          timeout: timeoutMs,
           promptVersion: LANDMARK_MAPPER_VERSION,
           promptHash: LANDMARK_MAPPER_PROMPT_HASH,
           promptLength: LANDMARK_MAPPER_PROMPT.length,
@@ -156,8 +161,9 @@ export async function executeLandmarkMapper(
             messages,
             LandmarkMappingSchema,
             {
+              model,
               temperature: 0,
-              timeout: 4000,
+              timeout: timeoutMs,
               promptVersion: LANDMARK_MAPPER_VERSION,
               promptHash: LANDMARK_MAPPER_PROMPT_HASH,
               promptLength: LANDMARK_MAPPER_PROMPT.length,

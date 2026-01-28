@@ -298,6 +298,23 @@ export class WsClientService {
         return;
       }
 
+      // CTO-grade: Log sub_ack/sub_nack messages
+      if (data.type === 'sub_ack') {
+        const ack = data as any;
+        console.log('[WS] Subscription acknowledged', {
+          channel: ack.channel,
+          requestId: ack.requestId,
+          pending: ack.pending
+        });
+      } else if (data.type === 'sub_nack') {
+        const nack = data as any;
+        console.warn('[WS] Subscription rejected (no socket kill)', {
+          channel: nack.channel,
+          requestId: nack.requestId,
+          reason: nack.reason
+        });
+      }
+
       // Emit validated message
       this.messagesSubject.next(data);
     } catch (error) {
