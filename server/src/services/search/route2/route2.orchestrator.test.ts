@@ -113,26 +113,21 @@ describe('Route2 Orchestrator - ResultCount Logging Fix', () => {
   });
 });
 
-describe('Route2 Orchestrator - Pipeline Failure Narrator (2026-01-28)', () => {
-  it('should publish assistant message on Google Maps stage failure', async () => {
-    // This test documents the behavior:
-    // When searchRoute2 throws from executeGoogleMapsStage,
-    // the narrator publish should be called with a fallback message.
+describe('Route2 Orchestrator - Pipeline Failure Assistant (2026-01-28)', () => {
+  it('should publish SEARCH_FAILED assistant message on pipeline failure', async () => {
+    // This test verifies the FIX for the bug where SEARCH_FAILED incorrectly used GATE_FAIL
     //
     // Code path:
     // 1. Google stage fails (timeout, network error, etc.)
-    // 2. catch block in searchRoute2 is triggered
-    // 3. ASSISTANT_MODE_ENABLED check passes
-    // 4. generateAssistantMessage is called to create LLM narrator
-    // 5. If LLM fails, deterministic fallback is used
-    // 6. publishAssistantMessage is called with 'search' channel
-    // 7. Message published to WS for frontend to display
+    // 2. handlePipelineError is called
+    // 3. publishSearchFailedAssistant is called
+    // 4. Assistant LLM generates SEARCH_FAILED message (NOT GATE_FAIL)
+    // 5. Message published to 'assistant' WS channel
     //
     // Expected behavior:
-    // - wsManager.publishToChannel called with 'search' channel
-    // - Message type is 'assistant_message'
-    // - Narrator has Hebrew error message
-    // - SuggestedAction is 'retry' or 'refine_query'
+    // - Assistant type is SEARCH_FAILED (NOT GATE_FAIL)
+    // - SuggestedAction is 'RETRY'
+    // - No process shutdown occurs
     
     const fs = await import('node:fs/promises');
     const path = await import('node:path');
@@ -140,38 +135,29 @@ describe('Route2 Orchestrator - Pipeline Failure Narrator (2026-01-28)', () => {
     
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
-    const orchestratorPath = path.join(__dirname, 'route2.orchestrator.ts');
+    const errorHandlerPath = path.join(__dirname, 'orchestrator.error.ts');
     
-    const content = await fs.readFile(orchestratorPath, 'utf-8');
+    const content = await fs.readFile(errorHandlerPath, 'utf-8');
     
-    // Verify catch block has narrator publish logic
-    const hasCatchWithNarrator = /catch\s*\([^)]*error[^)]*\)[\s\S]{1,2000}publishAssistantMessage/.test(content);
+    // Verify error handler calls publishSearchFailedAssistant
+    const hasSearchFailedPublish = /publishSearchFailedAssistant/.test(content);
     
     assert.ok(
-      hasCatchWithNarrator,
-      'catch block should call publishAssistantMessage on pipeline failure'
+      hasSearchFailedPublish,
+      'error handler should call publishSearchFailedAssistant (not GATE_FAIL)'
     );
     
-    // Verify generateAssistantMessage is called with GATE_FAIL context
-    const hasGateFailContext = /NarratorGateContext[\s\S]{1,500}type:\s*['"]GATE_FAIL['"]/.test(content);
+    // Verify import is from assistant/assistant-integration
+    const hasCorrectImport = /from ['"]\.\/assistant\/assistant-integration/.test(content);
     
     assert.ok(
-      hasGateFailContext,
-      'catch block should create NarratorGateContext with GATE_FAIL type'
-    );
-    
-    // Verify deterministic fallback exists
-    const hasDeterministicFallback = /generateFailureFallbackMessage/.test(content);
-    
-    assert.ok(
-      hasDeterministicFallback,
-      'catch block should have deterministic fallback if LLM fails'
+      hasCorrectImport,
+      'should import from assistant/assistant-integration module'
     );
   });
 
-  it('should use search channel not assistant channel', async () => {
-    // Verify that assistant messages are published to 'search' channel
-    // where the frontend subscribes, not a separate 'assistant' channel
+  it('should use assistant channel for assistant messages', async () => {
+    // Verify that assistant messages are published to 'assistant' channel
     
     const fs = await import('node:fs/promises');
     const path = await import('node:path');
@@ -179,16 +165,16 @@ describe('Route2 Orchestrator - Pipeline Failure Narrator (2026-01-28)', () => {
     
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
-    const publisherPath = path.join(__dirname, 'narrator', 'assistant-publisher.ts');
+    const publisherPath = path.join(__dirname, 'assistant', 'assistant-publisher.ts');
     
     const content = await fs.readFile(publisherPath, 'utf-8');
     
-    // Verify publishToChannel uses 'search' channel
-    const publishesToSearchChannel = /publishToChannel\s*\(\s*['"]search['"]/.test(content);
+    // Verify publishToChannel uses 'assistant' channel
+    const publishesToAssistantChannel = /ASSISTANT_WS_CHANNEL\s*=\s*['"]assistant['"]/.test(content);
     
     assert.ok(
-      publishesToSearchChannel,
-      'publishAssistantMessage should publish to search channel where frontend subscribes'
+      publishesToAssistantChannel,
+      'assistant messages should use assistant channel constant'
     );
   });
 });

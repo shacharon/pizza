@@ -3,7 +3,7 @@
  * Type definitions used internally by the orchestrator
  */
 
-export type NarratorBaseOpts = { 
-  traceId?: string; 
-  sessionId?: string; 
+export type NarratorBaseOpts = {
+  traceId?: string;
+  sessionId?: string;
 };
