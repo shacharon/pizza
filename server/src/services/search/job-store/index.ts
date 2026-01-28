@@ -10,14 +10,23 @@ import type { ISearchJobStore } from './job-store.interface.js';
 import { InMemorySearchJobStore } from './inmemory-search-job.store.js';
 import { RedisSearchJobStore } from './redis-search-job.store.js';
 
+// Singleton instance - initialized once per process, reused across all requests
 let searchJobStoreInstance: ISearchJobStore | null = null;
 
 /**
  * Get or create the search job store singleton
  * Uses Redis if enabled and configured, otherwise falls back to InMemory
+ * 
+ * IMPORTANT: This is a singleton - the store is initialized ONCE per process,
+ * not per request. Subsequent calls return the cached instance immediately.
  */
 export async function getSearchJobStore(): Promise<ISearchJobStore> {
   if (searchJobStoreInstance) {
+    // Return cached singleton (no re-initialization)
+    logger.debug({
+      store: searchJobStoreInstance instanceof InMemorySearchJobStore ? 'inmemory' : 'redis',
+      msg: '[JobStore] Returning cached singleton instance'
+    });
     return searchJobStoreInstance;
   }
 
@@ -73,6 +82,7 @@ export async function getSearchJobStore(): Promise<ISearchJobStore> {
 
 /**
  * Singleton accessor with async initialization
+ * Ensures only ONE initialization Promise is created, even with concurrent calls
  */
 let cachedStorePromise: Promise<ISearchJobStore> | null = null;
 
@@ -80,7 +90,9 @@ export const searchJobStore = new Proxy({} as ISearchJobStore, {
   get(_, prop) {
     // Return a function that resolves the store first
     return async function(...args: any[]) {
+      // Ensure only one initialization promise is created (prevents race conditions)
       if (!cachedStorePromise) {
+        logger.info({ msg: '[JobStore] Creating singleton initialization promise' });
         cachedStorePromise = getSearchJobStore();
       }
       const store = await cachedStorePromise;

@@ -21,10 +21,10 @@ export async function validateJobOwnership(
 ): Promise<{ valid: boolean; errorResponse?: { status: number; json: any } }> {
   // P0 Security: Extract ONLY JWT-authenticated session (canonical identity)
   const currentSessionId = (req as AuthenticatedRequest).sessionId || (req as any).ctx?.sessionId;
-  
+
   // P0 Security: Get full job to check ownership
   const job = await searchJobStore.getJob(requestId);
-  
+
   if (!job) {
     logger.warn({
       requestId,
@@ -33,7 +33,7 @@ export async function validateJobOwnership(
       decision: 'NOT_FOUND',
       reason: 'job_not_found'
     }, '[P0 Security] Job not found');
-    
+
     return {
       valid: false,
       errorResponse: {
@@ -45,7 +45,7 @@ export async function validateJobOwnership(
 
   // P0 Security: Validate session ownership
   const ownerSessionId = job.ownerSessionId;
-  
+
   // Missing current session -> 401 Unauthorized
   if (!currentSessionId) {
     logger.warn({
@@ -56,20 +56,20 @@ export async function validateJobOwnership(
       reason: 'missing_session_id',
       traceId: (req as any).traceId || 'unknown'
     }, '[P0 Security] Access denied: missing session in request');
-    
+
     return {
       valid: false,
       errorResponse: {
         status: 401,
-        json: { 
-          code: 'UNAUTHORIZED', 
+        json: {
+          code: 'UNAUTHORIZED',
           message: 'Authentication required',
           traceId: (req as any).traceId || 'unknown'
         }
       }
     };
   }
-  
+
   // P0 CRITICAL: Legacy job without owner -> 404 (secure default, no disclosure)
   if (!ownerSessionId) {
     logger.warn({
@@ -80,20 +80,20 @@ export async function validateJobOwnership(
       reason: 'legacy_job_no_owner',
       traceId: (req as any).traceId || 'unknown'
     }, '[P0 Security] Access denied: legacy job without owner');
-    
+
     return {
       valid: false,
       errorResponse: {
         status: 404,
-        json: { 
-          code: 'NOT_FOUND', 
+        json: {
+          code: 'NOT_FOUND',
           requestId,
           traceId: (req as any).traceId || 'unknown'
         }
       }
     };
   }
-  
+
   // Session mismatch -> 404 to avoid disclosure
   if (currentSessionId !== ownerSessionId) {
     logger.warn({
@@ -105,21 +105,21 @@ export async function validateJobOwnership(
       reason: 'session_mismatch',
       traceId: (req as any).traceId || 'unknown'
     }, '[P0 Security] Access denied: session mismatch');
-    
+
     // Return 404 to avoid leaking requestId existence
     return {
       valid: false,
       errorResponse: {
         status: 404,
-        json: { 
-          code: 'NOT_FOUND', 
+        json: {
+          code: 'NOT_FOUND',
           requestId,
           traceId: (req as any).traceId || 'unknown'
         }
       }
     };
   }
-  
+
   // Log successful authorization
   logger.info({
     requestId,

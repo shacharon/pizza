@@ -21,10 +21,11 @@ import { createHash } from 'node:crypto';
 
 const router = Router();
 
-// Rate limiter: 60 requests per minute per IP
+// PROD Hardening: Dedicated rate limiter for photo proxy
+// Stricter limits to prevent abuse
 const photoRateLimiter = createRateLimiter({
   windowMs: 60 * 1000, // 1 minute
-  maxRequests: 60,
+  maxRequests: 30, // Reduced from 60 to 30 per minute
   keyPrefix: 'photo'
 });
 
@@ -33,6 +34,7 @@ router.use(photoRateLimiter);
 
 /**
  * Validation schema for photo proxy request
+ * PROD Hardening: Strict bounds on dimensions
  */
 const photoRequestSchema = z.object({
   photoReference: z.string()
@@ -42,14 +44,28 @@ const photoRequestSchema = z.object({
   maxWidthPx: z.number()
     .int()
     .min(100)
-    .max(1600)
+    .max(1200) // PROD Hardening: Reduced from 1600 to 1200
     .default(800),
   maxHeightPx: z.number()
     .int()
     .min(100)
-    .max(1600)
+    .max(1200) // PROD Hardening: Reduced from 1600 to 1200
     .optional()
 });
+
+/**
+ * PROD Hardening: Safe numeric parsing with bounds
+ */
+function parseNumericParam(value: string | undefined, defaultValue: number, min: number, max: number): number {
+  if (!value) return defaultValue;
+  
+  const parsed = parseInt(value, 10);
+  if (isNaN(parsed)) return defaultValue;
+  if (parsed < min) return min;
+  if (parsed > max) return max;
+  
+  return parsed;
+}
 
 /**
  * GET /photos/places/:placeId/photos/:photoId
@@ -64,8 +80,12 @@ router.get('/places/:placeId/photos/:photoId', async (req: Request, res: Respons
     // Build photo reference from path parameters
     const { placeId, photoId } = req.params;
     const photoReference = `places/${placeId}/photos/${photoId}`;
-    const maxWidthPx = parseInt(req.query.maxWidthPx as string) || 800;
-    const maxHeightPx = req.query.maxHeightPx ? parseInt(req.query.maxHeightPx as string) : undefined;
+    
+    // PROD Hardening: Safe numeric parsing with bounds
+    const maxWidthPx = parseNumericParam(req.query.maxWidthPx as string, 800, 100, 1200);
+    const maxHeightPx = req.query.maxHeightPx 
+      ? parseNumericParam(req.query.maxHeightPx as string, 800, 100, 1200)
+      : undefined;
 
     // Validate with Zod
     const validation = photoRequestSchema.safeParse({
@@ -212,8 +232,9 @@ router.get('/places/:placeId/photos/:photoId', async (req: Request, res: Respons
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     
     // Set cache headers (photos are immutable)
+    // PROD Hardening: 7 days cache for static photos
     res.setHeader('Content-Type', contentType);
-    res.setHeader('Cache-Control', 'public, max-age=86400, immutable'); // 24 hours
+    res.setHeader('Cache-Control', 'public, max-age=604800, immutable'); // 7 days (604800 seconds)
     res.setHeader('Content-Length', buffer.byteLength);
     res.setHeader('X-Trace-Id', requestId);
 

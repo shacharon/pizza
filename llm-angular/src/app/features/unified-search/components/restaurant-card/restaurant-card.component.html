@@ -33,7 +33,20 @@
   }
 
   <div class="restaurant-info">
-    <h3 class="restaurant-name">{{ restaurant().name }}</h3>
+    <div class="restaurant-name-row">
+      <h3 class="restaurant-name">{{ restaurant().name }}</h3>
+      
+      @if (glutenFreeBadge()) {
+        <span 
+          class="dietary-badge gluten-free"
+          [class.high]="glutenFreeBadge()!.level === 'high'"
+          [class.low]="glutenFreeBadge()!.level === 'low'"
+          [title]="getGlutenFreeTooltip()"
+        >
+          {{ glutenFreeBadge()!.text }}
+        </span>
+      }
+    </div>
     
     <div class="restaurant-meta">
       @if (restaurant().rating) {

@@ -167,3 +167,16 @@ export function getFallbackRegion(
   }
   return null;
 }
+
+/**
+ * Check if a region code is a known unsupported region
+ * Used to reduce log noise for expected cases
+ * 
+ * @param code Region code to check
+ * @returns true if this is a known unsupported region (e.g., GZ)
+ */
+export function isKnownUnsupportedRegion(code: string): boolean {
+  // Gaza Strip - not supported by Google Places API
+  // This is expected input from intent LLM, so we handle it gracefully
+  return code === 'GZ';
+}

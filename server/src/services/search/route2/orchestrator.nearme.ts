@@ -10,7 +10,7 @@ import { isNearMeQuery, getNearMePattern } from './utils/near-me-detector.js';
 import { logger } from '../../../lib/logger/structured-logger.js';
 import { generateAndPublishAssistant } from './assistant/assistant-integration.js';
 import type { AssistantClarifyContext } from './assistant/assistant-llm.service.js';
-import { toNarratorLanguage, resolveSessionId } from './orchestrator.helpers.js';
+import { resolveAssistantLanguage, resolveSessionId } from './orchestrator.helpers.js';
 import type { WebSocketManager } from '../../../infra/websocket/websocket-manager.js';
 
 /**
@@ -52,7 +52,7 @@ export async function handleNearMeLocationCheck(
       type: 'CLARIFY',
       reason: 'MISSING_LOCATION',
       query: request.query,
-      language: toNarratorLanguage(intentDecision.language)
+      language: resolveAssistantLanguage(ctx, request, intentDecision.language)
     };
 
     const assistMessage = await generateAndPublishAssistant(

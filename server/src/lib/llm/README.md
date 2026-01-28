@@ -73,7 +73,7 @@ Five distinct LLM purposes are defined:
 | `intent` | Intent stage - route decision (TEXTSEARCH/NEARBY/LANDMARK) | 2500ms | gpt-4o-mini |
 | `baseFilters` | Base filters extraction (language, openState, etc.) | 2000ms | gpt-4o-mini |
 | `routeMapper` | Route-specific query mapping | 3500ms | gpt-4o-mini |
-| `assistant` | Assistant narrator - UX-facing messages | 3000ms | gpt-4o-mini |
+| `assistant` | Assistant messages - LLM-generated UX guidance | 3000ms | gpt-4o-mini |
 
 ## Environment Variables
 
@@ -151,7 +151,7 @@ clearLLMConfigCache();
 
 The LLM configuration system is integrated into:
 
-1. **Assistant Narrator** (`narrator/assistant-narrator.ts`)
+1. **Assistant Messages** (`route2/assistant/assistant-llm.service.ts`)
 2. **Gate2 Stage** (`stages/gate2.stage.ts`)
 3. **Intent Stage** (`stages/intent/intent.stage.ts`)
 4. **Base Filters** (`shared/base-filters-llm.ts`)

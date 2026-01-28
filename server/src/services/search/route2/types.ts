@@ -28,6 +28,8 @@ export interface Route2Context {
   jobCreatedAt?: number; // Timestamp when search job was created (for queueDelayMs)
   sessionService?: any; // Optional session service for region caching
   llmProvider: LLMProvider;
+  query?: string; // Original user query (for assistant context on failures)
+  queryLanguage?: 'he' | 'en'; // Detected language from query text (deterministic, for assistant messages)
   userLocation?: {
     lat: number;
     lng: number;
@@ -84,14 +86,16 @@ export type MappingRoute = 'TEXTSEARCH' | 'NEARBY' | 'LANDMARK';
 /**
  * INTENT Stage Result
  * Router-only decision without extraction
- * Includes language and region detection
+ * Includes language and regionCandidate detection (NOT final region)
+ * 
+ * IMPORTANT: regionCandidate is a suggestion only - filters_resolved decides the final region
  */
 export interface IntentResult {
   route: MappingRoute;
   confidence: number;
   reason: string;
   language: Gate2Language;
-  region: string; // ISO-3166-1 alpha-2 (e.g., "IL", "FR", "US")
+  regionCandidate: string; // ISO-3166-1 alpha-2 candidate (e.g., "IL", "GZ", "FR") - NOT final, must be validated by filters_resolved
   regionConfidence: number;
   regionReason: string;
   cityText?: string; // Optional city name for location bias (e.g., "גדרה", "אשקלון")

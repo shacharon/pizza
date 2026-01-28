@@ -1,11 +1,9 @@
 /**
- * ROUTE2 Orchestrator
+ * ROUTE2 Orchestrator (Thin Coordinator)
+ * Delegates to focused modules for SOLID compliance
  *
- * A: True parallelization after Gate2:
- * - fire base_filters + post_constraints immediately after Gate2
- * - run intent + route_llm while those run
- * - await base_filters before resolveFilters
- * - await post_constraints as late as possible (before post_filter)
+ * Pipeline: gate2 → intent → route-llm → filters → google-maps → post-filter → response
+ * Parallelization: base_filters + post_constraints fire after Gate2, awaited when needed
  */
 
 import type { SearchRequest } from '../types/search-request.dto.js';
@@ -16,37 +14,28 @@ import { executeGate2Stage } from './stages/gate2.stage.js';
 import { executeIntentStage } from './stages/intent/intent.stage.js';
 import { executeRouteLLM } from './stages/route-llm/route-llm.dispatcher.js';
 import { executeGoogleMapsStage } from './stages/google-maps.stage.js';
-import { executePostConstraintsStage } from './stages/post-constraints/post-constraints.stage.js';
 
 import { resolveUserRegionCode } from './utils/region-resolver.js';
-import { resolveBaseFiltersLLM } from './shared/base-filters-llm.js';
-import type { PreGoogleBaseFilters } from './shared/shared-filters.types.js';
-import { resolveFilters } from './shared/filters-resolver.js';
-import { applyPostFilters } from './post-filters/post-results.filter.js';
-import type { PostConstraints } from './shared/post-constraints.types.js';
-import { isNearMeQuery, getNearMePattern } from './utils/near-me-detector.js';
-
 import { logger } from '../../../lib/logger/structured-logger.js';
 import { wsManager } from '../../../server.js';
-import { startStage, endStage } from '../../../lib/telemetry/stage-timer.js';
 import { sanitizeQuery } from '../../../lib/telemetry/query-sanitizer.js';
+import { withTimeout } from '../../../lib/reliability/timeout-guard.js';
 
-// Assistant Narrator imports
-import { maybeNarrateAndPublish, publishFailureNarrator } from './narrator.integration.js';
-import type {
-  NarratorGateContext,
-  NarratorClarifyContext,
-  NarratorSummaryContext
-} from './narrator/narrator.types.js';
-import type { FetchErrorKind } from '../../../utils/fetch-with-timeout.js';
+// Extracted modules
+import { fireParallelTasks, drainParallelPromises } from './orchestrator.parallel-tasks.js';
+import { handleNearMeLocationCheck, applyNearMeRouteOverride } from './orchestrator.nearme.js';
+import { handleGateStop, handleGateClarify, handleNearbyLocationGuard } from './orchestrator.guards.js';
+import { resolveAndStoreFilters, applyPostFiltersToResults } from './orchestrator.filters.js';
+import { buildFinalResponse } from './orchestrator.response.js';
+import { handlePipelineError } from './orchestrator.error.js';
 
-// Extracted helpers and constants
-import { shouldDebugStop, toNarratorLanguage, resolveSessionId } from './orchestrator.helpers.js';
-import { DEFAULT_POST_CONSTRAINTS, DEFAULT_BASE_FILTERS } from './failure-messages.js';
+// Extracted helpers
+import { shouldDebugStop, resolveSessionId } from './orchestrator.helpers.js';
 
-// Helper functions and constants have been extracted to separate modules
-
-export async function searchRoute2(request: SearchRequest, ctx: Route2Context): Promise<SearchResponse> {
+/**
+ * Internal pipeline implementation (without timeout)
+ */
+async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context): Promise<SearchResponse> {
   const { requestId, startTime } = ctx;
   const sessionId = resolveSessionId(request, ctx);
   const { queryLen, queryHash } = sanitizeQuery(request.query);
@@ -56,11 +45,14 @@ export async function searchRoute2(request: SearchRequest, ctx: Route2Context): 
     '[ROUTE2] Pipeline selected'
   );
 
-  let baseFiltersPromise: Promise<PreGoogleBaseFilters> | null = null;
-  let postConstraintsPromise: Promise<PostConstraints> | null = null;
+  // Store query in context for assistant hooks on failures
+  ctx.query = request.query;
+
+  let baseFiltersPromise = null;
+  let postConstraintsPromise = null;
 
   try {
-    // Best-effort: region is a hint, not a hard dependency
+    // Best-effort: region resolution
     try {
       const { userRegionCode, source: userRegionSource } = await resolveUserRegionCode(ctx);
       ctx.userRegionCode = userRegionCode;
@@ -87,9 +79,10 @@ export async function searchRoute2(request: SearchRequest, ctx: Route2Context): 
 
     if (!ctx.timings) ctx.timings = {};
 
-    // STAGE 1: GATE2 (must stay serial)
+    // STAGE 1: GATE2
     const gateResult = await executeGate2Stage(request, ctx);
 
+    // Debug stop after gate2
     if (shouldDebugStop(ctx, 'gate2')) {
       return {
         requestId: ctx.requestId,
@@ -110,6 +103,7 @@ export async function searchRoute2(request: SearchRequest, ctx: Route2Context): 
       } as any;
     }
 
+    // Gate2 error check
     if (gateResult.error) {
       logger.error(
         {
@@ -125,186 +119,23 @@ export async function searchRoute2(request: SearchRequest, ctx: Route2Context): 
       throw new Error(`${gateResult.error.code}: ${gateResult.error.message}`);
     }
 
-    // EARLY STOP: Not food
-    if (gateResult.gate.route === 'STOP') {
-      logger.info(
-        {
-          requestId,
-          pipelineVersion: 'route2',
-          event: 'pipeline_stopped',
-          reason: 'not_food_related',
-          foodSignal: gateResult.gate.foodSignal
-        },
-        '[ROUTE2] Pipeline stopped - not food related'
-      );
+    // Guard: GATE STOP (not food)
+    const stopResponse = await handleGateStop(request, gateResult, ctx, wsManager);
+    if (stopResponse) return stopResponse;
 
-      const fallbackHttpMessage = "זה לא נראה כמו חיפוש אוכל/מסעדות. נסה למשל: 'פיצה בתל אביב'.";
-      const narratorContext: NarratorGateContext = {
-        type: 'GATE_FAIL',
-        // IMPORTANT: align these values to narrator.types.ts enums
-        reason: 'NO_FOOD',
-        query: request.query,
-        language: toNarratorLanguage(gateResult.gate.language),
-        locationKnown: !!ctx.userLocation
-      };
+    // Guard: GATE ASK_CLARIFY (uncertain)
+    const clarifyResponse = await handleGateClarify(request, gateResult, ctx, wsManager);
+    if (clarifyResponse) return clarifyResponse;
 
-      const assistMessage = await maybeNarrateAndPublish(
-        ctx,
-        requestId,
-        sessionId,
-        narratorContext,
-        fallbackHttpMessage,
-        false,
-        'narrator_gate_fail_error',
-        wsManager
-      );
+    // Fire parallel tasks after Gate2
+    const parallelTasks = fireParallelTasks(request, ctx);
+    baseFiltersPromise = parallelTasks.baseFiltersPromise;
+    postConstraintsPromise = parallelTasks.postConstraintsPromise;
 
-      return {
-        requestId,
-        sessionId,
-        query: {
-          original: request.query,
-          parsed: {
-            query: request.query,
-            searchMode: 'textsearch' as const,
-            filters: {},
-            languageContext: {
-              uiLanguage: 'he' as const,
-              requestLanguage: 'he' as const,
-              googleLanguage: 'he' as const
-            },
-            originalQuery: request.query
-          },
-          language: gateResult.gate.language
-        },
-        results: [],
-        chips: [],
-        assist: { type: 'guide' as const, message: assistMessage },
-        meta: {
-          tookMs: Date.now() - startTime,
-          mode: 'textsearch' as const,
-          appliedFilters: [],
-          confidence: gateResult.gate.confidence,
-          source: 'route2_gate_stop',
-          failureReason: 'LOW_CONFIDENCE'
-        }
-      };
-    }
-
-    // EARLY STOP: Ask clarify
-    if (gateResult.gate.route === 'ASK_CLARIFY') {
-      logger.info(
-        {
-          requestId,
-          pipelineVersion: 'route2',
-          event: 'pipeline_clarify',
-          reason: 'uncertain_query',
-          foodSignal: gateResult.gate.foodSignal
-        },
-        '[ROUTE2] Pipeline asking for clarification'
-      );
-
-      const fallbackHttpMessage =
-        "כדי לחפש טוב צריך 2 דברים: מה אוכלים + איפה. לדוגמה: 'סושי באשקלון' או 'פיצה ליד הבית'.";
-
-      const narratorContext: NarratorClarifyContext = {
-        type: 'CLARIFY',
-        // IMPORTANT: align these values to narrator.types.ts enums
-        reason: 'AMBIGUOUS',
-        query: request.query,
-        language: toNarratorLanguage(gateResult.gate.language),
-        locationKnown: !!ctx.userLocation
-      };
-
-      const assistMessage = await maybeNarrateAndPublish(
-        ctx,
-        requestId,
-        sessionId,
-        narratorContext,
-        fallbackHttpMessage,
-        true,
-        'narrator_clarify_error',
-        wsManager
-      );
-
-      return {
-        requestId,
-        sessionId,
-        query: {
-          original: request.query,
-          parsed: {
-            query: request.query,
-            searchMode: 'textsearch' as const,
-            filters: {},
-            languageContext: {
-              uiLanguage: 'he' as const,
-              requestLanguage: 'he' as const,
-              googleLanguage: 'he' as const
-            },
-            originalQuery: request.query
-          },
-          language: gateResult.gate.language
-        },
-        results: [],
-        chips: [],
-        assist: { type: 'clarify' as const, message: assistMessage },
-        meta: {
-          tookMs: Date.now() - startTime,
-          mode: 'textsearch' as const,
-          appliedFilters: [],
-          confidence: gateResult.gate.confidence,
-          source: 'route2_gate_clarify',
-          failureReason: 'LOW_CONFIDENCE'
-        }
-      };
-    }
-
-    // --- A: FIRE PARALLEL TASKS IMMEDIATELY AFTER GATE2 ---
-    logger.info(
-      { requestId, pipelineVersion: 'route2', event: 'parallel_started' },
-      '[ROUTE2] Starting parallel tasks (base_filters + post_constraints + intent chain)'
-    );
-
-    baseFiltersPromise = resolveBaseFiltersLLM({
-      query: request.query,
-      route: 'TEXTSEARCH' as any,
-      llmProvider: ctx.llmProvider,
-      requestId: ctx.requestId,
-      ...(ctx.traceId && { traceId: ctx.traceId }),
-      ...(ctx.sessionId && { sessionId: ctx.sessionId })
-    }).catch((err) => {
-      logger.warn(
-        {
-          requestId,
-          pipelineVersion: 'route2',
-          stage: 'base_filters_llm',
-          event: 'stage_failed',
-          error: err instanceof Error ? err.message : String(err),
-          fallback: 'default_base_filters'
-        },
-        '[ROUTE2] Base filters extraction failed, using defaults'
-      );
-      return DEFAULT_BASE_FILTERS;
-    });
-
-    postConstraintsPromise = executePostConstraintsStage(request, ctx).catch((err) => {
-      logger.warn(
-        {
-          requestId,
-          pipelineVersion: 'route2',
-          stage: 'post_constraints',
-          event: 'stage_failed',
-          error: err instanceof Error ? err.message : String(err),
-          fallback: 'default_post_constraints'
-        },
-        '[ROUTE2] Post-constraints extraction failed, using defaults'
-      );
-      return DEFAULT_POST_CONSTRAINTS;
-    });
-
-    // INTENT + ROUTE_LLM chain
+    // STAGE 2: INTENT
     let intentDecision = await executeIntentStage(request, ctx);
 
+    // Debug stop after intent
     if (shouldDebugStop(ctx, 'intent')) {
       return {
         requestId: ctx.requestId,
@@ -331,111 +162,27 @@ export async function searchRoute2(request: SearchRequest, ctx: Route2Context): 
         pipelineVersion: 'route2',
         event: 'intent_decided',
         route: intentDecision.route,
-        region: intentDecision.region,
+        regionCandidate: intentDecision.regionCandidate,
         language: intentDecision.language,
         confidence: intentDecision.confidence,
         reason: intentDecision.reason
       },
-      '[ROUTE2] Intent routing decided'
+      '[ROUTE2] Intent routing decided (regionCandidate will be validated by filters_resolved)'
     );
 
-    // HOTFIX: Deterministic "near me" location requirement
-    const isNearMe = isNearMeQuery(request.query);
+    // Near-me location check (early stop if no location)
+    const nearMeResponse = await handleNearMeLocationCheck(request, intentDecision, ctx, wsManager);
+    if (nearMeResponse) return nearMeResponse;
 
-    if (isNearMe && !ctx.userLocation) {
-      const pattern = getNearMePattern(request.query);
+    // Near-me route override (if detected with location)
+    intentDecision = applyNearMeRouteOverride(request, intentDecision, ctx);
 
-      logger.info(
-        {
-          requestId,
-          pipelineVersion: 'route2',
-          event: 'near_me_location_required',
-          pattern,
-          hasUserLocation: false,
-          originalRoute: intentDecision.route
-        },
-        '[ROUTE2] Near-me query without location - returning CLARIFY'
-      );
+    // STAGE 3: FILTERS (await base filters, resolve final - BEFORE route_llm)
+    const baseFilters = await baseFiltersPromise;
+    const finalFilters = await resolveAndStoreFilters(baseFilters, intentDecision, ctx);
 
-      const fallbackHttpMessage = 'כדי לחפש מסעדות לידי אני צריך מיקום. תאפשר מיקום או כתוב עיר/אזור.';
-      const narratorContext: NarratorClarifyContext = {
-        type: 'CLARIFY',
-        reason: 'MISSING_LOCATION',
-        query: request.query,
-        language: toNarratorLanguage(intentDecision.language),
-        locationKnown: false
-      };
-
-      const assistMessage = await maybeNarrateAndPublish(
-        ctx,
-        requestId,
-        sessionId,
-        narratorContext,
-        fallbackHttpMessage,
-        true,
-        'narrator_nearme_clarify_error',
-        wsManager
-      );
-
-      return {
-        requestId,
-        sessionId,
-        query: {
-          original: request.query,
-          parsed: {
-            query: request.query,
-            searchMode: 'textsearch' as const,
-            filters: {},
-            languageContext: {
-              uiLanguage: 'he' as const,
-              requestLanguage: 'he' as const,
-              googleLanguage: 'he' as const
-            },
-            originalQuery: request.query
-          },
-          language: intentDecision.language
-        },
-        results: [],
-        chips: [],
-        assist: { type: 'clarify' as const, message: assistMessage },
-        meta: {
-          tookMs: Date.now() - startTime,
-          mode: 'textsearch' as const,
-          appliedFilters: [],
-          confidence: intentDecision.confidence,
-          source: 'route2_near_me_clarify',
-          failureReason: 'LOCATION_REQUIRED'
-        }
-      };
-    }
-
-    if (isNearMe && ctx.userLocation) {
-      const originalRoute = intentDecision.route;
-
-      if (originalRoute !== 'NEARBY') {
-        logger.info(
-          {
-            requestId,
-            pipelineVersion: 'route2',
-            event: 'intent_overridden',
-            fromRoute: originalRoute,
-            toRoute: 'NEARBY',
-            reason: 'near_me_keyword_override',
-            hasUserLocation: true,
-            pattern: getNearMePattern(request.query)
-          },
-          '[ROUTE2] Near-me detected with location - forcing NEARBY route'
-        );
-
-        intentDecision = {
-          ...intentDecision,
-          route: 'NEARBY',
-          reason: 'near_me_keyword_override'
-        };
-      }
-    }
-
-    const mapping = await executeRouteLLM(intentDecision, request, ctx);
+    // STAGE 4: ROUTE_LLM (uses finalFilters as single source of truth)
+    const mapping = await executeRouteLLM(intentDecision, request, ctx, finalFilters);
 
     logger.info(
       {
@@ -446,298 +193,71 @@ export async function searchRoute2(request: SearchRequest, ctx: Route2Context): 
         region: mapping.region,
         language: mapping.language
       },
-      '[ROUTE2] Route-LLM mapping completed'
+      '[ROUTE2] Route-LLM mapping completed (using filters_resolved region)'
     );
 
     // Guard: NEARBY requires userLocation
-    if (mapping.providerMethod === 'nearbySearch' && !ctx.userLocation) {
-      logger.info(
-        {
-          requestId,
-          pipelineVersion: 'route2',
-          event: 'pipeline_clarify',
-          reason: 'missing_user_location_for_nearby'
-        },
-        '[ROUTE2] Missing userLocation for nearbySearch - asking to clarify'
-      );
-
-      const fallbackHttpMessage =
-        "כדי לחפש 'לידי' אני צריך את המיקום שלך. אפשר לאשר מיקום או לכתוב עיר/אזור (למשל: 'פיצה בגדרה').";
-
-      const narratorContext: NarratorClarifyContext = {
-        type: 'CLARIFY',
-        reason: 'MISSING_LOCATION',
-        query: request.query,
-        language: toNarratorLanguage(mapping.language),
-        locationKnown: false
-      };
-
-      const assistMessage = await maybeNarrateAndPublish(
-        ctx,
-        requestId,
-        sessionId,
-        narratorContext,
-        fallbackHttpMessage,
-        true,
-        'narrator_nearby_clarify_error',
-        wsManager
-      );
-
-      return {
-        requestId,
-        sessionId,
-        query: {
-          original: request.query,
-          parsed: {
-            query: request.query,
-            searchMode: 'textsearch' as const,
-            filters: {},
-            languageContext: {
-              uiLanguage: 'he' as const,
-              requestLanguage: 'he' as const,
-              googleLanguage: 'he' as const
-            },
-            originalQuery: request.query
-          },
-          language: gateResult.gate.language
-        },
-        results: [],
-        chips: [],
-        assist: { type: 'clarify' as const, message: assistMessage },
-        meta: {
-          tookMs: Date.now() - startTime,
-          mode: 'textsearch' as const,
-          appliedFilters: [],
-          confidence: intentDecision.confidence,
-          source: 'route2_guard_clarify',
-          failureReason: 'LOW_CONFIDENCE'
-        }
-      };
-    }
-
-    // Await base filters now (required for resolveFilters)
-    logger.info({ requestId, pipelineVersion: 'route2', event: 'await_base_filters' }, '[ROUTE2] Awaiting base filters');
-    const baseFilters = await baseFiltersPromise;
-
-    const finalFilters = await resolveFilters({
-      base: baseFilters,
-      intent: intentDecision,
-      deviceRegionCode: ctx.userRegionCode ?? null,
-      userLocation: ctx.userLocation ?? null,
-      requestId: ctx.requestId
-    });
-
-    logger.info(
-      {
-        requestId,
-        pipelineVersion: 'route2',
-        event: 'filters_resolved',
-        base: {
-          language: baseFilters?.language ?? null,
-          openState: baseFilters?.openState ?? null,
-          openAt: baseFilters?.openAt ?? null,
-          openBetween: baseFilters?.openBetween ?? null,
-          regionHint: baseFilters?.regionHint ?? null
-        },
-        final: {
-          uiLanguage: finalFilters.uiLanguage,
-          providerLanguage: finalFilters.providerLanguage,
-          openState: finalFilters.openState,
-          openAt: finalFilters.openAt,
-          openBetween: finalFilters.openBetween,
-          regionCode: finalFilters.regionCode
-        }
-      },
-      '[ROUTE2] Filters resolved'
-    );
-
-    ctx.sharedFilters = { preGoogle: baseFilters, final: finalFilters };
-
-    mapping.language = finalFilters.providerLanguage;
-    mapping.region = finalFilters.regionCode;
+    const nearbyGuardResponse = await handleNearbyLocationGuard(request, gateResult, intentDecision, mapping, ctx, wsManager);
+    if (nearbyGuardResponse) return nearbyGuardResponse;
 
     // STAGE 5: GOOGLE_MAPS
     const googleResult = await executeGoogleMapsStage(mapping, request, ctx);
     ctx.timings.googleMapsMs = googleResult.durationMs;
 
-    // Await post constraints as late as possible
-    logger.info(
-      { requestId, pipelineVersion: 'route2', event: 'await_post_constraints' },
-      '[ROUTE2] Awaiting post constraints (late)'
-    );
+    // STAGE 6: POST_FILTERS (await post constraints, apply filters)
     const postConstraints = await postConstraintsPromise;
-
-    // STAGE 6: POST_FILTERS
-    const postFilterStart = startStage(ctx, 'post_filter', {
-      openState: postConstraints.openState,
-      priceLevel: postConstraints.priceLevel,
-      isKosher: postConstraints.isKosher
-    });
-
+    const postFilterResult = applyPostFiltersToResults(googleResult.results, postConstraints, finalFilters, ctx);
+    const finalResults = postFilterResult.resultsFiltered;
+    
+    // Get merged filters for response building
     const filtersForPostFilter = {
       ...finalFilters,
       openState: postConstraints.openState ?? finalFilters.openState,
-      openAt: postConstraints.openAt
-        ? { day: postConstraints.openAt.day, timeHHmm: postConstraints.openAt.timeHHmm, timezone: null }
-        : finalFilters.openAt,
-      openBetween: postConstraints.openBetween
-        ? {
-          day: postConstraints.openBetween.day,
-          startHHmm: postConstraints.openBetween.startHHmm,
-          endHHmm: postConstraints.openBetween.endHHmm,
-          timezone: null
-        }
-        : finalFilters.openBetween,
       priceLevel: postConstraints.priceLevel ?? (finalFilters as any).priceLevel,
       isKosher: postConstraints.isKosher ?? (finalFilters as any).isKosher,
-      requirements: postConstraints.requirements ?? (finalFilters as any).requirements
+      isGlutenFree: postConstraints.isGlutenFree ?? (finalFilters as any).isGlutenFree
     };
 
-    const postFilterResult = applyPostFilters({
-      results: googleResult.results,
-      sharedFilters: filtersForPostFilter as any,
-      requestId: ctx.requestId,
-      pipelineVersion: 'route2'
-    });
-
-    endStage(ctx, 'post_filter', postFilterStart, {
-      stats: postFilterResult.stats,
-      usedPostConstraints:
-        postConstraints.openState !== null ||
-        postConstraints.openAt !== null ||
-        postConstraints.openBetween !== null ||
-        postConstraints.priceLevel !== null ||
-        postConstraints.isKosher !== null ||
-        postConstraints.requirements?.accessible !== null ||
-        postConstraints.requirements?.parking !== null
-    });
-
-    const finalResults = postFilterResult.resultsFiltered;
-
-    // RESPONSE BUILD
-    const responseBuildStart = startStage(ctx, 'response_build', { resultCount: finalResults.length });
-    const totalDurationMs = Date.now() - startTime;
-
-    const detectedLanguage = gateResult.gate.language;
-    const uiLanguage: 'he' | 'en' = detectedLanguage === 'he' ? 'he' : 'en';
-    const googleLanguage: 'he' | 'en' = detectedLanguage === 'he' ? 'he' : 'en';
-
-    // NARRATOR: SUMMARY (end of pipeline)
-    const fallbackHttpMessage = finalResults.length === 0 ? 'לא מצאתי תוצאות. נסה לשנות עיר/אזור או להסיר סינון.' : '';
-    const top3Names = finalResults.slice(0, 3).map((r: any) => r.name || 'Unknown');
-    const openNowCount = finalResults.filter((r: any) => r.opening_hours?.open_now === true).length;
-    const ratings = finalResults.map((r: any) => r.rating).filter((r): r is number => typeof r === 'number');
-    const avgRating = ratings.length > 0 ? ratings.reduce((sum, r) => sum + r, 0) / ratings.length : null;
-
-    const appliedFiltersArray: string[] = [];
-    if ((filtersForPostFilter as any).openState) appliedFiltersArray.push((filtersForPostFilter as any).openState);
-    if ((filtersForPostFilter as any).priceLevel) appliedFiltersArray.push(`price:${(filtersForPostFilter as any).priceLevel}`);
-    if ((filtersForPostFilter as any).isKosher) appliedFiltersArray.push('kosher');
-
-    const narratorContext: NarratorSummaryContext = {
-      type: 'SUMMARY',
-      query: request.query,
-      language: toNarratorLanguage(detectedLanguage),
-      resultCount: finalResults.length,
-      top3Names,
-      openNowCount,
-      avgRating,
-      appliedFilters: appliedFiltersArray
-    };
-
-    const assistMessage = await maybeNarrateAndPublish(
+    // STAGE 7: BUILD RESPONSE
+    return await buildFinalResponse(
+      request,
+      gateResult,
+      intentDecision,
+      mapping,
+      finalResults,
+      filtersForPostFilter,
       ctx,
-      requestId,
-      sessionId,
-      narratorContext,
-      fallbackHttpMessage,
-      false,
-      'narrator_summary_error',
       wsManager
     );
-
-    const response: SearchResponse = {
-      requestId,
-      sessionId,
-      query: {
-        original: request.query,
-        parsed: {
-          query:
-            mapping.providerMethod === 'textSearch'
-              ? mapping.textQuery
-              : mapping.providerMethod === 'nearbySearch'
-                ? mapping.keyword
-                : mapping.keyword,
-          searchMode: mapping.providerMethod === 'textSearch' ? ('textsearch' as const) : ('nearbysearch' as const),
-          filters: {},
-          languageContext: { uiLanguage, requestLanguage: detectedLanguage, googleLanguage },
-          originalQuery: request.query
-        },
-        language: detectedLanguage
-      },
-      results: finalResults,
-      chips: [],
-      assist: { type: 'guide', message: assistMessage },
-      meta: {
-        tookMs: totalDurationMs,
-        mode: mapping.providerMethod === 'textSearch' ? ('textsearch' as const) : ('nearbysearch' as const),
-        appliedFilters: [],
-        confidence: intentDecision.confidence,
-        source: 'route2',
-        failureReason: 'NONE'
-      }
-    };
-
-    endStage(ctx, 'response_build', responseBuildStart);
-
-    wsManager.publishToChannel('search', requestId, sessionId, {
-      type: 'status',
-      requestId,
-      status: 'completed'
-    });
-
-    return response;
   } catch (error) {
-    const durationMs = Date.now() - startTime;
-    
-    // Extract errorKind if available from TimeoutError
-    const errorKind = (error && typeof error === 'object' && 'errorKind' in error) 
-      ? (error as any).errorKind 
-      : 'UNKNOWN';
-    
-    const errorStage = (error && typeof error === 'object' && 'stage' in error)
-      ? (error as any).stage
-      : 'unknown';
-
-    logger.error(
-      {
-        requestId,
-        pipelineVersion: 'route2',
-        event: 'pipeline_failed',
-        durationMs,
-        errorKind,
-        errorStage,
-        error: error instanceof Error ? error.message : 'unknown'
-      },
-      '[ROUTE2] Pipeline failed'
-    );
-    
-    // Publish assistant narrator message on failure (best-effort)
-    await publishFailureNarrator(ctx, requestId, wsManager, error, errorKind);
-
-    throw error;
+    return await handlePipelineError(error, ctx, wsManager);
   } finally {
-    // CRITICAL: Always drain parallel promises to prevent unhandled rejections
-    // These promises may still be running if we hit an early return or exception
-    if (baseFiltersPromise) {
-      await baseFiltersPromise.catch(() => {
-        // Already logged in the promise's own catch handler
-      });
+    await drainParallelPromises(baseFiltersPromise, postConstraintsPromise);
+  }
+}
+
+/**
+ * Route2 Search Pipeline with Global Timeout
+ * P1 Reliability: Wraps pipeline with 45s timeout to prevent indefinite hangs
+ */
+export async function searchRoute2(request: SearchRequest, ctx: Route2Context): Promise<SearchResponse> {
+  const PIPELINE_TIMEOUT_MS = 45_000; // 45 seconds global timeout
+  
+  try {
+    return await withTimeout(
+      searchRoute2Internal(request, ctx),
+      PIPELINE_TIMEOUT_MS,
+      'route2_pipeline'
+    );
+  } catch (error) {
+    // Re-throw timeout errors with more context
+    if (error && typeof error === 'object' && 'name' in error && error.name === 'TimeoutError') {
+      logger.error({
+        requestId: ctx.requestId,
+        timeoutMs: PIPELINE_TIMEOUT_MS,
+        event: 'pipeline_timeout'
+      }, '[ROUTE2] Pipeline timeout exceeded');
     }
-    if (postConstraintsPromise) {
-      await postConstraintsPromise.catch(() => {
-        // Already logged in the promise's own catch handler
-      });
-    }
+    throw error;
   }
 }

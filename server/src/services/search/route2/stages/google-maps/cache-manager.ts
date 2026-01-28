@@ -23,26 +23,33 @@ export async function raceWithCleanup<T>(
   timeoutMs: number
 ): Promise<T> {
   let timeoutId: NodeJS.Timeout | undefined;
-  
+
+  // CRITICAL FIX: Attach .catch() to cachePromise to prevent unhandled rejection
+  // when timeout wins the race but cache rejects later
+  void cachePromise.catch(() => {
+    // Swallow rejection silently - error is already handled by the race winner
+    // This prevents "[FATAL] Unhandled Promise Rejection" logs
+  });
+
   try {
     const timeoutPromise = new Promise<T>((_, reject) => {
       timeoutId = setTimeout(() => reject(new Error('Cache operation timeout')), timeoutMs);
     });
-    
+
     // Race between cache and timeout
     const result = await Promise.race([cachePromise, timeoutPromise]);
-    
+
     return result;
-    
+
   } finally {
     // P0 Fix: Always clear timeout to prevent memory leak
     if (timeoutId !== undefined) {
       clearTimeout(timeoutId);
     }
-    
+
     // Note: cachePromise continues running if it loses the race
     // This is acceptable - Redis will complete the operation
-    // The important fix is clearing the timeout to prevent memory leaks
+    // The catch handler above ensures no unhandled rejection warnings
   }
 }
 

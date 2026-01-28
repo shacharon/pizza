@@ -7,7 +7,7 @@
 
 import { createHash } from 'crypto';
 import type { SearchRequest } from '../../../types/search-request.dto.js';
-import type { Route2Context, IntentResult } from '../../types.js';
+import type { Route2Context, IntentResult, FinalSharedFilters } from '../../types.js';
 import type { Message } from '../../../../../llm/types.js';
 import { buildLLMJsonSchema } from '../../../../../llm/types.js';
 import { logger } from '../../../../../lib/logger/structured-logger.js';
@@ -60,11 +60,14 @@ import { NEARBY_JSON_SCHEMA, NEARBY_SCHEMA_HASH } from './static-schemas.js';
  * 
  * REQUIRES: context.userLocation must be present
  * FAILS FAST: if userLocation is missing
+ * 
+ * @param finalFilters Single source of truth for region/language (from filters_resolved)
  */
 export async function executeNearbyMapper(
   intent: IntentResult,
   request: SearchRequest,
-  context: Route2Context
+  context: Route2Context,
+  finalFilters: FinalSharedFilters
 ): Promise<NearbyMapping> {
   const { requestId, traceId, sessionId, llmProvider, userLocation } = context;
   const startTime = Date.now();
@@ -88,14 +91,15 @@ export async function executeNearbyMapper(
     pipelineVersion: 'route2',
     stage: 'nearby_mapper',
     event: 'stage_started',
-    region: intent.region,
-    language: intent.language,
+    regionCandidate: intent.regionCandidate,
+    finalRegion: finalFilters.regionCode,
+    language: finalFilters.providerLanguage,
     hasUserLocation: true
-  }, '[ROUTE2] nearby_mapper started');
+  }, '[ROUTE2] nearby_mapper started (using filters_resolved region)');
 
   try {
     // Build context-aware prompt
-    const userPrompt = buildUserPrompt(request.query, intent, userLocation);
+    const userPrompt = buildUserPrompt(request.query, finalFilters, userLocation);
 
     const messages: Message[] = [
       { role: 'system', content: NEARBY_MAPPER_PROMPT },
@@ -126,6 +130,11 @@ export async function executeNearbyMapper(
         NEARBY_JSON_SCHEMA
       );
       mapping = response.data;
+      
+      // CRITICAL: Override LLM's region/language with filters_resolved values (single source of truth)
+      mapping.region = finalFilters.regionCode;
+      mapping.language = finalFilters.providerLanguage;
+      
       tokenUsage = {
         ...(response.usage?.prompt_tokens !== undefined && { input: response.usage.prompt_tokens }),
         ...(response.usage?.completion_tokens !== undefined && { output: response.usage.completion_tokens }),
@@ -172,6 +181,11 @@ export async function executeNearbyMapper(
             NEARBY_JSON_SCHEMA
           );
           mapping = retryResponse.data;
+          
+          // CRITICAL: Override LLM's region/language with filters_resolved values (single source of truth)
+          mapping.region = finalFilters.regionCode;
+          mapping.language = finalFilters.providerLanguage;
+          
           tokenUsage = {
             ...(retryResponse.usage?.prompt_tokens !== undefined && { input: retryResponse.usage.prompt_tokens }),
             ...(retryResponse.usage?.completion_tokens !== undefined && { output: retryResponse.usage.completion_tokens }),
@@ -201,7 +215,7 @@ export async function executeNearbyMapper(
         msg: '[ROUTE2] nearby_mapper LLM failed, using fallback'
       });
 
-      mapping = buildFallbackMapping(request.query, intent, userLocation);
+      mapping = buildFallbackMapping(request.query, finalFilters, userLocation);
 
       logger.info({
         requestId,
@@ -251,25 +265,27 @@ export async function executeNearbyMapper(
 
 /**
  * Build user prompt with context
+ * Uses filters_resolved as single source of truth for region/language
  */
 function buildUserPrompt(
   query: string,
-  intent: IntentResult,
+  finalFilters: FinalSharedFilters,
   userLocation: { lat: number; lng: number }
 ): string {
   return `Query: "${query}"
 User location: lat=${userLocation.lat}, lng=${userLocation.lng}
-Region: ${intent.region}
-Language: ${intent.language}`;
+Region: ${finalFilters.regionCode}
+Language: ${finalFilters.providerLanguage}`;
 }
 
 /**
  * Build fallback mapping without LLM (used when LLM times out/fails)
  * Extracts radius from query patterns, uses cleaned query as keyword
+ * Uses filters_resolved as single source of truth for region/language
  */
 function buildFallbackMapping(
   query: string,
-  intent: IntentResult,
+  finalFilters: FinalSharedFilters,
   userLocation: { lat: number; lng: number }
 ): NearbyMapping {
   // Extract explicit distance from query
@@ -316,8 +332,8 @@ function buildFallbackMapping(
     location: userLocation,
     radiusMeters,
     keyword,
-    region: intent.region,
-    language: intent.language,
+    region: finalFilters.regionCode,
+    language: finalFilters.providerLanguage,
     reason
   };
 }

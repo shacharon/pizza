@@ -31,7 +31,7 @@ export class WSConnection {
     private readonly config: WSConnectionConfig,
     private readonly ticketProvider: WSTicketProvider,
     private readonly callbacks: WSConnectionCallbacks
-  ) {}
+  ) { }
 
   /**
    * Connect to WebSocket server
@@ -74,18 +74,18 @@ export class WSConnection {
         }
         throw error; // Re-throw other errors
       }
-      
+
       console.log('[WS] Ticket OK, connecting...');
 
       // STEP 3: Connect with ticket in URL query param
       const wsUrl = `${this.config.wsBaseUrl}/ws?ticket=${encodeURIComponent(ticketResponse.ticket)}`;
-      
+
       // Safety guard: verify URL contains ticket parameter
       if (!wsUrl.includes('ticket=')) {
         console.error('[WS] CRITICAL: WebSocket URL missing ticket parameter', { wsUrl });
         throw new Error('WebSocket URL must contain ticket parameter');
       }
-      
+
       this.ws = new WebSocket(wsUrl);
 
       this.ws.onopen = () => {
@@ -125,7 +125,7 @@ export class WSConnection {
             console.error('[WS] Hard failure - stopping reconnect', { code, reason, wasClean });
             this.hardFailureLogged = true;
           }
-          
+
           this.shouldReconnect = false;
           return;
         }
@@ -139,28 +139,28 @@ export class WSConnection {
       console.error('[WS] Connection error', error);
       this.callbacks.onStatusChange('disconnected');
       this.connectInFlight = false;
-      
+
       // Classify ticket request failures
       if (error?.status === 401) {
         // Hard failure: auth error (JWT invalid/missing sessionId)
         const errorCode = error?.error?.code;
         console.error('[WS] Hard failure - auth error', { status: 401, code: errorCode });
-        
+
         if (!this.hardFailureLogged) {
           console.error('[WS] Ticket request failed: 401 UNAUTHORIZED - stopping reconnect');
           this.hardFailureLogged = true;
         }
-        
+
         this.shouldReconnect = false;
         return;
       }
-      
+
       if (error?.status === 503) {
         // Soft failure: service unavailable (Redis down)
         console.warn('[WS] Service unavailable (503) - will retry');
         // Continue to reconnect with backoff
       }
-      
+
       // Only reconnect if we haven't hit a hard failure
       if (this.shouldReconnect) {
         this.scheduleReconnect();
@@ -235,7 +235,7 @@ export class WSConnection {
 
     // Silent: only log to console, never show in UI
     console.log(`[WS] Reconnect in ${delay}ms (attempt ${this.reconnectAttempts + 1})`);
-    
+
     this.callbacks.onStatusChange('reconnecting');
 
     this.reconnectTimer = window.setTimeout(() => {

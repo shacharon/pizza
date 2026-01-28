@@ -12,7 +12,7 @@ import { classifyPipelineError, PipelineErrorKind } from './pipeline-error-kinds
 
 /**
  * Handle pipeline error
- * Logs error and publishes failure narrator message
+ * Logs error and publishes failure assistant message
  * PROD Hardening: Standardized error classification
  */
 export async function handlePipelineError(

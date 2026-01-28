@@ -39,7 +39,7 @@ export const INTENT_JSON_SCHEMA = {
     confidence: { type: "number", minimum: 0, maximum: 1 },
     reason: { type: "string", minLength: 1 },
     language: { type: "string", enum: ["he", "en", "ru", "ar", "fr", "es", "other"] },
-    region: { type: "string", pattern: "^[A-Z]{2}$" },
+    regionCandidate: { type: "string", pattern: "^[A-Z]{2}$" },
     regionConfidence: { type: "number", minimum: 0, maximum: 1 },
     regionReason: { type: "string", minLength: 1 },
 
@@ -51,7 +51,7 @@ export const INTENT_JSON_SCHEMA = {
     "confidence",
     "reason",
     "language",
-    "region",
+    "regionCandidate",
     "regionConfidence",
     "regionReason",
     "cityText" // ✅ add

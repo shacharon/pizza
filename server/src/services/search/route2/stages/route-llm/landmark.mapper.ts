@@ -7,7 +7,7 @@
 
 import { createHash } from 'crypto';
 import type { SearchRequest } from '../../../types/search-request.dto.js';
-import type { Route2Context, IntentResult } from '../../types.js';
+import type { Route2Context, IntentResult, FinalSharedFilters } from '../../types.js';
 import type { Message } from '../../../../../llm/types.js';
 import { buildLLMJsonSchema } from '../../../../../llm/types.js';
 import { logger } from '../../../../../lib/logger/structured-logger.js';
@@ -75,10 +75,14 @@ import { LANDMARK_JSON_SCHEMA, LANDMARK_SCHEMA_HASH } from './static-schemas.js'
 /**
  * Execute Landmark Mapper
  */
+/**
+ * @param finalFilters Single source of truth for region/language (from filters_resolved)
+ */
 export async function executeLandmarkMapper(
   intent: IntentResult,
   request: SearchRequest,
-  context: Route2Context
+  context: Route2Context,
+  finalFilters: FinalSharedFilters
 ): Promise<LandmarkMapping> {
   const { requestId, traceId, sessionId, llmProvider } = context;
   const startTime = Date.now();
@@ -88,13 +92,14 @@ export async function executeLandmarkMapper(
     pipelineVersion: 'route2',
     stage: 'landmark_mapper',
     event: 'stage_started',
-    region: intent.region,
-    language: intent.language
-  }, '[ROUTE2] landmark_mapper started');
+    regionCandidate: intent.regionCandidate,
+    finalRegion: finalFilters.regionCode,
+    language: finalFilters.providerLanguage
+  }, '[ROUTE2] landmark_mapper started (using filters_resolved region)');
 
   try {
     // Build context-aware prompt
-    const userPrompt = buildUserPrompt(request.query, intent);
+    const userPrompt = buildUserPrompt(request.query, finalFilters);
 
     const messages: Message[] = [
       { role: 'system', content: LANDMARK_MAPPER_PROMPT },
@@ -176,6 +181,11 @@ export async function executeLandmarkMapper(
             LANDMARK_JSON_SCHEMA
           );
           mapping = retryResponse.data;
+          
+          // CRITICAL: Override LLM's region/language with filters_resolved values (single source of truth)
+          mapping.region = finalFilters.regionCode;
+          mapping.language = finalFilters.providerLanguage;
+          
           tokenUsage = {
             ...(retryResponse.usage?.prompt_tokens !== undefined && { input: retryResponse.usage.prompt_tokens }),
             ...(retryResponse.usage?.completion_tokens !== undefined && { output: retryResponse.usage.completion_tokens }),
@@ -253,14 +263,15 @@ export async function executeLandmarkMapper(
 
 /**
  * Build user prompt with context
+ * Uses filters_resolved as single source of truth for region/language
  */
 function buildUserPrompt(
   query: string,
-  intent: IntentResult
+  finalFilters: FinalSharedFilters
 ): string {
   const prompt = `Query: "${query}"
-Region: ${intent.region}
-Language: ${intent.language}`;
+Region: ${finalFilters.regionCode}
+Language: ${finalFilters.providerLanguage}`;
 
   return prompt;
 }

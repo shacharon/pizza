@@ -10,7 +10,7 @@ export type LLMPurpose =
   | 'intent'         // Intent stage - route decision (TEXTSEARCH/NEARBY/LANDMARK)
   | 'baseFilters'    // Base filters extraction (language, openState, etc.)
   | 'routeMapper'    // Route-specific query mapping (textSearch/nearbySearch/landmark)
-  | 'assistant';     // Assistant narrator - UX-facing messages
+  | 'assistant';     // Assistant messages - UX-facing guidance (LLM-generated)
 
 /**
  * Validate purpose at runtime

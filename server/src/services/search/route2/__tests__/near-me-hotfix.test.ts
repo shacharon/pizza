@@ -68,8 +68,10 @@ jest.mock('../stages/post-constraints/post-constraints.stage.js', () => ({
   executePostConstraintsStage: jest.fn().mockResolvedValue({
     openState: null,
     openAt: null,
+    openBetween: null,
     priceLevel: null,
     isKosher: null,
+    isGlutenFree: null,
     requirements: {
       accessible: null,
       parking: null

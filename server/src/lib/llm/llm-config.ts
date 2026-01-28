@@ -28,7 +28,7 @@ const DEFAULT_TIMEOUTS: Record<LLMPurpose, number> = {
   intent: 2500,        // Route decision, medium priority
   baseFilters: 2000,   // Simple extraction, fast
   routeMapper: 3500,   // Query mapping, more complex
-  assistant: 3000      // Narrator messages, non-critical path
+  assistant: 3000      // Assistant messages (GATE_FAIL, CLARIFY, SUMMARY, SEARCH_FAILED)
 };
 
 /**

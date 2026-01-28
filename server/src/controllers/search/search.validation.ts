@@ -38,12 +38,12 @@ export function validateRequestIdParam(req: Request): { valid: boolean; requestI
   if (!requestIdParam) {
     return { valid: false };
   }
-  
+
   // Ensure requestId is a string (not an array)
   const requestId = Array.isArray(requestIdParam) ? requestIdParam[0] : requestIdParam;
   if (!requestId) {
     return { valid: false };
   }
-  
+
   return { valid: true, requestId };
 }

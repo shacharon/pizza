@@ -1,13 +1,17 @@
 /**
  * Rate Limiting Middleware
- * Simple in-memory rate limiter for photo proxy endpoint
+ * Supports both Redis-backed (distributed) and in-memory (single-instance) rate limiting
  * 
  * Strategy: Token bucket per IP address
  * Default: 60 requests per minute per IP
+ * 
+ * P1 Security: Redis-backed rate limiting prevents bypass in multi-instance deployments
  */
 
 import type { Request, Response, NextFunction } from 'express';
+import type { Redis } from 'ioredis';
 import { logger } from '../lib/logger/structured-logger.js';
+import { getExistingRedisClient } from '../lib/redis/redis-client.js';
 
 interface RateLimitConfig {
   windowMs: number;      // Time window in milliseconds
@@ -79,8 +83,75 @@ class RateLimiterStore {
   }
 }
 
-// Singleton store
-const store = new RateLimiterStore();
+// Singleton stores
+const memoryStore = new RateLimiterStore();
+
+/**
+ * Redis-backed rate limiter
+ * Uses Redis INCR with TTL for distributed rate limiting
+ */
+class RedisRateLimiter {
+  constructor(private redis: Redis) {}
+
+  async increment(key: string, windowMs: number, maxRequests: number): Promise<{
+    count: number;
+    resetTime: number;
+    isAllowed: boolean;
+    maxRequests: number;
+  }> {
+    const now = Date.now();
+    const resetTime = now + windowMs;
+
+    try {
+      // Use Redis pipeline for atomic operations
+      const pipeline = this.redis.pipeline();
+      pipeline.incr(key);
+      pipeline.pttl(key);
+      const results = await pipeline.exec();
+
+      if (!results || results.length < 2) {
+        throw new Error('Redis pipeline failed');
+      }
+
+      const [incrResult, ttlResult] = results;
+      const count = (incrResult?.[1] as number) || 1;
+      const ttl = (ttlResult?.[1] as number) || -1;
+
+      // Set TTL if key is new (ttl === -1)
+      if (ttl === -1) {
+        await this.redis.pexpire(key, windowMs);
+      }
+
+      const actualResetTime = ttl > 0 ? now + ttl : resetTime;
+      const isAllowed = count <= maxRequests;
+
+      return {
+        count,
+        resetTime: actualResetTime,
+        isAllowed,
+        maxRequests
+      };
+    } catch (error) {
+      // Fallback to memory store on Redis error
+      logger.warn({
+        error: error instanceof Error ? error.message : 'unknown',
+        key
+      }, '[RateLimit] Redis error, falling back to memory store');
+      
+      return memoryStore.increment(key, windowMs);
+    }
+  }
+}
+
+// Initialize Redis rate limiter if Redis is available
+let redisLimiter: RedisRateLimiter | null = null;
+const redisClient = getExistingRedisClient();
+if (redisClient) {
+  redisLimiter = new RedisRateLimiter(redisClient);
+  logger.info({ rateLimitStore: 'redis' }, '[RateLimit] Using Redis-backed rate limiting');
+} else {
+  logger.warn({ rateLimitStore: 'memory' }, '[RateLimit] Using in-memory rate limiting (not distributed)');
+}
 
 /**
  * Extract client IP from request
@@ -112,13 +183,20 @@ function getClientIp(req: Request): string {
 export function createRateLimiter(config: RateLimitConfig) {
   const { windowMs, maxRequests, keyPrefix = 'rl' } = config;
 
-  return (req: Request, res: Response, next: NextFunction): void => {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const ip = getClientIp(req);
     const key = `${keyPrefix}:${ip}`;
     const requestId = req.traceId || 'unknown';
 
-    // Increment counter
-    const result = store.increment(key, windowMs);
+    // Increment counter (use Redis if available, otherwise in-memory)
+    let result: Awaited<ReturnType<typeof memoryStore.increment>>;
+    
+    if (redisLimiter) {
+      result = await redisLimiter.increment(key, windowMs, maxRequests);
+    } else {
+      result = memoryStore.increment(key, windowMs);
+      result.maxRequests = maxRequests;
+    }
 
     // Check if limit exceeded
     if (result.count > maxRequests) {
@@ -173,19 +251,20 @@ export function createRateLimiter(config: RateLimitConfig) {
  * Get rate limiter stats (for monitoring)
  */
 export function getRateLimiterStats() {
-  return store.getStats();
+  return memoryStore.getStats();
 }
 
 /**
  * Reset rate limit for specific IP (admin/testing only)
+ * Note: Only works for in-memory store, not Redis
  */
 export function resetRateLimit(ip: string, keyPrefix = 'rl'): void {
-  store.reset(`${keyPrefix}:${ip}`);
+  memoryStore.reset(`${keyPrefix}:${ip}`);
 }
 
 /**
  * Cleanup rate limiter (for graceful shutdown)
  */
 export function destroyRateLimiter(): void {
-  store.destroy();
+  memoryStore.destroy();
 }

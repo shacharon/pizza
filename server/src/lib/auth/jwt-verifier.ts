@@ -1,6 +1,10 @@
 /**
- * Minimal JWT Verifier for WebSocket Authentication
- * Uses HS256 (HMAC SHA-256) with shared secret
+ * DEPRECATED: Custom JWT Verifier (replaced by jsonwebtoken library)
+ * 
+ * This file is kept for backward compatibility with tests only.
+ * All production code should use jsonwebtoken library directly.
+ * 
+ * @deprecated Use jsonwebtoken library instead
  */
 
 import crypto from 'crypto';
@@ -16,8 +20,9 @@ export interface JWTPayload {
 }
 
 /**
+ * @deprecated Use jsonwebtoken library instead
  * Verify JWT token using HMAC SHA-256
- * Minimal implementation - production should use a full JWT library
+ * ONLY FOR TESTS - DO NOT USE IN PRODUCTION CODE
  */
 export function verifyJWT(token: string): JWTPayload | null {
   try {

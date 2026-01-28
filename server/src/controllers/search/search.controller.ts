@@ -77,7 +77,7 @@ router.post('/', async (req: Request, res: Response) => {
           reason: 'missing_authenticated_session',
           env: 'production'
         }, '[P0 Security] Async job creation requires JWT-authenticated session in production');
-        
+
         res.status(401).json(createSearchError('Authentication required', 'MISSING_AUTH_SESSION'));
         return;
       }
@@ -91,7 +91,7 @@ router.post('/', async (req: Request, res: Response) => {
           ownerUserId,
           ownerSessionId: ownerSessionId || null // Convert undefined to null for type safety
         });
-        
+
         logger.info({
           requestId,
           sessionHash: hashSessionId(ownerSessionId || 'anonymous'),
@@ -99,12 +99,12 @@ router.post('/', async (req: Request, res: Response) => {
           operation: 'createJob',
           decision: 'ACCEPTED'
         }, '[P0 Security] Job created with JWT session binding');
-        
+
         // CTO-grade: Activate pending subscriptions for this request
         wsManager.activatePendingSubscriptions(requestId, ownerSessionId || 'anonymous');
       } catch (redisErr) {
-        logger.error({ 
-          requestId, 
+        logger.error({
+          requestId,
           error: redisErr instanceof Error ? redisErr.message : 'unknown',
           operation: 'createJob'
         }, 'Redis JobStore write failed (non-fatal) - job not tracked, but search will proceed');
@@ -113,30 +113,37 @@ router.post('/', async (req: Request, res: Response) => {
       const resultUrl = `/api/v1/search/${requestId}/result`;
       res.status(202).json({ requestId, resultUrl, contractsVersion: CONTRACTS_VERSION });
 
-      void executeBackgroundSearch({ requestId, queryData, context: route2Context, resultUrl });
+      // P1 Reliability: Add error handler to prevent unhandled rejection
+      void executeBackgroundSearch({ requestId, queryData, context: route2Context, resultUrl }).catch(err => {
+        logger.error({
+          requestId,
+          error: err instanceof Error ? err.message : 'unknown',
+          stack: err instanceof Error ? err.stack : undefined
+        }, '[P1 Reliability] Background search execution failed');
+      });
       return;
     }
 
     // SYNC Mode
     const response = await searchRoute2(queryData, route2Context);
-    
+
     // P0 Security: Sanitize photo URLs before returning (same as async mode)
     if (response && typeof response === 'object' && 'results' in response) {
       const sanitized = {
         ...response,
         results: sanitizePhotoUrls((response as any).results || [])
       };
-      
+
       logger.info({
         requestId,
         mode: 'sync',
         photoUrlsSanitized: true,
         resultCount: (response as any).results?.length || 0
       }, '[P0 Security] Photo URLs sanitized (sync mode)');
-      
+
       return res.json(sanitized);
     }
-    
+
     res.json(response);
 
   } catch (error) {
@@ -188,16 +195,16 @@ router.get('/:requestId/result', async (req: Request, res: Response) => {
       ...result,
       results: sanitizePhotoUrls((result as any).results || [])
     };
-    
+
     logger.info({
       requestId,
       photoUrlsSanitized: true,
       resultCount: (result as any).results?.length || 0
     }, '[P0 Security] Photo URLs sanitized');
-    
+
     return res.json(sanitized);
   }
-  
+
   return result ? res.json(result) : res.status(500).json({ code: 'RESULT_MISSING' });
 });
 

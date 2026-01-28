@@ -10,7 +10,7 @@ import type { RouteLLMMapping } from './stages/route-llm/schemas.js';
 import { logger } from '../../../lib/logger/structured-logger.js';
 import { generateAndPublishAssistant } from './assistant/assistant-integration.js';
 import type { AssistantGateContext, AssistantClarifyContext } from './assistant/assistant-llm.service.js';
-import { toNarratorLanguage, resolveSessionId } from './orchestrator.helpers.js';
+import { resolveAssistantLanguage, resolveSessionId } from './orchestrator.helpers.js';
 import type { WebSocketManager } from '../../../infra/websocket/websocket-manager.js';
 
 /**
@@ -46,7 +46,7 @@ export async function handleGateStop(
     type: 'GATE_FAIL',
     reason: 'NO_FOOD',
     query: request.query,
-    language: toNarratorLanguage(gateResult.gate.language)
+    language: resolveAssistantLanguage(ctx, request, gateResult.gate.language)
   };
 
   const assistMessage = await generateAndPublishAssistant(
@@ -125,7 +125,7 @@ export async function handleGateClarify(
     type: 'CLARIFY',
     reason: 'MISSING_FOOD',
     query: request.query,
-    language: toNarratorLanguage(gateResult.gate.language)
+    language: resolveAssistantLanguage(ctx, request, gateResult.gate.language)
   };
 
   const assistMessage = await generateAndPublishAssistant(
@@ -201,22 +201,19 @@ export async function handleNearbyLocationGuard(
   const fallbackHttpMessage =
     "כדי לחפש 'לידי' אני צריך את המיקום שלך. אפשר לאשר מיקום או לכתוב עיר/אזור (למשל: 'פיצה בגדרה').";
 
-  const narratorContext: NarratorClarifyContext = {
+  const assistantContext: AssistantClarifyContext = {
     type: 'CLARIFY',
     reason: 'MISSING_LOCATION',
     query: request.query,
-    language: toNarratorLanguage(mapping.language),
-    locationKnown: false
+    language: resolveAssistantLanguage(ctx, request, mapping.language)
   };
 
-  const assistMessage = await maybeNarrateAndPublish(
+  const assistMessage = await generateAndPublishAssistant(
     ctx,
     requestId,
     sessionId,
-    narratorContext,
+    assistantContext,
     fallbackHttpMessage,
-    true,
-    'narrator_nearby_clarify_error',
     wsManager
   );
 

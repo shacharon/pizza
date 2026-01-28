@@ -60,6 +60,20 @@ export interface Restaurant {
   // Phase 1: Candidate pool ranking
   rank?: number;  // 1-based ranking position (1 = best)
   score?: number;  // 0-100 internal score (debug only)
+  
+  // NEW: Dietary hints (SOFT hints - no filtering)
+  dietaryHints?: DietaryHints;
+}
+
+// Dietary hints for SOFT preferences (metadata only)
+export interface DietaryHints {
+  glutenFree?: DietaryHint;
+  // Future: kosher?, vegan?, vegetarian?
+}
+
+export interface DietaryHint {
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW' | 'NONE';
+  matchedTerms: string[];
 }
 
 // Alias for backward compatibility

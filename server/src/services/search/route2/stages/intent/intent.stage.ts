@@ -36,13 +36,13 @@ function resolveFallbackLanguage(query: string): 'he' | 'en' {
   return /[\u0590-\u05FF]/.test(query) ? 'he' : 'en';
 }
 
-function createFallbackResult(query: string): IntentResult {
+function createFallbackResult(query: string, isTimeout: boolean): IntentResult {
   return {
     route: 'TEXTSEARCH',
     confidence: 0.3,
-    reason: 'fallback',
+    reason: isTimeout ? 'fallback_timeout' : 'fallback',
     language: resolveFallbackLanguage(query),
-    region: 'IL',
+    regionCandidate: 'IL',
     regionConfidence: 0.1,
     regionReason: 'fallback_default'
   };
@@ -106,10 +106,11 @@ export async function executeIntentStage(
         schemaHash: INTENT_SCHEMA_HASH,
         rootTypeDetected: typeof response?.data,
         intentFailed: true,
+        reason: 'fallback_schema_invalid',
         msg: '[ROUTE2] Intent LLM returned invalid/empty response'
       });
-      endStage(context, 'intent', startTime, { intentFailed: true });
-      return createFallbackResult(request.query);
+      endStage(context, 'intent', startTime, { intentFailed: true, reason: 'fallback_schema_invalid' });
+      return createFallbackResult(request.query, false);
     }
 
     const llmResult = response.data;
@@ -137,7 +138,7 @@ export async function executeIntentStage(
         confidence: Math.min(llmResult.confidence ?? 0.8, 0.6),
         reason: 'nearby_location_missing_fallback',
         language: llmResult.language,
-        region: llmResult.region,
+        regionCandidate: llmResult.regionCandidate,
         regionConfidence: llmResult.regionConfidence,
         regionReason: llmResult.regionReason,
         ...(cityText && { cityText })
@@ -157,7 +158,7 @@ export async function executeIntentStage(
       confidence: llmResult.confidence,
       reason: llmResult.reason,
       language: llmResult.language,
-      region: llmResult.region,
+      regionCandidate: llmResult.regionCandidate,
       regionConfidence: llmResult.regionConfidence,
       regionReason: llmResult.regionReason,
       ...(cityText && { cityText })
@@ -165,13 +166,28 @@ export async function executeIntentStage(
 
   } catch (error) {
     const isTimeout = isAbortTimeoutError(error);
+    const errorMsg = error instanceof Error ? error.message : 'unknown';
 
-    endStage(context, 'intent', startTime, {
-      error: error instanceof Error ? error.message : 'unknown',
+    logger.warn({
+      requestId,
+      pipelineVersion: 'route2',
+      stage: 'intent',
+      event: 'intent_error_caught',
+      error: errorMsg,
       isTimeout,
-      intentFailed: true
+      intentFailed: true,
+      reason: isTimeout ? 'fallback_timeout' : 'fallback_error',
+      msg: '[ROUTE2] Intent LLM error - falling back to TEXTSEARCH'
     });
 
-    return createFallbackResult(request.query);
+    endStage(context, 'intent', startTime, {
+      error: errorMsg,
+      isTimeout,
+      intentFailed: true,
+      reason: isTimeout ? 'fallback_timeout' : 'fallback_error'
+    });
+
+    // Return deterministic fallback (no unhandled rejections)
+    return createFallbackResult(request.query, isTimeout);
   }
 }

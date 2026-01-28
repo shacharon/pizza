@@ -1,18 +1,18 @@
 // config.ts
-import dotenv from 'dotenv';
-
-dotenv.config();
+// NOTE: Environment variables are loaded in server.ts BEFORE this module imports
+// This ensures JWT_SECRET is available before any auth middleware loads
 
 /**
  * Environment helpers
  */
-function getEnv(): 'production' | 'development' | 'test' {
+function getEnv(): 'production' | 'staging' | 'development' | 'test' {
     const env =
         process.env.NODE_ENV ||
         process.env.ENV ||
         'development';
 
     if (env === 'production' || env === 'prod') return 'production';
+    if (env === 'staging' || env === 'stage') return 'staging';
     if (env === 'test') return 'test';
     return 'development';
 }
@@ -21,6 +21,13 @@ const CURRENT_ENV = getEnv();
 
 function isProd(): boolean {
     return CURRENT_ENV === 'production';
+}
+
+/**
+ * PROD Hardening: Treat staging same as production for security
+ */
+function isProdOrStaging(): boolean {
+    return CURRENT_ENV === 'production' || CURRENT_ENV === 'staging';
 }
 
 
@@ -67,8 +74,10 @@ function mustString(name: string): string {
 }
 
 /**
- * P0 Security: Validate JWT_SECRET in production
- * FAIL-SAFE: Logs error but returns placeholder to allow health endpoints to work
+ * P0 Security: Validate JWT_SECRET in production/staging
+ * FAIL-FAST: Throws error on boot if JWT_SECRET is invalid in production/staging
+ * 
+ * NOTE: JWT_SECRET is logged in server.ts at boot time (dev only)
  */
 function validateJwtSecret(): string {
     const jwtSecret = process.env.JWT_SECRET;
@@ -76,15 +85,22 @@ function validateJwtSecret(): string {
     
     // Always require JWT_SECRET to be set and >= 32 chars
     if (!jwtSecret || jwtSecret.trim() === '' || jwtSecret.length < 32) {
-        console.error('[P0 Security] ⚠️  JWT_SECRET must be set and at least 32 characters - protected routes will fail');
-        // Return placeholder that will fail auth but allow server to start
+        const errorMsg = '[P0 Security] JWT_SECRET must be set and at least 32 characters';
+        
+        // FAIL-FAST in production/staging
+        if (isProdOrStaging()) {
+            throw new Error(`${errorMsg} (${CURRENT_ENV} boot blocked)`);
+        }
+        
+        // In dev/test, log error but allow (will fail auth)
+        console.error(`${errorMsg} - protected routes will fail`);
+        
         return '__JWT_SECRET_MISSING_PROTECTED_ROUTES_DISABLED__';
     }
     
-    // In production, disallow the old legacy dev default
-    if (isProd() && jwtSecret === LEGACY_DEV_DEFAULT) {
-        console.error('[P0 Security] ⚠️  JWT_SECRET cannot be the legacy dev default in production - protected routes will fail');
-        return '__JWT_SECRET_INVALID_PROTECTED_ROUTES_DISABLED__';
+    // In production/staging, disallow the old legacy dev default
+    if (isProdOrStaging() && jwtSecret === LEGACY_DEV_DEFAULT) {
+        throw new Error(`[P0 Security] JWT_SECRET cannot be the legacy dev default in ${CURRENT_ENV} (boot blocked)`);
     }
     
     return jwtSecret;
@@ -126,17 +142,37 @@ export function getConfig() {
     const port = mustNumber('PORT', 3000);
 
     /**
-     * API Keys (fail-safe: allow server to start even if missing)
+     * API Keys with feature flag validation
+     * PROD Hardening: Fail-fast if feature enabled but key missing
      */
+    const enableAiFeatures = process.env.ENABLE_AI_FEATURES !== 'false'; // default true
+    const enableGoogleSearch = process.env.ENABLE_GOOGLE_SEARCH !== 'false'; // default true
+    
     const openaiApiKey = process.env.OPENAI_API_KEY || '';
     const googleApiKey = process.env.GOOGLE_API_KEY || '';
     
-    if (!openaiApiKey) {
-        console.error('[Config] ⚠️  OPENAI_API_KEY missing - AI features disabled');
+    // PROD Hardening: Boot-time validation
+    if (enableAiFeatures && !openaiApiKey) {
+        const msg = '[Config] OPENAI_API_KEY required when ENABLE_AI_FEATURES=true';
+        if (isProdOrStaging()) {
+            throw new Error(`${msg} (${CURRENT_ENV} boot blocked)`);
+        }
+        console.error(`${msg} - AI features disabled`);
     }
-    if (!googleApiKey) {
-        console.error('[Config] ⚠️  GOOGLE_API_KEY missing - search features disabled');
+    
+    if (enableGoogleSearch && !googleApiKey) {
+        const msg = '[Config] GOOGLE_API_KEY required when ENABLE_GOOGLE_SEARCH=true';
+        if (isProdOrStaging()) {
+            throw new Error(`${msg} (${CURRENT_ENV} boot blocked)`);
+        }
+        console.error(`${msg} - Search features disabled`);
     }
+    
+    // Log presence/absence (not values)
+    console.info('[Config] API Keys:', {
+        openai: openaiApiKey ? 'present' : 'absent',
+        google: googleApiKey ? 'present' : 'absent'
+    });
     
     /**
      * P0 Security: JWT Secret (fail-fast in production)

@@ -20,6 +20,7 @@ Output ONLY JSON with ALL fields (never omit any field):
   "openBetween": {"day": number|null, "startHHmm": "HH:mm"|null, "endHHmm": "HH:mm"|null} | null,
   "priceLevel": 1|2|3|4|null,
   "isKosher": true|false|null,
+  "isGlutenFree": true|null,
   "requirements": {"accessible": true|false|null, "parking": true|false|null}
 }
 
@@ -68,6 +69,11 @@ isKosher (default: null):
 • false: "לא כשר", "not kosher", "non-kosher" (rare, usually just omitted)
 • null: not mentioned
 
+isGlutenFree (default: null):
+• true: "ללא גלוטן", "gluten-free", "gluten free", "sin gluten", "sans gluten", "celiac-friendly"
+• NEVER set false
+• null: not mentioned
+
 requirements.accessible (default: null):
 • true: "נגיש", "accessible", "wheelchair", "כיסא גלגלים"
 • false: never set false
@@ -90,6 +96,7 @@ Output:
   "openBetween": null,
   "priceLevel": null,
   "isKosher": null,
+  "isGlutenFree": null,
   "requirements": {"accessible": null, "parking": null}
 }
 
@@ -101,6 +108,7 @@ Output:
   "openBetween": null,
   "priceLevel": 1,
   "isKosher": true,
+  "isGlutenFree": null,
   "requirements": {"accessible": null, "parking": null}
 }
 
@@ -112,6 +120,7 @@ Output:
   "openBetween": null,
   "priceLevel": null,
   "isKosher": null,
+  "isGlutenFree": null,
   "requirements": {"accessible": true, "parking": true}
 }
 
@@ -123,6 +132,7 @@ Output:
   "openBetween": {"day": 5, "startHHmm": "19:00", "endHHmm": "21:00"},
   "priceLevel": 3,
   "isKosher": null,
+  "isGlutenFree": null,
   "requirements": {"accessible": null, "parking": null}
 }
 
@@ -134,6 +144,7 @@ Output:
   "openBetween": null,
   "priceLevel": null,
   "isKosher": null,
+  "isGlutenFree": null,
   "requirements": {"accessible": null, "parking": null}
 }
 `;
@@ -216,6 +227,12 @@ export const POST_CONSTRAINTS_JSON_SCHEMA = {
                 { type: "boolean" }
             ]
         },
+        isGlutenFree: {
+            anyOf: [
+                { type: "null" },
+                { type: "boolean" }
+            ]
+        },
         requirements: {
             type: "object",
             properties: {
@@ -236,7 +253,7 @@ export const POST_CONSTRAINTS_JSON_SCHEMA = {
             additionalProperties: false
         }
     },
-    required: ["openState", "openAt", "openBetween", "priceLevel", "isKosher", "requirements"],
+    required: ["openState", "openAt", "openBetween", "priceLevel", "isKosher", "isGlutenFree", "requirements"],
     additionalProperties: false
 } as const;
 

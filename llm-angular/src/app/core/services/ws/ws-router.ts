@@ -18,7 +18,7 @@ export interface WSRouterCallbacks {
 }
 
 export class WSRouter {
-  constructor(private readonly callbacks: WSRouterCallbacks) {}
+  constructor(private readonly callbacks: WSRouterCallbacks) { }
 
   /**
    * Handle incoming WebSocket message

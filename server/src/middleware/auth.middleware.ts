@@ -82,7 +82,8 @@ export function authenticateJWT(
   try {
     const decoded = jwt.verify(token, JWT_SECRET, {
       algorithms: ['HS256'],
-      maxAge: '30d'
+      maxAge: '30d',
+      clockTolerance: 5 // Allow 5 seconds clock skew
     }) as JwtClaims;
 
     if (!decoded.sessionId) {
@@ -91,6 +92,10 @@ export function authenticateJWT(
 
     if (!decoded.exp) {
       throw new Error('Token missing expiration (exp)');
+    }
+
+    if (!decoded.iat) {
+      throw new Error('Token missing issued-at (iat)');
     }
 
     const authReq = req as AuthenticatedRequest;
@@ -158,10 +163,12 @@ export function optionalJWT(
   try {
     const decoded = jwt.verify(token, JWT_SECRET, {
       algorithms: ['HS256'],
-      maxAge: '30d'
+      maxAge: '30d',
+      clockTolerance: 5 // Allow 5 seconds clock skew
     }) as JwtClaims;
 
-    if (decoded.sessionId) {
+    // Require essential claims even in optional mode
+    if (decoded.sessionId && decoded.exp && decoded.iat) {
       const authReq = req as AuthenticatedRequest;
 
       if (decoded.userId) {

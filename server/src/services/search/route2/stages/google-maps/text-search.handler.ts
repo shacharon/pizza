@@ -134,6 +134,7 @@ export async function executeTextSearch(
         });
 
         // P0 Fix: Use raceWithCleanup to prevent timeout memory leaks
+        // raceWithCleanup handles dangling promise rejections internally
         const cachePromise = cache.wrap(cacheKey, ttl, fetchFn);
         results = await raceWithCleanup(cachePromise, 10000);
         const wrapDuration = Date.now() - startTime;
@@ -412,7 +413,7 @@ export async function callGooglePlacesSearchText(
   requestId: string
 ): Promise<any> {
   const url = 'https://places.googleapis.com/v1/places:searchText';
-  
+
   // Allow timeout to be configurable via env (default 8000ms)
   const timeoutMs = parseInt(process.env.GOOGLE_PLACES_TIMEOUT_MS || '8000', 10);
 
@@ -451,7 +452,7 @@ export async function callGooglePlacesSearchText(
       provider: 'google_places',
       enableDnsPreflight: process.env.ENABLE_DNS_PREFLIGHT === 'true'
     });
-    
+
     callDurationMs = Date.now() - callStartTime;
 
     if (!response.ok) {
@@ -479,7 +480,7 @@ export async function callGooglePlacesSearchText(
 
     const data = await response.json();
     callDurationMs = Date.now() - callStartTime;
-    
+
     logger.info({
       requestId,
       provider: 'google_places_new',
@@ -488,17 +489,17 @@ export async function callGooglePlacesSearchText(
       placesCount: data.places?.length || 0,
       event: 'google_api_call_success'
     }, '[GOOGLE] API call succeeded');
-    
+
     return data;
-    
+
   } catch (err) {
     callDurationMs = Date.now() - callStartTime;
-    
+
     // Extract error kind from TimeoutError if available
     if (!errorKind && err && typeof err === 'object' && 'errorKind' in err) {
       errorKind = (err as any).errorKind;
     }
-    
+
     // Log catch block error
     logger.error({
       requestId,
@@ -511,7 +512,7 @@ export async function callGooglePlacesSearchText(
       error: err instanceof Error ? err.message : String(err),
       event: 'google_api_call_failed'
     }, '[GOOGLE] API call failed in catch block');
-    
+
     throw err;
   }
 }

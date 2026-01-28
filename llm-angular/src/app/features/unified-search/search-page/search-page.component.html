@@ -21,7 +21,7 @@
       </div>
     </div>
 
-    <!-- Search Card: Input + Assistant Line -->
+    <!-- Search Card: Input + Assistant Line + Contextual Assistant -->
     <div class="search-card">
       <app-search-bar [loading]="facade.loading()" [placeholder]="'What are you hungry for?'"
         (search)="onSearch($event)" (inputChange)="onInputChange($event)" (clear)="onClear()" />
@@ -30,11 +30,27 @@
       <div class="search-meta-row">
         <app-assistant-line />
       </div>
+
+      <!-- CANONICAL ROUTING: Contextual Assistant (inside search-card when bound to requestId) -->
+      <!-- Shows ONLY card messages: SUMMARY, CLARIFY, GATE_FAIL -->
+      @if (showContextualAssistant()) {
+      <app-assistant-summary 
+        [cardMessages]="contextualCardMessages()"
+        [messages]="contextualMessages()"
+        [text]="asyncAssistantMessage()" 
+        [status]="facade.assistantState()"
+        [error]="facade.assistantError()" />
+      }
     </div>
 
-    <!-- Assistant Summary (after search card) -->
-    @if (showAssistant()) {
-    <app-assistant-summary [text]="asyncAssistantMessage()" [status]="facade.assistantState()"
+    <!-- CANONICAL ROUTING: Global/System Assistant (outside search-card, no requestId) -->
+    <!-- Shows ONLY card messages: SUMMARY, CLARIFY, GATE_FAIL -->
+    @if (showGlobalAssistant()) {
+    <app-assistant-summary 
+      [cardMessages]="globalCardMessages()"
+      [messages]="globalMessages()"
+      [text]="asyncAssistantMessage()" 
+      [status]="facade.assistantState()"
       [error]="facade.assistantError()" />
     }
   </header>
@@ -116,20 +132,22 @@
     </div>
     }
 
+    <!-- GATE_FAIL UX: Hide results section if GATE_FAIL with no results -->
     <!-- Fallback: Flat Results Grid (backward compatibility) -->
-    @if (facade.hasResults() && !facade.hasGroups() && !facade.loading()) {
+    @if (shouldShowResults() && !facade.hasGroups() && !facade.loading()) {
     <section class="results-section">
+      <!-- DEDUPE FIX: Removed "Found X restaurants" header -->
+      <!-- Assistant SUMMARY message (from WS) is the only result announcement -->
+      
       <div class="results-header">
-        <h2>
-          Found {{ facade.results().length }} restaurant{{ facade.results().length !== 1 ? 's' : '' }}
-        </h2>
-        @if (facade.meta()) {
-        <p class="search-time">
-          Searched in {{ facade.meta()!.tookMs }}ms
-          @if (facade.meta()!.confidence) {
-          · Confidence: {{ (facade.meta()!.confidence * 100).toFixed(0) }}%
-          }
-        </p>
+        <!-- Applied Filters Chips -->
+        @if (glutenFreeFilterActive()) {
+        <div class="applied-filters">
+          <span class="filter-chip gluten-free" 
+                [title]="facade.response()?.query?.language === 'he' ? 'מבוסס על רמזים בטקסט — לא מובטח' : 'Based on text signals — not guaranteed'">
+            {{ facade.response()?.query?.language === 'he' ? 'ללא גלוטן (רמזים)' : 'Gluten-free (signals)' }}
+          </span>
+        </div>
         }
       </div>
 
@@ -142,8 +160,8 @@
     </section>
     }
 
-    <!-- Mobile: Bottom Sheet (Conditional - only when assistant shown) -->
-    @if (showAssistant()) {
+    <!-- Mobile: Bottom Sheet (Conditional - only when contextual assistant shown) -->
+    @if (showContextualAssistant()) {
     <app-assistant-bottom-sheet [visible]="bottomSheetVisible()" [highlightedResults]="highlightedResults()"
       (close)="closeBottomSheet()" (restaurantClick)="onCardClick($event); closeBottomSheet()" />
     }

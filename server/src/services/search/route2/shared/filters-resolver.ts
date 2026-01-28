@@ -7,7 +7,7 @@
 import { logger } from '../../../../lib/logger/structured-logger.js';
 import type { PreGoogleBaseFilters, FinalSharedFilters } from './shared-filters.types.js';
 import type { IntentResult } from '../types.js';
-import { sanitizeRegionCode, getFallbackRegion } from '../utils/region-code-validator.js';
+import { sanitizeRegionCode, getFallbackRegion, isKnownUnsupportedRegion } from '../utils/region-code-validator.js';
 
 export interface ResolveFiltersParams {
     base: PreGoogleBaseFilters;
@@ -33,25 +33,33 @@ export async function resolveFilters(params: ResolveFiltersParams): Promise<Fina
         ? intent.language as any
         : 'he'; // fallback
 
-    // 3. Resolve region code (intent > device > default)
-    const rawRegionCode = intent.region || deviceRegionCode || 'IL';
+    // 3. Resolve region code (intent candidate > device > default)
+    const rawRegionCode = intent.regionCandidate || deviceRegionCode || 'IL';
     
     // 4. Sanitize region code (validate against CLDR, handle 'GZ' special case)
     const sanitizedRegionCode = sanitizeRegionCode(rawRegionCode, userLocation);
     
     // 5. Log if region was sanitized/rejected
+    // NOISE FIX: Use debug level for known unsupported regions (e.g., GZ)
     if (sanitizedRegionCode !== rawRegionCode) {
         const fallback = sanitizedRegionCode || getFallbackRegion(rawRegionCode, userLocation);
         
-        logger.info({
+        const logData = {
             requestId,
             pipelineVersion: 'route2',
-            event: 'region_invalid',
+            event: 'region_sanitized',
             regionCode: rawRegionCode,
-            source: intent.region ? 'intent' : (deviceRegionCode ? 'device' : 'default'),
-            fallback: fallback || 'null',
-            insideIsrael: userLocation ? sanitizeRegionCode('GZ', userLocation) === 'IL' : false
-        }, '[ROUTE2] Invalid region code detected');
+            sanitized: fallback || 'null',
+            source: intent.regionCandidate ? 'intent_candidate' : (deviceRegionCode ? 'device' : 'default')
+        };
+        
+        if (isKnownUnsupportedRegion(rawRegionCode)) {
+            // Debug level for expected cases (reduces noise)
+            logger.debug(logData, '[ROUTE2] Known unsupported region sanitized (e.g., GZ)');
+        } else {
+            // Info level for unexpected invalid regions (helps catch bugs)
+            logger.info(logData, '[ROUTE2] Unexpected region code sanitized');
+        }
     }
 
     // 6. Pass through openState + time filters (NO MODIFICATION)

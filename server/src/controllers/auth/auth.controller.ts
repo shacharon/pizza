@@ -83,8 +83,11 @@ router.post('/token', async (req: Request, res: Response) => {
     // Use provided sessionId or generate a new one
     const sessionId = parseResult.data.sessionId || generateSessionId();
 
-    // Generate JWT token
-    const payload = { sessionId };
+    // Generate JWT token with all required claims
+    const payload = {
+      sessionId,
+      iat: Math.floor(Date.now() / 1000) // Issued at (seconds since epoch)
+    };
     const token = jwt.sign(payload, config.jwtSecret, {
       algorithm: 'HS256',
       expiresIn: '30d'

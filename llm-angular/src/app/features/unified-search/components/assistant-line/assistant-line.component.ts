@@ -1,21 +1,22 @@
 /**
- * Assistant Line Component
- * Single-line status showing the latest assistant message OR WebSocket connection status
- * WebSocket status is shown as a fallback when no assistant messages are active
+ * Assistant Line Component (REFACTORED)
+ * Single-line status showing ONLY line-channel messages
+ * 
+ * CANONICAL ROUTING:
+ * - Shows ONLY: PRESENCE, WS_STATUS, PROGRESS
+ * - Never shows: SUMMARY, CLARIFY, GATE_FAIL (those are cards)
+ * 
+ * NO DIRECT WS SUBSCRIPTION:
+ * - Gets messages from SearchFacade.assistantLineMessages only
+ * - SearchFacade is the single source of truth
  */
 
-import { Component, OnInit, OnDestroy, ChangeDetectionStrategy, signal, computed, effect } from '@angular/core';
+import { Component, ChangeDetectionStrategy, computed, effect, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { WsClientService } from '../../../../core/services/ws-client.service';
-import { Subscription } from 'rxjs';
+import { SearchFacade } from '../../../../facades/search.facade';
 import type { ConnectionStatus } from '../../../../core/models/ws-protocol.types';
-
-interface AssistantMessage {
-  requestId: string;
-  seq: number;
-  message: string;
-  type: 'assistant_progress' | 'assistant_suggestion';
-}
+import type { AssistantLineMessage } from '../../../../facades/assistant-routing.types';
 
 interface WSStatusMessage {
   type: 'ws_status';
@@ -95,21 +96,52 @@ interface WSStatusMessage {
     }
   `]
 })
-export class AssistantLineComponent implements OnInit, OnDestroy {
-  // Assistant message (higher priority)
-  private readonly assistantMessage = signal<string | null>(null);
+export class AssistantLineComponent {
+  private readonly wsClient = inject(WsClientService);
+  private readonly searchFacade = inject(SearchFacade);
 
   // WebSocket status message (lower priority, fallback)
   private readonly wsStatusMessage = signal<WSStatusMessage | null>(null);
 
-  // Final message to display (assistant takes priority)
+  // Anti-flicker state tracking
+  private wsDebounceTimer?: number;
+  private lastWsState: ConnectionStatus | null = null;
+  private lastRenderedMessage: string | null = null;
+  private lastMessageUpdateTime: number = 0;
+
+  // Debounce threshold (don't show connecting unless it lasts > 1s)
+  private readonly WS_DEBOUNCE_MS = 1000;
+  // Minimum time between message updates (anti-flicker)
+  private readonly MESSAGE_UPDATE_THROTTLE_MS = 2000;
+
+  // CANONICAL ROUTING: Get line messages from facade (PRESENCE, WS_STATUS, PROGRESS only)
+  private readonly lineMessages = computed(() => {
+    const msgs = this.searchFacade.assistantLineMessages();
+    const activeRequestId = this.searchFacade.requestId();
+    
+    // Filter by active requestId if present
+    if (activeRequestId) {
+      return msgs.filter(msg => msg.requestId === activeRequestId);
+    }
+    
+    return msgs;
+  });
+
+  // Latest line message (if any)
+  private readonly latestLineMessage = computed(() => {
+    const msgs = this.lineMessages();
+    return msgs.length > 0 ? msgs[msgs.length - 1] : null;
+  });
+
+  // Final message to display (line message takes priority over WS status)
   readonly finalMessage = computed(() => {
-    return this.assistantMessage() || this.wsStatusMessage()?.message || null;
+    const lineMsg = this.latestLineMessage();
+    return lineMsg?.message || this.wsStatusMessage()?.message || null;
   });
 
   // Check if currently showing WS status message
   readonly isWsStatusMessage = computed(() => {
-    return !this.assistantMessage() && !!this.wsStatusMessage();
+    return !this.latestLineMessage() && !!this.wsStatusMessage();
   });
 
   // Check if WS is disconnected
@@ -123,62 +155,12 @@ export class AssistantLineComponent implements OnInit, OnDestroy {
     return this.isWsStatusMessage() && this.isWsDisconnected();
   });
 
-  // Current requestId being tracked
-  private currentRequestId: string | null = null;
-
-  // Queue for staggered updates
-  private messageQueue: AssistantMessage[] = [];
-  private isProcessingQueue = false;
-
-  // WebSocket subscriptions
-  private wsSubscription?: Subscription;
-
-  // Anti-flicker state tracking
-  private wsStateSince: number = Date.now();
-  private lastWsState: ConnectionStatus | null = null;
-  private wsDebounceTimer?: number;
-  private lastRenderedMessage: string | null = null;
-  private lastMessageUpdateTime: number = 0;
-
-  // Debounce threshold (don't show connecting unless it lasts > 1s)
-  private readonly WS_DEBOUNCE_MS = 1000;
-  // Minimum time between message updates (anti-flicker)
-  private readonly MESSAGE_UPDATE_THROTTLE_MS = 2000;
-
-  constructor(private wsClient: WsClientService) {
+  constructor() {
     // Track WebSocket connection status with debouncing
     effect(() => {
       const status = this.wsClient.connectionStatus();
       this.handleWsStatusChangeDebounced(status);
-    });
-  }
-
-  ngOnInit(): void {
-    this.subscribeToWebSocket();
-  }
-
-  ngOnDestroy(): void {
-    this.wsSubscription?.unsubscribe();
-    if (this.wsDebounceTimer) {
-      clearTimeout(this.wsDebounceTimer);
-    }
-  }
-
-  /**
-   * Subscribe to WebSocket messages
-   */
-  private subscribeToWebSocket(): void {
-    this.wsSubscription = this.wsClient.messages$.subscribe((message: any) => {
-      // Handle both old format (assistant_progress/suggestion) and new format (assistant)
-      if (message.type === 'assistant_progress' || message.type === 'assistant_suggestion') {
-        this.handleAssistantMessage(message);
-      } else if (message.type === 'assistant' && message.payload) {
-        this.handleNarratorMessage(message);
-      } else if (message.type === 'assistant_message' && message.narrator) {
-        // Legacy format (kept for backward compatibility)
-        this.handleNarratorMessage(message);
-      }
-    });
+    }, { allowSignalWrites: true });
   }
 
   /**
@@ -195,7 +177,6 @@ export class AssistantLineComponent implements OnInit, OnDestroy {
     // Track state change timestamp
     if (this.lastWsState !== status) {
       this.lastWsState = status;
-      this.wsStateSince = Date.now();
     }
 
     // CONNECTED: Silently remove message immediately (no success flash)
@@ -242,161 +223,13 @@ export class AssistantLineComponent implements OnInit, OnDestroy {
     this.lastMessageUpdateTime = now;
   }
 
-
-  /**
-   * Handle incoming assistant message (old format)
-   */
-  private handleAssistantMessage(msg: any): void {
-    // Validate message structure
-    if (!msg.requestId || typeof msg.seq !== 'number' || !msg.message) {
-      return;
-    }
-
-    const { requestId, seq, message, type } = msg;
-
-    // Check if this is a new requestId
-    if (this.currentRequestId !== requestId) {
-      // New search - clear queue and display
-      this.messageQueue = [];
-      this.currentRequestId = requestId;
-      this.isProcessingQueue = false;
-    }
-
-    // Add to queue
-    this.messageQueue.push({
-      requestId,
-      seq,
-      message,
-      type: type as 'assistant_progress' | 'assistant_suggestion'
-    });
-
-    // Sort queue by seq
-    this.messageQueue.sort((a, b) => a.seq - b.seq);
-
-    // Process queue if not already processing
-    if (!this.isProcessingQueue) {
-      this.processQueue();
-    }
-  }
-
-  /**
-   * Handle narrator message (new format from backend)
-   * Supports both current format (payload) and legacy format (narrator)
-   */
-  private handleNarratorMessage(msg: any): void {
-    try {
-      // Extract narrator data from either payload (current) or narrator (legacy)
-      const narrator = msg.payload || msg.narrator;
-      
-      // Validate message structure
-      if (!msg.requestId || !narrator || !narrator.message) {
-        console.warn('[AssistantLine] Invalid narrator message structure:', msg);
-        return;
-      }
-
-      const { requestId } = msg;
-
-      // DEBUG LOG: Message received at component level
-      console.log('[WS][assistant] received at component', {
-        requestId,
-        narratorType: narrator.type,
-        message: narrator.message
-      });
-
-      // Check if this is a new requestId
-      if (this.currentRequestId !== requestId) {
-        // New search - clear queue and display
-        this.messageQueue = [];
-        this.currentRequestId = requestId;
-        this.isProcessingQueue = false;
-      }
-
-      // Generate seq based on narrator type (GATE_FAIL=1, CLARIFY=2, SUMMARY=3)
-      const seq = narrator.type === 'GATE_FAIL' ? 1 : narrator.type === 'CLARIFY' ? 2 : 3;
-
-      // Determine type: SUMMARY -> suggestion, others -> progress
-      const type = narrator.type === 'SUMMARY' ? 'assistant_suggestion' : 'assistant_progress';
-
-      // Prefer question over message for CLARIFY
-      const displayMessage = narrator.question || narrator.message;
-
-      // Add to queue
-      this.messageQueue.push({
-        requestId,
-        seq,
-        message: displayMessage,
-        type: type as 'assistant_progress' | 'assistant_suggestion'
-      });
-
-      // Sort queue by seq
-      this.messageQueue.sort((a, b) => a.seq - b.seq);
-      
-      // DEBUG LOG: Message queued for rendering
-      console.log('[UI][assistant] queued', {
-        requestId,
-        narratorType: narrator.type,
-        queueLength: this.messageQueue.length
-      });
-    } catch (error) {
-      console.error('[AssistantLine] Failed to handle narrator message:', error, msg);
-    }
-
-    // Process queue if not already processing
-    if (!this.isProcessingQueue) {
-      this.processQueue();
-    }
-  }
-
-  /**
-   * Process message queue with staggered updates (250ms delay)
-   */
-  private async processQueue(): Promise<void> {
-    if (this.isProcessingQueue || this.messageQueue.length === 0) {
-      return;
-    }
-
-    this.isProcessingQueue = true;
-
-    while (this.messageQueue.length > 0) {
-      const msg = this.messageQueue.shift();
-      if (msg && msg.requestId === this.currentRequestId) {
-        // Update display
-        this.assistantMessage.set(msg.message);
-
-        // DEBUG LOG: Message actually rendered to UI
-        console.log('[UI][assistant] rendered', {
-          requestId: msg.requestId,
-          message: msg.message,
-          type: msg.type
-        });
-
-        // Wait 250ms before next update (stagger effect)
-        if (this.messageQueue.length > 0) {
-          await this.delay(250);
-        }
-      }
-    }
-
-    this.isProcessingQueue = false;
-  }
-
-  /**
-   * Delay helper for staggered updates
-   */
-  private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
-
   /**
    * Clear message (user action)
    */
   clearMessage(): void {
-    // Only clear assistant messages, not WS status
-    if (!this.isWsStatusMessage()) {
-      this.assistantMessage.set(null);
-      this.messageQueue = [];
-    } else {
-      // Clear WS status message
+    // Only clear WS status messages
+    // Line messages are managed by facade, not clearable here
+    if (this.isWsStatusMessage()) {
       this.wsStatusMessage.set(null);
     }
   }

@@ -19,7 +19,7 @@ export interface WSConnectionSender {
 export class WSSubscriptionManager {
   private lastRequestId?: string;
 
-  constructor(private readonly connection: WSConnectionSender) {}
+  constructor(private readonly connection: WSConnectionSender) { }
 
   /**
    * Subscribe to a request ID (using canonical envelope)
@@ -41,10 +41,10 @@ export class WSSubscriptionManager {
     }
 
     this.send(message as WSClientMessage);
-    console.log('[WS] Subscribed to', { 
-      requestId: params.requestId, 
-      channel: params.channel, 
-      sessionId: params.sessionId 
+    console.log('[WS] Subscribed to', {
+      requestId: params.requestId,
+      channel: params.channel,
+      sessionId: params.sessionId
     });
   }
 
@@ -65,10 +65,10 @@ export class WSSubscriptionManager {
     }
 
     this.send(message as WSClientMessage);
-    console.log('[WS] Unsubscribed from', { 
-      requestId: params.requestId, 
-      channel: params.channel, 
-      sessionId: params.sessionId 
+    console.log('[WS] Unsubscribed from', {
+      requestId: params.requestId,
+      channel: params.channel,
+      sessionId: params.sessionId
     });
   }
 

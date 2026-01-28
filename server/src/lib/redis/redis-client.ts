@@ -38,7 +38,7 @@ export async function getRedisClient(options: RedisClientOptions): Promise<Redis
     url,
     maxRetriesPerRequest = 2,
     connectTimeout = 2000,
-    commandTimeout = 500,
+    commandTimeout = 2000, // P1: Increased to 2s for reliability
     enableOfflineQueue = false
   } = options;
 

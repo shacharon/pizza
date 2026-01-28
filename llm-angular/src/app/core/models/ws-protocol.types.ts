@@ -65,10 +65,10 @@ export interface WSClientUIStateChanged {
   };
 }
 
-export type WSClientMessage = 
+export type WSClientMessage =
   | WSClientEnvelope
   | WSClientSubscribeLegacy
-  | WSClientActionClicked 
+  | WSClientActionClicked
   | WSClientUIStateChanged;
 
 /**

@@ -128,8 +128,16 @@ export class AssistantPanelComponent implements OnInit, OnDestroy {
       const { requestId, payload } = msg;
       const narrator = payload; // payload contains the narrator data
 
+      // DEDUP FIX: Strict type validation - only LLM assistant messages
+      // System notifications MUST NOT render as assistant messages
+      const validTypes = ['CLARIFY', 'SUMMARY', 'GATE_FAIL'];
+      if (!narrator.type || !validTypes.includes(narrator.type)) {
+        console.log('[AssistantPanel] Ignoring non-LLM message:', narrator.type || 'unknown');
+        return;
+      }
+
       // DEBUG LOG (requested by user)
-      console.log('[UI] assistant message received', {
+      console.log('[AssistantPanel][LLM] Valid message received', {
         requestId,
         narratorType: narrator.type,
         message: narrator.message,

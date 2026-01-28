@@ -147,6 +147,41 @@ export class RestaurantCardComponent {
   }
 
   /**
+   * NEW: Get gluten-free badge info (SOFT hints)
+   * Returns badge text based on confidence level
+   */
+  readonly glutenFreeBadge = computed(() => {
+    const hint = this.restaurant().dietaryHints?.glutenFree;
+    if (!hint || hint.confidence === 'NONE') {
+      return null;
+    }
+
+    // HIGH confidence: "GF"
+    if (hint.confidence === 'HIGH') {
+      return { text: 'GF', level: 'high' };
+    }
+
+    // MEDIUM/LOW confidence: "Maybe GF"
+    return { text: 'Maybe GF', level: 'low' };
+  });
+
+  /**
+   * Get gluten-free badge tooltip
+   */
+  getGlutenFreeTooltip(): string {
+    const hint = this.restaurant().dietaryHints?.glutenFree;
+    if (!hint) return '';
+
+    // Detect language from restaurant name (simple heuristic)
+    const hasHebrew = /[\u0590-\u05FF]/.test(this.restaurant().name);
+    
+    if (hasHebrew) {
+      return 'מבוסס על רמזים בטקסט — לא מובטח';
+    }
+    return 'Based on text signals — not guaranteed';
+  }
+
+  /**
    * Handle photo load error
    * Set error state to show placeholder (prevents retry loops)
    */

@@ -97,12 +97,12 @@ async function reverseGeocodeToCountry(lat: number, lng: number): Promise<string
  * Resolution order:
  * - UI Language: intent.language (mapped to he|en) > base.language > deviceDefault
  * - Provider Language: intent.language (preserved exactly) > base.language > deviceDefault
- * - Region: intent.region (if confident) > base.regionHint > deviceRegionCode > defaultRegion
+ * - Region: intent.regionCandidate (if confident) > base.regionHint > deviceRegionCode > defaultRegion
  * - Disclaimers: Always {hours:true, dietary:true}
  * 
  * Intent values are "locked" (not overridden) when:
  * - Language: intent.language exists and != "other"
- * - Region: intent.region exists and route is LANDMARK/TEXTSEARCH/NEARBY
+ * - Region: intent.regionCandidate exists and route is LANDMARK/TEXTSEARCH/NEARBY
  */
 export async function tightenSharedFilters(params: {
     base: PreGoogleBaseFilters;
@@ -185,8 +185,8 @@ export async function tightenSharedFilters(params: {
     let resolvedRegion: string;
     let regionSource: RegionSource;
 
-    // Check if intent region should be locked
-    const intentRegionNormalized = normalizeRegion2(intent.region);
+    // Check if intent region candidate should be locked
+    const intentRegionNormalized = normalizeRegion2(intent.regionCandidate);
     const intentRegionIsConfident = intentRegionNormalized &&
         ['LANDMARK', 'TEXTSEARCH', 'NEARBY'].includes(intent.route);
 
@@ -199,7 +199,7 @@ export async function tightenSharedFilters(params: {
             requestId,
             pipelineVersion: 'route2',
             event: 'region_locked_by_intent',
-            intentRegion: intent.region,
+            intentRegionCandidate: intent.regionCandidate,
             intentRoute: intent.route,
             resolvedRegion
         }, '[ROUTE2] Region locked by confident intent');
@@ -237,7 +237,7 @@ export async function tightenSharedFilters(params: {
             sources: {
                 intent: {
                     language: intent.language,
-                    region: intent.region,
+                    regionCandidate: intent.regionCandidate,
                     route: intent.route
                 },
                 base: {

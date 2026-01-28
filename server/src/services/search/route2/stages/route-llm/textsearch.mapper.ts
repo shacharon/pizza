@@ -6,7 +6,7 @@
 
 import { createHash } from 'crypto';
 import type { SearchRequest } from '../../../types/search-request.dto.js';
-import type { Route2Context, IntentResult } from '../../types.js';
+import type { Route2Context, IntentResult, FinalSharedFilters } from '../../types.js';
 import type { Message } from '../../../../../llm/types.js';
 import { logger } from '../../../../../lib/logger/structured-logger.js';
 import { resolveLLM } from '../../../../../lib/llm/index.js';
@@ -51,17 +51,20 @@ import { TEXTSEARCH_JSON_SCHEMA, TEXTSEARCH_SCHEMA_HASH } from './static-schemas
 /**
  * TextSearch Mapper
  * Handles the conversion of user queries into structured Google Search parameters.
+ * 
+ * @param finalFilters Single source of truth for region/language (from filters_resolved)
  */
 export async function executeTextSearchMapper(
   intent: IntentResult,
   request: SearchRequest,
-  context: Route2Context
+  context: Route2Context,
+  finalFilters: FinalSharedFilters
 ): Promise<TextSearchMapping> {
   const { requestId, traceId, sessionId, llmProvider } = context;
   const startTime = Date.now();
 
   try {
-    const userPrompt = buildUserPrompt(request.query, intent);
+    const userPrompt = buildUserPrompt(request.query, finalFilters);
     const messages: Message[] = [
       { role: 'system', content: TEXTSEARCH_MAPPER_PROMPT },
       { role: 'user', content: userPrompt }
@@ -165,12 +168,16 @@ export async function executeTextSearchMapper(
         error: lastError?.message || String(lastError),
         msg: '[ROUTE2] textsearch_mapper LLM failed, using fallback'
       });
-      return buildDeterministicMapping(intent, request, requestId);
+      return buildDeterministicMapping(intent, request, finalFilters, requestId);
     }
 
     // Using 'as any' because the LLM response doesn't contain 'bias' anymore
     const mapping = response.data as any;
 
+    // CRITICAL: Override LLM's region/language with filters_resolved values (single source of truth)
+    mapping.region = finalFilters.regionCode;
+    mapping.language = finalFilters.providerLanguage;
+    
     // CRITICAL: Manually inject 'bias' property as undefined.
     // This ensures that 'applyLocationBias' function doesn't crash 
     // and downstream types remain compatible.
@@ -189,15 +196,17 @@ export async function executeTextSearchMapper(
 
   } catch (error) {
     // Fallback logic if LLM fails or returns 400
-    return buildDeterministicMapping(intent, request, requestId);
+    return buildDeterministicMapping(intent, request, finalFilters, requestId);
   }
 }
 /**
  * Build deterministic mapping when LLM fails
+ * Uses filters_resolved as single source of truth for region/language
  */
 function buildDeterministicMapping(
   intent: IntentResult,
   request: SearchRequest,
+  finalFilters: FinalSharedFilters,
   requestId?: string
 ): TextSearchMapping {
   const statusWords = ['פתוחות', 'פתוח', 'סגורות', 'סגור', 'open', 'closed'];
@@ -210,8 +219,8 @@ function buildDeterministicMapping(
   const mapping: TextSearchMapping = {
     providerMethod: 'textSearch',
     textQuery: cleanedQuery,
-    region: intent.region,
-    language: intent.language,
+    region: finalFilters.regionCode,
+    language: finalFilters.providerLanguage,
     bias: undefined,
     reason: 'deterministic_fallback',
     ...(intent.cityText && { cityText: intent.cityText })
@@ -220,8 +229,8 @@ function buildDeterministicMapping(
   return mapping;
 }
 
-function buildUserPrompt(query: string, intent: IntentResult): string {
-  return `Query: "${query}"\nRegion: ${intent.region}\nLanguage: ${intent.language}`;
+function buildUserPrompt(query: string, finalFilters: FinalSharedFilters): string {
+  return `Query: "${query}"\nRegion: ${finalFilters.regionCode}\nLanguage: ${finalFilters.providerLanguage}`;
 }
 
 function applyLocationBias(

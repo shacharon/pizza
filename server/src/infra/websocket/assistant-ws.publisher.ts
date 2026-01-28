@@ -9,7 +9,9 @@
 import { wsManager } from '../../server.js';
 import { logger } from '../../lib/logger/structured-logger.js';
 import { rewriteAssistantMessage, logRewriteSummary } from '../../services/assistant/assistant-llm-rewriter.service.js';
-import { ASSISTANT_MODE } from '../../config/assistant.flags.js';
+
+// Legacy progress narration (disabled by default)
+const ASSISTANT_MODE: 'OFF' | 'TO_MAYBE' = 'OFF';
 
 /**
  * Assistant session state

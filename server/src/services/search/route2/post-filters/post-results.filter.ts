@@ -3,10 +3,12 @@
  * 
  * Deterministic filtering applied after Google API results are received
  * Filters: openState (OPEN_NOW, CLOSED_NOW, null)
+ * Hints: dietary preferences (SOFT hints, no removal)
  */
 
 import { logger } from '../../../../lib/logger/structured-logger.js';
 import type { FinalSharedFilters, OpenState } from '../shared/shared-filters.types.js';
+import { attachDietaryHints } from './dietary-hints.js';
 
 export interface PostFilterInput {
   results: any[]; // PlaceResult[] from Google Maps stage
@@ -45,6 +47,14 @@ export function applyPostFilters(input: PostFilterInput): PostFilterOutput {
     sharedFilters.openBetween
   );
   const filteredResults = filtered;
+
+  // Attach dietary hints (SOFT hints - no removal)
+  const isGlutenFree = (sharedFilters as any).isGlutenFree ?? null;
+  if (isGlutenFree === true) {
+    for (const result of filteredResults) {
+      attachDietaryHints(result, isGlutenFree);
+    }
+  }
 
   const afterCount = filteredResults.length;
 

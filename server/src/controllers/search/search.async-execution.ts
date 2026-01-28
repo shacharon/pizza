@@ -4,8 +4,6 @@
  */
 
 import { logger } from '../../lib/logger/structured-logger.js';
-import { ASSISTANT_MODE } from '../../config/assistant.flags.js';
-import { setAssistantLanguage, publishAssistantProgress } from '../../infra/websocket/assistant-ws.publisher.js';
 import { publishSearchEvent } from '../../infra/websocket/search-ws.publisher.js';
 import { searchJobStore } from '../../services/search/job-store/index.js';
 import { searchRoute2 } from '../../services/search/route2/index.js';
@@ -33,24 +31,19 @@ export async function executeBackgroundSearch(params: BackgroundParams): Promise
   const ctxWithAbort = { ...context, signal: abortController.signal } as Route2Context & { signal: AbortSignal };
 
   try {
-    // Initialize assistant session (will be checked later for gate stops)
-    if (ASSISTANT_MODE !== 'OFF') {
-      setAssistantLanguage(requestId, 'auto', 'friendly');
-    }
-
     // Step 1: Accepted
     // P0 Fix: Non-fatal Redis write (job tracking is optional)
     try {
       await searchJobStore.setStatus(requestId, 'RUNNING', 10);
     } catch (redisErr) {
-      logger.error({ 
-        requestId, 
+      logger.error({
+        requestId,
         error: redisErr instanceof Error ? redisErr.message : 'unknown',
         operation: 'setStatus',
         stage: 'accepted'
       }, 'Redis JobStore write failed (non-fatal) - continuing pipeline');
     }
-    
+
     publishSearchEvent(requestId, {
       channel: 'search',
       contractsVersion: CONTRACTS_VERSION,
@@ -68,14 +61,14 @@ export async function executeBackgroundSearch(params: BackgroundParams): Promise
     try {
       await searchJobStore.setStatus(requestId, 'RUNNING', 50);
     } catch (redisErr) {
-      logger.error({ 
-        requestId, 
+      logger.error({
+        requestId,
         error: redisErr instanceof Error ? redisErr.message : 'unknown',
         operation: 'setStatus',
         stage: 'route_llm'
       }, 'Redis JobStore write failed (non-fatal) - continuing pipeline');
     }
-    
+
     publishSearchEvent(requestId, {
       channel: 'search',
       contractsVersion: CONTRACTS_VERSION,
@@ -90,14 +83,8 @@ export async function executeBackgroundSearch(params: BackgroundParams): Promise
 
     const response = await searchRoute2(queryData, ctxWithAbort);
 
-    // IMPORTANT: Skip ALL assistant_progress for GATE_FAIL (STOP flow)
-    // Only narrator "assistant" payload should be sent for gate stops
-    const isGateStop = response.meta?.source === 'route2_gate_stop';
-    
-    if (ASSISTANT_MODE !== 'OFF' && !isGateStop) {
-      // Only send assistant_progress messages for successful searches
-      publishAssistantProgress(requestId, `נמצאו ${response.results.length} תוצאות.`, 'results_received');
-    }
+    // Note: Assistant messages are now handled by route2 orchestrator (LLM-based)
+    // No need for separate progress narration here
 
     let terminalStatus: 'DONE_SUCCESS' | 'DONE_CLARIFY' = 'DONE_SUCCESS';
     let wsEventType: 'ready' | 'clarify' = 'ready';
@@ -111,18 +98,18 @@ export async function executeBackgroundSearch(params: BackgroundParams): Promise
     try {
       await searchJobStore.setResult(requestId, response);
     } catch (redisErr) {
-      logger.error({ 
-        requestId, 
+      logger.error({
+        requestId,
         error: redisErr instanceof Error ? redisErr.message : 'unknown',
         operation: 'setResult'
       }, 'Redis JobStore write failed (non-fatal) - result not persisted');
     }
-    
+
     try {
       await searchJobStore.setStatus(requestId, terminalStatus, 100);
     } catch (redisErr) {
-      logger.error({ 
-        requestId, 
+      logger.error({
+        requestId,
         error: redisErr instanceof Error ? redisErr.message : 'unknown',
         operation: 'setStatus',
         stage: 'done'
@@ -164,18 +151,18 @@ export async function executeBackgroundSearch(params: BackgroundParams): Promise
     try {
       await searchJobStore.setError(requestId, errorCode, message, 'SEARCH_FAILED');
     } catch (redisErr) {
-      logger.error({ 
-        requestId, 
+      logger.error({
+        requestId,
         error: redisErr instanceof Error ? redisErr.message : 'unknown',
         operation: 'setError'
       }, 'Redis JobStore write failed (non-fatal) - error not persisted');
     }
-    
+
     try {
       await searchJobStore.setStatus(requestId, 'DONE_FAILED', 100);
     } catch (redisErr) {
-      logger.error({ 
-        requestId, 
+      logger.error({
+        requestId,
         error: redisErr instanceof Error ? redisErr.message : 'unknown',
         operation: 'setStatus',
         stage: 'error'

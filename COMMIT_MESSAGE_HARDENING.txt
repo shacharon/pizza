@@ -1,0 +1,43 @@
+feat(prod): Add production hardening extras
+
+Staging Guards:
+- Treat NODE_ENV=staging same as production for security
+- JWT_SECRET, WS_REQUIRE_AUTH, origin validation enforced
+- API key presence validated at boot (fail-fast in prod/staging)
+
+WebSocket Hardening:
+- Payload limit: 64KB (down from 1MB)
+- Per-socket subscribe rate limit: 10/min (token bucket)
+- Backlog caps: 50 per requestId, 10k global with drop logging
+
+Error Taxonomy:
+- PipelineErrorKind enum (21 standardized error types)
+- Deterministic error classification (stage + error → kind)
+- Observable logs (errorKind, errorCode, errorMessage)
+
+Secrets/Config:
+- ENABLE_AI_FEATURES / ENABLE_GOOGLE_SEARCH flags
+- Boot-time validation (OPENAI_API_KEY, GOOGLE_API_KEY)
+- Log presence/absence only (never log values)
+
+Photo Proxy Abuse Controls:
+- Rate limit: 30/min per IP (down from 60)
+- Dimension bounds: 1200px (down from 1600)
+- Cache-Control: 7 days (up from 1 day)
+- Safe numeric parsing with bounds
+
+Process Safety:
+- unhandledRejection handler (log fatal + graceful shutdown)
+- uncaughtException handler (log fatal + graceful shutdown)
+- De-duplicate shutdown attempts
+
+CI Verification:
+- npm run verify:prod-contracts
+- Tests: auth token, async search, polling, IDOR protection
+- Exit 0 on pass, 1 on fail
+
+Files Modified: 11
+Files Created: 2
+Breaking Changes: None
+API/WS Contracts: Preserved
+Deployment: Optional env vars with safe defaults

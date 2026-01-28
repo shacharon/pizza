@@ -6,6 +6,11 @@
 import { Component, inject, OnInit, OnDestroy, ChangeDetectionStrategy, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { SearchFacade } from '../../../facades/search.facade';
+import { SearchApiHandler } from '../../../facades/search-api.facade';
+import { SearchWsHandler } from '../../../facades/search-ws.facade';
+import { SearchAssistantHandler } from '../../../facades/search-assistant.facade';
+import { SearchStateHandler } from '../../../facades/search-state.facade';
+import { AssistantDedupService } from '../../../facades/assistant-dedup.service';
 import { SearchBarComponent } from '../components/search-bar/search-bar.component';
 import { RestaurantCardComponent } from '../components/restaurant-card/restaurant-card.component';
 import { AssistantBottomSheetComponent } from '../components/assistant-bottom-sheet/assistant-bottom-sheet.component';
@@ -15,6 +20,8 @@ import { AssistantSummaryComponent } from '../components/assistant-summary/assis
 import { LocationService } from '../../../services/location.service';
 import type { Restaurant, ClarificationChoice, Coordinates } from '../../../domain/types/search.types';
 import type { ActionType, ActionLevel } from '../../../domain/types/action.types';
+// DEV: Import dev tools for testing (auto-loaded)
+import '../../../facades/assistant-dev-tools';
 
 @Component({
   selector: 'app-search-page',
@@ -28,7 +35,14 @@ import type { ActionType, ActionLevel } from '../../../domain/types/action.types
     ClarificationBlockComponent,
     AssistantSummaryComponent
   ],
-  providers: [SearchFacade],
+  providers: [
+    SearchFacade,
+    SearchApiHandler,
+    SearchWsHandler,
+    SearchAssistantHandler,
+    SearchStateHandler,
+    AssistantDedupService
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './search-page.component.html',
   styleUrl: './search-page.component.scss'
@@ -56,7 +70,7 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   getLocationTooltip(): string {
     const state = this.locationState();
     const coords = this.locationCoords();
-    
+
     if (state === 'ON' && coords) {
       return `Location: On (${coords.lat.toFixed(2)}, ${coords.lng.toFixed(2)})`;
     } else if (state === 'DENIED') {
@@ -116,8 +130,117 @@ export class SearchPageComponent implements OnInit, OnDestroy {
     return text.length > 500 ? text.substring(0, 500) + '…' : text;
   });
 
+  // CANONICAL ROUTING: Get card messages from facade
+  readonly contextualCardMessages = computed(() => {
+    const activeRequestId = this.facade.requestId();
+    const allCards = this.facade.assistantCardMessages();
+    
+    if (!activeRequestId) {
+      return [];
+    }
+    
+    // Return only card messages for current search
+    return allCards.filter(msg => msg.requestId === activeRequestId);
+  });
+
+  readonly globalCardMessages = computed(() => {
+    const activeRequestId = this.facade.requestId();
+    const allCards = this.facade.assistantCardMessages();
+    
+    if (activeRequestId) {
+      return []; // No global messages when search is active
+    }
+    
+    // Return card messages without requestId (system messages)
+    return allCards.filter(msg => !msg.requestId);
+  });
+
+  // LEGACY: Filter messages by current requestId (for backward compatibility)
+  readonly contextualMessages = computed(() => {
+    const activeRequestId = this.facade.requestId();
+    const allMessages = this.facade.assistantMessages();
+    
+    if (!activeRequestId) {
+      return [];
+    }
+    
+    // Return only messages for current search
+    return allMessages.filter(msg => msg.requestId === activeRequestId);
+  });
+
+  readonly globalMessages = computed(() => {
+    const activeRequestId = this.facade.requestId();
+    const allMessages = this.facade.assistantMessages();
+    
+    if (activeRequestId) {
+      return []; // No global messages when search is active
+    }
+    
+    // Return messages without requestId (system messages)
+    return allMessages.filter(msg => !msg.requestId);
+  });
+
+  // PLACEMENT FIX: Determine if assistant is bound to a requestId (contextual) vs. global/system
+  // Check BOTH the active search requestId AND the assistant message's requestId
+  readonly assistantHasRequestId = computed(() => {
+    const activeRequestId = this.facade.requestId();
+    const assistantRequestId = this.facade.assistantMessageRequestId();
+    
+    // If EITHER has a requestId, treat as contextual (never global)
+    // Rule: Assistant messages with requestId MUST NEVER render globally
+    return !!activeRequestId || !!assistantRequestId;
+  });
+
+  // CANONICAL ROUTING: Mutually exclusive rendering (prevent double display)
+  readonly showContextualAssistant = computed(() => {
+    // Card messages: show if we have card messages for current request
+    const hasCardMessages = this.contextualCardMessages().length > 0;
+    
+    // Legacy: show if requestId exists and assistant state is active
+    const legacyActive = this.showAssistant() && this.assistantHasRequestId();
+    
+    return hasCardMessages || legacyActive;
+  });
+
+  readonly showGlobalAssistant = computed(() => {
+    // CRITICAL: Must be mutually exclusive with contextual
+    // If contextual is shown, NEVER show global (prevents duplication)
+    if (this.showContextualAssistant()) {
+      return false;
+    }
+    
+    // Card messages: show if we have global card messages (no requestId)
+    const hasGlobalCards = this.globalCardMessages().length > 0;
+    
+    // Legacy: show if NO requestId and assistant state is active
+    const legacyGlobal = this.showAssistant() && !this.assistantHasRequestId();
+    
+    return hasGlobalCards || legacyGlobal;
+  });
+
   readonly hasAsyncRecommendations = computed(() => {
     return this.facade.recommendations().length > 0;
+  });
+
+  // GATE_FAIL UX: Check if current state is GATE_FAIL with no results
+  readonly isGateFail = computed(() => {
+    const cards = this.contextualCardMessages();
+    const hasGateFail = cards.some(msg => msg.type === 'GATE_FAIL');
+    const hasResults = this.facade.hasResults();
+    
+    // GATE_FAIL is terminal: if present, hide results section
+    return hasGateFail && !hasResults;
+  });
+
+  // GATE_FAIL UX: Should show results section
+  readonly shouldShowResults = computed(() => {
+    // Hide results if GATE_FAIL with no results
+    if (this.isGateFail()) {
+      return false;
+    }
+    
+    // Otherwise show if we have results
+    return this.facade.hasResults();
   });
 
   // NEW: Mobile-first UX - Bottom sheet and flattened results
@@ -191,6 +314,15 @@ export class SearchPageComponent implements OnInit, OnDestroy {
     }
 
     return null;
+  });
+
+  // NEW: Gluten-free SOFT hint filter active
+  readonly glutenFreeFilterActive = computed(() => {
+    const response = this.response();
+    if (!response) return false;
+
+    const appliedFilters = response.meta?.appliedFilters || [];
+    return appliedFilters.includes('gluten-free:soft');
   });
 
   readonly popularSearches = [

@@ -73,6 +73,7 @@ export const PostConstraintsSchema = z.object({
   openBetween: OpenBetweenSchema,
   priceLevel: PriceLevelSchema,
   isKosher: z.boolean().nullable(),
+  isGlutenFree: z.boolean().nullable(),
   requirements: RequirementsSchema
 }).strict();
 
@@ -88,6 +89,7 @@ export function buildDefaultPostConstraints(): PostConstraints {
     openBetween: null,
     priceLevel: null,
     isKosher: null,
+    isGlutenFree: null,
     requirements: {
       accessible: null,
       parking: null

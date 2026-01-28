@@ -63,6 +63,34 @@
   }
 }
 
+// NEW: Dietary hint badges (SOFT hints)
+.dietary-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  border-radius: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  flex-shrink: 0;
+  cursor: help;
+  
+  &.gluten-free {
+    &.high {
+      background: #dcfce7;
+      color: #166534;
+      border: 1px solid #bbf7d0;
+    }
+    
+    &.low {
+      background: #fef3c7;
+      color: #92400e;
+      border: 1px solid #fde68a;
+    }
+  }
+}
+
 .restaurant-photo {
   width: 140px;
   height: 140px;
@@ -88,8 +116,15 @@
   min-width: 0; // Allow text truncation
 }
 
+.restaurant-name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
 .restaurant-name {
-  margin: 0 0 0.75rem 0;
+  margin: 0;
   font-size: 1.375rem;
   font-weight: 600;
   color: #111827;
@@ -98,6 +133,7 @@
   white-space: nowrap;
   line-height: 1.3;
   position: relative;
+  flex: 1;
   cursor: help;
   
   // Show full text on hover

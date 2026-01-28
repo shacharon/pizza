@@ -11,11 +11,12 @@ import { logger } from '../../../lib/logger/structured-logger.js';
 import { startStage, endStage } from '../../../lib/telemetry/stage-timer.js';
 import { generateAndPublishAssistant } from './assistant/assistant-integration.js';
 import type { AssistantSummaryContext } from './assistant/assistant-llm.service.js';
-import { toNarratorLanguage, resolveSessionId } from './orchestrator.helpers.js';
+import { resolveAssistantLanguage, resolveSessionId } from './orchestrator.helpers.js';
 import type { WebSocketManager } from '../../../infra/websocket/websocket-manager.js';
+import { buildAppliedFiltersArray } from './orchestrator.filters.js';
 
 /**
- * Build final search response with narrator summary
+ * Build final search response with assistant summary
  */
 export async function buildFinalResponse(
   request: SearchRequest,
@@ -42,12 +43,22 @@ export async function buildFinalResponse(
   const fallbackHttpMessage = finalResults.length === 0 ? 'לא מצאתי תוצאות. נסה לשנות עיר/אזור או להסיר סינון.' : '';
   const top3Names = finalResults.slice(0, 3).map((r: any) => r.name || 'Unknown');
 
+  // DIETARY NOTE: Check if gluten-free soft hint should be included
+  const isGlutenFree = (filtersForPostFilter as any).isGlutenFree;
+  const resultsCount = finalResults.length;
+  const shouldIncludeDietaryNote = isGlutenFree === true && resultsCount > 0;
+
   const assistantContext: AssistantSummaryContext = {
     type: 'SUMMARY',
     query: request.query,
-    language: toNarratorLanguage(detectedLanguage),
+    language: resolveAssistantLanguage(ctx, request, detectedLanguage),
     resultCount: finalResults.length,
-    top3Names
+    top3Names,
+    // MERGED DIETARY NOTE: Include soft gluten-free hint in SUMMARY (not separate message)
+    dietaryNote: shouldIncludeDietaryNote ? {
+      type: 'gluten-free',
+      shouldInclude: true
+    } : undefined
   };
 
   const assistMessage = await generateAndPublishAssistant(
@@ -58,6 +69,9 @@ export async function buildFinalResponse(
     fallbackHttpMessage,
     wsManager
   );
+
+  // Build applied filters array
+  const appliedFilters = buildAppliedFiltersArray(filtersForPostFilter);
 
   // Build final response
   const response: SearchResponse = {
@@ -85,7 +99,7 @@ export async function buildFinalResponse(
     meta: {
       tookMs: totalDurationMs,
       mode: mapping.providerMethod === 'textSearch' ? ('textsearch' as const) : ('nearbysearch' as const),
-      appliedFilters: [],
+      appliedFilters,
       confidence: intentDecision.confidence,
       source: 'route2',
       failureReason: 'NONE'
@@ -100,6 +114,9 @@ export async function buildFinalResponse(
     requestId,
     status: 'completed'
   });
+
+  // DIETARY NOTE: Merged into SUMMARY (no separate message)
+  // Dietary hint is now included in the SUMMARY message via assistantContext.dietaryNote
 
   return response;
 }

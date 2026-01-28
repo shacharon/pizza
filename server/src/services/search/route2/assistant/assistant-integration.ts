@@ -4,15 +4,15 @@
  */
 
 import { logger } from '../../../../lib/logger/structured-logger.js';
-import { ASSISTANT_MODE_ENABLED } from '../../../../config/narrator.flags.js';
 import { generateAssistantMessage, type AssistantContext, type AssistantOutput } from './assistant-llm.service.js';
-import { publishAssistantMessage } from './assistant-publisher.js';
+import { publishAssistantMessage, publishAssistantError } from './assistant-publisher.js';
 import type { WebSocketManager } from '../../../../infra/websocket/websocket-manager.js';
 import type { Route2Context } from '../types.js';
 
 /**
  * Generate assistant message and publish to WebSocket
- * Returns message text for HTTP response
+ * Returns message text for HTTP response, or null if failed
+ * On failure: publishes assistant_error event (no deterministic fallback)
  */
 export async function generateAndPublishAssistant(
   ctx: Route2Context,
@@ -29,15 +29,6 @@ export async function generateAndPublishAssistant(
     event: 'assistant_called'
   }, '[ASSISTANT] Hook invoked');
 
-  if (!ASSISTANT_MODE_ENABLED) {
-    logger.debug({
-      requestId,
-      event: 'assistant_skipped',
-      reason: 'ASSISTANT_MODE_ENABLED=false'
-    }, '[ASSISTANT] Skipped (feature disabled)');
-    return fallbackHttpMessage;
-  }
-
   try {
     const opts: any = {};
     if (ctx.traceId) opts.traceId = ctx.traceId;
@@ -45,23 +36,47 @@ export async function generateAndPublishAssistant(
 
     const assistant = await generateAssistantMessage(context, ctx.llmProvider, requestId, opts);
 
+    // Note: Invariants (blocksSearch, suggestedAction) are now enforced in generateAssistantMessage()
+    // No need for duplicate enforcement here
+
     // Publish to WebSocket (best-effort)
     publishAssistantMessage(wsManager, requestId, sessionId, assistant);
 
     // Return message for HTTP response
     return assistant.message || fallbackHttpMessage;
   } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    const isTimeout = errorMsg.toLowerCase().includes('timeout') || errorMsg.toLowerCase().includes('abort');
+    const isSchemaError = errorMsg.toLowerCase().includes('schema') || errorMsg.toLowerCase().includes('validation');
+    
+    const errorCode = isTimeout ? 'LLM_TIMEOUT' : (isSchemaError ? 'SCHEMA_INVALID' : 'LLM_FAILED');
+    
     logger.warn({
       requestId,
       event: 'assistant_failed',
-      error: error instanceof Error ? error.message : String(error)
-    }, '[ASSISTANT] Failed, using fallback');
+      errorCode,
+      error: errorMsg
+    }, '[ASSISTANT] Failed - publishing error event');
+    
+    // Publish assistant_error event (no user-facing message in code)
+    publishAssistantError(wsManager, requestId, sessionId, errorCode);
+    
+    // Return fallback for HTTP only (WS clients get error event)
     return fallbackHttpMessage;
   }
 }
 
 /**
  * Publish assistant message on pipeline failure (SEARCH_FAILED)
+ * 
+ * Triggers LLM-generated assistant message for provider timeouts and pipeline failures
+ * NO deterministic fallback - LLM-only UX
+ * 
+ * @param ctx Pipeline context (contains query, language, sharedFilters)
+ * @param requestId Request ID
+ * @param wsManager WebSocket manager
+ * @param error Original error
+ * @param errorKind Classified error kind (e.g., GOOGLE_TIMEOUT, NETWORK_ERROR)
  */
 export async function publishSearchFailedAssistant(
   ctx: Route2Context,
@@ -70,7 +85,7 @@ export async function publishSearchFailedAssistant(
   error: unknown,
   errorKind: string | undefined
 ): Promise<void> {
-  if (!ASSISTANT_MODE_ENABLED || !wsManager) {
+  if (!wsManager) {
     return;
   }
 
@@ -83,12 +98,28 @@ export async function publishSearchFailedAssistant(
       reason = 'NETWORK_ERROR';
     }
 
+    // Extract query from context (best-effort)
+    const query = ctx.query || '';
+
+    // Resolve language with deterministic fallback chain
+    const resolvedLanguage = await import('../orchestrator.helpers.js')
+      .then(m => m.resolveAssistantLanguage(ctx, undefined, undefined));
+
     const context: AssistantContext = {
       type: 'SEARCH_FAILED',
       reason,
-      query: '', // Pipeline failures may not have query available
-      language: 'en' // Default to English
+      query,
+      language: resolvedLanguage
     };
+
+    logger.info({
+      requestId,
+      event: 'assistant_search_failed_hook',
+      errorKind,
+      reason,
+      language: resolvedLanguage,
+      hasQuery: query.length > 0
+    }, '[ASSISTANT] Calling LLM for SEARCH_FAILED');
 
     const opts: any = {};
     if (ctx.traceId) opts.traceId = ctx.traceId;
@@ -100,15 +131,24 @@ export async function publishSearchFailedAssistant(
       requestId,
       event: 'search_failed_assistant_generated',
       errorKind,
-      reason
-    }, '[ASSISTANT] Generated SEARCH_FAILED message');
+      reason,
+      language: resolvedLanguage
+    }, '[ASSISTANT] Generated SEARCH_FAILED message via LLM');
 
     publishAssistantMessage(wsManager, requestId, ctx.sessionId, assistant);
   } catch (assistErr) {
-    // Swallow errors - don't mask original pipeline error
+    // If LLM fails, publish assistant_error event (no deterministic fallback)
+    const errorMsg = assistErr instanceof Error ? assistErr.message : String(assistErr);
+    const isTimeout = errorMsg.toLowerCase().includes('timeout') || errorMsg.toLowerCase().includes('abort');
+    const errorCode = isTimeout ? 'LLM_TIMEOUT' : 'LLM_FAILED';
+    
     logger.warn({
       requestId,
-      error: assistErr instanceof Error ? assistErr.message : 'unknown'
-    }, '[ASSISTANT] Failed to publish SEARCH_FAILED message');
+      event: 'search_failed_assistant_error',
+      errorCode,
+      error: errorMsg
+    }, '[ASSISTANT] Failed to generate SEARCH_FAILED message - publishing error event');
+    
+    publishAssistantError(wsManager, requestId, ctx.sessionId, errorCode);
   }
 }

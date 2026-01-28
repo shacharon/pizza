@@ -107,7 +107,7 @@ export interface WSServerAssistantSuggestion {
 }
 
 /**
- * Assistant message (narrator output)
+ * Assistant message (LLM-generated guidance)
  */
 export interface WSServerAssistant {
   type: 'assistant';
@@ -171,7 +171,7 @@ export function isWSClientMessage(msg: any): msg is WSClientMessage {
       if (typeof msg.requestId !== 'string') {
         return false;
       }
-      
+
       // Accept both canonical (with channel) and legacy (without channel)
       if ('channel' in msg) {
         // Canonical envelope (v1)
@@ -180,7 +180,7 @@ export function isWSClientMessage(msg: any): msg is WSClientMessage {
         // Legacy format (backward compatible)
         return true;
       }
-    
+
     case 'unsubscribe':
     case 'event':
       // Canonical envelope required
@@ -189,13 +189,13 @@ export function isWSClientMessage(msg: any): msg is WSClientMessage {
         'channel' in msg &&
         (msg.channel === 'search' || msg.channel === 'assistant')
       );
-    
+
     case 'action_clicked':
       return typeof msg.requestId === 'string' && typeof msg.actionId === 'string';
-    
+
     case 'ui_state_changed':
       return typeof msg.requestId === 'string' && typeof msg.state === 'object';
-    
+
     default:
       return false;
   }

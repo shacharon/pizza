@@ -31,29 +31,8 @@ export async function resolveAndStoreFilters(
     requestId: ctx.requestId
   });
 
-  logger.info(
-    {
-      requestId,
-      pipelineVersion: 'route2',
-      event: 'filters_resolved',
-      base: {
-        language: baseFilters?.language ?? null,
-        openState: baseFilters?.openState ?? null,
-        openAt: baseFilters?.openAt ?? null,
-        openBetween: baseFilters?.openBetween ?? null,
-        regionHint: baseFilters?.regionHint ?? null
-      },
-      final: {
-        uiLanguage: finalFilters.uiLanguage,
-        providerLanguage: finalFilters.providerLanguage,
-        openState: finalFilters.openState,
-        openAt: finalFilters.openAt,
-        openBetween: finalFilters.openBetween,
-        regionCode: finalFilters.regionCode
-      }
-    },
-    '[ROUTE2] Filters resolved'
-  );
+  // DUPLICATE LOG FIX: Removed - already logged in filters-resolver.ts (richer version)
+  // The filters-resolver logs with sanitized=true and more complete context
 
   ctx.sharedFilters = { preGoogle: baseFilters, final: finalFilters };
 
@@ -85,7 +64,8 @@ export function applyPostFiltersToResults(
   const postFilterStart = startStage(ctx, 'post_filter', {
     openState: postConstraints.openState,
     priceLevel: postConstraints.priceLevel,
-    isKosher: postConstraints.isKosher
+    isKosher: postConstraints.isKosher,
+    isGlutenFree: postConstraints.isGlutenFree
   });
 
   // Merge post-constraints with final filters
@@ -105,6 +85,7 @@ export function applyPostFiltersToResults(
       : finalFilters.openBetween,
     priceLevel: postConstraints.priceLevel ?? (finalFilters as any).priceLevel,
     isKosher: postConstraints.isKosher ?? (finalFilters as any).isKosher,
+    isGlutenFree: postConstraints.isGlutenFree ?? (finalFilters as any).isGlutenFree,
     requirements: postConstraints.requirements ?? (finalFilters as any).requirements
   };
 
@@ -125,6 +106,7 @@ export function applyPostFiltersToResults(
       postConstraints.openBetween !== null ||
       postConstraints.priceLevel !== null ||
       postConstraints.isKosher !== null ||
+      postConstraints.isGlutenFree !== null ||
       postConstraints.requirements?.accessible !== null ||
       postConstraints.requirements?.parking !== null
   });
@@ -140,5 +122,6 @@ export function buildAppliedFiltersArray(filtersForPostFilter: any): string[] {
   if (filtersForPostFilter.openState) appliedFiltersArray.push(filtersForPostFilter.openState);
   if (filtersForPostFilter.priceLevel) appliedFiltersArray.push(`price:${filtersForPostFilter.priceLevel}`);
   if (filtersForPostFilter.isKosher) appliedFiltersArray.push('kosher');
+  if (filtersForPostFilter.isGlutenFree) appliedFiltersArray.push('gluten-free:soft');
   return appliedFiltersArray;
 }

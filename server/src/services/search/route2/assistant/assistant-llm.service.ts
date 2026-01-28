@@ -35,6 +35,11 @@ export interface AssistantSummaryContext {
   language: 'he' | 'en' | 'other';
   resultCount: number;
   top3Names: string[];
+  // DIETARY NOTE: Optional soft dietary hint (merged into summary)
+  dietaryNote?: {
+    type: 'gluten-free';
+    shouldInclude: boolean;
+  };
 }
 
 export interface AssistantSearchFailedContext {
@@ -82,21 +87,29 @@ const ASSISTANT_JSON_SCHEMA = {
 const SYSTEM_PROMPT = `You are an assistant for a food search app. Return ONLY JSON.
 
 Rules:
-- Be friendly, concise, helpful
-- Output English only
-- "question" field: use when appropriate (CLARIFY always has question, others optional)
-- "blocksSearch": true means stop search, false means continue
+- Be friendly, concise (1-2 sentences max for message), helpful
+- CRITICAL: Respond in the EXACT language specified (he=Hebrew ONLY, en=English ONLY)
+- "question" field: add a clarifying question when needed (CLARIFY should ask, others optional)
+- "blocksSearch": YOU decide based on context (true = stop search, false = continue)
+- "suggestedAction": YOU decide what helps user most
+- NO HARD RULES - use your judgment to help the user
 
 Schema: {"type":"GATE_FAIL|CLARIFY|SUMMARY|SEARCH_FAILED","message":"...","question":"..."|null,"suggestedAction":"NONE|ASK_LOCATION|ASK_FOOD|RETRY|EXPAND_RADIUS","blocksSearch":true|false}`;
 
 function buildUserPrompt(context: AssistantContext): string {
+  const languageInstruction = context.language === 'he' ? 'Hebrew' : 'English';
+  const languageEmphasis = context.language === 'he' ? 'MUST write in Hebrew (עברית)' : 'MUST write in English';
+  
   if (context.type === 'GATE_FAIL') {
     const reason = context.reason === 'NO_FOOD' ? 'not food-related' : 'uncertain if food-related';
     return `Query: "${context.query}"
 Type: GATE_FAIL
 Reason: ${reason}
+Language: ${context.language}
 
-Generate friendly onboarding message in English. Guide user to proper food search. Set blocksSearch=true.`;
+CRITICAL: You ${languageEmphasis}. Both "message" and "question" fields must be in ${languageInstruction}.
+
+Generate friendly message. Help user understand and guide them. Decide blocksSearch and suggestedAction.`;
   }
 
   if (context.type === 'CLARIFY') {
@@ -104,8 +117,11 @@ Generate friendly onboarding message in English. Guide user to proper food searc
     return `Query: "${context.query}"
 Type: CLARIFY
 Reason: missing ${missing}
+Language: ${context.language}
 
-Ask 1 question in English to clarify. Set blocksSearch=true (STOP search).`;
+CRITICAL: You ${languageEmphasis}. Both "message" and "question" fields must be in ${languageInstruction}.
+
+Ask a question to get the missing info. Decide blocksSearch and suggestedAction.`;
   }
 
   if (context.type === 'SEARCH_FAILED') {
@@ -113,17 +129,404 @@ Ask 1 question in English to clarify. Set blocksSearch=true (STOP search).`;
     return `Query: "${context.query}"
 Type: SEARCH_FAILED
 Reason: ${reason}
+Language: ${context.language}
 
-Tell user search failed due to technical issue. Suggest retry. Set suggestedAction=RETRY, blocksSearch=false.`;
+CRITICAL: You ${languageEmphasis}. Both "message" and "question" fields must be in ${languageInstruction}.
+
+Tell user search failed. Decide what to suggest and whether to block. Be helpful and honest.`;
   }
 
   // SUMMARY
+  const dietaryNote = context.dietaryNote?.shouldInclude
+    ? `\nDietary Note: Add SOFT gluten-free hint at end (1 sentence max).
+  - Tone: uncertain, non-authoritative, helpful
+  - Example (he): "ייתכן שיש אפשרויות ללא גלוטן - כדאי לוודא עם המסעדה."
+  - Example (en): "Some places may offer gluten-free options - please confirm with restaurant."
+  - NO medical claims, NO guarantees
+  - Combine naturally with summary (max 2 sentences total)`
+    : '';
+
   return `Query: "${context.query}"
 Type: SUMMARY
 Results: ${context.resultCount}
 Top3: ${context.top3Names.slice(0, 3).join(', ')}
+Language: ${context.language}${dietaryNote}
 
-Summarize results in English (1-2 sentences). Set blocksSearch=false.`;
+CRITICAL: You ${languageEmphasis}. Both "message" and "question" fields must be in ${languageInstruction}.
+
+Summarize results briefly (max 2 sentences total including any dietary note). Decide blocksSearch and suggestedAction.`;
+}
+
+// ============================================================================
+// Schema Version (for cache keys if needed)
+// ============================================================================
+
+export const ASSISTANT_SCHEMA_VERSION = 'v3_strict_validation';
+export const ASSISTANT_PROMPT_VERSION = 'v2_language_enforcement';
+
+// ============================================================================
+// Validation & Normalization
+// ============================================================================
+
+/**
+ * Detect if text is primarily Hebrew
+ */
+function isHebrewText(text: string): boolean {
+  const hebrewChars = text.match(/[\u0590-\u05FF]/g);
+  const totalChars = text.replace(/\s/g, '').length;
+  return hebrewChars && hebrewChars.length / totalChars > 0.5;
+}
+
+/**
+ * Count sentences in text (simple heuristic: period, exclamation, question mark followed by space or end)
+ */
+function countSentences(text: string): number {
+  if (!text) return 0;
+  // Match sentence-ending punctuation followed by space/end
+  const matches = text.match(/[.!?](\s|$)/g);
+  return matches ? matches.length : 1; // Default to 1 if no punctuation
+}
+
+/**
+ * Count question marks in text
+ */
+function countQuestionMarks(text: string): number {
+  if (!text) return 0;
+  const matches = text.match(/\?/g);
+  return matches ? matches.length : 0;
+}
+
+/**
+ * Validate message and question format
+ * Returns validation errors or null if valid
+ */
+function validateMessageFormat(
+  message: string,
+  question: string | null
+): { messageError?: string; questionError?: string } | null {
+  const errors: { messageError?: string; questionError?: string } = {};
+
+  // Message: max 2 sentences
+  const messageSentences = countSentences(message);
+  if (messageSentences > 2) {
+    errors.messageError = `Too many sentences (${messageSentences}, max 2)`;
+  }
+
+  // Question: max 1 sentence and max one "?"
+  if (question) {
+    const questionSentences = countSentences(question);
+    if (questionSentences > 1) {
+      errors.questionError = `Too many sentences (${questionSentences}, max 1)`;
+    }
+
+    const questionMarks = countQuestionMarks(question);
+    if (questionMarks > 1) {
+      errors.questionError = `Too many question marks (${questionMarks}, max 1)`;
+    }
+  }
+
+  return Object.keys(errors).length > 0 ? errors : null;
+}
+
+/**
+ * Enforce type-specific invariants (hard-coded business rules)
+ * These override LLM output to ensure consistency
+ */
+function enforceInvariants(
+  output: AssistantOutput,
+  context: AssistantContext,
+  requestId: string
+): AssistantOutput {
+  const normalized = { ...output };
+  let changed = false;
+
+  // CLARIFY invariants
+  if (context.type === 'CLARIFY') {
+    // blocksSearch MUST be true
+    if (!normalized.blocksSearch) {
+      logger.warn({
+        requestId,
+        event: 'assistant_invariant_enforced',
+        type: 'CLARIFY',
+        field: 'blocksSearch',
+        llmValue: normalized.blocksSearch,
+        enforcedValue: true
+      }, '[ASSISTANT] Enforcing CLARIFY invariant: blocksSearch=true');
+      normalized.blocksSearch = true;
+      changed = true;
+    }
+
+    // suggestedAction MUST be ASK_LOCATION for MISSING_LOCATION
+    if ((context as AssistantClarifyContext).reason === 'MISSING_LOCATION' && 
+        normalized.suggestedAction !== 'ASK_LOCATION') {
+      logger.warn({
+        requestId,
+        event: 'assistant_invariant_enforced',
+        type: 'CLARIFY',
+        reason: 'MISSING_LOCATION',
+        field: 'suggestedAction',
+        llmValue: normalized.suggestedAction,
+        enforcedValue: 'ASK_LOCATION'
+      }, '[ASSISTANT] Enforcing CLARIFY+MISSING_LOCATION invariant: suggestedAction=ASK_LOCATION');
+      normalized.suggestedAction = 'ASK_LOCATION';
+      changed = true;
+    }
+
+    // suggestedAction MUST be ASK_FOOD for MISSING_FOOD
+    if ((context as AssistantClarifyContext).reason === 'MISSING_FOOD' && 
+        normalized.suggestedAction !== 'ASK_FOOD') {
+      logger.warn({
+        requestId,
+        event: 'assistant_invariant_enforced',
+        type: 'CLARIFY',
+        reason: 'MISSING_FOOD',
+        field: 'suggestedAction',
+        llmValue: normalized.suggestedAction,
+        enforcedValue: 'ASK_FOOD'
+      }, '[ASSISTANT] Enforcing CLARIFY+MISSING_FOOD invariant: suggestedAction=ASK_FOOD');
+      normalized.suggestedAction = 'ASK_FOOD';
+      changed = true;
+    }
+  }
+
+  // SUMMARY invariants
+  if (context.type === 'SUMMARY') {
+    // blocksSearch MUST be false
+    if (normalized.blocksSearch) {
+      logger.warn({
+        requestId,
+        event: 'assistant_invariant_enforced',
+        type: 'SUMMARY',
+        field: 'blocksSearch',
+        llmValue: normalized.blocksSearch,
+        enforcedValue: false
+      }, '[ASSISTANT] Enforcing SUMMARY invariant: blocksSearch=false');
+      normalized.blocksSearch = false;
+      changed = true;
+    }
+
+    // suggestedAction MUST be NONE
+    if (normalized.suggestedAction !== 'NONE') {
+      logger.warn({
+        requestId,
+        event: 'assistant_invariant_enforced',
+        type: 'SUMMARY',
+        field: 'suggestedAction',
+        llmValue: normalized.suggestedAction,
+        enforcedValue: 'NONE'
+      }, '[ASSISTANT] Enforcing SUMMARY invariant: suggestedAction=NONE');
+      normalized.suggestedAction = 'NONE';
+      changed = true;
+    }
+  }
+
+  // GATE_FAIL invariants
+  if (context.type === 'GATE_FAIL') {
+    // blocksSearch MUST be true
+    if (!normalized.blocksSearch) {
+      logger.warn({
+        requestId,
+        event: 'assistant_invariant_enforced',
+        type: 'GATE_FAIL',
+        field: 'blocksSearch',
+        llmValue: normalized.blocksSearch,
+        enforcedValue: true
+      }, '[ASSISTANT] Enforcing GATE_FAIL invariant: blocksSearch=true');
+      normalized.blocksSearch = true;
+      changed = true;
+    }
+
+    // suggestedAction SHOULD be RETRY (soft enforcement - log but don't change)
+    if (normalized.suggestedAction !== 'RETRY' && normalized.suggestedAction !== 'NONE') {
+      logger.info({
+        requestId,
+        event: 'assistant_invariant_recommendation',
+        type: 'GATE_FAIL',
+        field: 'suggestedAction',
+        llmValue: normalized.suggestedAction,
+        recommendedValue: 'RETRY'
+      }, '[ASSISTANT] GATE_FAIL suggestedAction not RETRY (accepting LLM choice)');
+    }
+  }
+
+  // SEARCH_FAILED invariants
+  if (context.type === 'SEARCH_FAILED') {
+    // blocksSearch SHOULD typically be true (soft enforcement)
+    if (!normalized.blocksSearch) {
+      logger.info({
+        requestId,
+        event: 'assistant_invariant_observation',
+        type: 'SEARCH_FAILED',
+        field: 'blocksSearch',
+        llmValue: normalized.blocksSearch
+      }, '[ASSISTANT] SEARCH_FAILED blocksSearch=false (accepting LLM choice)');
+    }
+  }
+
+  if (changed) {
+    logger.info({
+      requestId,
+      event: 'assistant_invariants_applied',
+      type: context.type
+    }, '[ASSISTANT] Applied type-specific invariants');
+  }
+
+  return normalized;
+}
+
+/**
+ * Get deterministic fallback message for language mismatch OR validation failure
+ */
+function getDeterministicFallback(
+  context: AssistantContext,
+  requestedLanguage: 'he' | 'en'
+): { message: string; question: string | null; suggestedAction: AssistantOutput['suggestedAction']; blocksSearch: boolean } {
+  if (requestedLanguage === 'he') {
+    // Hebrew fallbacks (with correct invariants)
+    if (context.type === 'CLARIFY') {
+      if (context.reason === 'MISSING_LOCATION') {
+        return {
+          message: 'כדי לחפש מסעדות לידך אני צריך את המיקום שלך.',
+          question: 'אפשר לאשר מיקום או לכתוב עיר/אזור?',
+          suggestedAction: 'ASK_LOCATION',
+          blocksSearch: true
+        };
+      } else {
+        return {
+          message: 'כדי לחפש טוב צריך 2 דברים: מה אוכלים + איפה.',
+          question: 'איזה אוכל את/ה מחפש/ת?',
+          suggestedAction: 'ASK_FOOD',
+          blocksSearch: true
+        };
+      }
+    } else if (context.type === 'GATE_FAIL') {
+      return {
+        message: 'זה לא נראה כמו חיפוש אוכל/מסעדות. נסה למשל: "פיצה בתל אביב".',
+        question: null,
+        suggestedAction: 'RETRY',
+        blocksSearch: true
+      };
+    } else if (context.type === 'SEARCH_FAILED') {
+      return {
+        message: 'משהו השתבש בחיפוש. אפשר לנסות שוב?',
+        question: null,
+        suggestedAction: 'RETRY',
+        blocksSearch: true
+      };
+    } else {
+      // SUMMARY
+      const count = (context as any).resultCount || 0;
+      return {
+        message: `מצאתי ${count} מסעדות שמתאימות לחיפוש שלך.`,
+        question: null,
+        suggestedAction: 'NONE',
+        blocksSearch: false
+      };
+    }
+  } else {
+    // English fallbacks (with correct invariants)
+    if (context.type === 'CLARIFY') {
+      if (context.reason === 'MISSING_LOCATION') {
+        return {
+          message: 'To search for restaurants near you, I need your location.',
+          question: 'Can you enable location or enter a city/area?',
+          suggestedAction: 'ASK_LOCATION',
+          blocksSearch: true
+        };
+      } else {
+        return {
+          message: 'To search well, I need 2 things: what food + where.',
+          question: 'What type of food are you looking for?',
+          suggestedAction: 'ASK_FOOD',
+          blocksSearch: true
+        };
+      }
+    } else if (context.type === 'GATE_FAIL') {
+      return {
+        message: 'This doesn\'t look like a food/restaurant search. Try: "pizza in Tel Aviv".',
+        question: null,
+        suggestedAction: 'RETRY',
+        blocksSearch: true
+      };
+    } else if (context.type === 'SEARCH_FAILED') {
+      return {
+        message: 'Something went wrong with the search. Can you try again?',
+        question: null,
+        suggestedAction: 'RETRY',
+        blocksSearch: true
+      };
+    } else {
+      // SUMMARY
+      const count = (context as any).resultCount || 0;
+      return {
+        message: `Found ${count} restaurants matching your search.`,
+        question: null,
+        suggestedAction: 'NONE',
+        blocksSearch: false
+      };
+    }
+  }
+}
+
+/**
+ * Validate language, format, and enforce correctness
+ * Returns corrected output if validation fails
+ */
+function validateAndEnforceCorrectness(
+  output: AssistantOutput,
+  requestedLanguage: 'he' | 'en',
+  context: AssistantContext,
+  requestId: string
+): AssistantOutput {
+  let useFallback = false;
+  const validationIssues: string[] = [];
+
+  // 1. Validate language match
+  const messageIsHebrew = isHebrewText(output.message);
+  const questionIsHebrew = output.question ? isHebrewText(output.question) : null;
+
+  const requestedHebrew = requestedLanguage === 'he';
+  const messageMismatch = messageIsHebrew !== requestedHebrew;
+  const questionMismatch = questionIsHebrew !== null && questionIsHebrew !== requestedHebrew;
+
+  if (messageMismatch || questionMismatch) {
+    validationIssues.push(`language_mismatch (requested=${requestedLanguage}, message=${messageIsHebrew ? 'he' : 'en'})`);
+    useFallback = true;
+  }
+
+  // 2. Validate message/question format
+  const formatErrors = validateMessageFormat(output.message, output.question);
+  if (formatErrors) {
+    if (formatErrors.messageError) {
+      validationIssues.push(`message_format: ${formatErrors.messageError}`);
+    }
+    if (formatErrors.questionError) {
+      validationIssues.push(`question_format: ${formatErrors.questionError}`);
+    }
+    useFallback = true;
+  }
+
+  if (useFallback) {
+    logger.warn({
+      requestId,
+      event: 'assistant_validation_failed',
+      requestedLanguage,
+      validationIssues,
+      usingFallback: true
+    }, '[ASSISTANT] Validation failed - using deterministic fallback');
+
+    const fallback = getDeterministicFallback(context, requestedLanguage);
+
+    return {
+      type: output.type,
+      message: fallback.message,
+      question: fallback.question,
+      suggestedAction: fallback.suggestedAction,
+      blocksSearch: fallback.blocksSearch
+    };
+  }
+
+  return output;
 }
 
 // ============================================================================
@@ -132,7 +535,7 @@ Summarize results in English (1-2 sentences). Set blocksSearch=false.`;
 
 /**
  * Generate assistant message via LLM
- * NO post-processing - pure LLM output with strict schema validation
+ * With deterministic validation, invariant enforcement, and fallback
  */
 export async function generateAssistantMessage(
   context: AssistantContext,
@@ -141,6 +544,7 @@ export async function generateAssistantMessage(
   opts?: { timeout?: number; model?: string; traceId?: string; sessionId?: string }
 ): Promise<AssistantOutput> {
   const startTime = Date.now();
+  const questionLanguage = context.language === 'other' ? 'en' : context.language;
 
   try {
     const messages = [
@@ -154,7 +558,10 @@ export async function generateAssistantMessage(
       event: 'assistant_llm_start',
       type: context.type,
       reason: (context as any).reason,
-      queryLen: context.query.length
+      questionLanguage,
+      queryLen: context.query.length,
+      schemaVersion: ASSISTANT_SCHEMA_VERSION,
+      promptVersion: ASSISTANT_PROMPT_VERSION
     }, '[ASSISTANT] Calling LLM');
 
     const llmOpts = buildLLMOptions('assistant', {
@@ -178,77 +585,56 @@ export async function generateAssistantMessage(
 
     const durationMs = Date.now() - startTime;
 
+    // STEP 1: Enforce type-specific invariants (hard-coded business rules)
+    const withInvariants = enforceInvariants(result.data, context, requestId);
+
+    // STEP 2: Validate and enforce correctness (language + format)
+    const validated = validateAndEnforceCorrectness(
+      withInvariants,
+      questionLanguage,
+      context,
+      requestId
+    );
+
     logger.info({
       requestId,
       stage: 'assistant_llm',
       event: 'assistant_llm_success',
-      type: result.data.type,
-      suggestedAction: result.data.suggestedAction,
-      blocksSearch: result.data.blocksSearch,
+      type: validated.type,
+      questionLanguage,
+      suggestedAction: validated.suggestedAction,
+      blocksSearch: validated.blocksSearch, // Log final value after enforcement
       durationMs,
       usage: result.usage,
       model: result.model
-    }, '[ASSISTANT] LLM generated message');
+    }, '[ASSISTANT] LLM generated and validated message');
 
-    return result.data;
+    return validated;
   } catch (error) {
     const durationMs = Date.now() - startTime;
     const errorMsg = error instanceof Error ? error.message : String(error);
+    const isTimeout = errorMsg.toLowerCase().includes('timeout') || errorMsg.toLowerCase().includes('abort');
 
     logger.error({
       requestId,
       stage: 'assistant_llm',
       event: 'assistant_llm_failed',
       type: context.type,
+      questionLanguage,
       error: errorMsg,
+      isTimeout,
       durationMs
-    }, '[ASSISTANT] LLM call failed, using generic fallback');
+    }, '[ASSISTANT] LLM call failed - using deterministic fallback');
 
-    // Generic fallback only (no deterministic logic)
-    return getGenericFallback(context);
-  }
-}
+    // Use deterministic fallback on LLM error/timeout
+    const fallback = getDeterministicFallback(context, questionLanguage);
 
-/**
- * Minimal generic fallback (last resort only)
- */
-function getGenericFallback(context: AssistantContext): AssistantOutput {
-  if (context.type === 'SEARCH_FAILED') {
     return {
-      type: 'SEARCH_FAILED',
-      message: 'Search temporarily unavailable. Please try again.',
-      question: null,
-      suggestedAction: 'RETRY',
-      blocksSearch: false
+      type: context.type,
+      message: fallback.message,
+      question: fallback.question,
+      suggestedAction: fallback.suggestedAction,
+      blocksSearch: fallback.blocksSearch
     };
   }
-
-  if (context.type === 'CLARIFY') {
-    return {
-      type: 'CLARIFY',
-      message: 'Could you provide more details about what you\'re looking for?',
-      question: 'What type of food would you like?',
-      suggestedAction: 'ASK_FOOD',
-      blocksSearch: true
-    };
-  }
-
-  if (context.type === 'SUMMARY') {
-    return {
-      type: 'SUMMARY',
-      message: `Found ${context.resultCount} results.`,
-      question: null,
-      suggestedAction: 'NONE',
-      blocksSearch: false
-    };
-  }
-
-  // GATE_FAIL
-  return {
-    type: 'GATE_FAIL',
-    message: 'This doesn\'t look like a food search. Try: "pizza in Tel Aviv".',
-    question: null,
-    suggestedAction: 'ASK_FOOD',
-    blocksSearch: true
-  };
 }
