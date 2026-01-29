@@ -105,6 +105,16 @@ export interface WSServerError {
   message: string;
 }
 
+/**
+ * WebSocket connection status event (connection-level)
+ * For app-assistant-line to show stable WS status
+ */
+export interface WSServerConnectionStatus {
+  type: 'ws_status';
+  state: 'connected' | 'reconnecting' | 'offline';
+  ts: string;
+}
+
 export interface WSServerAssistantProgress {
   type: 'assistant_progress';
   requestId: string;
@@ -181,7 +191,8 @@ export type WSServerMessage =
   | WSServerAssistantMessage
   | WSServerAssistant
   | WSServerSubAck
-  | WSServerSubNack;
+  | WSServerSubNack
+  | WSServerConnectionStatus;
 
 /**
  * Type guard for WebSocket server messages

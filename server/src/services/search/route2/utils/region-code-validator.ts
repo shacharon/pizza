@@ -106,10 +106,10 @@ export function isInsideIsrael(lat: number, lng: number): boolean {
  */
 export function isValidRegionCode(code: string | undefined | null): boolean {
   if (!code) return false;
-  
+
   // Must be exactly 2 uppercase letters
   if (!/^[A-Z]{2}$/.test(code)) return false;
-  
+
   // Must be in CLDR allowlist
   return VALID_REGION_CODES.has(code);
 }
@@ -119,6 +119,7 @@ export function isValidRegionCode(code: string | undefined | null): boolean {
  * 
  * Handles special cases:
  * - 'GZ' (Gaza Strip): Map to 'IL' if user is inside Israel, else null
+ * - 'IS': Common LLM mistake for Israel, map to 'IL'
  * - Invalid codes: Return null
  * - Valid codes: Return as-is
  * 
@@ -131,7 +132,14 @@ export function sanitizeRegionCode(
   userLocation?: { lat: number; lng: number } | null
 ): string | null {
   if (!code) return null;
-  
+
+  // Special case: "IS" is a common LLM hallucination for Israel
+  // ISO 3166-1 "IS" is actually Iceland, but LLMs sometimes use it for Israel
+  // Map to correct code 'IL'
+  if (code === 'IS') {
+    return 'IL';
+  }
+
   // Special case: Gaza Strip (not supported by Google)
   if (code === 'GZ') {
     // If user is inside Israel geographically, use 'IL'
@@ -141,12 +149,12 @@ export function sanitizeRegionCode(
     // Otherwise, don't send regionCode (let Google infer)
     return null;
   }
-  
+
   // Validate against CLDR allowlist
   if (isValidRegionCode(code)) {
     return code;
   }
-  
+
   // Invalid code: don't send to Google
   return null;
 }
@@ -169,14 +177,15 @@ export function getFallbackRegion(
 }
 
 /**
- * Check if a region code is a known unsupported region
+ * Check if a region code is a known unsupported/correctable region
  * Used to reduce log noise for expected cases
  * 
  * @param code Region code to check
- * @returns true if this is a known unsupported region (e.g., GZ)
+ * @returns true if this is a known unsupported/correctable region (e.g., GZ, IS)
  */
 export function isKnownUnsupportedRegion(code: string): boolean {
   // Gaza Strip - not supported by Google Places API
-  // This is expected input from intent LLM, so we handle it gracefully
-  return code === 'GZ';
+  // "IS" - Common LLM mistake (actually Iceland, but LLM uses for Israel)
+  // These are expected inputs from intent LLM, so we handle them gracefully
+  return code === 'GZ' || code === 'IS';
 }

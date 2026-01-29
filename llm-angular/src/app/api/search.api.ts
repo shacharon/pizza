@@ -12,6 +12,7 @@ import type { AsyncSearchAccepted, AsyncSearchPending, AsyncSearchFailed } from 
 import { ENDPOINTS, buildApiUrl } from '../shared/api/api.config';
 import { mapApiError, logApiError, type ApiErrorView } from '../shared/http/api-error.mapper';
 import { environment } from '../../environments/environment';
+import { safeLog, safeError } from '../shared/utils/safe-logger';
 
 /**
  * Union type for async search responses
@@ -42,10 +43,10 @@ export class SearchApiClient {
         
         // Check if it's a 202 Accepted (async) or 200 (sync fallback)
         if (response.status === 202) {
-          console.log('[SearchAPI] Async 202 accepted:', body);
+          safeLog('SearchAPI', 'Async 202 accepted', body);
           return body as AsyncSearchAccepted;
         } else {
-          console.log('[SearchAPI] Sync 200 response:', body);
+          safeLog('SearchAPI', 'Sync 200 response', body);
           return body as SearchResponse;
         }
       }),
@@ -67,11 +68,12 @@ export class SearchApiClient {
     // DEV-ONLY: Guard against relative URLs (would hit CloudFront instead of API)
     if (!environment.production && typeof window !== 'undefined') {
       if (resultUrl.startsWith('/')) {
-        console.error(
-          `[SearchAPI] ❌ CRITICAL: pollResult called with relative URL!\n` +
+        safeError(
+          'SearchAPI',
+          '❌ CRITICAL: pollResult called with relative URL!\n' +
           `URL: ${resultUrl}\n` +
-          `This will cause CloudFront 301 redirects in production!\n` +
-          `Use buildApiUrl() to construct absolute URLs.`
+          'This will cause CloudFront 301 redirects in production!\n' +
+          'Use buildApiUrl() to construct absolute URLs.'
         );
       }
     }
@@ -81,10 +83,10 @@ export class SearchApiClient {
         const body = response.body!;
         
         if (response.status === 202) {
-          console.log('[SearchAPI] Poll PENDING:', body);
+          safeLog('SearchAPI', 'Poll PENDING', body);
           return body as AsyncSearchPending;
         } else {
-          console.log('[SearchAPI] Poll DONE:', body);
+          safeLog('SearchAPI', 'Poll DONE', body);
           return body as SearchResponse;
         }
       }),

@@ -10,7 +10,7 @@
 /**
  * Assistant message types from backend
  */
-export type AssistantMessageType = 
+export type AssistantMessageType =
   | 'PRESENCE'      // System presence indicator
   | 'WS_STATUS'     // WebSocket connection status
   | 'PROGRESS'      // Search progress updates
@@ -31,7 +31,7 @@ export const ASSISTANT_ROUTING: Record<AssistantMessageType, AssistantChannel> =
   'PRESENCE': 'line',
   'WS_STATUS': 'line',
   'PROGRESS': 'line',
-  
+
   // Card channel: User-facing cards only
   'SUMMARY': 'card',
   'CLARIFY': 'card',
@@ -51,7 +51,7 @@ export function getAllowedTypesForChannel(channel: AssistantChannel): AssistantM
  * Check if message type is allowed on channel
  */
 export function isTypeAllowedOnChannel(
-  type: AssistantMessageType, 
+  type: AssistantMessageType,
   channel: AssistantChannel
 ): boolean {
   return ASSISTANT_ROUTING[type] === channel;

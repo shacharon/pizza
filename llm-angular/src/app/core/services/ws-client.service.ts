@@ -131,7 +131,7 @@ export class WsClientService {
    */
   send(message: WSClientMessage): void {
     if (!this.connection.isOpen()) {
-      console.warn('[WS] Not connected, cannot send message', message);
+      console.warn('[WS] Not connected, cannot send message');
       return;
     }
 
@@ -139,7 +139,7 @@ export class WsClientService {
       const json = JSON.stringify(message);
       this.connection.send(json);
     } catch (error) {
-      console.error('[WS] Failed to send message', error, message);
+      console.error('[WS] Failed to send message', error);
     }
   }
 

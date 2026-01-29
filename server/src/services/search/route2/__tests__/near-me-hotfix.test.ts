@@ -84,7 +84,7 @@ describe('Near-Me HOTFIX - Integration Tests', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    
+
     mockLLMProvider = {
       completeJSON: jest.fn(),
       complete: jest.fn()
@@ -108,7 +108,7 @@ describe('Near-Me HOTFIX - Integration Tests', () => {
   describe('CASE 1: Near-me WITHOUT location → CLARIFY', () => {
     it('should return CLARIFY for "לידי" without userLocation', async () => {
       const { searchRoute2 } = await import('../route2.orchestrator.js');
-      
+
       const request = createRequest('מסעדות פתוחות לידי');
       const context = createContext();
       // No userLocation set
@@ -126,7 +126,7 @@ describe('Near-Me HOTFIX - Integration Tests', () => {
 
     it('should return CLARIFY for "ממני" without userLocation', async () => {
       const { searchRoute2 } = await import('../route2.orchestrator.js');
-      
+
       const request = createRequest('פיצה קרוב ממני');
       const context = createContext();
 
@@ -139,7 +139,7 @@ describe('Near-Me HOTFIX - Integration Tests', () => {
 
     it('should return CLARIFY for "near me" without userLocation', async () => {
       const { searchRoute2 } = await import('../route2.orchestrator.js');
-      
+
       const request = createRequest('pizza near me');
       const context = createContext();
 
@@ -152,7 +152,7 @@ describe('Near-Me HOTFIX - Integration Tests', () => {
 
     it('should return CLARIFY for "בסביבה" without userLocation', async () => {
       const { searchRoute2 } = await import('../route2.orchestrator.js');
-      
+
       const request = createRequest('המבורגר בסביבה');
       const context = createContext();
 
@@ -166,7 +166,7 @@ describe('Near-Me HOTFIX - Integration Tests', () => {
     it('should NOT call Google Maps stage when returning CLARIFY', async () => {
       const { searchRoute2 } = await import('../route2.orchestrator.js');
       const { executeGoogleMapsStage } = await import('../stages/google-maps.stage.js');
-      
+
       const request = createRequest('מסעדות לידי');
       const context = createContext();
 
@@ -182,7 +182,7 @@ describe('Near-Me HOTFIX - Integration Tests', () => {
       const { searchRoute2 } = await import('../route2.orchestrator.js');
       const { executeIntentStage } = await import('../stages/intent/intent.stage.js');
       const { executeRouteLLM } = await import('../stages/route-llm/route-llm.dispatcher.js');
-      
+
       // Mock intent to return TEXTSEARCH initially
       (executeIntentStage as jest.Mock).mockResolvedValueOnce({
         route: 'TEXTSEARCH',
@@ -223,7 +223,7 @@ describe('Near-Me HOTFIX - Integration Tests', () => {
       // Should have results (not CLARIFY)
       expect(result.results.length).toBeGreaterThan(0);
       expect(result.meta.failureReason).toBe('NONE');
-      
+
       // Should have overridden to NEARBY
       expect(executeRouteLLM).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -238,7 +238,7 @@ describe('Near-Me HOTFIX - Integration Tests', () => {
     it('should keep NEARBY route if LLM already selected it', async () => {
       const { searchRoute2 } = await import('../route2.orchestrator.js');
       const { executeIntentStage } = await import('../stages/intent/intent.stage.js');
-      
+
       // Mock intent to return NEARBY
       (executeIntentStage as jest.Mock).mockResolvedValueOnce({
         route: 'NEARBY',
@@ -262,7 +262,7 @@ describe('Near-Me HOTFIX - Integration Tests', () => {
   describe('CASE 3: NON near-me queries (no change)', () => {
     it('should NOT affect queries without near-me keywords', async () => {
       const { searchRoute2 } = await import('../route2.orchestrator.js');
-      
+
       const request = createRequest('מסעדות בתל אביב');
       const context = createContext();
 
@@ -282,7 +282,7 @@ describe('Near-Me HOTFIX - Integration Tests', () => {
 
     it('should allow TEXTSEARCH without location for city-based queries', async () => {
       const { searchRoute2 } = await import('../route2.orchestrator.js');
-      
+
       const request = createRequest('פיצה ברעננה');
       const context = createContext();
       // No userLocation (should be OK for city-based)

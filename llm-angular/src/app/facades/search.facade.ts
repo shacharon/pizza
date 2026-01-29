@@ -20,6 +20,7 @@ import type {
 import type { ActionType, ActionLevel } from '../domain/types/action.types';
 import type { SearchCardState } from '../domain/types/search-card-state.types';
 import type { WSServerMessage } from '../core/models/ws-protocol.types';
+import { safeLog, safeError, safeWarn } from '../shared/utils/safe-logger';
 
 // Extracted handler modules
 import { SearchApiHandler } from './search-api.facade';
@@ -155,14 +156,14 @@ export class SearchFacade {
       // Cancel any previous polling
       this.apiHandler.cancelPolling();
 
-      // CLEAN FIX: Reset only global/system assistant messages
-      // Preserve card-bound messages to prevent leakage
-      this.assistantHandler.resetIfGlobal();
+      // FRESH SEARCH FIX: Clear ALL assistant messages on new search (no carry-over)
+      // Each search starts with a clean slate
+      this.assistantHandler.reset();
 
       // CARD STATE: Reset to RUNNING for fresh search
       this._cardState.set('RUNNING');
       
-      // NEW: Generate new requestId for fresh search (not continuation)
+      // NEW: Clear requestId before search (will be set when response arrives)
       this.currentRequestId.set(undefined);
 
       // Update input state machine
@@ -192,7 +193,7 @@ export class SearchFacade {
         const { requestId, resultUrl } = response;
         this.currentRequestId.set(requestId);
 
-        console.log('[SearchFacade] Async 202 accepted', { requestId, resultUrl });
+        safeLog('SearchFacade', 'Async 202 accepted', { requestId, resultUrl });
 
         // Subscribe to WebSocket for real-time updates
         this.wsHandler.subscribeToRequest(requestId, this.conversationId());
@@ -218,13 +219,31 @@ export class SearchFacade {
         this.handleSearchResponse(syncResponse, query);
       }
 
-    } catch (error) {
-      console.error('[SearchFacade] Search error:', error);
-      this.searchStore.setError(error as any);
+    } catch (error: any) {
+      // Handle network connection errors with user-friendly message
+      if (error?.status === 0 || error?.code === 'NETWORK_ERROR') {
+        safeError('SearchFacade', 'Network connection error', { code: error.code, status: error.status });
+        const userMessage = error?.message || 'Unable to connect to server. Please check your internet connection.';
+        this.searchStore.setError(userMessage);
+        this.searchStore.setLoading(false);
+        this.assistantHandler.setStatus('failed');
+        this.assistantHandler.setError(userMessage);
+        this.inputStateMachine.searchFailed();
+        // CARD STATE: Connection errors are terminal
+        this._cardState.set('STOP');
+        return;
+      }
+      
+      // Handle other errors
+      safeError('SearchFacade', 'Search error', { status: error?.status, code: error?.code, message: error?.message });
+      const userMessage = error?.message || 'Search failed. Please try again.';
+      this.searchStore.setError(userMessage);
       this.searchStore.setLoading(false);
       this.assistantHandler.setStatus('failed');
-      this.assistantHandler.setError('Search failed. Please try again.');
+      this.assistantHandler.setError(userMessage);
       this.inputStateMachine.searchFailed();
+      // CARD STATE: All errors are terminal
+      this._cardState.set('STOP');
     }
   }
 
@@ -234,11 +253,11 @@ export class SearchFacade {
   private handleSearchResponse(response: SearchResponse, query: string): void {
     // Only process if we're still on this search
     if (this.searchStore.query() !== query) {
-      console.log('[SearchFacade] Ignoring stale response for:', query);
+      safeLog('SearchFacade', 'Ignoring stale response for query', { query });
       return;
     }
 
-    console.log('[SearchFacade] Handling search response', {
+    safeLog('SearchFacade', 'Handling search response', {
       requestId: response.requestId,
       resultCount: response.results.length
     });
@@ -261,7 +280,7 @@ export class SearchFacade {
     // Update input state machine
     this.inputStateMachine.searchComplete();
 
-    console.log('[SearchFacade] Search completed', {
+    safeLog('SearchFacade', 'Search completed', {
       requestId: response.requestId,
       resultCount: response.results.length,
       cardState: this.cardState()
@@ -279,7 +298,7 @@ export class SearchFacade {
       {
         onSubNack: (nack) => {
           if (nack.channel === 'assistant') {
-            console.log('[SearchFacade] Assistant subscription rejected - continuing with search channel only');
+            safeLog('SearchFacade', 'Assistant subscription rejected - continuing with search channel only');
           }
         },
         onAssistantMessage: (msg) => {
@@ -290,11 +309,11 @@ export class SearchFacade {
           // System notifications MUST NOT render as assistant messages
           const validTypes = ['CLARIFY', 'SUMMARY', 'GATE_FAIL'];
           if (!narrator || !narrator.type || !validTypes.includes(narrator.type)) {
-            console.log('[SearchFacade] Ignoring non-LLM assistant message:', narrator?.type || 'unknown');
+            safeLog('SearchFacade', 'Ignoring non-LLM assistant message', { type: narrator?.type || 'unknown' });
             return;
           }
 
-          console.log('[SearchFacade] Valid LLM assistant message:', narrator.type, narrator.message);
+          safeLog('SearchFacade', 'Valid LLM assistant message', { type: narrator.type, message: narrator.message });
 
           // MULTI-MESSAGE: Add to message collection (accumulates, doesn't overwrite)
           const assistMessage = narrator.message || narrator.question || '';
@@ -310,7 +329,7 @@ export class SearchFacade {
 
           // CARD STATE: Map assistant message type to card state
           if (narrator.type === 'CLARIFY' && narrator.blocksSearch === true) {
-            console.log('[SearchFacade] DONE_CLARIFY - stopping search, waiting for user input');
+            safeLog('SearchFacade', 'DONE_CLARIFY - stopping search, waiting for user input');
             
             // Stop loading immediately
             this.searchStore.setLoading(false);
@@ -325,7 +344,7 @@ export class SearchFacade {
             this.assistantHandler.setStatus('completed');
           } else if (narrator.type === 'GATE_FAIL') {
             // CARD STATE: GATE_FAIL is terminal (STOP)
-            console.log('[SearchFacade] GATE_FAIL - terminal state');
+            safeLog('SearchFacade', 'GATE_FAIL - terminal state');
             this._cardState.set('STOP');
             this.searchStore.setLoading(false);
             this.apiHandler.cancelPolling();
@@ -339,7 +358,7 @@ export class SearchFacade {
             // SUMMARY from WS is the only result announcement - no duplicate banners
             if (narrator.type === 'SUMMARY') {
               this.searchStore.setError(null);
-              console.log('[SearchFacade] SUMMARY received - cleared legacy status messages');
+              safeLog('SearchFacade', 'SUMMARY received - cleared legacy status messages');
             }
           }
         },
@@ -355,7 +374,7 @@ export class SearchFacade {
   private handleSearchEvent(event: import('../contracts/search.contracts').WsSearchEvent): void {
     // CARD STATE: Ignore search events if in CLARIFY state (non-terminal)
     if (this.cardState() === 'CLARIFY') {
-      console.log('[SearchFacade] Ignoring search event - waiting for clarification');
+      safeLog('SearchFacade', 'Ignoring search event - waiting for clarification');
       return;
     }
 
@@ -416,7 +435,7 @@ export class SearchFacade {
   proposeAction(type: ActionType, level: ActionLevel, restaurant: Restaurant): void {
     this.actionService.proposeAction(type, level, restaurant).subscribe({
       error: (error) => {
-        console.error('[SearchFacade] Action proposal error:', error);
+        safeError('SearchFacade', 'Action proposal error', { error });
       }
     });
   }
@@ -424,7 +443,7 @@ export class SearchFacade {
   approveAction(actionId: string): void {
     this.actionService.approveAction(actionId).subscribe({
       error: (error) => {
-        console.error('[SearchFacade] Action approval error:', error);
+        safeError('SearchFacade', 'Action approval error', { error });
       }
     });
   }
@@ -441,7 +460,7 @@ export class SearchFacade {
     const currentQuery = this.query();
 
     if (!currentQuery) {
-      console.warn('[SearchFacade] No current query to re-search');
+      safeWarn('SearchFacade', 'No current query to re-search');
       return;
     }
 

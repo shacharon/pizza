@@ -71,9 +71,9 @@ describe('CLARIFY blocksSearch Enforcement', () => {
 
     // Assert message was published
     expect(mockWsManager.publishToChannel).toHaveBeenCalledTimes(1);
-    
+
     const publishedMessage = mockWsManager.publishToChannel.mock.calls[0][3];
-    
+
     // CRITICAL: blocksSearch must be true (enforced, ignoring LLM)
     expect(publishedMessage.payload.blocksSearch).toBe(true);
     expect(publishedMessage.payload.type).toBe('CLARIFY');
@@ -115,7 +115,7 @@ describe('CLARIFY blocksSearch Enforcement', () => {
     );
 
     const publishedMessage = mockWsManager.publishToChannel.mock.calls[0][3];
-    
+
     // blocksSearch should remain true
     expect(publishedMessage.payload.blocksSearch).toBe(true);
   });
@@ -156,7 +156,7 @@ describe('CLARIFY blocksSearch Enforcement', () => {
     );
 
     const publishedMessage = mockWsManager.publishToChannel.mock.calls[0][3];
-    
+
     // blocksSearch should stay false (no enforcement for SUMMARY)
     expect(publishedMessage.payload.blocksSearch).toBe(false);
     expect(publishedMessage.payload.type).toBe('SUMMARY');
@@ -294,7 +294,7 @@ describe('Intent LLM Timeout Handling', () => {
     // Pipeline should continue with fallback
     expect(intentResult.route).toBe('TEXTSEARCH');
     expect(intentResult.reason).toBe('fallback_timeout');
-    
+
     // Verify no unhandled promise rejection occurred
     // (test would fail if promise rejection was unhandled)
   });

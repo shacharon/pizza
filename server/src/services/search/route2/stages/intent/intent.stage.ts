@@ -22,6 +22,7 @@ import {
 } from './intent.prompt.js';
 import { startStage, endStage } from '../../../../../lib/telemetry/stage-timer.js';
 import { sanitizeQuery } from '../../../../../lib/telemetry/query-sanitizer.js';
+import { isValidRegionCode } from '../../utils/region-code-validator.js';
 
 /**
  * Create fallback result when LLM fails
@@ -144,6 +145,24 @@ export async function executeIntentStage(
         ...(cityText && { cityText })
       };
     }
+    // Validate regionCandidate against ISO-3166-1 allowlist
+    // If invalid (e.g., "TQ", "IS"), set to null to trigger device/default fallback
+    // This prevents noise in logs and downstream sanitization events
+    const validatedRegionCandidate = isValidRegionCode(llmResult.regionCandidate) 
+      ? llmResult.regionCandidate 
+      : null; // Invalid codes trigger fallback to device region or default
+
+    if (llmResult.regionCandidate !== validatedRegionCandidate) {
+      logger.debug({
+        requestId,
+        pipelineVersion: 'route2',
+        stage: 'intent',
+        event: 'region_candidate_rejected',
+        rejected: llmResult.regionCandidate,
+        reason: 'invalid_iso_code'
+      }, '[ROUTE2] Intent regionCandidate rejected (invalid ISO code)');
+    }
+
     endStage(context, 'intent', startTime, {
       route: llmResult.route,
       confidence: llmResult.confidence,
@@ -158,7 +177,7 @@ export async function executeIntentStage(
       confidence: llmResult.confidence,
       reason: llmResult.reason,
       language: llmResult.language,
-      regionCandidate: llmResult.regionCandidate,
+      regionCandidate: validatedRegionCandidate,
       regionConfidence: llmResult.regionConfidence,
       regionReason: llmResult.regionReason,
       ...(cityText && { cityText })

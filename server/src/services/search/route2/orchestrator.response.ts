@@ -10,7 +10,7 @@ import type { RouteLLMMapping } from './stages/route-llm/schemas.js';
 import { logger } from '../../../lib/logger/structured-logger.js';
 import { startStage, endStage } from '../../../lib/telemetry/stage-timer.js';
 import { generateAndPublishAssistant } from './assistant/assistant-integration.js';
-import type { AssistantSummaryContext } from './assistant/assistant-llm.service.js';
+import type { AssistantSummaryContext, AssistantGenericQueryNarrationContext } from './assistant/assistant-llm.service.js';
 import { resolveAssistantLanguage, resolveSessionId } from './orchestrator.helpers.js';
 import type { WebSocketManager } from '../../../infra/websocket/websocket-manager.js';
 import { buildAppliedFiltersArray } from './orchestrator.filters.js';
@@ -48,17 +48,36 @@ export async function buildFinalResponse(
   const resultsCount = finalResults.length;
   const shouldIncludeDietaryNote = isGlutenFree === true && resultsCount > 0;
 
+  // INSIGHT METADATA: Calculate metadata for intelligent narration
+  const openNowCount = finalResults.filter((r: any) => r.openNow === true).length;
+  const closedCount = finalResults.filter((r: any) => r.openNow === false).length;
+  const openNowUnknownCount = finalResults.filter((r: any) => 
+    r.openNow === 'UNKNOWN' || r.openNow === null || r.openNow === undefined
+  ).length;
+  const currentHour = new Date().getHours();
+  const radiusKm = (mapping as any).radiusMeters ? Math.round((mapping as any).radiusMeters / 1000) : undefined;
+  const appliedFilters = buildAppliedFiltersArray(filtersForPostFilter);
+
   const assistantContext: AssistantSummaryContext = {
     type: 'SUMMARY',
     query: request.query,
     language: resolveAssistantLanguage(ctx, request, detectedLanguage),
     resultCount: finalResults.length,
     top3Names,
+    // INSIGHT METADATA: Provide data for intelligent narration
+    // IMPORTANT: Only include openNow data if ALL results have known status (no unknowns)
+    metadata: {
+      ...(openNowUnknownCount === 0 ? { openNowCount, currentHour } : {}),
+      ...(radiusKm !== undefined ? { radiusKm } : {}),
+      ...(appliedFilters.length > 0 ? { filtersApplied: appliedFilters } : {})
+    },
     // MERGED DIETARY NOTE: Include soft gluten-free hint in SUMMARY (not separate message)
-    dietaryNote: shouldIncludeDietaryNote ? {
-      type: 'gluten-free',
-      shouldInclude: true
-    } : undefined
+    ...(shouldIncludeDietaryNote ? {
+      dietaryNote: {
+        type: 'gluten-free',
+        shouldInclude: true
+      }
+    } : {})
   };
 
   const assistMessage = await generateAndPublishAssistant(
@@ -70,8 +89,39 @@ export async function buildFinalResponse(
     wsManager
   );
 
-  // Build applied filters array
-  const appliedFilters = buildAppliedFiltersArray(filtersForPostFilter);
+  // Generic query narration (if flagged)
+  if ((ctx as any).isGenericQuery && ctx.userLocation) {
+    logger.info(
+      {
+        requestId,
+        pipelineVersion: 'route2',
+        event: 'generic_query_narration',
+        resultCount: finalResults.length
+      },
+      '[ROUTE2] Sending generic query narration (used current location)'
+    );
+
+    const narrationContext: AssistantGenericQueryNarrationContext = {
+      type: 'GENERIC_QUERY_NARRATION',
+      query: request.query,
+      language: resolveAssistantLanguage(ctx, request, detectedLanguage),
+      resultCount: finalResults.length,
+      usedCurrentLocation: true
+    };
+
+    const narrationFallback = detectedLanguage === 'he' 
+      ? 'חיפשתי לפי המיקום הנוכחי שלך. איזה סוג אוכל מעניין אותך?'
+      : 'I searched near your current location. What type of cuisine interests you?';
+
+    await generateAndPublishAssistant(
+      ctx,
+      requestId,
+      sessionId,
+      narrationContext,
+      narrationFallback,
+      wsManager
+    );
+  }
 
   // Build final response
   const response: SearchResponse = {

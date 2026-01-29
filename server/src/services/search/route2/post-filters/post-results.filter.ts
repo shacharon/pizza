@@ -102,7 +102,7 @@ function filterByOpenState(
   if (openState === 'OPEN_NOW') {
     const filtered = results.filter(place => {
       const openNow = place.openNow ?? place.currentOpeningHours?.openNow;
-      
+
       // Explicit status: apply filter
       if (openNow === true) {
         return true; // KEEP open places
@@ -110,13 +110,13 @@ function filterByOpenState(
       if (openNow === false) {
         return false; // REMOVE closed places
       }
-      
+
       // Unknown status: KEEP by default (better UX)
       if (openNow === undefined || openNow === null || openNow === 'UNKNOWN') {
         unknownKept++;
         return true; // KEEP unknown
       }
-      
+
       return false;
     });
     return { filtered, unknownKept, unknownRemoved };
@@ -125,7 +125,7 @@ function filterByOpenState(
   if (openState === 'CLOSED_NOW') {
     const filtered = results.filter(place => {
       const openNow = place.openNow ?? place.currentOpeningHours?.openNow;
-      
+
       // Explicit status: apply filter
       if (openNow === false) {
         return true; // KEEP closed places
@@ -133,13 +133,13 @@ function filterByOpenState(
       if (openNow === true) {
         return false; // REMOVE open places
       }
-      
+
       // Unknown status: KEEP by default
       if (openNow === undefined || openNow === null || openNow === 'UNKNOWN') {
         unknownKept++;
         return true; // KEEP unknown
       }
-      
+
       return false;
     });
     return { filtered, unknownKept, unknownRemoved };
@@ -148,7 +148,7 @@ function filterByOpenState(
   if (openState === 'OPEN_AT' && openAt) {
     const filtered = results.filter(place => {
       const isOpen = evaluateOpenAt(place, openAt);
-      
+
       // Explicit evaluation result
       if (isOpen === true) {
         return true;
@@ -156,13 +156,13 @@ function filterByOpenState(
       if (isOpen === false) {
         return false;
       }
-      
+
       // Unknown/unparseable: KEEP by default
       if (isOpen === null) {
         unknownKept++;
         return true; // KEEP unknown
       }
-      
+
       return false;
     });
     return { filtered, unknownKept, unknownRemoved };
@@ -171,7 +171,7 @@ function filterByOpenState(
   if (openState === 'OPEN_BETWEEN' && openBetween) {
     const filtered = results.filter(place => {
       const isOpen = evaluateOpenBetween(place, openBetween);
-      
+
       // Explicit evaluation result
       if (isOpen === true) {
         return true;
@@ -179,13 +179,13 @@ function filterByOpenState(
       if (isOpen === false) {
         return false;
       }
-      
+
       // Unknown/unparseable: KEEP by default
       if (isOpen === null) {
         unknownKept++;
         return true; // KEEP unknown
       }
-      
+
       return false;
     });
     return { filtered, unknownKept, unknownRemoved };

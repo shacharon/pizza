@@ -16,6 +16,7 @@ import { executeRouteLLM } from './stages/route-llm/route-llm.dispatcher.js';
 import { executeGoogleMapsStage } from './stages/google-maps.stage.js';
 
 import { resolveUserRegionCode } from './utils/region-resolver.js';
+import { detectQueryLanguage } from './utils/query-language-detector.js';
 import { logger } from '../../../lib/logger/structured-logger.js';
 import { wsManager } from '../../../server.js';
 import { sanitizeQuery } from '../../../lib/telemetry/query-sanitizer.js';
@@ -24,10 +25,11 @@ import { withTimeout } from '../../../lib/reliability/timeout-guard.js';
 // Extracted modules
 import { fireParallelTasks, drainParallelPromises } from './orchestrator.parallel-tasks.js';
 import { handleNearMeLocationCheck, applyNearMeRouteOverride } from './orchestrator.nearme.js';
-import { handleGateStop, handleGateClarify, handleNearbyLocationGuard } from './orchestrator.guards.js';
+import { handleGateStop, handleGateClarify, handleNearbyLocationGuard, checkGenericFoodQuery } from './orchestrator.guards.js';
 import { resolveAndStoreFilters, applyPostFiltersToResults } from './orchestrator.filters.js';
 import { buildFinalResponse } from './orchestrator.response.js';
 import { handlePipelineError } from './orchestrator.error.js';
+import { deriveEarlyRoutingContext, upgradeToFinalFilters } from './orchestrator.early-context.js';
 
 // Extracted helpers
 import { shouldDebugStop, resolveSessionId } from './orchestrator.helpers.js';
@@ -47,6 +49,20 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
 
   // Store query in context for assistant hooks on failures
   ctx.query = request.query;
+
+  // Detect query language (deterministic, for assistant messages)
+  ctx.queryLanguage = detectQueryLanguage(request.query);
+  
+  logger.info(
+    { 
+      requestId, 
+      pipelineVersion: 'route2', 
+      event: 'query_language_detected',
+      queryLanguage: ctx.queryLanguage,
+      queryLen 
+    },
+    '[ROUTE2] Query language detected (deterministic)'
+  );
 
   let baseFiltersPromise = null;
   let postConstraintsPromise = null;
@@ -162,13 +178,16 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
         pipelineVersion: 'route2',
         event: 'intent_decided',
         route: intentDecision.route,
-        regionCandidate: intentDecision.regionCandidate,
+        ...(intentDecision.regionCandidate && { regionCandidate: intentDecision.regionCandidate }),
         language: intentDecision.language,
         confidence: intentDecision.confidence,
         reason: intentDecision.reason
       },
-      '[ROUTE2] Intent routing decided (regionCandidate will be validated by filters_resolved)'
+      '[ROUTE2] Intent routing decided' + (intentDecision.regionCandidate ? ' (regionCandidate will be validated by filters_resolved)' : '')
     );
+
+    // Check for generic food query (e.g., "what to eat") - sets flag for later
+    checkGenericFoodQuery(gateResult, intentDecision, ctx);
 
     // Near-me location check (early stop if no location)
     const nearMeResponse = await handleNearMeLocationCheck(request, intentDecision, ctx, wsManager);
@@ -177,12 +196,37 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
     // Near-me route override (if detected with location)
     intentDecision = applyNearMeRouteOverride(request, intentDecision, ctx);
 
-    // STAGE 3: FILTERS (await base filters, resolve final - BEFORE route_llm)
-    const baseFilters = await baseFiltersPromise;
-    const finalFilters = await resolveAndStoreFilters(baseFilters, intentDecision, ctx);
+    // OPTIMIZATION: Derive early routing context (region + language) from intent + device
+    // This allows starting Google fetch immediately without waiting for base_filters
+    const earlyContext = deriveEarlyRoutingContext(intentDecision, ctx);
+    const googleParallelStartTime = Date.now();
 
-    // STAGE 4: ROUTE_LLM (uses finalFilters as single source of truth)
-    const mapping = await executeRouteLLM(intentDecision, request, ctx, finalFilters);
+    logger.info(
+      {
+        requestId,
+        pipelineVersion: 'route2',
+        event: 'google_parallel_started',
+        regionCode: earlyContext.regionCode,
+        providerLanguage: earlyContext.providerLanguage,
+        uiLanguage: earlyContext.uiLanguage
+      },
+      '[ROUTE2] Starting Google fetch in parallel (early context derived)'
+    );
+
+    // STAGE 3: ROUTE_LLM + GOOGLE (parallel with base_filters/post_constraints)
+    // Uses early context (deterministic subset of filters_resolved)
+    const earlyFiltersForRouting = {
+      regionCode: earlyContext.regionCode,
+      providerLanguage: earlyContext.providerLanguage,
+      uiLanguage: earlyContext.uiLanguage,
+      // Minimal filters for routing (openState will be applied in post_filter)
+      openState: null,
+      openAt: null,
+      openBetween: null,
+      disclaimers: { hours: true, dietary: true }
+    } as any;
+
+    const mapping = await executeRouteLLM(intentDecision, request, ctx, earlyFiltersForRouting);
 
     logger.info(
       {
@@ -193,16 +237,60 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
         region: mapping.region,
         language: mapping.language
       },
-      '[ROUTE2] Route-LLM mapping completed (using filters_resolved region)'
+      '[ROUTE2] Route-LLM mapping completed (using early context)'
     );
 
     // Guard: NEARBY requires userLocation
     const nearbyGuardResponse = await handleNearbyLocationGuard(request, gateResult, intentDecision, mapping, ctx, wsManager);
     if (nearbyGuardResponse) return nearbyGuardResponse;
 
-    // STAGE 5: GOOGLE_MAPS
-    const googleResult = await executeGoogleMapsStage(mapping, request, ctx);
+    // Start Google fetch immediately (don't await yet)
+    const googlePromise = executeGoogleMapsStage(mapping, request, ctx);
+
+    // STAGE 4: BARRIER - Await both Google results AND base_filters/post_constraints
+    logger.info(
+      {
+        requestId,
+        pipelineVersion: 'route2',
+        event: 'google_parallel_awaited',
+        parallelDurationMs: Date.now() - googleParallelStartTime
+      },
+      '[ROUTE2] Awaiting Google results + base_filters/post_constraints (barrier)'
+    );
+
+    // Await base_filters to get full filter context (includes openState)
+    const baseFilters = await baseFiltersPromise;
+    
+    // Resolve final filters (for logging and post_filter)
+    const finalFilters = await resolveAndStoreFilters(baseFilters, intentDecision, ctx);
+
+    // Verify early context matches final filters (sanity check)
+    if (finalFilters.regionCode !== earlyContext.regionCode) {
+      logger.warn({
+        requestId,
+        pipelineVersion: 'route2',
+        event: 'early_context_mismatch',
+        earlyRegion: earlyContext.regionCode,
+        finalRegion: finalFilters.regionCode
+      }, '[ROUTE2] Early context region mismatch (unexpected)');
+    }
+
+    // Await Google results
+    const googleResult = await googlePromise;
     ctx.timings.googleMapsMs = googleResult.durationMs;
+
+    const googleTotalDurationMs = Date.now() - googleParallelStartTime;
+    logger.info(
+      {
+        requestId,
+        pipelineVersion: 'route2',
+        event: 'google_parallel_completed',
+        totalDurationMs: googleTotalDurationMs,
+        googleDurationMs: googleResult.durationMs,
+        criticalPathSavedMs: Math.max(0, googleTotalDurationMs - googleResult.durationMs)
+      },
+      '[ROUTE2] Google fetch completed (parallel optimization saved time)'
+    );
 
     // STAGE 6: POST_FILTERS (await post constraints, apply filters)
     const postConstraints = await postConstraintsPromise;

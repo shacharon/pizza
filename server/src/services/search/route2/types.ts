@@ -95,7 +95,7 @@ export interface IntentResult {
   confidence: number;
   reason: string;
   language: Gate2Language;
-  regionCandidate: string; // ISO-3166-1 alpha-2 candidate (e.g., "IL", "GZ", "FR") - NOT final, must be validated by filters_resolved
+  regionCandidate: string | null; // ISO-3166-1 alpha-2 candidate (e.g., "IL", "GZ", "FR") or null if invalid - NOT final, must be validated by filters_resolved
   regionConfidence: number;
   regionReason: string;
   cityText?: string; // Optional city name for location bias (e.g., "גדרה", "אשקלון")

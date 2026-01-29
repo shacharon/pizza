@@ -86,12 +86,22 @@ export async function executeBackgroundSearch(params: BackgroundParams): Promise
     // Note: Assistant messages are now handled by route2 orchestrator (LLM-based)
     // No need for separate progress narration here
 
-    let terminalStatus: 'DONE_SUCCESS' | 'DONE_CLARIFY' = 'DONE_SUCCESS';
-    let wsEventType: 'ready' | 'clarify' = 'ready';
+    let terminalStatus: 'DONE_SUCCESS' | 'DONE_CLARIFY' | 'DONE_STOPPED' = 'DONE_SUCCESS';
+    let wsEventType: 'ready' | 'clarify' | 'stopped' = 'ready';
 
-    if (response.results.length === 0 && response.assist?.type === 'clarify') {
-      terminalStatus = 'DONE_CLARIFY';
-      wsEventType = 'clarify';
+    // Determine terminal status based on response
+    if (response.results.length === 0) {
+      // Check if this is a GATE_FAIL/STOP scenario
+      const isGateStop = response.meta?.source === 'route2_gate_stop' ||
+        response.meta?.failureReason === 'LOW_CONFIDENCE';
+
+      if (isGateStop) {
+        terminalStatus = 'DONE_STOPPED';
+        wsEventType = 'stopped';
+      } else if (response.assist?.type === 'clarify') {
+        terminalStatus = 'DONE_CLARIFY';
+        wsEventType = 'clarify';
+      }
     }
 
     // P0 Fix: Non-fatal Redis writes
@@ -127,6 +137,20 @@ export async function executeBackgroundSearch(params: BackgroundParams): Promise
         stage: 'done',
         message: response.assist?.message || 'Please clarify'
       });
+    } else if (wsEventType === 'stopped') {
+      // GATE STOP - pipeline stopped, no results by design
+      publishSearchEvent(requestId, {
+        channel: 'search',
+        contractsVersion: CONTRACTS_VERSION,
+        type: 'ready',
+        requestId,
+        ts: new Date().toISOString(),
+        stage: 'done',
+        ready: 'stop',
+        decision: 'STOP',
+        resultCount: 0,
+        finalStatus: 'DONE_STOPPED'
+      } as any);
     } else {
       publishSearchEvent(requestId, {
         channel: 'search',

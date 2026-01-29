@@ -272,7 +272,7 @@ describe('Dietary Hints - Gluten-Free', () => {
 
       assert.equal(hint.confidence, 'HIGH');
       // Should include both HIGH and potentially found MEDIUM terms
-      assert.ok(hint.matchedTerms.some(t => 
+      assert.ok(hint.matchedTerms.some(t =>
         t === 'gluten-free' || t === 'gluten free'
       ));
     });
@@ -369,27 +369,27 @@ describe('Dietary Hints - Gluten-Free', () => {
         expectedConfidence: ConfidenceLevel;
         description: string;
       }> = [
-        {
-          place: { name: 'Mariposa Gluten-Free Bakery', tags: ['bakery'] },
-          expectedConfidence: 'HIGH',
-          description: 'Dedicated gluten-free bakery'
-        },
-        {
-          place: { name: 'Tender Greens', tags: ['vegan_restaurant', 'health_food_restaurant'] },
-          expectedConfidence: 'MEDIUM',
-          description: 'Health-focused restaurant'
-        },
-        {
-          place: { name: 'Pizza Hut', tags: ['restaurant', 'pizza_restaurant'] },
-          expectedConfidence: 'LOW',
-          description: 'Generic pizza chain'
-        },
-        {
-          place: { name: 'Apple Store', tags: ['electronics_store'] },
-          expectedConfidence: 'NONE',
-          description: 'Non-food establishment'
-        }
-      ];
+          {
+            place: { name: 'Mariposa Gluten-Free Bakery', tags: ['bakery'] },
+            expectedConfidence: 'HIGH',
+            description: 'Dedicated gluten-free bakery'
+          },
+          {
+            place: { name: 'Tender Greens', tags: ['vegan_restaurant', 'health_food_restaurant'] },
+            expectedConfidence: 'MEDIUM',
+            description: 'Health-focused restaurant'
+          },
+          {
+            place: { name: 'Pizza Hut', tags: ['restaurant', 'pizza_restaurant'] },
+            expectedConfidence: 'LOW',
+            description: 'Generic pizza chain'
+          },
+          {
+            place: { name: 'Apple Store', tags: ['electronics_store'] },
+            expectedConfidence: 'NONE',
+            description: 'Non-food establishment'
+          }
+        ];
 
       for (const testCase of testCases) {
         const hint = computeGlutenFreeHint(testCase.place);

@@ -60,12 +60,33 @@ export class SearchWsHandler {
       onLegacyMessage?: (msg: WSServerMessage) => void;
     }
   ): boolean {
-    // Ignore messages for old requests
-    if (msg.requestId !== currentRequestId) {
-      if (msg.requestId) {
-        console.debug('[SearchWsHandler] Ignoring WS message for old request:', msg.requestId);
-      }
+    // DISABLED: Block ws_status messages from reaching UI
+    // ws_status events are now blocked entirely - no connection status in UI
+    if ((msg as any).type === 'ws_status') {
+      console.debug('[SearchWsHandler] ws_status event blocked (no UI display):', (msg as any).state);
+      // Consume the message - don't pass to any handlers
       return true;
+    }
+
+    // REQUESTID SCOPING: Ignore messages for old/different requests
+    // Only process messages that match the current active requestId
+    if ('requestId' in msg && (msg as any).requestId) {
+      const msgRequestId = (msg as any).requestId;
+      
+      // No active search - ignore all request-specific messages
+      if (!currentRequestId) {
+        console.debug('[SearchWsHandler] Ignoring message - no active search', { msgRequestId });
+        return true;
+      }
+      
+      // Different requestId - ignore (old search)
+      if (msgRequestId !== currentRequestId) {
+        console.debug('[SearchWsHandler] Ignoring message from old request', { 
+          msgRequestId, 
+          currentRequestId 
+        });
+        return true;
+      }
     }
 
     // Handle sub_ack
@@ -100,7 +121,7 @@ export class SearchWsHandler {
       
       // Validate payload has proper assistant type
       if (payload && payload.type && validTypes.includes(payload.type)) {
-        console.log('[WS][assistant] Valid LLM message:', payload.type, { requestId: msg.requestId });
+        console.log('[WS][assistant] Valid LLM message:', payload.type, { requestId: (msg as any).requestId });
         if (handlers.onAssistantMessage) handlers.onAssistantMessage(msg);
         return true;
       } else {

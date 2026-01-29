@@ -104,14 +104,14 @@ describe('PostConstraints - isGlutenFree field', () => {
   describe('Default builder', () => {
     it('should set isGlutenFree to null by default', () => {
       const defaults = buildDefaultPostConstraints();
-      
+
       assert.ok('isGlutenFree' in defaults);
       assert.equal(defaults.isGlutenFree, null);
     });
 
     it('should include all required fields including isGlutenFree', () => {
       const defaults = buildDefaultPostConstraints();
-      
+
       assert.deepEqual(defaults, {
         openState: null,
         openAt: null,

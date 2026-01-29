@@ -8,6 +8,7 @@ import { HttpClient, HttpErrorResponse, HttpHeaders } from '@angular/common/http
 import { Observable, from, switchMap, catchError, throwError } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { AuthService } from '../auth/auth.service';
+import { safeLog, safeError } from '../../shared/utils/safe-logger';
 
 const SESSION_STORAGE_KEY = 'api-session-id';
 
@@ -61,12 +62,12 @@ export class AuthApiService {
     return from(this.authService.getToken()).pipe(
       switchMap(token => {
         const sessionId = this.getSessionId();
-        
-        // Dev logging (no token value)
+
+        // Dev logging (NEVER log actual token/session values)
         if (!environment.production) {
-          console.log('[WS-Ticket] Requesting ticket', {
-            hasAuthorization: !!token,
-            hasSessionId: !!sessionId
+          safeLog('WS-Ticket', 'Requesting ticket', {
+            tokenPresent: !!token,
+            sessionIdPresent: !!sessionId
           });
         }
 
@@ -85,7 +86,7 @@ export class AuthApiService {
         // Handle 401: clear stale token and retry ONCE
         if (error instanceof HttpErrorResponse && error.status === 401) {
           if (!environment.production) {
-            console.warn('[WS-Ticket] 401 received, clearing token and retrying once', {
+            safeLog('WS-Ticket', '401 received, clearing token and retrying once', {
               errorCode: (error.error as any)?.code
             });
           }
@@ -97,11 +98,11 @@ export class AuthApiService {
           return from(this.authService.getToken()).pipe(
             switchMap(newToken => {
               const sessionId = this.getSessionId();
-              
+
               if (!environment.production) {
-                console.log('[WS-Ticket] Retrying with fresh token', {
-                  hasAuthorization: !!newToken,
-                  hasSessionId: !!sessionId
+                safeLog('WS-Ticket-Retry', 'Retrying with fresh token', {
+                  tokenPresent: !!newToken,
+                  sessionIdPresent: !!sessionId
                 });
               }
 
@@ -118,7 +119,7 @@ export class AuthApiService {
             }),
             catchError(retryError => {
               if (!environment.production) {
-                console.error('[WS-Ticket] Retry failed', retryError);
+                safeError('WS-Ticket-Retry', 'Retry failed', { error: retryError });
               }
               return throwError(() => retryError);
             })
@@ -139,12 +140,12 @@ export class AuthApiService {
     try {
       const sessionId = localStorage.getItem(SESSION_STORAGE_KEY);
       if (!sessionId) {
-        console.warn('[WS-Ticket] No session ID found in localStorage');
+        safeLog('WS-Ticket', 'No session ID found in localStorage');
         return '';
       }
       return sessionId;
     } catch (error) {
-      console.warn('[WS-Ticket] Failed to read session ID from localStorage', error);
+      safeError('WS-Ticket', 'Failed to read session ID from localStorage', { error });
       return '';
     }
   }

@@ -3,7 +3,7 @@
  * Allows switching between InMemory and Redis implementations
  */
 
-export type JobStatus = 'PENDING' | 'RUNNING' | 'DONE_SUCCESS' | 'DONE_CLARIFY' | 'DONE_FAILED';
+export type JobStatus = 'PENDING' | 'RUNNING' | 'DONE_SUCCESS' | 'DONE_CLARIFY' | 'DONE_STOPPED' | 'DONE_FAILED';
 
 export interface SearchJob {
   requestId: string;

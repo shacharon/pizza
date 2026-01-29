@@ -4,12 +4,13 @@
  */
 
 import { Injectable, inject, signal } from '@angular/core';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, EmptyError } from 'rxjs';
 import { SearchApiClient } from '../api/search.api';
 import { buildApiUrl } from '../shared/api/api.config';
 import type { SearchResponse, SearchFilters } from '../domain/types/search.types';
 import type { PollingConfig } from './search.facade.types';
 import { DEFAULT_POLLING_CONFIG } from './search.facade.types';
+import { safeLog, safeError, safeWarn } from '../shared/utils/safe-logger';
 
 @Injectable()
 export class SearchApiHandler {
@@ -22,6 +23,11 @@ export class SearchApiHandler {
 
   /**
    * Execute search API call (returns 202 or 200)
+   * 
+   * Error Handling:
+   * - Network errors (status=0): User-friendly error message
+   * - HTTP errors: Propagated as ApiErrorView
+   * - EmptyError: Should never happen, but handled as network error
    */
   async executeSearch(params: {
     query: string;
@@ -31,7 +37,32 @@ export class SearchApiHandler {
     clearContext?: boolean;
     locale: string;
   }): Promise<{ requestId: string; resultUrl: string } | SearchResponse> {
-    return firstValueFrom(this.searchApiClient.searchAsync(params));
+    try {
+      return await firstValueFrom(this.searchApiClient.searchAsync(params));
+    } catch (error: any) {
+      // Handle EmptyError (should never happen, but defensive)
+      if (error instanceof EmptyError) {
+        safeError('SearchApiHandler', 'Unexpected EmptyError - observable completed without emission');
+        throw {
+          message: 'Unable to connect to server. Please check your internet connection.',
+          code: 'NETWORK_ERROR',
+          status: 0
+        };
+      }
+      
+      // Handle network connection errors (status=0)
+      if (error?.status === 0 || error?.code === 'NETWORK_ERROR') {
+        safeError('SearchApiHandler', 'Network connection error', { code: error.code, status: error.status });
+        throw {
+          message: 'Unable to connect to server. Please check your internet connection.',
+          code: 'NETWORK_ERROR',
+          status: 0
+        };
+      }
+      
+      // Propagate other errors as-is
+      throw error;
+    }
   }
 
   /**
@@ -45,18 +76,18 @@ export class SearchApiHandler {
     onProgress?: () => void,
     config: PollingConfig = DEFAULT_POLLING_CONFIG
   ): void {
-    console.log('[SearchApiHandler] Scheduling polling start', { delay: config.delayMs, requestId });
+    safeLog('SearchApiHandler', 'Scheduling polling start', { delay: config.delayMs, requestId });
 
     // Defer polling start (if WS delivers first, this is canceled)
     this.pollingStartTimeoutId = setTimeout(() => {
       const resultUrl = buildApiUrl(`/search/${requestId}/result`);
       const startTime = Date.now();
 
-      console.log('[SearchApiHandler] Starting polling', { requestId, resultUrl });
+      safeLog('SearchApiHandler', 'Starting polling', { requestId, resultUrl });
 
       // Set max duration timeout
       this.pollingTimeoutId = setTimeout(() => {
-        console.warn('[SearchApiHandler] Polling max duration reached - stopping');
+        safeWarn('SearchApiHandler', 'Polling max duration reached - stopping');
         this.cancelPolling();
       }, config.maxDuration);
 
@@ -74,7 +105,7 @@ export class SearchApiHandler {
 
             // Check if FAILED
             if ('status' in pollResponse && pollResponse.status === 'FAILED') {
-              console.error('[SearchApiHandler] Poll FAILED', { error: (pollResponse as any).error });
+              safeError('SearchApiHandler', 'Poll FAILED', { error: (pollResponse as any).error });
               this.cancelPolling();
               const errorMsg = (pollResponse as any).error?.message || 'Search failed';
               onError(errorMsg);
@@ -83,7 +114,7 @@ export class SearchApiHandler {
 
             // Check if still pending
             if (!('results' in pollResponse) || pollResponse.results === undefined) {
-              console.log('[SearchApiHandler] Poll PENDING', { elapsed, useSlow });
+              safeLog('SearchApiHandler', 'Poll PENDING', { elapsed, useSlow });
               if (onProgress) onProgress();
               scheduleNextPoll();
               return;
@@ -91,21 +122,37 @@ export class SearchApiHandler {
 
             // Got results
             const doneResponse = pollResponse as SearchResponse;
-            console.log('[SearchApiHandler] Poll DONE', { resultCount: doneResponse.results.length, elapsed });
+            safeLog('SearchApiHandler', 'Poll DONE', { resultCount: doneResponse.results.length, elapsed });
             this.cancelPolling();
             onResult(doneResponse);
 
           } catch (error: any) {
+            // Handle EmptyError (should never happen)
+            if (error instanceof EmptyError) {
+              safeError('SearchApiHandler', 'Unexpected EmptyError during polling');
+              this.cancelPolling();
+              onError('Unable to connect to server. Please check your internet connection.');
+              return;
+            }
+            
+            // Handle network errors (status=0) - stop retrying
+            if (error?.status === 0 || error?.code === 'NETWORK_ERROR') {
+              safeError('SearchApiHandler', 'Network connection error during polling', { code: error.code, status: error.status });
+              this.cancelPolling();
+              onError('Unable to connect to server. Please check your internet connection.');
+              return;
+            }
+
             // Handle 404 (job expired/not found)
             if (error?.status === 404) {
-              console.error('[SearchApiHandler] Poll 404 - job expired');
+              safeError('SearchApiHandler', 'Poll 404 - job expired');
               this.cancelPolling();
               onError('Search expired - please retry');
               return;
             }
 
-            // Other errors - retry
-            console.error('[SearchApiHandler] Poll error:', error);
+            // Other errors (5xx, timeouts) - continue retrying
+            safeError('SearchApiHandler', 'Poll error - will retry', { status: error?.status, code: error?.code });
             scheduleNextPoll();
           }
         }, interval);
@@ -141,7 +188,7 @@ export class SearchApiHandler {
     if (this.pollingStartTimeoutId) {
       clearTimeout(this.pollingStartTimeoutId);
       this.pollingStartTimeoutId = undefined;
-      console.log('[SearchApiHandler] Polling start canceled (WS active)');
+      safeLog('SearchApiHandler', 'Polling start canceled (WS active)');
     }
   }
 
@@ -156,8 +203,18 @@ export class SearchApiHandler {
         return response as SearchResponse;
       }
       return null;
-    } catch (error) {
-      console.error('[SearchApiHandler] Fetch result failed:', error);
+    } catch (error: any) {
+      // Handle EmptyError
+      if (error instanceof EmptyError) {
+        safeError('SearchApiHandler', 'Unexpected EmptyError during fetch');
+        throw {
+          message: 'Unable to connect to server. Please check your internet connection.',
+          code: 'NETWORK_ERROR',
+          status: 0
+        };
+      }
+      
+      safeError('SearchApiHandler', 'Fetch result failed', { status: error?.status, code: error?.code });
       throw error;
     }
   }

@@ -24,7 +24,7 @@ describe('AuthApiService - WS Ticket with JWT Hardening', () => {
     // Create mock AuthService with Jest spies
     getTokenSpy = jest.fn().mockResolvedValue(mockToken);
     clearTokenSpy = jest.fn();
-    
+
     mockAuthService = {
       getToken: getTokenSpy,
       clearToken: clearTokenSpy
@@ -58,7 +58,7 @@ describe('AuthApiService - WS Ticket with JWT Hardening', () => {
     };
 
     let receivedResponse: WSTicketResponse | undefined;
-    
+
     service.requestWSTicket().subscribe({
       next: (response) => {
         receivedResponse = response;
@@ -74,11 +74,11 @@ describe('AuthApiService - WS Ticket with JWT Hardening', () => {
     // Verify the HTTP request
     const req = httpMock.expectOne(ticketUrl);
     expect(req.request.method).toBe('POST');
-    
+
     // Assert Authorization header is present
     expect(req.request.headers.has('Authorization')).toBe(true);
     expect(req.request.headers.get('Authorization')).toBe(`Bearer ${mockToken}`);
-    
+
     // Assert X-Session-Id header is present
     expect(req.request.headers.has('X-Session-Id')).toBe(true);
     expect(req.request.headers.get('X-Session-Id')).toBe(mockSessionId);
@@ -149,7 +149,7 @@ describe('AuthApiService - WS Ticket with JWT Hardening', () => {
     const secondReq = httpMock.expectOne(ticketUrl);
     expect(secondReq.request.headers.get('Authorization')).toBe(`Bearer ${freshToken}`);
     secondReq.flush(mockResponse);
-    
+
     tick(); // Complete the observable
 
     expect(receivedResponse).toEqual(mockResponse);
@@ -225,9 +225,9 @@ describe('AuthApiService - WS Ticket with JWT Hardening', () => {
 
   it('should await JWT token before making request', (done) => {
     let tokenResolved = false;
-    
+
     // Make getToken async
-    getTokenSpy.mockImplementation(() => 
+    getTokenSpy.mockImplementation(() =>
       new Promise((resolve) => {
         setTimeout(() => {
           tokenResolved = true;

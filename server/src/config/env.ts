@@ -82,27 +82,27 @@ function mustString(name: string): string {
 function validateJwtSecret(): string {
     const jwtSecret = process.env.JWT_SECRET;
     const LEGACY_DEV_DEFAULT = 'dev-secret-change-in-production';
-    
+
     // Always require JWT_SECRET to be set and >= 32 chars
     if (!jwtSecret || jwtSecret.trim() === '' || jwtSecret.length < 32) {
         const errorMsg = '[P0 Security] JWT_SECRET must be set and at least 32 characters';
-        
+
         // FAIL-FAST in production/staging
         if (isProdOrStaging()) {
             throw new Error(`${errorMsg} (${CURRENT_ENV} boot blocked)`);
         }
-        
+
         // In dev/test, log error but allow (will fail auth)
         console.error(`${errorMsg} - protected routes will fail`);
-        
+
         return '__JWT_SECRET_MISSING_PROTECTED_ROUTES_DISABLED__';
     }
-    
+
     // In production/staging, disallow the old legacy dev default
     if (isProdOrStaging() && jwtSecret === LEGACY_DEV_DEFAULT) {
         throw new Error(`[P0 Security] JWT_SECRET cannot be the legacy dev default in ${CURRENT_ENV} (boot blocked)`);
     }
-    
+
     return jwtSecret;
 }
 
@@ -147,10 +147,10 @@ export function getConfig() {
      */
     const enableAiFeatures = process.env.ENABLE_AI_FEATURES !== 'false'; // default true
     const enableGoogleSearch = process.env.ENABLE_GOOGLE_SEARCH !== 'false'; // default true
-    
+
     const openaiApiKey = process.env.OPENAI_API_KEY || '';
     const googleApiKey = process.env.GOOGLE_API_KEY || '';
-    
+
     // PROD Hardening: Boot-time validation
     if (enableAiFeatures && !openaiApiKey) {
         const msg = '[Config] OPENAI_API_KEY required when ENABLE_AI_FEATURES=true';
@@ -159,7 +159,7 @@ export function getConfig() {
         }
         console.error(`${msg} - AI features disabled`);
     }
-    
+
     if (enableGoogleSearch && !googleApiKey) {
         const msg = '[Config] GOOGLE_API_KEY required when ENABLE_GOOGLE_SEARCH=true';
         if (isProdOrStaging()) {
@@ -167,13 +167,13 @@ export function getConfig() {
         }
         console.error(`${msg} - Search features disabled`);
     }
-    
+
     // Log presence/absence (not values)
     console.info('[Config] API Keys:', {
         openai: openaiApiKey ? 'present' : 'absent',
         google: googleApiKey ? 'present' : 'absent'
     });
-    
+
     /**
      * P0 Security: JWT Secret (fail-fast in production)
      */
@@ -213,7 +213,7 @@ export function getConfig() {
      */
     const frontendOrigins = parseFrontendOrigins();
     const corsAllowNoOrigin = process.env.CORS_ALLOW_NO_ORIGIN !== 'false'; // default true
-    
+
     /**
      * Security: Forbid wildcard (*) when credentials enabled - FAIL-SAFE
      */
@@ -227,28 +227,28 @@ export function getConfig() {
             redisActuallyEnabled
         } as any;
     }
-    
+
     if (isProd() && (!frontendOrigins || frontendOrigins.length === 0)) {
         console.error('[Config] ⚠️  FRONTEND_ORIGINS missing in production - CORS will reject all origins');
     }
 
-function baseConfig() {
-    return {
-        env: CURRENT_ENV,
-        port,
-        openaiApiKey,
-        googleApiKey,
-        jwtSecret,
-        enableRedisJobStore,
-        enableRedisCache,
-        redisUrl,
-        redisCachePrefix,
-        redisJobTtlSeconds,
-        googleCacheTtlSeconds,
-        cacheIntentEnabled,
-        cacheIntentTtlSeconds
-    };
-}
+    function baseConfig() {
+        return {
+            env: CURRENT_ENV,
+            port,
+            openaiApiKey,
+            googleApiKey,
+            jwtSecret,
+            enableRedisJobStore,
+            enableRedisCache,
+            redisUrl,
+            redisCachePrefix,
+            redisJobTtlSeconds,
+            googleCacheTtlSeconds,
+            cacheIntentEnabled,
+            cacheIntentTtlSeconds
+        };
+    }
 
     /**
      * Boot log (safe)

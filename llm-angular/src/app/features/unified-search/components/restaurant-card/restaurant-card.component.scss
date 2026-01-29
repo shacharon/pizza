@@ -75,14 +75,14 @@
   letter-spacing: 0.025em;
   flex-shrink: 0;
   cursor: help;
-  
+
   &.gluten-free {
     &.high {
       background: #dcfce7;
       color: #166534;
       border: 1px solid #bbf7d0;
     }
-    
+
     &.low {
       background: #fef3c7;
       color: #92400e;
@@ -135,7 +135,7 @@
   position: relative;
   flex: 1;
   cursor: help;
-  
+
   // Show full text on hover
   &:hover {
     overflow: visible;
@@ -201,7 +201,7 @@
     color: #757575;
     font-style: italic;
     text-transform: none;
-    
+
     &::before {
       content: '⚠ ';
     }
@@ -218,7 +218,7 @@
   line-height: 1.5;
   position: relative;
   cursor: help;
-  
+
   // Show full text on hover
   &:hover {
     overflow: visible;

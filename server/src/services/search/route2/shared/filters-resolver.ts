@@ -28,22 +28,25 @@ export async function resolveFilters(params: ResolveFiltersParams): Promise<Fina
     const uiLanguage: 'he' | 'en' = intent.language === 'he' ? 'he' : 'en';
 
     // 2. Resolve provider language (preserve intent language)
-    const providerLanguage: 'he' | 'en' | 'ar' | 'fr' | 'es' | 'ru' = 
-        ['he', 'en', 'ar', 'fr', 'es', 'ru'].includes(intent.language) 
-        ? intent.language as any
-        : 'he'; // fallback
+    const providerLanguage: 'he' | 'en' | 'ar' | 'fr' | 'es' | 'ru' =
+        ['he', 'en', 'ar', 'fr', 'es', 'ru'].includes(intent.language)
+            ? intent.language as any
+            : 'he'; // fallback
 
     // 3. Resolve region code (intent candidate > device > default)
     const rawRegionCode = intent.regionCandidate || deviceRegionCode || 'IL';
-    
+
     // 4. Sanitize region code (validate against CLDR, handle 'GZ' special case)
     const sanitizedRegionCode = sanitizeRegionCode(rawRegionCode, userLocation);
-    
+
     // 5. Log if region was sanitized/rejected
-    // NOISE FIX: Use debug level for known unsupported regions (e.g., GZ)
-    if (sanitizedRegionCode !== rawRegionCode) {
+    // NOISE FIX: Only log when sanitization actually changed the value
+    // Skip logging if intent.regionCandidate was null (no candidate to validate)
+    const shouldLogSanitization = sanitizedRegionCode !== rawRegionCode && intent.regionCandidate !== null;
+    
+    if (shouldLogSanitization) {
         const fallback = sanitizedRegionCode || getFallbackRegion(rawRegionCode, userLocation);
-        
+
         const logData = {
             requestId,
             pipelineVersion: 'route2',
@@ -52,7 +55,7 @@ export async function resolveFilters(params: ResolveFiltersParams): Promise<Fina
             sanitized: fallback || 'null',
             source: intent.regionCandidate ? 'intent_candidate' : (deviceRegionCode ? 'device' : 'default')
         };
-        
+
         if (isKnownUnsupportedRegion(rawRegionCode)) {
             // Debug level for expected cases (reduces noise)
             logger.debug(logData, '[ROUTE2] Known unsupported region sanitized (e.g., GZ)');

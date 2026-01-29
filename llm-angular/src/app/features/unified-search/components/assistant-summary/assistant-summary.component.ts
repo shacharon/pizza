@@ -32,6 +32,9 @@ export class AssistantSummaryComponent {
   readonly status = input.required<AssistantStatus>();
   readonly error = input<string | undefined>(undefined);
   
+  // UI Language for RTL support
+  readonly locale = input<string>('en');
+  
   readonly isIdle = computed(() => this.status() === 'idle');
   readonly isPending = computed(() => this.status() === 'pending');
   readonly isStreaming = computed(() => this.status() === 'streaming');
@@ -57,6 +60,9 @@ export class AssistantSummaryComponent {
     }
     return !this.isIdle() && (this.text().length > 0 || this.isFailed());
   });
+  
+  // RTL support: Hebrew language
+  readonly isRTL = computed(() => this.locale() === 'he');
   
   /**
    * Get icon for message type

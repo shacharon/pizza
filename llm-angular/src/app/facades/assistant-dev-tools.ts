@@ -21,7 +21,7 @@ export class AssistantDevTools {
     console.log('RequestId:', requestId);
     console.log('Type:', type);
     console.log('Sending 3 identical messages...');
-    
+
     const payload = {
       type: 'assistant',
       requestId,
@@ -32,17 +32,17 @@ export class AssistantDevTools {
         blocksSearch: false
       }
     };
-    
+
     // Send same message 3 times
     for (let i = 0; i < 3; i++) {
       console.log(`Duplicate #${i + 1}:`, payload);
       window.dispatchEvent(new CustomEvent('test:assistant-message', { detail: payload }));
     }
-    
+
     console.log('Expected: 1 message rendered, 2 dropped as duplicates');
     console.groupEnd();
   }
-  
+
   /**
    * Simulate reconnection backlog for testing deduplication
    */
@@ -50,13 +50,13 @@ export class AssistantDevTools {
     console.group('[DEV] Simulating Reconnect Backlog');
     console.log('RequestId:', requestId);
     console.log('Scenario: WS reconnects and sends backlog of messages');
-    
+
     const messages = [
       { type: 'PROGRESS', message: 'Searching...', seq: 1 },
       { type: 'PROGRESS', message: 'Found 10 results', seq: 2 },
       { type: 'SUMMARY', message: 'Here are your results', seq: 3 },
     ];
-    
+
     messages.forEach((msg, i) => {
       const payload = {
         type: 'assistant',
@@ -69,15 +69,15 @@ export class AssistantDevTools {
           seq: msg.seq
         }
       };
-      
+
       console.log(`Backlog message #${i + 1}:`, payload);
       window.dispatchEvent(new CustomEvent('test:assistant-message', { detail: payload }));
     });
-    
+
     console.log('Expected: All messages deduplicated, no duplicates rendered');
     console.groupEnd();
   }
-  
+
   /**
    * Enable verbose logging
    */
@@ -85,7 +85,7 @@ export class AssistantDevTools {
     (window as any).__ASSISTANT_DEBUG__ = true;
     console.log('[DEV] Verbose assistant logging enabled');
   }
-  
+
   /**
    * Disable verbose logging
    */

@@ -12,7 +12,7 @@ import { z } from 'zod';
  */
 export const OpenStateSchema = z.enum([
   'OPEN_NOW',
-  'CLOSED_NOW', 
+  'CLOSED_NOW',
   'OPEN_AT',
   'OPEN_BETWEEN'
 ]).nullable();

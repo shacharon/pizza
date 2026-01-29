@@ -39,7 +39,8 @@
         [messages]="contextualMessages()"
         [text]="asyncAssistantMessage()" 
         [status]="facade.assistantState()"
-        [error]="facade.assistantError()" />
+        [error]="facade.assistantError()"
+        [locale]="facade.locale()" />
       }
     </div>
 
@@ -51,7 +52,8 @@
       [messages]="globalMessages()"
       [text]="asyncAssistantMessage()" 
       [status]="facade.assistantState()"
-      [error]="facade.assistantError()" />
+      [error]="facade.assistantError()"
+      [locale]="facade.locale()" />
     }
   </header>
 
@@ -76,20 +78,7 @@
     </section>
     }
 
-    <!-- Popular Searches (shown when no results and no recent searches) -->
-    @if (!facade.hasResults() && !facade.loading() && !facade.error() && !facade.showRecentSearches()) {
-    <section class="popular-searches">
-      <h2>Popular Searches</h2>
-      <div class="search-grid">
-        @for (item of popularSearches; track item.query) {
-        <button class="popular-item" (click)="onPopularSearchClick(item.query)">
-          <span class="popular-emoji">{{ item.emoji }}</span>
-          <span class="popular-label">{{ item.label }}</span>
-        </button>
-        }
-      </div>
-    </section>
-    }
+    <!-- Cuisine chips removed - discovery via free-text search + assistant only -->
 
     <!-- Loading State -->
     @if (facade.loading()) {

@@ -134,11 +134,11 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   readonly contextualCardMessages = computed(() => {
     const activeRequestId = this.facade.requestId();
     const allCards = this.facade.assistantCardMessages();
-    
+
     if (!activeRequestId) {
       return [];
     }
-    
+
     // Return only card messages for current search
     return allCards.filter(msg => msg.requestId === activeRequestId);
   });
@@ -146,11 +146,11 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   readonly globalCardMessages = computed(() => {
     const activeRequestId = this.facade.requestId();
     const allCards = this.facade.assistantCardMessages();
-    
+
     if (activeRequestId) {
       return []; // No global messages when search is active
     }
-    
+
     // Return card messages without requestId (system messages)
     return allCards.filter(msg => !msg.requestId);
   });
@@ -159,11 +159,11 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   readonly contextualMessages = computed(() => {
     const activeRequestId = this.facade.requestId();
     const allMessages = this.facade.assistantMessages();
-    
+
     if (!activeRequestId) {
       return [];
     }
-    
+
     // Return only messages for current search
     return allMessages.filter(msg => msg.requestId === activeRequestId);
   });
@@ -171,11 +171,11 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   readonly globalMessages = computed(() => {
     const activeRequestId = this.facade.requestId();
     const allMessages = this.facade.assistantMessages();
-    
+
     if (activeRequestId) {
       return []; // No global messages when search is active
     }
-    
+
     // Return messages without requestId (system messages)
     return allMessages.filter(msg => !msg.requestId);
   });
@@ -185,7 +185,7 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   readonly assistantHasRequestId = computed(() => {
     const activeRequestId = this.facade.requestId();
     const assistantRequestId = this.facade.assistantMessageRequestId();
-    
+
     // If EITHER has a requestId, treat as contextual (never global)
     // Rule: Assistant messages with requestId MUST NEVER render globally
     return !!activeRequestId || !!assistantRequestId;
@@ -195,10 +195,10 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   readonly showContextualAssistant = computed(() => {
     // Card messages: show if we have card messages for current request
     const hasCardMessages = this.contextualCardMessages().length > 0;
-    
+
     // Legacy: show if requestId exists and assistant state is active
     const legacyActive = this.showAssistant() && this.assistantHasRequestId();
-    
+
     return hasCardMessages || legacyActive;
   });
 
@@ -208,13 +208,13 @@ export class SearchPageComponent implements OnInit, OnDestroy {
     if (this.showContextualAssistant()) {
       return false;
     }
-    
+
     // Card messages: show if we have global card messages (no requestId)
     const hasGlobalCards = this.globalCardMessages().length > 0;
-    
+
     // Legacy: show if NO requestId and assistant state is active
     const legacyGlobal = this.showAssistant() && !this.assistantHasRequestId();
-    
+
     return hasGlobalCards || legacyGlobal;
   });
 
@@ -227,18 +227,30 @@ export class SearchPageComponent implements OnInit, OnDestroy {
     const cards = this.contextualCardMessages();
     const hasGateFail = cards.some(msg => msg.type === 'GATE_FAIL');
     const hasResults = this.facade.hasResults();
-    
+
     // GATE_FAIL is terminal: if present, hide results section
     return hasGateFail && !hasResults;
   });
 
-  // GATE_FAIL UX: Should show results section
+  // DONE_STOPPED UX: Check if pipeline stopped (not food related)
+  readonly isDoneStopped = computed(() => {
+    const meta = this.facade.meta();
+    return meta?.source === 'route2_gate_stop' ||
+      meta?.failureReason === 'LOW_CONFIDENCE';
+  });
+
+  // GATE_FAIL + DONE_STOPPED UX: Should show results section
   readonly shouldShowResults = computed(() => {
+    // Hide results if DONE_STOPPED (pipeline stopped, no results by design)
+    if (this.isDoneStopped()) {
+      return false;
+    }
+
     // Hide results if GATE_FAIL with no results
     if (this.isGateFail()) {
       return false;
     }
-    
+
     // Otherwise show if we have results
     return this.facade.hasResults();
   });
@@ -325,14 +337,7 @@ export class SearchPageComponent implements OnInit, OnDestroy {
     return appliedFilters.includes('gluten-free:soft');
   });
 
-  readonly popularSearches = [
-    { emoji: '🍕', label: 'Pizza', query: 'pizza' },
-    { emoji: '🍣', label: 'Sushi', query: 'sushi' },
-    { emoji: '🍔', label: 'Burgers', query: 'burgers' },
-    { emoji: '🍝', label: 'Italian', query: 'italian restaurant' },
-    { emoji: '🌮', label: 'Mexican', query: 'mexican food' },
-    { emoji: '🍜', label: 'Asian', query: 'asian cuisine' }
-  ];
+  // Cuisine chips removed - discovery via free-text search + assistant only
 
   ngOnInit(): void {
     // Setup periodic cleanup of expired actions (every minute)
@@ -386,9 +391,7 @@ export class SearchPageComponent implements OnInit, OnDestroy {
     this.facade.proposeAction(action.type, action.level, restaurant);
   }
 
-  onPopularSearchClick(query: string): void {
-    this.facade.search(query);
-  }
+  // onPopularSearchClick removed with cuisine chips
 
   async onLocationToggle(): Promise<void> {
     const currentState = this.locationState();

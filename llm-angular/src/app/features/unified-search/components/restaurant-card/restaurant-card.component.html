@@ -1,128 +1,85 @@
-<article 
-  class="restaurant-card"
-  [class.selected]="selected()"
-  [class.top-result]="isTopResult()"
-  [class.compact]="compact()"
-  (click)="onCardClick()"
-  role="button"
-  tabindex="0"
-  [attr.aria-label]="'View details for ' + restaurant().name"
->
+<article class="restaurant-card" [class.selected]="selected()" [class.top-result]="isTopResult()"
+  [class.compact]="compact()" (click)="onCardClick()" role="button" tabindex="0"
+  [attr.aria-label]="'View details for ' + restaurant().name">
   @if (showReasonLabel() && isTopResult()) {
-    <app-reason-label [restaurant]="restaurant()" />
+  <app-reason-label [restaurant]="restaurant()" />
   }
 
   <!-- P0 Security: Secure photo loading via backend proxy -->
   @if (photoSrc() && !photoError()) {
-    <img 
-      class="restaurant-photo" 
-      [src]="getCurrentPhotoSrc()" 
-      [alt]="restaurant().name + ' restaurant photo'"
-      loading="lazy"
-      (error)="onPhotoError()"
-      [attr.aria-label]="'Photo of ' + restaurant().name"
-    />
+  <img class="restaurant-photo" [src]="getCurrentPhotoSrc()" [alt]="restaurant().name + ' restaurant photo'"
+    loading="lazy" (error)="onPhotoError()" [attr.aria-label]="'Photo of ' + restaurant().name" />
   } @else {
-    <div 
-      class="restaurant-photo-placeholder"
-      role="img"
-      [attr.aria-label]="'Placeholder image for ' + restaurant().name"
-    >
-      🍽️
-    </div>
+  <div class="restaurant-photo-placeholder" role="img" [attr.aria-label]="'Placeholder image for ' + restaurant().name">
+    🍽️
+  </div>
   }
 
   <div class="restaurant-info">
     <div class="restaurant-name-row">
       <h3 class="restaurant-name">{{ restaurant().name }}</h3>
-      
+
       @if (glutenFreeBadge()) {
-        <span 
-          class="dietary-badge gluten-free"
-          [class.high]="glutenFreeBadge()!.level === 'high'"
-          [class.low]="glutenFreeBadge()!.level === 'low'"
-          [title]="getGlutenFreeTooltip()"
-        >
-          {{ glutenFreeBadge()!.text }}
-        </span>
+      <span class="dietary-badge gluten-free" [class.high]="glutenFreeBadge()!.level === 'high'"
+        [class.low]="glutenFreeBadge()!.level === 'low'" [title]="getGlutenFreeTooltip()">
+        {{ glutenFreeBadge()!.text }}
+      </span>
       }
     </div>
-    
+
     <div class="restaurant-meta">
       @if (restaurant().rating) {
-        <span class="rating" [attr.aria-label]="'Rating: ' + restaurant().rating">
-          {{ getRatingStars(restaurant().rating) }}
-          <span class="rating-value">{{ restaurant().rating }}</span>
-          @if (restaurant().userRatingsTotal) {
-            <span class="rating-count">({{ restaurant().userRatingsTotal }})</span>
-          }
-        </span>
+      <span class="rating" [attr.aria-label]="'Rating: ' + restaurant().rating">
+        {{ getRatingStars(restaurant().rating) }}
+        <span class="rating-value">{{ restaurant().rating }}</span>
+        @if (restaurant().userRatingsTotal) {
+        <span class="rating-count">({{ restaurant().userRatingsTotal }})</span>
+        }
+      </span>
       }
-      
+
       @if (restaurant().priceLevel) {
-        <span class="price-level" [attr.aria-label]="'Price level: ' + restaurant().priceLevel">
-          {{ getPriceLevel(restaurant().priceLevel) }}
-        </span>
+      <span class="price-level" [attr.aria-label]="'Price level: ' + restaurant().priceLevel">
+        {{ getPriceLevel(restaurant().priceLevel) }}
+      </span>
       }
-      
+
       @if (getOpenStatus()) {
-        <span 
-          class="open-status"
-          [class.open]="getOpenStatus() === 'open'"
-          [class.closed]="getOpenStatus() === 'closed'"
-          [class.unknown]="getOpenStatus() === 'unknown'"
-          [attr.aria-label]="getOpenStatusLabel()"
-        >
-          {{ getOpenStatusLabel() }}
-        </span>
+      <span class="open-status" [class.open]="getOpenStatus() === 'open'" [class.closed]="getOpenStatus() === 'closed'"
+        [class.unknown]="getOpenStatus() === 'unknown'" [attr.aria-label]="getOpenStatusLabel()">
+        {{ getOpenStatusLabel() }}
+      </span>
       }
     </div>
 
     <p class="restaurant-address">{{ restaurant().address }}</p>
 
     @if (restaurant().tags && restaurant().tags!.length > 0) {
-      <div class="restaurant-tags">
-        @for (tag of restaurant().tags; track tag) {
-          <span class="tag">{{ tag }}</span>
-        }
-      </div>
+    <div class="restaurant-tags">
+      @for (tag of restaurant().tags; track tag) {
+      <span class="tag">{{ tag }}</span>
+      }
+    </div>
     }
   </div>
 
   <div class="quick-actions">
-    <button
-      type="button"
-      class="action-button"
-      (click)="onAction($event, 'GET_DIRECTIONS')"
+    <button type="button" class="action-button" (click)="onAction($event, 'GET_DIRECTIONS')"
       [disabled]="!isActionAvailable('GET_DIRECTIONS')"
       [title]="isActionAvailable('GET_DIRECTIONS') ? 'Get directions' : 'Location not available'"
-      [attr.aria-label]="isActionAvailable('GET_DIRECTIONS') ? 'Get directions to ' + restaurant().name : 'Directions not available'"
-    >
+      [attr.aria-label]="isActionAvailable('GET_DIRECTIONS') ? 'Get directions to ' + restaurant().name : 'Directions not available'">
       📍
     </button>
-    <button
-      type="button"
-      class="action-button"
-      (click)="onAction($event, 'CALL_RESTAURANT')"
+    <button type="button" class="action-button" (click)="onAction($event, 'CALL_RESTAURANT')"
       [disabled]="!isActionAvailable('CALL_RESTAURANT')"
       [title]="isActionAvailable('CALL_RESTAURANT') ? 'Call restaurant' : 'Phone number not available'"
-      [attr.aria-label]="isActionAvailable('CALL_RESTAURANT') ? 'Call ' + restaurant().name : 'Phone number not available'"
-    >
+      [attr.aria-label]="isActionAvailable('CALL_RESTAURANT') ? 'Call ' + restaurant().name : 'Phone number not available'">
       📞
     </button>
-    <button
-      type="button"
-      class="action-button favorite"
-      (click)="onAction($event, 'SAVE_FAVORITE')"
-      [disabled]="!isActionAvailable('SAVE_FAVORITE')"
-      title="Save to favorites"
-      [attr.aria-label]="'Save ' + restaurant().name + ' to favorites'"
-    >
+    <button type="button" class="action-button favorite" (click)="onAction($event, 'SAVE_FAVORITE')"
+      [disabled]="!isActionAvailable('SAVE_FAVORITE')" title="Save to favorites"
+      [attr.aria-label]="'Save ' + restaurant().name + ' to favorites'">
       ❤️
     </button>
   </div>
 </article>
-
-
-
-

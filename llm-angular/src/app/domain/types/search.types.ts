@@ -40,27 +40,27 @@ export interface Restaurant {
   userRatingsTotal?: number;
   priceLevel?: number;
   openNow?: VerifiableBoolean;  // Tri-state: true | false | 'UNKNOWN'
-  
+
   // P0 Security: New photo fields (backend proxy)
   photoReference?: string;        // Photo reference (no API key): places/ChIJ.../photos/...
   photoReferences?: string[];     // Array of photo references
   photoUrl?: string;              // DEPRECATED: May still be present from backend (sanitized or internal proxy URL)
-  
+
   phoneNumber?: string;
   website?: string;
   tags?: string[];
   source?: string;  // NEW: Phase B
   groupKind?: 'EXACT' | 'NEARBY';  // NEW: Phase B
   distanceMeters?: number;  // NEW: Phase B
-  
+
   // NEW: Mobile-first UX - Match reason for top result
   matchReason?: string;  // Single reason text from backend
   matchReasons?: string[];  // Array of reason tags (e.g., ['highly_rated', 'open_now', 'nearby'])
-  
+
   // Phase 1: Candidate pool ranking
   rank?: number;  // 1-based ranking position (1 = best)
   score?: number;  // 0-100 internal score (debug only)
-  
+
   // NEW: Dietary hints (SOFT hints - no filtering)
   dietaryHints?: DietaryHints;
 }
@@ -100,7 +100,7 @@ export interface RefinementChip {
 }
 
 // NEW: Failure reasons (deterministic, computed by backend)
-export type FailureReason = 
+export type FailureReason =
   | 'NONE'
   | 'NO_RESULTS'
   | 'LOW_CONFIDENCE'
@@ -122,15 +122,15 @@ export interface AssistPayload {
   type: 'clarify' | 'suggest' | 'guide' | 'recovery';
   mode?: 'NORMAL' | 'RECOVERY' | 'CLARIFY';  // Phase 5: Added CLARIFY mode
   message: string;  // LLM-generated, multilingual
-  
+
   // NEW: Reference chip IDs instead of inline actions
   primaryActionId?: string;     // Highlighted chip
   secondaryActionIds?: string[]; // Up to 4 additional chips (optional for backward compat)
-  
+
   // NEW: Debug metadata
   reasoning?: string;
   failureReason?: FailureReason;
-  
+
   // DEPRECATED: For backward compatibility only
   suggestedActions?: { label: string; query: string }[];
 }

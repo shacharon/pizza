@@ -113,6 +113,9 @@ export class WebSocketManager {
       this.handleCloseEvent.bind(this),
       this.handleErrorEvent.bind(this)
     );
+
+    // DISABLED: No ws_status broadcasts to clients (UI doesn't show connection status)
+    // this.sendConnectionStatus(ws, 'connected');
   }
 
 
@@ -609,6 +612,9 @@ export class WebSocketManager {
     this.heartbeatInterval = setInterval(() => {
       executeHeartbeat(this.wss.clients, this.cleanup.bind(this));
       
+      // NO ws_status broadcast on heartbeat - only send on lifecycle events
+      // This prevents infinite "connecting" spam from heartbeat pings
+      
       // Cleanup expired pending subscriptions
       this.pendingSubscriptionsManager.cleanupExpired(this.sendSubNack.bind(this));
 
@@ -617,6 +623,35 @@ export class WebSocketManager {
     }, this.config.heartbeatIntervalMs);
 
     this.heartbeatInterval.unref();
+  }
+
+  /**
+   * Send connection status to a specific client (lifecycle events only)
+   * Used by app-assistant-line to show stable WS status
+   */
+  private sendConnectionStatus(ws: WebSocket, state: 'connected' | 'reconnecting' | 'offline'): void {
+    if (ws.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    const statusEvent: WSServerMessage = {
+      type: 'ws_status',
+      state,
+      ts: new Date().toISOString()
+    };
+
+    try {
+      ws.send(JSON.stringify(statusEvent));
+      logger.debug({
+        state,
+        clientId: (ws as any).clientId
+      }, '[WS] Sent connection status (lifecycle event)');
+    } catch (err) {
+      logger.warn({
+        error: err instanceof Error ? err.message : 'unknown',
+        clientId: (ws as any).clientId
+      }, '[WS] Failed to send ws_status event');
+    }
   }
 
   /**

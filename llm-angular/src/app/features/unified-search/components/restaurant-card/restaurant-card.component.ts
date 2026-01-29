@@ -30,12 +30,12 @@ export class RestaurantCardComponent {
 
   // Outputs
   readonly cardClick = output<Restaurant>();
-  readonly actionClick = output<{type: ActionType; level: ActionLevel}>();
+  readonly actionClick = output<{ type: ActionType; level: ActionLevel }>();
 
   // P0 Security: Secure photo URL (no API key exposure)
   readonly photoSrc = computed(() => buildPhotoSrc(this.restaurant()));
   readonly photoPlaceholder = getPhotoPlaceholder();
-  
+
   // Photo error state (for broken images)
   readonly photoError = signal(false);
 
@@ -54,13 +54,13 @@ export class RestaurantCardComponent {
   onAction(event: Event, type: ActionType): void {
     event.stopPropagation(); // Prevent card click
     const level = this.getActionLevel(type);
-    
+
     // Check if action is available (e.g., phone number required for call)
     if (!this.isActionAvailable(type)) {
       console.warn(`[RestaurantCard] Action ${type} not available for ${this.restaurant().name}`);
       return;
     }
-    
+
     this.actionClick.emit({ type, level });
   }
 
@@ -75,17 +75,17 @@ export class RestaurantCardComponent {
       case 'VIEW_DETAILS':
       case 'VIEW_MENU':
         return 0;
-      
+
       // Level 1: Confirm first
       case 'SAVE_FAVORITE':
       case 'SHARE':
         return 1;
-      
+
       // Level 2: High-impact - explicit confirm + explanation
       case 'DELETE_FAVORITE':
       case 'REPORT_ISSUE':
         return 2;
-      
+
       default:
         return 0;
     }
@@ -96,7 +96,7 @@ export class RestaurantCardComponent {
    */
   isActionAvailable(type: ActionType): boolean {
     const restaurant = this.restaurant();
-    
+
     switch (type) {
       case 'CALL_RESTAURANT':
         return !!restaurant.phoneNumber;
@@ -174,7 +174,7 @@ export class RestaurantCardComponent {
 
     // Detect language from restaurant name (simple heuristic)
     const hasHebrew = /[\u0590-\u05FF]/.test(this.restaurant().name);
-    
+
     if (hasHebrew) {
       return 'מבוסס על רמזים בטקסט — לא מובטח';
     }
@@ -204,7 +204,7 @@ export class RestaurantCardComponent {
   getCurrentPhotoSrc(): string {
     const src = this.photoSrc();
     const hasError = this.photoError();
-    
+
     // HARD GUARD: Block any Google URLs (CORS protection)
     if (src && this.isGoogleUrl(src)) {
       console.error('[RestaurantCard] BLOCKED Google URL in getCurrentPhotoSrc', {
@@ -213,11 +213,11 @@ export class RestaurantCardComponent {
       });
       return this.photoPlaceholder;
     }
-    
+
     if (hasError || !src) {
       return this.photoPlaceholder;
     }
-    
+
     return src;
   }
 
@@ -226,10 +226,10 @@ export class RestaurantCardComponent {
    */
   private isGoogleUrl(url: string): boolean {
     return url.includes('googleusercontent.com') ||
-           url.includes('gstatic.com') ||
-           url.includes('googleapis.com') ||
-           url.includes('maps.googleapis.com') ||
-           url.includes('places.googleapis.com');
+      url.includes('gstatic.com') ||
+      url.includes('googleapis.com') ||
+      url.includes('maps.googleapis.com') ||
+      url.includes('places.googleapis.com');
   }
 }
 

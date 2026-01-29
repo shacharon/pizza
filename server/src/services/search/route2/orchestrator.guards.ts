@@ -9,7 +9,7 @@ import type { Route2Context, Gate2StageOutput, IntentResult } from './types.js';
 import type { RouteLLMMapping } from './stages/route-llm/schemas.js';
 import { logger } from '../../../lib/logger/structured-logger.js';
 import { generateAndPublishAssistant } from './assistant/assistant-integration.js';
-import type { AssistantGateContext, AssistantClarifyContext } from './assistant/assistant-llm.service.js';
+import type { AssistantGateContext, AssistantClarifyContext, AssistantGenericQueryNarrationContext } from './assistant/assistant-llm.service.js';
 import { resolveAssistantLanguage, resolveSessionId } from './orchestrator.helpers.js';
 import type { WebSocketManager } from '../../../infra/websocket/websocket-manager.js';
 
@@ -247,4 +247,47 @@ export async function handleNearbyLocationGuard(
       failureReason: 'LOW_CONFIDENCE'
     }
   };
+}
+
+/**
+ * Check if query is generic (e.g., "what to eat")
+ * Generic query: foodSignal=YES but no specific location in query (no cityText)
+ */
+function isGenericFoodQuery(
+  gateResult: Gate2StageOutput,
+  intentDecision: IntentResult
+): boolean {
+  return (
+    gateResult.gate.foodSignal === 'YES' &&
+    !intentDecision.cityText &&
+    intentDecision.route === 'NEARBY' // Generic queries typically route to NEARBY
+  );
+}
+
+/**
+ * Store generic query narration flag for later use in response builder
+ * Returns null (always continues)
+ */
+export function checkGenericFoodQuery(
+  gateResult: Gate2StageOutput,
+  intentDecision: IntentResult,
+  ctx: Route2Context
+): null {
+  if (isGenericFoodQuery(gateResult, intentDecision)) {
+    logger.info(
+      {
+        requestId: ctx.requestId,
+        pipelineVersion: 'route2',
+        event: 'generic_query_detected',
+        reason: 'food_yes_no_location_text',
+        hasUserLocation: !!ctx.userLocation
+      },
+      '[ROUTE2] Detected generic food query - will add narration after results'
+    );
+
+    // Store flag for response builder to add narration
+    (ctx as any).isGenericQuery = true;
+  }
+
+  return null; // Always continue
 }

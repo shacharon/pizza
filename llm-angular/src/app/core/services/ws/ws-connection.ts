@@ -9,6 +9,12 @@
  * - Connection state tracking
  * 
  * NO knowledge of: subscribe/unsubscribe, message routing, channels
+ * 
+ * Reconnection Policy:
+ * - Max 10 reconnect attempts for network errors (status=0)
+ * - After 10 attempts, stop reconnecting (terminal failure)
+ * - Auth errors (401) are terminal immediately
+ * - Counter resets on successful connection
  */
 
 import type {
@@ -18,6 +24,8 @@ import type {
   ConnectionStatus
 } from './ws-types';
 import { isHardCloseReason } from './ws-types';
+
+const MAX_RECONNECT_ATTEMPTS = 10;
 
 export class WSConnection {
   private ws?: WebSocket;
@@ -91,7 +99,8 @@ export class WSConnection {
       this.ws.onopen = () => {
         console.log('[WS] Connected');
         this.callbacks.onStatusChange('connected');
-        this.reconnectAttempts = 0;
+        this.connectInFlight = false;
+        this.reconnectAttempts = 0; // Reset counter on successful connection
         this.shouldReconnect = true;
         this.hardFailureLogged = false;
         this.callbacks.onOpen();
@@ -155,10 +164,35 @@ export class WSConnection {
         return;
       }
 
+      // Check if we've exceeded max reconnect attempts
+      if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+        console.error('[WS] Max reconnect attempts reached - stopping', {
+          attempts: this.reconnectAttempts,
+          maxAttempts: MAX_RECONNECT_ATTEMPTS
+        });
+        
+        if (!this.hardFailureLogged) {
+          console.error('[WS] Hard failure - server unreachable after', MAX_RECONNECT_ATTEMPTS, 'attempts');
+          this.hardFailureLogged = true;
+        }
+        
+        this.shouldReconnect = false;
+        this.callbacks.onStatusChange('disconnected');
+        return;
+      }
+
+      // Network error (status=0 or connection refused)
+      if (error?.status === 0 || error?.code === 'NETWORK_ERROR') {
+        console.warn('[WS] Network error - will retry', {
+          status: error.status,
+          attempt: this.reconnectAttempts + 1,
+          maxAttempts: MAX_RECONNECT_ATTEMPTS
+        });
+      }
+
       if (error?.status === 503) {
         // Soft failure: service unavailable (Redis down)
         console.warn('[WS] Service unavailable (503) - will retry');
-        // Continue to reconnect with backoff
       }
 
       // Only reconnect if we haven't hit a hard failure
@@ -215,8 +249,21 @@ export class WSConnection {
    * Schedule reconnection with exponential backoff + jitter
    * Backoff: 250ms → 500ms → 1s → 2s → 4s → 5s (max)
    * Jitter: ±25% randomization to prevent thundering herd
+   * 
+   * Limits: Max 10 attempts for network errors, then stops permanently
    */
   private scheduleReconnect(): void {
+    // Check if we've exceeded max reconnect attempts
+    if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      console.error('[WS] Max reconnect attempts reached - stopping', {
+        attempts: this.reconnectAttempts,
+        maxAttempts: MAX_RECONNECT_ATTEMPTS
+      });
+      this.shouldReconnect = false;
+      this.callbacks.onStatusChange('disconnected');
+      return;
+    }
+
     // Clear any existing timer before scheduling new one
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
@@ -233,8 +280,8 @@ export class WSConnection {
     const jitter = exponentialDelay * 0.25 * (Math.random() * 2 - 1);
     const delay = Math.round(exponentialDelay + jitter);
 
-    // Silent: only log to console, never show in UI
-    console.log(`[WS] Reconnect in ${delay}ms (attempt ${this.reconnectAttempts + 1})`);
+    // Log reconnection attempt
+    console.log(`[WS] Reconnect in ${delay}ms (attempt ${this.reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS})`);
 
     this.callbacks.onStatusChange('reconnecting');
 

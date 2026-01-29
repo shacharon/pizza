@@ -35,6 +35,15 @@ export interface AssistantSummaryContext {
   language: 'he' | 'en' | 'other';
   resultCount: number;
   top3Names: string[];
+  // INSIGHT METADATA: Data for intelligent narration
+  // NOTE: openNowCount and currentHour are ONLY included if ALL results have known status
+  // If any result has unknown status, these fields are omitted entirely
+  metadata?: {
+    openNowCount?: number; // How many results are currently open (only if no unknowns)
+    currentHour?: number; // Current hour (0-23) for time-based insights (only if no unknowns)
+    radiusKm?: number; // Search radius in kilometers
+    filtersApplied?: string[]; // Active filters (e.g., ['OPEN_NOW', 'kosher', 'price:2'])
+  };
   // DIETARY NOTE: Optional soft dietary hint (merged into summary)
   dietaryNote?: {
     type: 'gluten-free';
@@ -49,18 +58,27 @@ export interface AssistantSearchFailedContext {
   language: 'he' | 'en' | 'other';
 }
 
+export interface AssistantGenericQueryNarrationContext {
+  type: 'GENERIC_QUERY_NARRATION';
+  query: string;
+  language: 'he' | 'en' | 'other';
+  resultCount: number;
+  usedCurrentLocation: boolean; // True if userLocation was used
+}
+
 export type AssistantContext =
   | AssistantGateContext
   | AssistantClarifyContext
   | AssistantSummaryContext
-  | AssistantSearchFailedContext;
+  | AssistantSearchFailedContext
+  | AssistantGenericQueryNarrationContext;
 
 // Output schema (strict JSON)
 export const AssistantOutputSchema = z.object({
-  type: z.enum(['GATE_FAIL', 'CLARIFY', 'SUMMARY', 'SEARCH_FAILED']),
+  type: z.enum(['GATE_FAIL', 'CLARIFY', 'SUMMARY', 'SEARCH_FAILED', 'GENERIC_QUERY_NARRATION']),
   message: z.string(),
   question: z.string().nullable(),
-  suggestedAction: z.enum(['NONE', 'ASK_LOCATION', 'ASK_FOOD', 'RETRY', 'EXPAND_RADIUS']),
+  suggestedAction: z.enum(['NONE', 'ASK_LOCATION', 'ASK_FOOD', 'RETRY', 'EXPAND_RADIUS', 'REFINE']),
   blocksSearch: z.boolean()
 }).strict();
 
@@ -70,10 +88,10 @@ export type AssistantOutput = z.infer<typeof AssistantOutputSchema>;
 const ASSISTANT_JSON_SCHEMA = {
   type: 'object',
   properties: {
-    type: { type: 'string', enum: ['GATE_FAIL', 'CLARIFY', 'SUMMARY', 'SEARCH_FAILED'] },
+    type: { type: 'string', enum: ['GATE_FAIL', 'CLARIFY', 'SUMMARY', 'SEARCH_FAILED', 'GENERIC_QUERY_NARRATION'] },
     message: { type: 'string' },
     question: { type: ['string', 'null'] },
-    suggestedAction: { type: 'string', enum: ['NONE', 'ASK_LOCATION', 'ASK_FOOD', 'RETRY', 'EXPAND_RADIUS'] },
+    suggestedAction: { type: 'string', enum: ['NONE', 'ASK_LOCATION', 'ASK_FOOD', 'RETRY', 'EXPAND_RADIUS', 'REFINE'] },
     blocksSearch: { type: 'boolean' }
   },
   required: ['type', 'message', 'question', 'suggestedAction', 'blocksSearch'],
@@ -94,7 +112,7 @@ Rules:
 - "suggestedAction": YOU decide what helps user most
 - NO HARD RULES - use your judgment to help the user
 
-Schema: {"type":"GATE_FAIL|CLARIFY|SUMMARY|SEARCH_FAILED","message":"...","question":"..."|null,"suggestedAction":"NONE|ASK_LOCATION|ASK_FOOD|RETRY|EXPAND_RADIUS","blocksSearch":true|false}`;
+Schema: {"type":"GATE_FAIL|CLARIFY|SUMMARY|SEARCH_FAILED|GENERIC_QUERY_NARRATION","message":"...","question":"..."|null,"suggestedAction":"NONE|ASK_LOCATION|ASK_FOOD|RETRY|EXPAND_RADIUS|REFINE","blocksSearch":true|false}`;
 
 function buildUserPrompt(context: AssistantContext): string {
   const languageInstruction = context.language === 'he' ? 'Hebrew' : 'English';
@@ -136,7 +154,33 @@ CRITICAL: You ${languageEmphasis}. Both "message" and "question" fields must be 
 Tell user search failed. Decide what to suggest and whether to block. Be helpful and honest.`;
   }
 
+  if (context.type === 'GENERIC_QUERY_NARRATION') {
+    const locationSource = context.usedCurrentLocation ? 'current location' : 'default area';
+    return `Query: "${context.query}"
+Type: GENERIC_QUERY_NARRATION
+Results: ${context.resultCount}
+Location used: ${locationSource}
+Language: ${context.language}
+
+CRITICAL: You ${languageEmphasis}. Both "message" and "question" fields must be in ${languageInstruction}.
+
+Instructions:
+1. Message (1 sentence): Explain assumption - we used their current location because query was generic
+2. Question (1 sentence): Ask for ONE refinement to help narrow results. Choose the MOST helpful:
+   - Cuisine type (e.g., "איזה סוג אוכל?", "What cuisine?")
+   - Dietary preference (e.g., "צריך כשר?", "Need kosher?")
+   - Time constraint (e.g., "צריך פתוח עכשיו?", "Need open now?")
+   - Distance (e.g., "כמה רחוק בסדר?", "How far is okay?")
+3. Set blocksSearch=false (search already ran)
+4. Set suggestedAction="REFINE"
+
+Examples:
+- (he) "חיפשתי לפי המיקום הנוכחי שלך. איזה סוג אוכל מעניין אותך?"
+- (en) "I searched near your current location. What type of cuisine interests you?"`;
+  }
+
   // SUMMARY
+  const metadata = context.metadata || {};
   const dietaryNote = context.dietaryNote?.shouldInclude
     ? `\nDietary Note: Add SOFT gluten-free hint at end (1 sentence max).
   - Tone: uncertain, non-authoritative, helpful
@@ -146,15 +190,32 @@ Tell user search failed. Decide what to suggest and whether to block. Be helpful
   - Combine naturally with summary (max 2 sentences total)`
     : '';
 
+  const metadataContext = `
+Metadata (use ONLY this data, DO NOT invent):
+- Results: ${context.resultCount}
+${metadata.openNowCount !== undefined ? `- Open now: ${metadata.openNowCount}/${context.resultCount}` : ''}
+${metadata.currentHour !== undefined ? `- Current hour: ${metadata.currentHour}:00` : ''}
+${metadata.radiusKm !== undefined ? `- Search radius: ${metadata.radiusKm}km` : ''}
+${metadata.filtersApplied && metadata.filtersApplied.length > 0 ? `- Active filters: ${metadata.filtersApplied.join(', ')}` : ''}
+- Top3: ${context.top3Names.slice(0, 3).join(', ')}`;
+
   return `Query: "${context.query}"
 Type: SUMMARY
-Results: ${context.resultCount}
-Top3: ${context.top3Names.slice(0, 3).join(', ')}
-Language: ${context.language}${dietaryNote}
+Language: ${context.language}${metadataContext}${dietaryNote}
 
 CRITICAL: You ${languageEmphasis}. Both "message" and "question" fields must be in ${languageInstruction}.
 
-Summarize results briefly (max 2 sentences total including any dietary note). Decide blocksSearch and suggestedAction.`;
+Instructions:
+1. NO generic phrases like "thank you", "here are", "found X results"
+2. Provide ONE short insight (why results look this way) based on metadata
+3. Optionally suggest: narrow search (filters, rating), expand search (radius, remove filters), or time-based advice
+4. Use ONLY existing metadata - DO NOT invent weather, delivery, availability
+5. Max 2 sentences total (including any dietary note)
+6. Examples:
+   - (he) "רוב המקומות סגורים עכשיו בשעה מאוחרת. אפשר לסנן לפתוח עכשיו או לחפש למחר."
+   - (en) "Most places are rated highly in this area. Try sorting by closest if you want nearby options."
+
+Generate insight-based message that helps user understand the results.`;
 }
 
 // ============================================================================
@@ -174,7 +235,7 @@ export const ASSISTANT_PROMPT_VERSION = 'v2_language_enforcement';
 function isHebrewText(text: string): boolean {
   const hebrewChars = text.match(/[\u0590-\u05FF]/g);
   const totalChars = text.replace(/\s/g, '').length;
-  return hebrewChars && hebrewChars.length / totalChars > 0.5;
+  return hebrewChars !== null && hebrewChars.length / totalChars > 0.5;
 }
 
 /**
@@ -320,7 +381,7 @@ function enforceInvariants(
     }
   }
 
-  // GATE_FAIL invariants
+  // GATE_FAIL invariants (HARD enforcement)
   if (context.type === 'GATE_FAIL') {
     // blocksSearch MUST be true
     if (!normalized.blocksSearch) {
@@ -336,16 +397,18 @@ function enforceInvariants(
       changed = true;
     }
 
-    // suggestedAction SHOULD be RETRY (soft enforcement - log but don't change)
-    if (normalized.suggestedAction !== 'RETRY' && normalized.suggestedAction !== 'NONE') {
-      logger.info({
+    // suggestedAction MUST be RETRY (HARD enforcement - changed from soft)
+    if (normalized.suggestedAction !== 'RETRY') {
+      logger.warn({
         requestId,
-        event: 'assistant_invariant_recommendation',
+        event: 'assistant_invariant_enforced',
         type: 'GATE_FAIL',
         field: 'suggestedAction',
         llmValue: normalized.suggestedAction,
-        recommendedValue: 'RETRY'
-      }, '[ASSISTANT] GATE_FAIL suggestedAction not RETRY (accepting LLM choice)');
+        enforcedValue: 'RETRY'
+      }, '[ASSISTANT] Enforcing GATE_FAIL invariant: suggestedAction=RETRY');
+      normalized.suggestedAction = 'RETRY';
+      changed = true;
     }
   }
 
@@ -360,6 +423,37 @@ function enforceInvariants(
         field: 'blocksSearch',
         llmValue: normalized.blocksSearch
       }, '[ASSISTANT] SEARCH_FAILED blocksSearch=false (accepting LLM choice)');
+    }
+  }
+
+  // GENERIC_QUERY_NARRATION invariants
+  if (context.type === 'GENERIC_QUERY_NARRATION') {
+    // blocksSearch MUST be false (search already ran)
+    if (normalized.blocksSearch) {
+      logger.warn({
+        requestId,
+        event: 'assistant_invariant_enforced',
+        type: 'GENERIC_QUERY_NARRATION',
+        field: 'blocksSearch',
+        llmValue: normalized.blocksSearch,
+        enforcedValue: false
+      }, '[ASSISTANT] Enforcing GENERIC_QUERY_NARRATION invariant: blocksSearch=false');
+      normalized.blocksSearch = false;
+      changed = true;
+    }
+
+    // suggestedAction MUST be REFINE
+    if (normalized.suggestedAction !== 'REFINE') {
+      logger.warn({
+        requestId,
+        event: 'assistant_invariant_enforced',
+        type: 'GENERIC_QUERY_NARRATION',
+        field: 'suggestedAction',
+        llmValue: normalized.suggestedAction,
+        enforcedValue: 'REFINE'
+      }, '[ASSISTANT] Enforcing GENERIC_QUERY_NARRATION invariant: suggestedAction=REFINE');
+      normalized.suggestedAction = 'REFINE';
+      changed = true;
     }
   }
 
@@ -413,11 +507,40 @@ function getDeterministicFallback(
         suggestedAction: 'RETRY',
         blocksSearch: true
       };
-    } else {
-      // SUMMARY
-      const count = (context as any).resultCount || 0;
+    } else if (context.type === 'GENERIC_QUERY_NARRATION') {
+      // Generic query narration - explain assumption and ask for refinement
       return {
-        message: `מצאתי ${count} מסעדות שמתאימות לחיפוש שלך.`,
+        message: 'חיפשתי לפי המיקום הנוכחי שלך.',
+        question: 'איזה סוג אוכל מעניין אותך?',
+        suggestedAction: 'REFINE',
+        blocksSearch: false
+      };
+    } else {
+      // SUMMARY - insight-based fallback (NO generic "found X results")
+      const count = (context as any).resultCount || 0;
+      const metadata = (context as any).metadata || {};
+      
+      if (count === 0) {
+        return {
+          message: 'לא מצאתי תוצאות. נסה להרחיב רדיוס חיפוש או להסיר סינון.',
+          question: null,
+          suggestedAction: 'NONE',
+          blocksSearch: false
+        };
+      }
+      
+      // Provide insight based on available metadata
+      if (metadata.openNowCount !== undefined && metadata.openNowCount < count / 2) {
+        return {
+          message: 'רוב המקומות סגורים עכשיו. אפשר לסנן ל"פתוח עכשיו" או לחפש שוב מאוחר יותר.',
+          question: null,
+          suggestedAction: 'NONE',
+          blocksSearch: false
+        };
+      }
+      
+      return {
+        message: 'יש כמה אפשרויות טובות באזור. אפשר למיין לפי מרחק או דירוג.',
         question: null,
         suggestedAction: 'NONE',
         blocksSearch: false
@@ -455,11 +578,40 @@ function getDeterministicFallback(
         suggestedAction: 'RETRY',
         blocksSearch: true
       };
-    } else {
-      // SUMMARY
-      const count = (context as any).resultCount || 0;
+    } else if (context.type === 'GENERIC_QUERY_NARRATION') {
+      // Generic query narration - explain assumption and ask for refinement
       return {
-        message: `Found ${count} restaurants matching your search.`,
+        message: 'I searched near your current location.',
+        question: 'What type of cuisine interests you?',
+        suggestedAction: 'REFINE',
+        blocksSearch: false
+      };
+    } else {
+      // SUMMARY - insight-based fallback (NO generic "found X results")
+      const count = (context as any).resultCount || 0;
+      const metadata = (context as any).metadata || {};
+      
+      if (count === 0) {
+        return {
+          message: 'No results found. Try expanding search radius or removing filters.',
+          question: null,
+          suggestedAction: 'NONE',
+          blocksSearch: false
+        };
+      }
+      
+      // Provide insight based on available metadata
+      if (metadata.openNowCount !== undefined && metadata.openNowCount < count / 2) {
+        return {
+          message: 'Most places are closed right now. Filter by "open now" or search again later.',
+          question: null,
+          suggestedAction: 'NONE',
+          blocksSearch: false
+        };
+      }
+      
+      return {
+        message: 'Several good options in the area. Sort by distance or rating to refine.',
         question: null,
         suggestedAction: 'NONE',
         blocksSearch: false

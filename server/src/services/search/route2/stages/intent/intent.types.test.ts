@@ -15,7 +15,7 @@ describe('IntentLLMSchema Validation', () => {
       confidence: 0.95,
       reason: 'explicit_location',
       language: 'he',
-      region: 'IL',
+      regionCandidate: 'IL',
       regionConfidence: 0.9,
       regionReason: 'language_hint',
       cityText: 'גדרה'
@@ -33,7 +33,7 @@ describe('IntentLLMSchema Validation', () => {
       confidence: 0.85,
       reason: 'near_me_phrase',
       language: 'he',
-      region: 'IL',
+      regionCandidate: 'IL',
       regionConfidence: 0.8,
       regionReason: 'user_location',
       cityText: null
@@ -51,7 +51,7 @@ describe('IntentLLMSchema Validation', () => {
       confidence: 0.9,
       reason: 'landmark_detected',
       language: 'en',
-      region: 'US',
+      regionCandidate: 'US',
       regionConfidence: 0.85,
       regionReason: 'language_hint'
     };
@@ -68,7 +68,7 @@ describe('IntentLLMSchema Validation', () => {
       confidence: 0.8,
       reason: 'default',
       language: 'he',
-      region: 'IL',
+      regionCandidate: 'IL',
       regionConfidence: 0.7,
       regionReason: 'default',
       cityText: ''
@@ -115,7 +115,7 @@ describe('IntentLLMSchema Validation', () => {
       confidence: 0.8,
       reason: 'default',
       language: 'he',
-      region: 'ISR', // Should be 2 letters
+      regionCandidate: 'ISR', // Should be 2 letters
       regionConfidence: 0.7,
       regionReason: 'default'
     };
@@ -132,7 +132,7 @@ describe('IntentLLMSchema Validation', () => {
       confidence: 1.5, // > 1
       reason: 'default',
       language: 'he',
-      region: 'IL',
+      regionCandidate: 'IL',
       regionConfidence: 0.7,
       regionReason: 'default'
     };
@@ -149,7 +149,7 @@ describe('IntentLLMSchema Validation', () => {
       confidence: 0.8,
       reason: 'default',
       language: 'he',
-      region: 'IL',
+      regionCandidate: 'IL',
       regionConfidence: 0.7,
       regionReason: 'default',
       extraField: 'should fail'
@@ -170,7 +170,7 @@ describe('IntentLLMSchema Validation', () => {
         confidence: 0.8,
         reason: 'default',
         language: lang,
-        region: 'IL',
+        regionCandidate: 'IL',
         regionConfidence: 0.7,
         regionReason: 'default'
       };
@@ -188,12 +188,83 @@ describe('IntentLLMSchema Validation', () => {
         confidence: 0.8,
         reason: 'default',
         language: 'he',
-        region: 'IL',
+        regionCandidate: 'IL',
         regionConfidence: 0.7,
         regionReason: 'default'
       };
 
       assert.doesNotThrow(() => IntentLLMSchema.parse(response));
+    });
+  });
+
+  it('should accept valid routing reason values', () => {
+    // Valid reasons based on Intent2Reason type
+    const validReasons = [
+      'explicit_city_mentioned',
+      'default_textsearch',
+      'near_me_phrase',
+      'explicit_distance_from_me',
+      'landmark_detected',
+      'ambiguous'
+    ];
+
+    validReasons.forEach(reason => {
+      const response = {
+        route: 'TEXTSEARCH',
+        confidence: 0.8,
+        reason,
+        language: 'he',
+        regionCandidate: 'IL',
+        regionConfidence: 0.7,
+        regionReason: 'language_hint'
+      };
+
+      assert.doesNotThrow(() => IntentLLMSchema.parse(response));
+    });
+  });
+
+  it('should accept any 2-letter uppercase region codes (validation happens downstream)', () => {
+    // Schema accepts any 2-letter uppercase codes (IS, TQ, XX, etc.)
+    // Actual validation against ISO-3166-1 happens in sanitizeRegionCode
+    const validFormat = ['IS', 'TQ', 'XX', 'ZZ', 'IL', 'US'];
+
+    validFormat.forEach(regionCode => {
+      const response = {
+        route: 'TEXTSEARCH',
+        confidence: 0.8,
+        reason: 'default',
+        language: 'he',
+        regionCandidate: regionCode,
+        regionConfidence: 0.7,
+        regionReason: 'default'
+      };
+
+      assert.doesNotThrow(
+        () => IntentLLMSchema.parse(response),
+        `Should accept 2-letter uppercase: ${regionCode}`
+      );
+    });
+  });
+
+  it('should reject malformed region codes', () => {
+    // Test truly invalid formats (not 2 uppercase letters)
+    const invalidFormats = ['ISR', '12', 'il', 'Us', 'I', ''];
+
+    invalidFormats.forEach(invalidFormat => {
+      const response = {
+        route: 'TEXTSEARCH',
+        confidence: 0.8,
+        reason: 'default',
+        language: 'he',
+        regionCandidate: invalidFormat,
+        regionConfidence: 0.7,
+        regionReason: 'default'
+      };
+
+      assert.throws(
+        () => IntentLLMSchema.parse(response),
+        `Should reject malformed region code: ${invalidFormat}`
+      );
     });
   });
 });

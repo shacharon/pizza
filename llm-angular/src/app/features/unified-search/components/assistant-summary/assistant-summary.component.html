@@ -3,7 +3,9 @@
        [class.streaming]="isStreaming()"
        [class.completed]="isCompleted()"
        [class.failed]="isFailed()"
-       [class.multi-message]="useMultiMessage()">
+       [class.multi-message]="useMultiMessage()"
+       [class.rtl]="isRTL()"
+       [attr.dir]="isRTL() ? 'rtl' : 'ltr'">
     
     <!-- MULTI-MESSAGE MODE: Render all card messages in timestamp order -->
     @if (useMultiMessage()) {
