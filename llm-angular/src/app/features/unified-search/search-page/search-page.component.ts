@@ -265,9 +265,30 @@ export class SearchPageComponent implements OnInit, OnDestroy {
     const groups = this.response()?.groups;
     if (!groups) return [];
     // Flatten groups, preserving backend order
-    const allResults = groups.flatMap(g => g.results);
+    let allResults = groups.flatMap(g => g.results);
+    
+    // CLIENT-SIDE FILTERING: Apply openNow filter if active
+    // This ensures closed places are never shown when "Open now" is selected
+    const appliedFilters = this.response()?.meta?.appliedFilters || [];
+    if (appliedFilters.includes('open_now')) {
+      allResults = allResults.filter(r => r.openNow === true);
+    }
+    
     // Apply display limit
     return allResults.slice(0, this.displayLimit());
+  });
+
+  // CLIENT-SIDE FILTERING: Filter results for non-grouped view
+  readonly filteredResults = computed(() => {
+    let results = this.facade.results();
+    
+    // Apply openNow filter if active
+    const appliedFilters = this.response()?.meta?.appliedFilters || [];
+    if (appliedFilters.includes('open_now')) {
+      results = results.filter(r => r.openNow === true);
+    }
+    
+    return results;
   });
 
   readonly hasMoreResults = computed(() => {

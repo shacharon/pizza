@@ -69,7 +69,7 @@ describe('SearchAssistantHandler - Message Reset & RequestId Scoping', () => {
       handler.addMessage('SUMMARY', 'Summary 2', 'req-2');
 
       const messages = handler.messages();
-      
+
       // Verify both messages have requestIds
       expect(messages[0].requestId).toBe('req-1');
       expect(messages[1].requestId).toBe('req-2');
@@ -84,14 +84,14 @@ describe('SearchAssistantHandler - Message Reset & RequestId Scoping', () => {
       handler.addMessage('SUMMARY', 'Summary 2', 'req-2');
 
       const messages = handler.messages();
-      
+
       // Verify all messages are stored
       expect(messages.length).toBe(3);
 
       // Verify requestIds
       const req1Messages = messages.filter(m => m.requestId === 'req-1');
       const req2Messages = messages.filter(m => m.requestId === 'req-2');
-      
+
       expect(req1Messages.length).toBe(2);
       expect(req2Messages.length).toBe(1);
     });

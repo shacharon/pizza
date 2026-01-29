@@ -72,18 +72,18 @@ export class SearchWsHandler {
     // Only process messages that match the current active requestId
     if ('requestId' in msg && (msg as any).requestId) {
       const msgRequestId = (msg as any).requestId;
-      
+
       // No active search - ignore all request-specific messages
       if (!currentRequestId) {
         console.debug('[SearchWsHandler] Ignoring message - no active search', { msgRequestId });
         return true;
       }
-      
+
       // Different requestId - ignore (old search)
       if (msgRequestId !== currentRequestId) {
-        console.debug('[SearchWsHandler] Ignoring message from old request', { 
-          msgRequestId, 
-          currentRequestId 
+        console.debug('[SearchWsHandler] Ignoring message from old request', {
+          msgRequestId,
+          currentRequestId
         });
         return true;
       }
@@ -118,7 +118,7 @@ export class SearchWsHandler {
     if ((msg as any).type === 'assistant' && 'payload' in (msg as any)) {
       const payload = (msg as any).payload;
       const validTypes = ['CLARIFY', 'SUMMARY', 'GATE_FAIL'];
-      
+
       // Validate payload has proper assistant type
       if (payload && payload.type && validTypes.includes(payload.type)) {
         console.log('[WS][assistant] Valid LLM message:', payload.type, { requestId: (msg as any).requestId });
@@ -134,7 +134,7 @@ export class SearchWsHandler {
     if ('channel' in (msg as any) && (msg as any).channel === 'assistant') {
       const payload = (msg as any).payload;
       const validTypes = ['CLARIFY', 'SUMMARY', 'GATE_FAIL'];
-      
+
       // Validate legacy format also has proper type
       if (payload && payload.type && validTypes.includes(payload.type)) {
         console.log('[SearchWsHandler] Valid LLM assistant message on assistant channel');

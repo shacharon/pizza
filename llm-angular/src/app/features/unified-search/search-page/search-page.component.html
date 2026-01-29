@@ -135,18 +135,24 @@
       
       <div class="results-header">
         <!-- Applied Filters Chips -->
-        @if (glutenFreeFilterActive()) {
         <div class="applied-filters">
+          @if (closedFilterActive() === 'open') {
+          <span class="filter-chip open-now" 
+                [title]="facade.response()?.query?.language === 'he' ? 'מציג רק מסעדות פתוחות עכשיו' : 'Showing only restaurants open now'">
+            {{ facade.response()?.query?.language === 'he' ? '🟢 פתוח עכשיו' : '🟢 Open now' }}
+          </span>
+          }
+          @if (glutenFreeFilterActive()) {
           <span class="filter-chip gluten-free" 
                 [title]="facade.response()?.query?.language === 'he' ? 'מבוסס על רמזים בטקסט — לא מובטח' : 'Based on text signals — not guaranteed'">
             {{ facade.response()?.query?.language === 'he' ? 'ללא גלוטן (רמזים)' : 'Gluten-free (signals)' }}
           </span>
+          }
         </div>
-        }
       </div>
 
       <div class="results-grid">
-        @for (restaurant of facade.results(); track trackByRestaurant($index, restaurant)) {
+        @for (restaurant of filteredResults(); track trackByRestaurant($index, restaurant)) {
         <app-restaurant-card [restaurant]="restaurant" [selected]="facade.selectedRestaurant()?.id === restaurant.id"
           (cardClick)="onCardClick($event)" (actionClick)="onActionClick($event, restaurant)" />
         }
