@@ -1,9 +1,12 @@
 /**
  * Search Bar Component
  * Presentational component for search input
+ * 
+ * CONTROLLED INPUT: Query value is managed by parent via `value` input.
+ * The input persists exactly as the user typed until manually edited.
  */
 
-import { Component, input, output, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, input, output, signal, effect, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 @Component({
@@ -16,6 +19,7 @@ import { FormsModule } from '@angular/forms';
 })
 export class SearchBarComponent {
   // Inputs
+  readonly value = input<string>(''); // CONTROLLED: Parent provides the query value
   readonly placeholder = input('Search for restaurants...');
   readonly disabled = input(false);
   readonly loading = input(false);
@@ -25,8 +29,19 @@ export class SearchBarComponent {
   readonly clear = output<void>();
   readonly inputChange = output<string>(); // NEW: Phase B
 
-  // Local state
+  // Local state (synced with parent via effect)
   readonly query = signal('');
+
+  constructor() {
+    // Sync local query with parent's value input
+    // This ensures the input reflects the parent's state (persisted query)
+    effect(() => {
+      const parentValue = this.value();
+      if (parentValue !== this.query()) {
+        this.query.set(parentValue);
+      }
+    });
+  }
 
   onSearch(): void {
     const q = this.query().trim();

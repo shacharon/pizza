@@ -9,7 +9,7 @@ import type { Route2Context, Gate2StageOutput, IntentResult } from './types.js';
 import type { RouteLLMMapping } from './stages/route-llm/schemas.js';
 import { logger } from '../../../lib/logger/structured-logger.js';
 import { startStage, endStage } from '../../../lib/telemetry/stage-timer.js';
-import { generateAndPublishAssistant } from './assistant/assistant-integration.js';
+import { generateAndPublishAssistant, generateAndPublishAssistantDeferred } from './assistant/assistant-integration.js';
 import type { AssistantSummaryContext, AssistantGenericQueryNarrationContext } from './assistant/assistant-llm.service.js';
 import { resolveAssistantLanguage, resolveSessionId } from './orchestrator.helpers.js';
 import type { WebSocketManager } from '../../../infra/websocket/websocket-manager.js';
@@ -39,8 +39,7 @@ export async function buildFinalResponse(
   const uiLanguage: 'he' | 'en' = detectedLanguage === 'he' ? 'he' : 'en';
   const googleLanguage: 'he' | 'en' = detectedLanguage === 'he' ? 'he' : 'en';
 
-  // Prepare assistant summary
-  const fallbackHttpMessage = finalResults.length === 0 ? 'לא מצאתי תוצאות. נסה לשנות עיר/אזור או להסיר סינון.' : '';
+  // Prepare assistant summary context
   const top3Names = finalResults.slice(0, 3).map((r: any) => r.name || 'Unknown');
 
   // DIETARY NOTE: Check if gluten-free soft hint should be included
@@ -80,16 +79,20 @@ export async function buildFinalResponse(
     } : {})
   };
 
-  const assistMessage = await generateAndPublishAssistant(
+  // NON-BLOCKING: Fire assistant generation asynchronously (deferred)
+  // Don't await - results can be published immediately
+  generateAndPublishAssistantDeferred(
     ctx,
     requestId,
     sessionId,
     assistantContext,
-    fallbackHttpMessage,
     wsManager
   );
 
-  // Generic query narration (if flagged)
+  // HTTP response message: empty (WebSocket clients get real assistant message when ready)
+  const assistMessage = '';
+
+  // Generic query narration (if flagged) - also non-blocking
   if ((ctx as any).isGenericQuery && ctx.userLocation) {
     logger.info(
       {
@@ -109,16 +112,12 @@ export async function buildFinalResponse(
       usedCurrentLocation: true
     };
 
-    const narrationFallback = detectedLanguage === 'he' 
-      ? 'חיפשתי לפי המיקום הנוכחי שלך. איזה סוג אוכל מעניין אותך?'
-      : 'I searched near your current location. What type of cuisine interests you?';
-
-    await generateAndPublishAssistant(
+    // Fire deferred (non-blocking)
+    generateAndPublishAssistantDeferred(
       ctx,
       requestId,
       sessionId,
       narrationContext,
-      narrationFallback,
       wsManager
     );
   }

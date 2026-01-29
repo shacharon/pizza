@@ -6,6 +6,7 @@
  * Pure LLM → strict JSON parsing → done.
  */
 
+import { createHash } from 'node:crypto';
 import type { LLMProvider } from '../../../../llm/types.js';
 import { logger } from '../../../../lib/logger/structured-logger.js';
 import { buildLLMOptions } from '../../../../lib/llm/index.js';
@@ -108,9 +109,15 @@ Rules:
 - Be friendly, concise (1-2 sentences max for message), helpful
 - CRITICAL: Respond in the EXACT language specified (he=Hebrew ONLY, en=English ONLY)
 - "question" field: add a clarifying question when needed (CLARIFY should ask, others optional)
-- "blocksSearch": YOU decide based on context (true = stop search, false = continue)
+- "blocksSearch": 
+  * SUMMARY type: MUST be false (search already completed, showing results)
+  * GENERIC_QUERY_NARRATION type: MUST be false (search already completed)
+  * CLARIFY/GATE_FAIL type: MUST be true (search cannot proceed)
+  * SEARCH_FAILED type: usually true (search failed, user should try again)
 - "suggestedAction": YOU decide what helps user most
-- NO HARD RULES - use your judgment to help the user
+- Type-specific rules:
+  * SUMMARY: blocksSearch MUST be false, suggestedAction MUST be NONE (user is viewing results)
+  * GENERIC_QUERY_NARRATION: blocksSearch MUST be false, suggestedAction MUST be REFINE
 
 Schema: {"type":"GATE_FAIL|CLARIFY|SUMMARY|SEARCH_FAILED|GENERIC_QUERY_NARRATION","message":"...","question":"..."|null,"suggestedAction":"NONE|ASK_LOCATION|ASK_FOOD|RETRY|EXPAND_RADIUS|REFINE","blocksSearch":true|false}`;
 
@@ -224,6 +231,12 @@ Generate insight-based message that helps user understand the results.`;
 
 export const ASSISTANT_SCHEMA_VERSION = 'v3_strict_validation';
 export const ASSISTANT_PROMPT_VERSION = 'v2_language_enforcement';
+
+// Generate schema hash for telemetry (consistent with other mappers)
+export const ASSISTANT_SCHEMA_HASH = createHash('sha256')
+  .update(JSON.stringify(ASSISTANT_JSON_SCHEMA), 'utf8')
+  .digest('hex')
+  .substring(0, 12);
 
 // ============================================================================
 // Validation & Normalization
@@ -351,17 +364,21 @@ function enforceInvariants(
   }
 
   // SUMMARY invariants
+  // CORRECTNESS: SUMMARY is shown AFTER search completes with results
+  // blocksSearch=true would be logically incorrect (search already ran)
+  // This enforcement is a safety net - prompt explicitly forbids this
   if (context.type === 'SUMMARY') {
     // blocksSearch MUST be false
     if (normalized.blocksSearch) {
       logger.warn({
         requestId,
-        event: 'assistant_invariant_enforced',
+        event: 'assistant_invariant_violation_enforced',
         type: 'SUMMARY',
         field: 'blocksSearch',
         llmValue: normalized.blocksSearch,
-        enforcedValue: false
-      }, '[ASSISTANT] Enforcing SUMMARY invariant: blocksSearch=false');
+        enforcedValue: false,
+        severity: 'PROMPT_VIOLATION' // LLM ignored explicit prompt rule
+      }, '[ASSISTANT] CRITICAL: LLM returned blocksSearch=true for SUMMARY (violates prompt) - enforcing false');
       normalized.blocksSearch = false;
       changed = true;
     }
@@ -727,6 +744,10 @@ export async function generateAssistantMessage(
     if (opts?.timeout) llmOpts.timeout = opts.timeout;
     if (opts?.traceId) (llmOpts as any).traceId = opts.traceId;
     if (opts?.sessionId) (llmOpts as any).sessionId = opts.sessionId;
+    
+    // CORRECTNESS FIX: Always emit promptVersion and schemaHash for telemetry
+    (llmOpts as any).promptVersion = ASSISTANT_PROMPT_VERSION;
+    (llmOpts as any).schemaHash = ASSISTANT_SCHEMA_HASH;
 
     const result = await llmProvider.completeJSON(
       messages,

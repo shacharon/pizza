@@ -67,6 +67,78 @@ export async function generateAndPublishAssistant(
 }
 
 /**
+ * Generate and publish assistant SUMMARY message asynchronously (deferred)
+ * 
+ * Non-blocking: Returns immediately, assistant generation happens in background
+ * Publishes to WebSocket when ready, or logs error if failed
+ * 
+ * Use this for SUMMARY messages to avoid blocking pipeline completion
+ */
+export function generateAndPublishAssistantDeferred(
+  ctx: Route2Context,
+  requestId: string,
+  sessionId: string,
+  context: AssistantContext,
+  wsManager: WebSocketManager
+): void {
+  // Fire and forget - don't await
+  (async () => {
+    const startTime = Date.now();
+    
+    logger.info({
+      requestId,
+      assistantType: context.type,
+      sessionIdPresent: !!sessionId,
+      event: 'assistant_deferred_start'
+    }, '[ASSISTANT] Deferred generation started (non-blocking)');
+
+    try {
+      const opts: any = {};
+      if (ctx.traceId) opts.traceId = ctx.traceId;
+      if (ctx.sessionId) opts.sessionId = ctx.sessionId;
+
+      const assistant = await generateAssistantMessage(context, ctx.llmProvider, requestId, opts);
+
+      const durationMs = Date.now() - startTime;
+      logger.info({
+        requestId,
+        assistantType: context.type,
+        durationMs,
+        event: 'assistant_deferred_done'
+      }, '[ASSISTANT] Deferred generation completed');
+
+      // Publish to WebSocket
+      publishAssistantMessage(wsManager, requestId, sessionId, assistant);
+    } catch (error) {
+      const durationMs = Date.now() - startTime;
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      const isTimeout = errorMsg.toLowerCase().includes('timeout') || errorMsg.toLowerCase().includes('abort');
+      const isSchemaError = errorMsg.toLowerCase().includes('schema') || errorMsg.toLowerCase().includes('validation');
+      
+      const errorCode = isTimeout ? 'LLM_TIMEOUT' : (isSchemaError ? 'SCHEMA_INVALID' : 'LLM_FAILED');
+      
+      logger.warn({
+        requestId,
+        event: 'assistant_deferred_error',
+        errorCode,
+        error: errorMsg,
+        durationMs
+      }, '[ASSISTANT] Deferred generation failed - publishing error event');
+      
+      // Publish assistant_error event (no user-facing message)
+      publishAssistantError(wsManager, requestId, sessionId, errorCode);
+    }
+  })().catch(err => {
+    // Safety net for unhandled promise rejections
+    logger.error({
+      requestId,
+      event: 'assistant_deferred_unhandled_error',
+      error: err instanceof Error ? err.message : String(err)
+    }, '[ASSISTANT] Unhandled error in deferred generation');
+  });
+}
+
+/**
  * Publish assistant message on pipeline failure (SEARCH_FAILED)
  * 
  * Triggers LLM-generated assistant message for provider timeouts and pipeline failures

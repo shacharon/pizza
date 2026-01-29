@@ -234,7 +234,7 @@ export async function callGooglePlacesSearchNearby(
 
   // Pre-request diagnostics (safe logging - no secrets)
   const callStartTime = Date.now();
-  logger.info({
+  logger.debug({
     requestId,
     provider: 'google_places_new',
     providerMethod: 'searchNearby',
@@ -296,13 +296,18 @@ export async function callGooglePlacesSearchNearby(
     const data = await response.json();
     callDurationMs = Date.now() - callStartTime;
     
-    logger.info({
+    // Threshold-based logging: INFO if slow (>2000ms), DEBUG otherwise
+    const isSlow = callDurationMs > 2000;
+    const logLevel = isSlow ? 'info' : 'debug';
+
+    logger[logLevel]({
       requestId,
       provider: 'google_places_new',
       providerMethod: 'searchNearby',
       durationMs: callDurationMs,
       placesCount: data.places?.length || 0,
-      event: 'google_api_call_success'
+      event: 'google_api_call_success',
+      ...(isSlow && { slow: true })
     }, '[GOOGLE] API call succeeded');
     
     return data;

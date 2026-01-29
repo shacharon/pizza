@@ -75,6 +75,7 @@ function parseNumericParam(value: string | undefined, defaultValue: number, min:
 router.get('/places/:placeId/photos/:photoId', async (req: Request, res: Response) => {
   const requestId = req.traceId || 'unknown';
   const ip = req.socket.remoteAddress || 'unknown';
+  const startTime = Date.now();
   
   try {
     // Build photo reference from path parameters
@@ -147,15 +148,6 @@ router.get('/places/:placeId/photos/:photoId', async (req: Request, res: Respons
     
     const googleUrl = `https://places.googleapis.com/v1/${validatedRef}/media?${params.toString()}`;
 
-    logger.info({
-      requestId,
-      ip,
-      photoRefHash,
-      maxWidthPx: validatedWidth,
-      maxHeightPx: validatedHeight || 'auto',
-      msg: '[PhotoProxy] Fetching photo from Google'
-    });
-
     // Fetch photo from Google
     const response = await fetchWithTimeout(googleUrl, {
       method: 'GET',
@@ -171,12 +163,14 @@ router.get('/places/:placeId/photos/:photoId', async (req: Request, res: Respons
 
     if (!response.ok) {
       const statusCode = response.status;
+      const durationMs = Date.now() - startTime;
       
       logger.error({
         requestId,
         ip,
         photoRefHash,
         status: statusCode,
+        durationMs,
         msg: '[PhotoProxy] Google API error'
       });
 
@@ -208,11 +202,14 @@ router.get('/places/:placeId/photos/:photoId', async (req: Request, res: Respons
 
     // Validate content type is an image
     if (!contentType.startsWith('image/')) {
+      const durationMs = Date.now() - startTime;
+      
       logger.error({
         requestId,
         ip,
         photoRefHash,
         contentType,
+        durationMs,
         msg: '[PhotoProxy] Invalid content type from Google'
       });
       
@@ -241,19 +238,33 @@ router.get('/places/:placeId/photos/:photoId', async (req: Request, res: Respons
     // Send photo
     res.send(Buffer.from(buffer));
 
-    logger.info({
+    // LOG NOISE REDUCTION: Single summary log with threshold-based level
+    const durationMs = Date.now() - startTime;
+    const sizeBytes = buffer.byteLength;
+    const isSlow = durationMs > 800;
+    const isLarge = sizeBytes > 250_000;
+    
+    // INFO only for slow or large photos, DEBUG otherwise
+    const logLevel = isSlow || isLarge ? 'info' : 'debug';
+    logger[logLevel]({
       requestId,
       ip,
       photoRefHash,
       contentType,
-      sizeBytes: buffer.byteLength,
-      msg: '[PhotoProxy] Photo served successfully'
+      sizeBytes,
+      durationMs,
+      ...(isSlow && { slow: true }),
+      ...(isLarge && { large: true }),
+      msg: '[PhotoProxy] Photo served'
     });
 
   } catch (error) {
+    const durationMs = Date.now() - startTime;
+    
     logger.error({
       requestId,
       ip,
+      durationMs,
       error: error instanceof Error ? error.message : 'unknown',
       msg: '[PhotoProxy] Failed to fetch photo'
     });

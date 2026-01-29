@@ -71,14 +71,14 @@ export async function executeTextSearchMapper(
     ];
 
     // DIAGNOSTIC: Log schema before OpenAI call
+    // hasBiasCandidate = schema supports locationBias field (LLM can return it)
     logger.info({
       requestId,
       stage: 'textsearch_mapper',
       event: 'schema_check_before_llm',
       schemaId: 'TEXTSEARCH_JSON_SCHEMA',
       schemaKeys: Object.keys(TEXTSEARCH_JSON_SCHEMA.properties),
-      hasBias: Boolean((TEXTSEARCH_JSON_SCHEMA.properties as any).bias),
-      hasBiasLat: Boolean((TEXTSEARCH_JSON_SCHEMA.properties as any).biasLat),
+      hasBiasCandidate: Boolean((TEXTSEARCH_JSON_SCHEMA.properties as any).locationBias),
       schemaHash: TEXTSEARCH_SCHEMA_HASH
     });
 

@@ -487,7 +487,7 @@ export class WebSocketManager {
     if (!clients || clients.size === 0) {
       this.backlogManager.enqueue(key, message, channel, requestId);
 
-      logger.info({
+      logger.debug({
         channel,
         requestId,
         sessionHash,
@@ -539,7 +539,9 @@ export class WebSocketManager {
       }
       : {};
 
-    logger.info({
+    // Log at INFO for errors, DEBUG for status/progress/ready
+    const level = message.type === 'error' ? 'info' : 'debug';
+    logger[level]({
       channel,
       requestId,
       sessionHash,

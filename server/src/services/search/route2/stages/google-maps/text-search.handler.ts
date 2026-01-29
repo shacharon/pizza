@@ -25,6 +25,7 @@ export async function executeTextSearch(
   const { requestId } = ctx;
   const startTime = Date.now();
 
+  // hasBiasPlanned = will attempt to apply bias (either from LLM or city geocode)
   logger.info({
     requestId,
     provider: 'google_places_new',
@@ -32,7 +33,8 @@ export async function executeTextSearch(
     textQuery: mapping.textQuery,
     region: mapping.region,
     language: mapping.language,
-    hasBias: !!mapping.bias || !!mapping.cityText,
+    hasBiasPlanned: !!mapping.bias || !!mapping.cityText,
+    biasSource: mapping.bias ? 'llm_locationBias' : (mapping.cityText ? 'cityText_pending_geocode' : null),
     ...(mapping.cityText && { cityText: mapping.cityText })
   }, '[GOOGLE] Calling Text Search API (New)');
 
@@ -238,12 +240,16 @@ async function executeTextSearchAttempt(
           requestId,
           cityText: mapping.cityText,
           coords: cityCoords,
+          hadOriginalBias: !!mapping.bias,
           event: 'city_geocoded_for_bias'
         }, '[GOOGLE] City geocoded successfully, applying location bias');
 
+        // CORRECTNESS FIX: Preserve original locationBias if it exists (from LLM)
+        // Only use geocoded bias as fallback when no bias provided
+        // This ensures LLM-generated bias is not dropped when cityText exists
         enrichedMapping = {
           ...mapping,
-          bias: {
+          bias: mapping.bias || {
             type: 'locationBias' as const,
             center: cityCoords,
             radiusMeters: 20000 // 20km radius for city-level bias
@@ -275,6 +281,7 @@ async function executeTextSearchAttempt(
     .digest('hex')
     .substring(0, 12);
 
+  // hasBiasApplied = final request body includes locationBias
   logger.info({
     requestId,
     event: 'textsearch_request_payload',
@@ -283,8 +290,8 @@ async function executeTextSearchAttempt(
     languageCode: requestBody.languageCode,
     regionCode: requestBody.regionCode || null,
     regionCodeSent: !!requestBody.regionCode,
-    hasBias: !!requestBody.locationBias,
-    biasSource: enrichedMapping.cityText && enrichedMapping.bias ? 'cityText_geocoded' : (mapping.bias ? 'provided' : null),
+    hasBiasApplied: !!requestBody.locationBias,
+    biasSource: enrichedMapping.cityText && enrichedMapping.bias ? 'cityText_geocoded' : (mapping.bias ? 'llm_locationBias' : null),
     maxResultCount: maxResults
   }, '[GOOGLE] Text Search request payload');
 
@@ -419,7 +426,7 @@ export async function callGooglePlacesSearchText(
 
   // Pre-request diagnostics (safe logging - no secrets)
   const callStartTime = Date.now();
-  logger.info({
+  logger.debug({
     requestId,
     provider: 'google_places_new',
     providerMethod: 'searchText',
@@ -481,13 +488,18 @@ export async function callGooglePlacesSearchText(
     const data = await response.json();
     callDurationMs = Date.now() - callStartTime;
 
-    logger.info({
+    // Threshold-based logging: INFO if slow (>2000ms), DEBUG otherwise
+    const isSlow = callDurationMs > 2000;
+    const logLevel = isSlow ? 'info' : 'debug';
+
+    logger[logLevel]({
       requestId,
       provider: 'google_places_new',
       providerMethod: 'searchText',
       durationMs: callDurationMs,
       placesCount: data.places?.length || 0,
-      event: 'google_api_call_success'
+      event: 'google_api_call_success',
+      ...(isSlow && { slow: true })
     }, '[GOOGLE] API call succeeded');
 
     return data;

@@ -272,8 +272,12 @@ export class OpenAiProvider implements LLMProvider {
                 const parseMs = Math.round((t4 - t3) * 100) / 100;
                 const totalMs = Math.round((t4 - t0) * 100) / 100;
 
+                // Threshold-based logging: INFO if slow, DEBUG otherwise
+                const isSlow = networkMs > 1500 || totalMs > 1500;
+                const logLevel = isSlow ? 'info' : 'debug';
+
                 // Log detailed timing once per attempt
-                logger.info({
+                logger[logLevel]({
                     msg: 'llm_gate_timing',
                     stage: opts?.stage || 'unknown',
                     promptVersion: opts?.promptVersion || 'unknown',
@@ -293,7 +297,8 @@ export class OpenAiProvider implements LLMProvider {
                     inputTokens,
                     outputTokens,
                     retriesCount: attempt,
-                    success: true
+                    success: true,
+                    ...(isSlow && { slow: true })
                 }, 'llm_gate_timing');
 
                 logger.debug({

@@ -55,6 +55,9 @@ export function redactRedisUrl(url: string): { urlRedacted: string; host: string
 
 /**
  * Standardized cache event logger
+ * 
+ * LOG NOISE REDUCTION: All cache events moved to DEBUG level
+ * Cache events are high-frequency and provide little value at INFO in production
  */
 export class CacheLogger {
   constructor(private logger: Logger) {}
@@ -63,7 +66,7 @@ export class CacheLogger {
    * Log cache wrap entry
    */
   wrapEnter(ctx: CacheLogContext, cacheKeyHash: string, ttlSeconds: number): void {
-    this.logger.info({
+    this.logger.debug({
       ...ctx,
       event: 'CACHE_WRAP_ENTER',
       cacheKeyHash,
@@ -84,7 +87,7 @@ export class CacheLogger {
       cacheAgeMs?: number;
     }
   ): void {
-    this.logger.info({
+    this.logger.debug({
       ...ctx,
       event: 'CACHE_HIT',
       cacheKeyHash,
@@ -98,7 +101,7 @@ export class CacheLogger {
    * Log cache MISS
    */
   miss(ctx: CacheLogContext, cacheKeyHash: string): void {
-    this.logger.info({
+    this.logger.debug({
       ...ctx,
       event: 'CACHE_MISS',
       cacheKeyHash,
@@ -117,7 +120,7 @@ export class CacheLogger {
     ttlSeconds: number,
     isEmpty?: boolean
   ): void {
-    this.logger.info({
+    this.logger.debug({
       ...ctx,
       event: 'CACHE_STORE',
       cacheKeyHash,
@@ -137,7 +140,7 @@ export class CacheLogger {
     cacheHitTier: CacheTier | null,
     durationMs: number
   ): void {
-    this.logger.info({
+    this.logger.debug({
       ...ctx,
       event: 'CACHE_WRAP_EXIT',
       cacheKeyHash,
