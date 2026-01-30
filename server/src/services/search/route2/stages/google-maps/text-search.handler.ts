@@ -1,6 +1,12 @@
 /**
- * Text Search Handler
+ * Text Search Handler (ORCHESTRATION)
  * Handles Google Places Text Search API calls with retries, caching, and pagination
+ * 
+ * Architecture:
+ * - Orchestrates cache, retry, and pagination strategies
+ * - Delegates pagination to pagination-handler
+ * - Delegates retry logic to retry-strategy
+ * - Handles API communication and error recovery
  */
 
 import { createHash } from 'node:crypto';
@@ -8,7 +14,8 @@ import { logger } from '../../../../../lib/logger/structured-logger.js';
 import { fetchWithTimeout, type FetchErrorKind } from '../../../../../utils/fetch-with-timeout.js';
 import { generateTextSearchCacheKey } from '../../../../../lib/cache/googleCacheUtils.js';
 import { getCacheService, raceWithCleanup } from './cache-manager.js';
-import { mapGooglePlaceToResult } from './result-mapper.js';
+import { fetchAllPages } from './pagination-handler.js';
+import { executeRetryStrategy } from './retry-strategy.js';
 import type { RouteLLMMapping, Route2Context } from '../../types.js';
 
 // Field mask for Google Places API (New) - includes opening hours data
@@ -53,47 +60,17 @@ export async function executeTextSearch(
   const fetchFn = async (): Promise<any[]> => {
     try {
       // First attempt
-      let results = await executeTextSearchAttempt(mapping, apiKey, requestId);
+      const initialResults = await executeTextSearchAttempt(mapping, apiKey, requestId);
 
-      // Retry logic for low results (Fix #4) - must materially change request
-      if (results.length <= 1 && mapping.bias) {
-        logger.info({
-          requestId,
-          provider: 'google_places_new',
-          method: 'searchText',
-          event: 'textsearch_retry_low_results',
-          beforeCount: results.length,
-          reason: 'low_results_with_bias',
-          originalBias: mapping.bias,
-          originalTextQuery: mapping.textQuery,
-          originalLanguage: mapping.language
-        }, '[GOOGLE] Low results detected, retrying with bias removed');
+      // Retry logic for low results (delegated to retry-strategy)
+      const retryResult = await executeRetryStrategy(
+        initialResults,
+        mapping,
+        (retryMapping) => executeTextSearchAttempt(retryMapping, apiKey, requestId),
+        requestId
+      );
 
-        // Retry strategy: Remove bias entirely to get broader results
-        const retryMapping: Extract<RouteLLMMapping, { providerMethod: 'textSearch' }> = {
-          ...mapping,
-          bias: undefined
-        };
-
-        const retryResults = await executeTextSearchAttempt(retryMapping, apiKey, requestId);
-
-        logger.info({
-          requestId,
-          provider: 'google_places_new',
-          method: 'searchText',
-          event: 'textsearch_retry_completed',
-          beforeCount: results.length,
-          afterCount: retryResults.length,
-          strategyUsed: 'removed_bias',
-          improvement: retryResults.length - results.length
-        }, '[GOOGLE] Retry completed');
-
-        if (retryResults.length > results.length) {
-          results = retryResults;
-        }
-      }
-
-      return results;
+      return retryResult.results;
     } catch (error) {
       // Don't cache errors - let them propagate
       throw error;
@@ -214,14 +191,13 @@ export async function executeTextSearch(
 
 /**
  * Execute a single Text Search attempt (helper for retry logic)
+ * Handles bias enrichment (cityText geocoding) and delegates pagination
  */
 async function executeTextSearchAttempt(
   mapping: Extract<RouteLLMMapping, { providerMethod: 'textSearch' }>,
   apiKey: string,
   requestId: string
 ): Promise<any[]> {
-  const results: any[] = [];
-  let nextPageToken: string | undefined;
   const maxResults = 20; // Limit total results across pages
 
   // If cityText exists and no bias is set, geocode the city to create location bias
@@ -295,28 +271,8 @@ async function executeTextSearchAttempt(
     maxResultCount: maxResults
   }, '[GOOGLE] Text Search request payload');
 
-  // Fetch first page
-  const firstResponse = await callGooglePlacesSearchText(requestBody, apiKey, requestId);
-  if (firstResponse.places) {
-    results.push(...firstResponse.places.map((r: any) => mapGooglePlaceToResult(r)));
-    nextPageToken = firstResponse.nextPageToken;
-  }
-
-  // Fetch additional pages if needed (up to maxResults)
-  while (nextPageToken && results.length < maxResults) {
-    // New API: no delay needed for pagination
-    const pageBody = { ...requestBody, pageToken: nextPageToken };
-    const pageResponse = await callGooglePlacesSearchText(pageBody, apiKey, requestId);
-
-    if (pageResponse.places) {
-      const remaining = maxResults - results.length;
-      const newResults = pageResponse.places.slice(0, remaining);
-      results.push(...newResults.map((r: any) => mapGooglePlaceToResult(r)));
-      nextPageToken = pageResponse.nextPageToken;
-    } else {
-      break;
-    }
-  }
+  // Delegate pagination to pagination-handler
+  const results = await fetchAllPages(requestBody, apiKey, requestId, maxResults);
 
   return results;
 }
