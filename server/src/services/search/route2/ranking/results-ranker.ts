@@ -71,27 +71,113 @@ export function rankResults(
     if (a.__rankingScore !== b.__rankingScore) {
       return b.__rankingScore - a.__rankingScore;
     }
-    
+
     // Tie-breaker 1: rating descending
     const ratingA = a.rating ?? 0;
     const ratingB = b.rating ?? 0;
     if (ratingA !== ratingB) {
       return ratingB - ratingA;
     }
-    
+
     // Tie-breaker 2: review count descending
     const reviewsA = a.userRatingsTotal ?? 0;
     const reviewsB = b.userRatingsTotal ?? 0;
     if (reviewsA !== reviewsB) {
       return reviewsB - reviewsA;
     }
-    
+
     // Final tie-breaker: original Google index ascending (preserve Google's order)
     return a.__googleIndex - b.__googleIndex;
   });
 
   // Remove internal ranking metadata and return clean results
   return scoredResults.map(({ __rankingScore, __googleIndex, ...result }) => result);
+}
+
+/**
+ * Score Breakdown for a single result (for logging/debugging)
+ */
+export interface ScoreBreakdown {
+  placeId: string;
+  rating: number | null;
+  userRatingCount: number | null;
+  distanceMeters: number | null;
+  openNow: boolean | 'UNKNOWN' | null;
+  weights: RankingWeights;
+  components: {
+    ratingScore: number;
+    reviewsScore: number;
+    distanceScore: number;
+    openBoostScore: number;
+  };
+  totalScore: number;
+}
+
+/**
+ * Compute score breakdown for a single result (for logging)
+ * 
+ * @param result - Restaurant result
+ * @param weights - Ranking weights
+ * @param userLocation - User location for distance calculation
+ * @returns Score breakdown with all components
+ */
+export function computeScoreBreakdown(
+  result: RankableResult,
+  weights: RankingWeights,
+  userLocation?: UserLocation | null
+): ScoreBreakdown {
+  // Rating normalized (0-1)
+  const ratingNorm = clamp((result.rating ?? 0) / 5, 0, 1);
+
+  // Reviews normalized (log scale, 0-1)
+  const reviewsNorm = clamp(Math.log10((result.userRatingsTotal ?? 0) + 1) / 5, 0, 1);
+
+  // Distance normalized (0-1, higher score for closer places)
+  let distanceNorm = 0;
+  let distanceMeters: number | null = null;
+  if (userLocation && result.location) {
+    const distanceKm = haversineDistance(
+      userLocation.lat,
+      userLocation.lng,
+      result.location.lat,
+      result.location.lng
+    );
+    distanceNorm = 1 / (1 + distanceKm);
+    distanceMeters = Math.round(distanceKm * 1000); // Convert km to meters
+  }
+
+  // Open/closed normalized (0-1)
+  let openNorm = 0.5; // Default for unknown
+  if (result.openNow === true) {
+    openNorm = 1;
+  } else if (result.openNow === false) {
+    openNorm = 0;
+  }
+
+  // Compute component scores (weighted)
+  const ratingScore = weights.rating * ratingNorm;
+  const reviewsScore = weights.reviews * reviewsNorm;
+  const distanceScore = weights.distance * distanceNorm;
+  const openBoostScore = weights.openBoost * openNorm;
+
+  // Total score
+  const totalScore = ratingScore + reviewsScore + distanceScore + openBoostScore;
+
+  return {
+    placeId: (result as any).placeId || (result as any).id || 'unknown',
+    rating: result.rating ?? null,
+    userRatingCount: result.userRatingsTotal ?? null,
+    distanceMeters,
+    openNow: result.openNow ?? null,
+    weights,
+    components: {
+      ratingScore: Math.round(ratingScore * 1000) / 1000, // 3 decimals
+      reviewsScore: Math.round(reviewsScore * 1000) / 1000,
+      distanceScore: Math.round(distanceScore * 1000) / 1000,
+      openBoostScore: Math.round(openBoostScore * 1000) / 1000
+    },
+    totalScore: Math.round(totalScore * 1000) / 1000
+  };
 }
 
 /**
@@ -112,11 +198,11 @@ function computeScore(
 ): number {
   // Rating normalized (0-1)
   const ratingNorm = clamp((result.rating ?? 0) / 5, 0, 1);
-  
+
   // Reviews normalized (log scale, 0-1)
   // log10(1000+1) ≈ 3, so we divide by 5 to get ~0.6 for 1000 reviews
   const reviewsNorm = clamp(Math.log10((result.userRatingsTotal ?? 0) + 1) / 5, 0, 1);
-  
+
   // Distance normalized (0-1, higher score for closer places)
   let distanceNorm = 0;
   if (userLocation && result.location) {
@@ -128,7 +214,7 @@ function computeScore(
     );
     distanceNorm = 1 / (1 + distanceKm);
   }
-  
+
   // Open/closed normalized (0-1)
   let openNorm = 0.5; // Default for unknown
   if (result.openNow === true) {
@@ -136,14 +222,14 @@ function computeScore(
   } else if (result.openNow === false) {
     openNorm = 0;
   }
-  
+
   // Compute weighted score
   const score =
     weights.rating * ratingNorm +
     weights.reviews * reviewsNorm +
     weights.distance * distanceNorm +
     weights.openBoost * openNorm;
-  
+
   return score;
 }
 
@@ -161,17 +247,17 @@ function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
   const R = 6371; // Earth's radius in km
   const dLat = toRadians(lat2 - lat1);
   const dLon = toRadians(lon2 - lon1);
-  
+
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.cos(toRadians(lat1)) *
-      Math.cos(toRadians(lat2)) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  
+    Math.cos(toRadians(lat2)) *
+    Math.sin(dLon / 2) *
+    Math.sin(dLon / 2);
+
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   const distance = R * c;
-  
+
   return distance;
 }
 

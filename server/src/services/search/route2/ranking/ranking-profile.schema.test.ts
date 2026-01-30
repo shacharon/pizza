@@ -1,10 +1,11 @@
 /**
  * Ranking Profile Schema Tests
- * Tests weight normalization logic
+ * Tests weight normalization logic and schema validity
  */
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
+import { zodToJsonSchema } from 'zod-to-json-schema';
 import { normalizeWeights, RankingSelectionSchema } from './ranking-profile.schema.js';
 
 describe('normalizeWeights', () => {
@@ -210,7 +211,7 @@ describe('RankingSelectionSchema', () => {
 
   it('should accept all valid profile types', () => {
     const profiles = ['NEARBY', 'QUALITY', 'OPEN_FOCUS', 'BALANCED'];
-    
+
     profiles.forEach(profile => {
       const data = {
         profile,

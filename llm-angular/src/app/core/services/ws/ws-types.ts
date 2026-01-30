@@ -38,6 +38,7 @@ export interface WSConnectionCallbacks {
   onClose: (event: CloseEvent) => void;
   onError: (event: Event) => void;
   onStatusChange: (status: ConnectionStatus) => void;
+  onTicketUnavailable?: (requestId?: string) => void; // Called when ws-ticket returns 503
 }
 
 /**

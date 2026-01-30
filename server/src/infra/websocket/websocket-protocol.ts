@@ -54,12 +54,22 @@ export interface WSClientLoadMore {
   totalShown: number; // Total results shown after append (e.g., 15)
 }
 
+export interface WSClientRevealLimitReached {
+  v?: 1; // Protocol version (v1 format)
+  type: 'reveal_limit_reached';
+  requestId: string;
+  channel?: 'assistant'; // Target channel (v1 format)
+  sessionId?: string;
+  uiLanguage?: 'he' | 'en'; // Language for the nudge message (optional, derived from job if missing)
+}
+
 export type WSClientMessage =
   | WSClientEnvelope
   | WSClientSubscribeLegacy
   | WSClientActionClicked
   | WSClientUIStateChanged
-  | WSClientLoadMore;
+  | WSClientLoadMore
+  | WSClientRevealLimitReached;
 
 // ============================================================================
 // Server → Client Messages
@@ -132,10 +142,12 @@ export interface WSServerAssistant {
   type: 'assistant';
   requestId: string;
   payload: {
-    type: 'GATE_FAIL' | 'CLARIFY' | 'SUMMARY' | 'SEARCH_FAILED' | 'GENERIC_QUERY_NARRATION';
+    type: 'GATE_FAIL' | 'CLARIFY' | 'SUMMARY' | 'SEARCH_FAILED' | 'GENERIC_QUERY_NARRATION' | 'NUDGE_REFINE';
     message: string;
     question: string | null;
     blocksSearch: boolean;
+    suggestedAction?: 'REFINE_QUERY';
+    uiLanguage?: 'he' | 'en';
   };
 }
 
@@ -247,6 +259,13 @@ export function isWSClientMessage(msg: any): msg is WSClientMessage {
         typeof msg.requestId === 'string' &&
         typeof msg.newOffset === 'number' &&
         typeof msg.totalShown === 'number'
+      );
+
+    case 'reveal_limit_reached':
+      return (
+        typeof msg.requestId === 'string' &&
+        typeof msg.uiLanguage === 'string' &&
+        (msg.uiLanguage === 'he' || msg.uiLanguage === 'en')
       );
 
     default:

@@ -18,6 +18,7 @@ import { AssistantLineComponent } from '../components/assistant-line/assistant-l
 import { ClarificationBlockComponent } from '../components/clarification-block/clarification-block.component';
 import { AssistantSummaryComponent } from '../components/assistant-summary/assistant-summary.component';
 import { LocationService } from '../../../services/location.service';
+import { WsClientService } from '../../../core/services/ws-client.service';
 import type { Restaurant, ClarificationChoice, Coordinates } from '../../../domain/types/search.types';
 import type { ActionType, ActionLevel } from '../../../domain/types/action.types';
 import { mapChipToSortKey } from '../../../domain/mappers/chip.mapper';
@@ -51,6 +52,7 @@ import '../../../facades/assistant-dev-tools';
 export class SearchPageComponent implements OnInit, OnDestroy {
   readonly facade = inject(SearchFacade);
   private readonly locationService = inject(LocationService);
+  private readonly wsClient = inject(WsClientService);
 
   private cleanupInterval?: number;
 
@@ -242,7 +244,19 @@ export class SearchPageComponent implements OnInit, OnDestroy {
 
   // GATE_FAIL + DONE_STOPPED UX: Should show results section
   readonly shouldShowResults = computed(() => {
-    // Hide results if DONE_STOPPED (pipeline stopped, no results by design)
+    // CLARIFY FIX: Use derived isStopped flag from facade
+    // isStopped = DONE_STOPPED OR blocksSearch (assistant requires input)
+    // When stopped, NEVER show results - only assistant message
+    if (this.facade.isStopped()) {
+      return false;
+    }
+
+    // Legacy checks (kept for backward compatibility)
+    // These should be redundant with isStopped check above
+    if (this.facade.cardState() === 'CLARIFY') {
+      return false;
+    }
+
     if (this.isDoneStopped()) {
       return false;
     }
@@ -259,12 +273,26 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   // NEW: Mobile-first UX - Bottom sheet and flattened results
   readonly bottomSheetVisible = signal(false);
 
-  // Pagination: Display limit
+  // Pagination: Display limit (start with 10, increment by 5, max 20)
   private displayLimit = signal(10);
+  private hasTriggeredRefinementSuggestion = signal(false);
 
-  readonly flatResults = computed(() => {
+  // CLIENT-SIDE FILTERING: Full results array (preserving backend order)
+  readonly fullResults = computed(() => {
     const groups = this.response()?.groups;
-    if (!groups) return [];
+    if (!groups) {
+      // Fallback: Use flat results if no groups
+      let results = this.facade.results();
+      
+      // Apply openNow filter if active
+      const appliedFilters = this.response()?.meta?.appliedFilters || [];
+      if (appliedFilters.includes('open_now')) {
+        results = results.filter(r => r.openNow === true);
+      }
+      
+      return results;
+    }
+    
     // Flatten groups, preserving backend order
     let allResults = groups.flatMap(g => g.results);
 
@@ -275,29 +303,34 @@ export class SearchPageComponent implements OnInit, OnDestroy {
       allResults = allResults.filter(r => r.openNow === true);
     }
 
-    // Apply display limit
-    return allResults.slice(0, this.displayLimit());
+    return allResults;
   });
 
-  // CLIENT-SIDE FILTERING: Filter results for non-grouped view
-  readonly filteredResults = computed(() => {
-    let results = this.facade.results();
-
-    // Apply openNow filter if active
-    const appliedFilters = this.response()?.meta?.appliedFilters || [];
-    if (appliedFilters.includes('open_now')) {
-      results = results.filter(r => r.openNow === true);
-    }
-
-    return results;
+  // Pagination: Visible results (sliced from full results)
+  readonly visibleResults = computed(() => {
+    return this.fullResults().slice(0, this.displayLimit());
   });
 
-  readonly hasMoreResults = computed(() => {
-    const groups = this.response()?.groups;
-    if (!groups) return false;
-    const totalResults = groups.flatMap(g => g.results).length;
-    return totalResults > this.displayLimit();
+  // Pagination: Total count of fetched results
+  readonly fetchedCount = computed(() => {
+    return this.fullResults().length;
   });
+
+  // Pagination: Can show more results? (max 20)
+  readonly canShowMore = computed(() => {
+    const limit = this.displayLimit();
+    const fetched = this.fetchedCount();
+    return limit < fetched && limit < 20;
+  });
+
+  // LEGACY: Keep flatResults for backward compatibility (aliased to visibleResults)
+  readonly flatResults = this.visibleResults;
+
+  // LEGACY: Keep filteredResults for backward compatibility (aliased to visibleResults)
+  readonly filteredResults = this.visibleResults;
+
+  // LEGACY: Keep hasMoreResults for backward compatibility (aliased to canShowMore)
+  readonly hasMoreResults = this.canShowMore;
 
   readonly highlightedResults = computed(() => {
     const results = this.flatResults();
@@ -382,8 +415,9 @@ export class SearchPageComponent implements OnInit, OnDestroy {
 
   onSearch(query: string): void {
     this.facade.search(query);
-    // Reset display limit on new search
+    // Reset display limit on new search (show 10 initially)
     this.displayLimit.set(10);
+    this.hasTriggeredRefinementSuggestion.set(false);
   }
 
   onClear(): void {
@@ -410,7 +444,72 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   }
 
   onActionClick(action: { type: ActionType; level: ActionLevel }, restaurant: Restaurant): void {
+    // Handle GET_DIRECTIONS immediately (no confirmation needed, external navigation)
+    if (action.type === 'GET_DIRECTIONS') {
+      this.handleGetDirections(restaurant);
+      return;
+    }
+
+    // Handle CALL_RESTAURANT immediately (no confirmation needed, tel: protocol)
+    if (action.type === 'CALL_RESTAURANT') {
+      this.handleCallRestaurant(restaurant);
+      return;
+    }
+
+    // All other actions go through confirmation flow
     this.facade.proposeAction(action.type, action.level, restaurant);
+  }
+
+  /**
+   * Handle GET_DIRECTIONS action
+   * Opens Google Maps in new tab (desktop) or native app (mobile)
+   */
+  private handleGetDirections(restaurant: Restaurant): void {
+    // Validate that we have location data (placeId or coordinates)
+    if (!restaurant.placeId && !restaurant.location) {
+      console.warn('[SearchPage] Cannot get directions - no location data', {
+        restaurantName: restaurant.name,
+        restaurantId: restaurant.id
+      });
+      return;
+    }
+
+    // Import navigation utility dynamically (code-splitting)
+    import('../../../utils/navigation.util').then(({ openNavigation }) => {
+      openNavigation(
+        {
+          placeId: restaurant.placeId,
+          lat: restaurant.location?.lat,
+          lng: restaurant.location?.lng
+        },
+        {
+          name: restaurant.name
+        }
+      );
+    }).catch((err) => {
+      console.error('[SearchPage] Failed to load navigation utility', err);
+    });
+  }
+
+  /**
+   * Handle CALL_RESTAURANT action
+   * Opens phone dialer with tel: protocol
+   */
+  private handleCallRestaurant(restaurant: Restaurant): void {
+    if (!restaurant.phoneNumber) {
+      console.warn('[SearchPage] Cannot call - phone number not available', {
+        restaurantName: restaurant.name,
+        placeId: restaurant.placeId
+      });
+      return;
+    }
+
+    // Import navigation utility dynamically
+    import('../../../utils/navigation.util').then(({ openPhoneDialer }) => {
+      openPhoneDialer(restaurant.phoneNumber!);
+    }).catch((err) => {
+      console.error('[SearchPage] Failed to load navigation utility', err);
+    });
   }
 
   // onPopularSearchClick removed with cuisine chips
@@ -428,8 +527,9 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   onChipClick(chipId: string): void {
     // Trigger actual filtering/sorting via facade (single source of truth)
     this.facade.onChipClick(chipId);
-    // Reset display limit when filtering/sorting (new search pool)
+    // Reset display limit when filtering/sorting (new search pool, show 10 initially)
     this.displayLimit.set(10);
+    this.hasTriggeredRefinementSuggestion.set(false);
   }
 
   closeBottomSheet(): void {
@@ -437,9 +537,136 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   }
 
   loadMore(): void {
-    // Increase display limit by 10
-    this.displayLimit.update(limit => limit + 10);
-    console.log('[SearchPage] Load more clicked, new limit:', this.displayLimit());
+    // Increase display limit by 5 (max 20)
+    const currentLimit = this.displayLimit();
+    const newLimit = Math.min(currentLimit + 5, 20);
+    this.displayLimit.set(newLimit);
+    console.log('[SearchPage] Load more clicked, visible:', newLimit);
+
+    // After reaching 20 results (second click: 10→15→20), show refinement suggestion
+    if (newLimit >= 20 && !this.hasTriggeredRefinementSuggestion()) {
+      this.hasTriggeredRefinementSuggestion.set(true);
+      this.triggerRefinementSuggestion();
+    }
+  }
+
+  /**
+   * Trigger assistant message suggesting query refinement
+   * Called when user has viewed all 20 results
+   * 
+   * Behavior:
+   * - If WS connected: Send signal to backend → backend responds with NUDGE_REFINE
+   * - If WS disconnected: Use local fallback from ws-nudge-copypack-v1.json
+   */
+  private async triggerRefinementSuggestion(): Promise<void> {
+    const requestId = this.facade.requestId();
+    const sessionId = this.facade.conversationId();
+    const queryLanguage = this.facade.response()?.query?.language || 'en';
+    
+    if (!requestId) return;
+
+    const wsConnected = this.wsClient.connectionStatus() === 'connected';
+
+    if (wsConnected) {
+      // Send WebSocket signal to backend (v1 protocol)
+      const message = {
+        v: 1,
+        type: 'reveal_limit_reached' as const,
+        requestId,
+        channel: 'assistant' as const,
+        uiLanguage: queryLanguage === 'he' ? ('he' as const) : ('en' as const)
+      };
+
+      this.wsClient.send(message);
+
+      console.log('[SearchPage] Reveal limit reached signal sent via WS', {
+        requestId,
+        wsConnected: true,
+        uiLanguage: message.uiLanguage
+      });
+    } else {
+      // Use local fallback (WS not connected)
+      console.log('[SearchPage] WS not connected - using local NUDGE_REFINE fallback', {
+        requestId,
+        wsConnected: false
+      });
+
+      const fallbackMessage = await this.getLocalNudgeMessage(requestId, queryLanguage === 'he' ? 'he' : 'en');
+      
+      if (fallbackMessage) {
+        // Inject local assistant message via public facade method
+        this.facade.addAssistantMessage(
+          'NUDGE_REFINE',
+          fallbackMessage,
+          requestId,
+          null, // no question
+          false // doesn't block search
+        );
+      }
+    }
+  }
+
+  /**
+   * Get local fallback NUDGE_REFINE message from copypack
+   * Uses deterministic selection based on requestId hash
+   */
+  private async getLocalNudgeMessage(requestId: string, language: 'he' | 'en'): Promise<string | null> {
+    try {
+      // Fetch copypack
+      const response = await fetch('/assets/copypack/ws-nudge-copypack-v1.json');
+      if (!response.ok) {
+        console.warn('[SearchPage] Failed to load copypack, using hardcoded fallback');
+        return this.getHardcodedFallback(language);
+      }
+
+      const copypack = await response.json();
+      const messages = copypack.messages[language];
+
+      if (!messages || !Array.isArray(messages) || messages.length === 0) {
+        console.warn('[SearchPage] Invalid copypack format, using hardcoded fallback');
+        return this.getHardcodedFallback(language);
+      }
+
+      // Deterministic selection: last character of requestId → index
+      // Algorithm: '0-3'→0, '4-7'→1, '8-b'→2, 'c-f'→3, else→0
+      const lastChar = requestId.charAt(requestId.length - 1).toLowerCase();
+      let index = 0;
+
+      if (['0', '1', '2', '3'].includes(lastChar)) {
+        index = 0;
+      } else if (['4', '5', '6', '7'].includes(lastChar)) {
+        index = 1;
+      } else if (['8', '9', 'a', 'b'].includes(lastChar)) {
+        index = 2;
+      } else if (['c', 'd', 'e', 'f'].includes(lastChar)) {
+        index = 3;
+      }
+
+      // Ensure index is within bounds
+      index = index % messages.length;
+
+      console.log('[SearchPage] Selected local NUDGE_REFINE message', {
+        requestId,
+        lastChar,
+        index,
+        totalMessages: messages.length
+      });
+
+      return messages[index];
+
+    } catch (error) {
+      console.error('[SearchPage] Error loading copypack:', error);
+      return this.getHardcodedFallback(language);
+    }
+  }
+
+  /**
+   * Hardcoded fallback if copypack fails to load
+   */
+  private getHardcodedFallback(language: 'he' | 'en'): string {
+    return language === 'he'
+      ? 'הצגת כל התוצאות. כדי לקבל תוצאות מדויקות יותר, נסה לחדד את החיפוש - למשל, הוסף מיקום ספציפי או סוג מטבח מסוים.'
+      : 'Showing all results. For more precise matches, try refining your search - for example, add a specific location or cuisine type.';
   }
 
   onAssistActionClick(query: string): void {

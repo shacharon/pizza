@@ -75,7 +75,7 @@ describe('rankResults', () => {
 
   it('should rank by distance when user location provided', () => {
     const userLocation = { lat: 0, lng: 0 };
-    
+
     const results = [
       { id: 'far', rating: 4.5, userRatingsTotal: 100, location: { lat: 10, lng: 10 } },
       { id: 'near', rating: 4.5, userRatingsTotal: 100, location: { lat: 0.01, lng: 0.01 } },
@@ -140,7 +140,7 @@ describe('rankResults', () => {
 
   it('should apply multi-factor ranking with balanced weights', () => {
     const userLocation = { lat: 0, lng: 0 };
-    
+
     const results = [
       {
         id: 'perfect',

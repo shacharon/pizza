@@ -117,14 +117,14 @@ export class OwnershipVerifier {
     }
 
     // Owner matches - allow subscription
-    logger.info({
+    // Note: ws_subscribe_ack will be logged by subscription-manager after registration
+    logger.debug({
       clientId,
       channel,
       requestIdHash,
       sessionHash,
-      pending: false,
-      event: 'ws_subscribe_ack'
-    }, 'Subscribe accepted - owner match');
+      event: 'ownership_verified'
+    }, 'Subscribe ownership verified - owner match');
 
     return { result: 'ALLOW' };
   }

@@ -208,8 +208,8 @@ export async function executeGate2Stage(
           msg: '[ROUTE2] gate2 timeout, retrying once'
         });
 
-        // Jittered backoff: 100-200ms
-        await new Promise(resolve => setTimeout(resolve, 100 + Math.random() * 100));
+        // Jittered backoff: 50-150ms (reduced to minimize immediate repeat aborts)
+        await new Promise(resolve => setTimeout(resolve, 50 + Math.random() * 100));
 
         // Attempt 2: Retry once
         try {

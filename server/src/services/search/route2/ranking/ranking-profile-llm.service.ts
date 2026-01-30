@@ -3,14 +3,109 @@
  * 
  * Uses LLM to select ranking profile and weights based on query intent.
  * IMPORTANT: LLM never sees restaurant data - only query context.
+ * 
+ * Includes deterministic profile selector for NEARBY intent detection.
  */
 
 import type { LLMProvider } from '../../../../llm/types.js';
 import type { MappingRoute } from '../types.js';
 import type { OpenState, PriceIntent, MinRatingBucket } from '../shared/shared-filters.types.js';
 import { completeJSONWithPurpose } from '../../../../lib/llm/llm-client.js';
-import { RankingSelectionSchema, normalizeWeights, type RankingSelection } from './ranking-profile.schema.js';
+import { 
+  RankingSelectionSchema, 
+  normalizeWeights, 
+  type RankingSelection,
+  RANKING_SELECTION_JSON_SCHEMA,
+  RANKING_SELECTION_SCHEMA_HASH
+} from './ranking-profile.schema.js';
 import { logger } from '../../../../lib/logger/structured-logger.js';
+
+/**
+ * Near-me keywords (Hebrew + English)
+ */
+const NEAR_KEYWORDS = [
+  'קרוב', 'לידי', 'בקרבתי', 'באזור', 'קרבה',
+  'near', 'close', 'nearby', 'around', 'vicinity'
+];
+
+/**
+ * Check if query contains "near me" intent keywords
+ */
+function containsNearKeywords(query: string): boolean {
+  const lowerQuery = query.toLowerCase();
+  return NEAR_KEYWORDS.some(keyword => lowerQuery.includes(keyword.toLowerCase()));
+}
+
+/**
+ * Context for deterministic profile selection
+ */
+export interface DeterministicProfileContext {
+  hasUserLocation: boolean;
+  route: MappingRoute;
+  biasRadiusMeters?: number;
+  query: string;
+}
+
+/**
+ * Deterministic profile selector (runs before LLM)
+ * 
+ * INVARIANT: If route === TEXTSEARCH, do NOT select NEARBY profile automatically
+ * 
+ * Rules:
+ * - NEARBY profile when:
+ *   - route is NEARBY (explicit intent)
+ * - BALANCED with distance bias when:
+ *   - route is TEXTSEARCH AND hasUserLocation AND (query contains near keywords OR biasRadiusMeters <= 20000)
+ * - Otherwise: null (let LLM decide)
+ * 
+ * Returns null if no deterministic decision can be made (fall back to LLM)
+ */
+export function selectDeterministicProfile(
+  ctx: DeterministicProfileContext
+): RankingSelection | null {
+  const { hasUserLocation, route, biasRadiusMeters, query } = ctx;
+  
+  // If no user location, can't use distance-based profiles
+  if (!hasUserLocation) {
+    return null; // Let LLM decide
+  }
+  
+  // INVARIANT ENFORCEMENT: If route is NEARBY, use NEARBY profile
+  if (route === 'NEARBY') {
+    return {
+      profile: 'NEARBY',
+      weights: {
+        rating: 0.2,
+        reviews: 0.1,
+        distance: 0.6,
+        openBoost: 0.1
+      }
+    };
+  }
+  
+  // INVARIANT ENFORCEMENT: If route is TEXTSEARCH, do NOT use NEARBY profile
+  // Instead, use BALANCED with distance bias if near keywords or small radius detected
+  if (route === 'TEXTSEARCH') {
+    const hasNearKeywords = containsNearKeywords(query);
+    const hasSmallRadius = biasRadiusMeters !== undefined && biasRadiusMeters <= 20000;
+    
+    if (hasNearKeywords || hasSmallRadius) {
+      // TEXTSEARCH with proximity signals → use BALANCED with distance bias
+      return {
+        profile: 'BALANCED', // Keep TEXTSEARCH profile, not NEARBY
+        weights: {
+          rating: 0.25,
+          reviews: 0.15,
+          distance: 0.5, // Higher distance weight for proximity signals
+          openBoost: 0.1
+        }
+      };
+    }
+  }
+  
+  // No deterministic decision - let LLM decide
+  return null;
+}
 
 /**
  * Ranking Context Input
@@ -31,6 +126,8 @@ export interface RankingContext {
  * Select ranking profile and weights using LLM
  * 
  * HARD RULES:
+ * - Try deterministic profile selection first (for NEARBY intent)
+ * - If no deterministic decision, use LLM
  * - LLM must ONLY see query + intent + filters (no restaurant data)
  * - Must return profile + weights in strict JSON format
  * - Weights must be normalized to sum to 1
@@ -38,10 +135,54 @@ export interface RankingContext {
 export async function selectRankingProfile(
   ctx: RankingContext,
   provider: LLMProvider,
-  requestId: string
+  requestId: string,
+  biasRadiusMeters?: number
 ): Promise<RankingSelection> {
   const startTime = Date.now();
+
+  // Step 1: Try deterministic profile selection
+  const deterministicSelection = selectDeterministicProfile({
+    hasUserLocation: ctx.hasUserLocation,
+    route: ctx.route,
+    biasRadiusMeters,
+    query: ctx.query
+  });
   
+  if (deterministicSelection) {
+    // Build detailed reason for profile decision
+    const hasNearKeywords = containsNearKeywords(ctx.query);
+    const hasSmallRadius = biasRadiusMeters !== undefined && biasRadiusMeters <= 20000;
+    
+    let reason: string;
+    let explanation: string;
+    
+    if (ctx.route === 'NEARBY') {
+      reason = 'nearby_route';
+      explanation = 'Route is NEARBY - using NEARBY profile';
+    } else if (ctx.route === 'TEXTSEARCH' && (hasNearKeywords || hasSmallRadius)) {
+      reason = hasNearKeywords ? 'textsearch_near_keywords' : 'textsearch_small_radius';
+      explanation = `Route is TEXTSEARCH with proximity signals - using BALANCED with distance bias (not NEARBY)`;
+    } else {
+      reason = 'unknown';
+      explanation = 'Deterministic selection applied';
+    }
+    
+    logger.info({
+      requestId,
+      event: 'ranking_profile_deterministic',
+      profile: deterministicSelection.profile,
+      weights: deterministicSelection.weights,
+      route: ctx.route,
+      reason,
+      hasNearKeywords,
+      hasSmallRadius: hasSmallRadius || false,
+      durationMs: Date.now() - startTime
+    }, `[RANKING] ${explanation}`);
+    
+    return deterministicSelection;
+  }
+
+  // Step 2: Fall back to LLM selection
   const systemPrompt = buildSystemPrompt();
   const userPrompt = buildUserPrompt(ctx);
 
@@ -54,23 +195,25 @@ export async function selectRankingProfile(
         { role: 'user', content: userPrompt }
       ],
       RankingSelectionSchema,
-      null, // No static schema - let Zod handle it
+      RANKING_SELECTION_JSON_SCHEMA, // Use static schema to ensure root type is object
       {
         temperature: 0,
         requestId,
-        stage: 'ranking_profile'
+        stage: 'ranking_profile',
+        schemaHash: RANKING_SELECTION_SCHEMA_HASH
       }
     );
 
     // Normalize weights to ensure they sum to 1
     const normalized = normalizeWeights(result.data.weights);
-    
+
     logger.info({
       requestId,
       event: 'ranking_profile_selected',
       profile: result.data.profile,
       weights: normalized,
-      durationMs: Date.now() - startTime
+      durationMs: Date.now() - startTime,
+      source: 'llm'
     }, '[RANKING] Profile selected by LLM');
 
     return {
@@ -79,7 +222,7 @@ export async function selectRankingProfile(
     };
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    
+
     logger.error({
       requestId,
       event: 'ranking_profile_failed',
@@ -122,11 +265,13 @@ Your task: Based on the user's query, search route, location availability, and a
 
 **Hard Rules:**
 1. You NEVER see restaurant data - only query context
-2. Prefer distance ONLY if hasUserLocation=true OR route=NEARBY
-3. If openState filter is present, include openBoost weight (0.05-0.2)
-4. If minRatingBucket is present or query implies quality, favor rating+reviews
-5. Weights must sum to 1.0 (±0.001)
-6. Return ONLY valid JSON - no explanations
+2. INVARIANT: If route=TEXTSEARCH, do NOT select NEARBY profile (use BALANCED or QUALITY instead)
+3. If route=NEARBY, NEARBY profile is appropriate
+4. Prefer distance weighting ONLY if hasUserLocation=true AND route=NEARBY
+5. If openState filter is present, include openBoost weight (0.05-0.2)
+6. If minRatingBucket is present or query implies quality, favor rating+reviews
+7. Weights must sum to 1.0 (±0.001)
+8. Return ONLY valid JSON - no explanations
 
 **Examples:**
 
@@ -150,7 +295,7 @@ Return ONLY the JSON object with profile and weights.`;
  */
 function buildUserPrompt(ctx: RankingContext): string {
   const { query, route, hasUserLocation, appliedFilters } = ctx;
-  
+
   const filtersStr = [
     appliedFilters.openState && `openState: ${appliedFilters.openState}`,
     appliedFilters.priceIntent && `priceIntent: ${appliedFilters.priceIntent}`,

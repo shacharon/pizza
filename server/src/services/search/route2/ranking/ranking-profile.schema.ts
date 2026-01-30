@@ -6,6 +6,7 @@
  */
 
 import { z } from 'zod';
+import { createHash } from 'crypto';
 
 /**
  * Ranking Profile Types
@@ -43,17 +44,49 @@ export const RankingSelectionSchema = z.object({
 export type RankingSelection = z.infer<typeof RankingSelectionSchema>;
 
 /**
+ * Static JSON Schema for Ranking Selection
+ * Used to ensure OpenAI Structured Outputs compatibility (root type must be object)
+ */
+export const RANKING_SELECTION_JSON_SCHEMA = {
+  type: 'object',
+  properties: {
+    profile: {
+      type: 'string',
+      enum: ['NEARBY', 'QUALITY', 'OPEN_FOCUS', 'BALANCED']
+    },
+    weights: {
+      type: 'object',
+      properties: {
+        rating: { type: 'number', minimum: 0, maximum: 1 },
+        reviews: { type: 'number', minimum: 0, maximum: 1 },
+        distance: { type: 'number', minimum: 0, maximum: 1 },
+        openBoost: { type: 'number', minimum: 0, maximum: 1 }
+      },
+      required: ['rating', 'reviews', 'distance', 'openBoost'],
+      additionalProperties: false
+    }
+  },
+  required: ['profile', 'weights'],
+  additionalProperties: false
+} as const;
+
+export const RANKING_SELECTION_SCHEMA_HASH = createHash('sha256')
+  .update(JSON.stringify(RANKING_SELECTION_JSON_SCHEMA))
+  .digest('hex')
+  .slice(0, 12);
+
+/**
  * Normalize weights to sum to 1.0
  * Used when LLM returns weights that don't perfectly sum to 1.
  */
 export function normalizeWeights(weights: RankingWeights): RankingWeights {
   const sum = weights.rating + weights.reviews + weights.distance + weights.openBoost;
-  
+
   // If sum is already ~1, return as-is
   if (Math.abs(sum - 1.0) < 0.001) {
     return weights;
   }
-  
+
   // If sum is 0, return balanced weights
   if (sum === 0) {
     return {
@@ -63,7 +96,7 @@ export function normalizeWeights(weights: RankingWeights): RankingWeights {
       openBoost: 0.25
     };
   }
-  
+
   // Normalize to sum to 1
   return {
     rating: weights.rating / sum,

@@ -11,8 +11,8 @@ import type { WebSocketManager } from '../../../../infra/websocket/websocket-man
 
 // Mock WebSocket manager
 const mockWsManager = {
-  publishMessage: () => {},
-  activatePendingSubscriptions: () => {}
+  publishMessage: () => { },
+  activatePendingSubscriptions: () => { }
 } as unknown as WebSocketManager;
 
 describe('Generic Query Guard - Hebrew Patterns', () => {
@@ -668,4 +668,21 @@ describe('Generic Query Guard - Regression Tests (Order & Invariant Fix)', () =>
     // Verify that by blocking early, parallel tasks won't start
     // (In real orchestrator: if guard returns response, fireParallelTasks is never called)
   });
+});
+
+describe('Generic Query Optimization - Parallel Tasks', () => {
+  // Note: This test file focuses on the guard logic
+  // Parallel task optimization tests should be in orchestrator.parallel-tasks.test.ts
+  // 
+  // Expected behavior (documented here for reference):
+  // - Generic query + hasUserLocation + no filter keywords:
+  //   → skip base_filters LLM (use defaults)
+  //   → skip post_constraints LLM (use defaults)
+  // 
+  // - Generic query + hasUserLocation + filter keywords ("פתוח עכשיו"):
+  //   → run base_filters LLM (extract openState)
+  //   → skip post_constraints LLM (use defaults)
+  // 
+  // - Non-generic query:
+  //   → run both base_filters and post_constraints normally
 });

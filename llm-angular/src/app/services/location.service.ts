@@ -20,7 +20,7 @@ export type LocationState = 'OFF' | 'REQUESTING' | 'ON' | 'DENIED' | 'ERROR';
 @Injectable({ providedIn: 'root' })
 export class LocationService {
   private readonly STORAGE_KEY = 'userLocation';
-  
+
   readonly state = signal<LocationState>('OFF');
   readonly location = signal<Coordinates | null>(null);
 

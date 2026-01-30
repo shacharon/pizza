@@ -16,7 +16,8 @@ export type AssistantMessageType =
   | 'PROGRESS'      // Search progress updates
   | 'SUMMARY'       // Assistant summary card
   | 'CLARIFY'       // Clarification request card
-  | 'GATE_FAIL';    // Gate failure card
+  | 'GATE_FAIL'     // Gate failure card
+  | 'NUDGE_REFINE';  // Refinement nudge (after viewing all results)
 
 /**
  * Routing channels
@@ -35,7 +36,8 @@ export const ASSISTANT_ROUTING: Record<AssistantMessageType, AssistantChannel> =
   // Card channel: User-facing cards only
   'SUMMARY': 'card',
   'CLARIFY': 'card',
-  'GATE_FAIL': 'card'
+  'GATE_FAIL': 'card',
+  'NUDGE_REFINE': 'card'
 };
 
 /**
@@ -73,7 +75,7 @@ export interface AssistantLineMessage {
  */
 export interface AssistantCardMessage {
   id: string;
-  type: 'SUMMARY' | 'CLARIFY' | 'GATE_FAIL';
+  type: 'SUMMARY' | 'CLARIFY' | 'GATE_FAIL' | 'NUDGE_REFINE';
   message: string;
   question: string | null;
   blocksSearch: boolean;

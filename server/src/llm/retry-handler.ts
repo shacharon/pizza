@@ -71,13 +71,16 @@ export class RetryHandler {
           throw e;
         }
 
-        // Abort/timeout errors: fail fast (let caller handle)
+        // Abort/timeout errors: retriable with backoff
         if (category.type === 'abort_timeout') {
           logger.warn({
+            attempt: attempt + 1,
+            maxAttempts,
             traceId: opts?.traceId,
             errorType: category.type
-          }, '[LLM] Request aborted/timeout - failing fast for caller to handle');
-          throw e;
+          }, '[LLM] Timeout, will retry with backoff');
+          
+          // Continue to retry (last attempt check below)
         }
 
         // Parse errors with Structured Outputs: fail fast
@@ -117,7 +120,7 @@ export class RetryHandler {
   categorizeError(e: any): ErrorCategory {
     const status = e?.status ?? e?.code ?? e?.name;
 
-    // Abort/Timeout errors
+    // Abort/Timeout errors (retriable for gate2/intent with retry logic)
     const isAbortError = e?.name === 'AbortError' ||
       e?.message?.includes('aborted') ||
       e?.message?.includes('timeout');
@@ -125,7 +128,7 @@ export class RetryHandler {
     if (isAbortError) {
       return {
         type: 'abort_timeout',
-        isRetriable: false,
+        isRetriable: true,  // FIXED: Retriable to match current gate2/intent behavior
         reason: 'Request aborted or timeout'
       };
     }

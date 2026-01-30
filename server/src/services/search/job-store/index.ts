@@ -5,7 +5,7 @@
 
 import { getConfig } from '../../../config/env.js';
 import { logger } from '../../../lib/logger/structured-logger.js';
-import { getRedisClient } from '../../../lib/redis/redis-client.js';
+import { RedisService } from '../../../infra/redis/redis.service.js';
 import type { ISearchJobStore } from './job-store.interface.js';
 import { InMemorySearchJobStore } from './inmemory-search-job.store.js';
 import { RedisSearchJobStore } from './redis-search-job.store.js';
@@ -61,23 +61,17 @@ export async function getSearchJobStore(): Promise<ISearchJobStore> {
     });
 
     try {
-      // Get shared Redis client
-      const redisClient = await getRedisClient({
-        url: config.redisUrl,
-        maxRetriesPerRequest: 3,
-        connectTimeout: 2000,
-        commandTimeout: 1000, // Longer timeout for JobStore operations
-        enableOfflineQueue: false
-      });
+      // Get shared Redis client (should already be initialized by server.ts)
+      const redisClient = RedisService.getClientOrNull();
 
       if (redisClient) {
         searchJobStoreInstance = new RedisSearchJobStore(redisClient, config.redisJobTtlSeconds);
         logger.info({
           store: 'redis',
-          msg: '[JobStore] ✓ Redis store initialized successfully'
+          msg: '[JobStore] ✓ Redis store initialized with shared client'
         });
       } else {
-        throw new Error('Redis client connection failed');
+        throw new Error('Redis client not available (initialization may not have completed)');
       }
     } catch (err) {
       logger.error({

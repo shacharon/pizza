@@ -1,0 +1,22 @@
+{
+  "version": "v1",
+  "description": "Local fallback messages for NUDGE_REFINE when WebSocket unavailable",
+  "messages": {
+    "en": [
+      "Showing all results. For more precise matches, try refining your search - for example, add a specific location or cuisine type.",
+      "You've seen all available results. To find more specific options, try narrowing your search with location or cuisine details.",
+      "All results displayed. Want more targeted recommendations? Add specific criteria like neighborhood or food type to your search.",
+      "That's all the results we have. For better matches, try being more specific - add a location or specify what type of food you're looking for."
+    ],
+    "he": [
+      "הצגת כל התוצאות. כדי לקבל תוצאות מדויקות יותר, נסה לחדד את החיפוש - למשל, הוסף מיקום ספציפי או סוג מטבח מסוים.",
+      "צפית בכל התוצאות הזמינות. כדי למצוא אפשרויות ספציפיות יותר, נסה לצמצם את החיפוש עם פרטי מיקום או מטבח.",
+      "כל התוצאות מוצגות. רוצה המלצות ממוקדות יותר? הוסף קריטריונים ספציפיים כמו שכונה או סוג אוכל לחיפוש שלך.",
+      "אלו כל התוצאות שיש לנו. לתוצאות טובות יותר, נסה להיות יותר ספציפי - הוסף מיקום או ציין איזה סוג אוכל אתה מחפש."
+    ]
+  },
+  "selectionRules": {
+    "description": "Deterministic selection based on requestId hash",
+    "algorithm": "Use last character of requestId, map to index: '0-3'→0, '4-7'→1, '8-b'→2, 'c-f'→3, else→0"
+  }
+}

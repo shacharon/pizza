@@ -115,21 +115,21 @@ export function buildRankingSignals(input: RankingSignalsInput): RankingSignals 
  */
 function getDominantFactor(weights: RankingWeights): DominantFactor {
   const { rating, reviews, distance, openBoost } = weights;
-  
+
   // Find max weight
   const maxWeight = Math.max(rating, reviews, distance, openBoost);
-  
+
   // No clear dominance if max < 0.55
   if (maxWeight < 0.55) {
     return 'NONE';
   }
-  
+
   // Return factor with max weight
   if (distance === maxWeight) return 'DISTANCE';
   if (rating === maxWeight) return 'RATING';
   if (reviews === maxWeight) return 'REVIEWS';
   if (openBoost === maxWeight) return 'OPEN';
-  
+
   return 'NONE';
 }
 
@@ -153,12 +153,12 @@ function computeManyOpenUnknown(
   resultsAfterFilters: number
 ): boolean {
   const { unknownCount } = stats;
-  
+
   // Avoid division by zero
   if (resultsAfterFilters === 0) {
     return false;
   }
-  
+
   // 40% threshold
   return unknownCount >= 0.4 * resultsAfterFilters;
 }

@@ -1,0 +1,69 @@
+{
+  "version": "v1",
+  "description": "Deterministic NUDGE_REFINE messages for reveal_limit_reached event (no LLM, no counts)",
+  "selection_rules": {
+    "messageType": "NUDGE_REFINE",
+    "algorithm": "hash(requestId) % N",
+    "description": "Use simple char-code sum of requestId, modulo message count"
+  },
+  "messages": {
+    "en": [
+      {
+        "text": "Showing all results. For more precise matches, try refining your search - for example, add a specific location or cuisine type.",
+        "tone": "helpful",
+        "blocksSearch": false,
+        "suggestedAction": "REFINE_QUERY"
+      },
+      {
+        "text": "You've seen all available results. To find more specific options, try narrowing your search with location or cuisine details.",
+        "tone": "informative",
+        "blocksSearch": false,
+        "suggestedAction": "REFINE_QUERY"
+      },
+      {
+        "text": "All results displayed. Want more targeted recommendations? Add specific criteria like neighborhood or food type to your search.",
+        "tone": "engaging",
+        "blocksSearch": false,
+        "suggestedAction": "REFINE_QUERY"
+      },
+      {
+        "text": "That's all the results we have. For better matches, try being more specific - add a location or specify what type of food you're looking for.",
+        "tone": "conversational",
+        "blocksSearch": false,
+        "suggestedAction": "REFINE_QUERY"
+      }
+    ],
+    "he": [
+      {
+        "text": "הצגת כל התוצאות. כדי לקבל תוצאות מדויקות יותר, נסה לחדד את החיפוש - למשל, הוסף מיקום ספציפי או סוג מטבח מסוים.",
+        "tone": "helpful",
+        "blocksSearch": false,
+        "suggestedAction": "REFINE_QUERY"
+      },
+      {
+        "text": "צפית בכל התוצאות הזמינות. כדי למצוא אפשרויות ספציפיות יותר, נסה לצמצם את החיפוש עם פרטי מיקום או מטבח.",
+        "tone": "informative",
+        "blocksSearch": false,
+        "suggestedAction": "REFINE_QUERY"
+      },
+      {
+        "text": "כל התוצאות מוצגות. רוצה המלצות ממוקדות יותר? הוסף קריטריונים ספציפיים כמו שכונה או סוג אוכל לחיפוש שלך.",
+        "tone": "engaging",
+        "blocksSearch": false,
+        "suggestedAction": "REFINE_QUERY"
+      },
+      {
+        "text": "אלו כל התוצאות שיש לנו. לתוצאות טובות יותר, נסה להיות יותר ספציפי - הוסף מיקום או ציין איזה סוג אוכל אתה מחפש.",
+        "tone": "conversational",
+        "blocksSearch": false,
+        "suggestedAction": "REFINE_QUERY"
+      }
+    ]
+  },
+  "validation": {
+    "no_counts": true,
+    "no_ranking_claims": true,
+    "no_llm": true,
+    "max_message_length": 500
+  }
+}

@@ -3,14 +3,16 @@
  * Presentational component for displaying restaurant with quick actions
  * 
  * P0 Security: Uses secure photo proxy (no API key exposure)
+ * Non-blocking rendering: Defers photo loading to avoid blocking list rendering
  */
 
-import { Component, input, output, ChangeDetectionStrategy, computed, signal } from '@angular/core';
+import { Component, input, output, ChangeDetectionStrategy, computed, signal, effect, AfterViewInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReasonLabelComponent } from '../reason-label/reason-label.component';
-import type { Restaurant } from '../../../../domain/types/search.types';
+import type { Restaurant, CardSignal } from '../../../../domain/types/search.types';
 import type { ActionType, ActionLevel } from '../../../../domain/types/action.types';
 import { buildPhotoSrc, getPhotoPlaceholder } from '../../../../utils/photo-src.util';
+import { computeCardSignal, getSignalColor, isSignalEmphasized } from '../../../../domain/utils/card-signal.util';
 
 @Component({
   selector: 'app-restaurant-card',
@@ -20,7 +22,7 @@ import { buildPhotoSrc, getPhotoPlaceholder } from '../../../../utils/photo-src.
   templateUrl: './restaurant-card.component.html',
   styleUrl: './restaurant-card.component.scss'
 })
-export class RestaurantCardComponent {
+export class RestaurantCardComponent implements AfterViewInit {
   // Inputs
   readonly restaurant = input.required<Restaurant>();
   readonly selected = input(false);
@@ -38,6 +40,31 @@ export class RestaurantCardComponent {
 
   // Photo error state (for broken images)
   readonly photoError = signal(false);
+
+  // Non-blocking photo loading: Defer photo binding until after initial render
+  readonly shouldLoadPhoto = signal(false);
+
+  /**
+   * UX SIGNALS: Canonical card signal (priority-based)
+   * Computes the single highest-priority signal to display
+   * 
+   * PRIORITY ORDER:
+   * 1. OPEN/CLOSED (hard rule - always wins)
+   * 2. PRICE (cheap/mid/expensive)
+   * 3. DISTANCE (nearby)
+   * 4. INTENT_MATCH (e.g., "Great for breakfast")
+   */
+  readonly cardSignal = computed<CardSignal | null>(() => {
+    return computeCardSignal(this.restaurant());
+  });
+
+  ngAfterViewInit(): void {
+    // Defer photo loading to next frame (non-blocking)
+    // This ensures card text/layout renders immediately, photos load after
+    requestAnimationFrame(() => {
+      this.shouldLoadPhoto.set(true);
+    });
+  }
 
   onCardClick(): void {
     this.cardClick.emit(this.restaurant());
@@ -147,6 +174,118 @@ export class RestaurantCardComponent {
   }
 
   /**
+   * Get calm open status text (UX polish)
+   * Replaces aggressive CLOSED badge with calm text
+   */
+  getOpenStatusText(): string {
+    const status = this.getOpenStatus();
+    switch (status) {
+      case 'open': return 'פתוח עכשיו';
+      case 'closed': return 'סגור עכשיו';
+      case 'unknown': return 'שעות לא מאומתות';
+      default: return '';
+    }
+  }
+
+  /**
+   * Format review count (UX polish)
+   * Examples: 114, 1.2K, 10K
+   */
+  formatReviewCount(count: number): string {
+    if (count >= 1000) {
+      return (count / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+    }
+    return count.toString();
+  }
+
+  /**
+   * MOBILE NOISE REDUCTION: Check if rating has low review count
+   * Returns true if reviews < 20 (for de-emphasis on mobile)
+   */
+  isLowReviewCount(): boolean {
+    const count = this.restaurant().userRatingsTotal;
+    return !count || count < 20;
+  }
+
+  /**
+   * Get shortened address (single line)
+   * MOBILE NOISE REDUCTION: Keeps only city/street (most minimal)
+   */
+  getShortAddress(address: string): string {
+    if (!address) return '';
+    
+    // Remove ", Israel" or ", ישראל" suffix
+    let short = address.replace(/, (Israel|ישראל)$/i, '');
+    
+    // MOBILE NOISE REDUCTION: Even more aggressive - max 50 chars
+    if (short.length > 50) {
+      const parts = short.split(',');
+      // Take first 1-2 parts only (street + city)
+      short = parts.slice(0, 2).join(',');
+    }
+    
+    // Final truncation if still too long
+    if (short.length > 50) {
+      short = short.substring(0, 47) + '...';
+    }
+    
+    return short.trim();
+  }
+
+  /**
+   * Get display tags (filtered, max 1-2)
+   * MOBILE NOISE REDUCTION: Aggressively hide low-signal chips
+   * - Technical tags (point_of_interest, establishment)
+   * - Generic categories (food, store)
+   * - Price tier indicators (if shown elsewhere)
+   */
+  getDisplayTags(): string[] {
+    const tags = this.restaurant().tags || [];
+    
+    // MOBILE NOISE REDUCTION: Expanded list of low-signal tags to hide
+    const lowSignalTags = [
+      // Technical
+      'point_of_interest',
+      'establishment',
+      'premise',
+      'locality',
+      // Generic food
+      'food',
+      'store',
+      'restaurant',
+      'מסעדה',
+      'אוכל',
+      'מזון',
+      // Generic categories that don't add value
+      'meal_takeaway',
+      'meal_delivery',
+      'lodging',
+      'general',
+      'other'
+    ];
+    
+    // Filter out low-signal tags
+    const filtered = tags.filter(tag => 
+      !lowSignalTags.some(low => tag.toLowerCase().includes(low.toLowerCase()))
+    );
+    
+    // MOBILE NOISE REDUCTION: Max 2 high-signal tags only
+    // Prioritize cuisine/dietary tags over generic descriptors
+    const cuisineKeywords = ['italian', 'sushi', 'pizza', 'burger', 'chinese', 'indian', 
+                             'איטלקי', 'סושי', 'פיצה', 'המבורגר', 'סיני', 'הודי'];
+    
+    const sorted = filtered.sort((a, b) => {
+      const aIsCuisine = cuisineKeywords.some(kw => a.toLowerCase().includes(kw));
+      const bIsCuisine = cuisineKeywords.some(kw => b.toLowerCase().includes(kw));
+      if (aIsCuisine && !bIsCuisine) return -1;
+      if (!aIsCuisine && bIsCuisine) return 1;
+      return 0;
+    });
+    
+    return sorted.slice(0, 2);
+  }
+
+  /**
    * NEW: Get gluten-free badge info (SOFT hints)
    * Returns badge text based on confidence level
    */
@@ -230,6 +369,33 @@ export class RestaurantCardComponent {
       url.includes('googleapis.com') ||
       url.includes('maps.googleapis.com') ||
       url.includes('places.googleapis.com');
+  }
+
+  /**
+   * UX SIGNALS: Get signal color for styling
+   * Maps signal type to semantic color
+   */
+  getCardSignalColor(): string {
+    const signal = this.cardSignal();
+    return signal ? getSignalColor(signal) : '#9ca3af';
+  }
+
+  /**
+   * UX SIGNALS: Check if signal should be emphasized
+   * Only OPEN_NOW is emphasized (green accent)
+   */
+  isCardSignalEmphasized(): boolean {
+    const signal = this.cardSignal();
+    return signal ? isSignalEmphasized(signal) : false;
+  }
+
+  /**
+   * UX SIGNALS: Get signal label for display
+   * Returns the computed signal label or empty string
+   */
+  getCardSignalLabel(): string {
+    const signal = this.cardSignal();
+    return signal ? signal.label : '';
   }
 }
 

@@ -1,15 +1,36 @@
 .search-page {
-  min-height: 100vh;
+  // Page shell: Flex column layout, NO scrolling here
+  display: flex;
+  flex-direction: column;
+  height: 100dvh; // FIXED: Lock to viewport height (not min-height!)
+  min-height: 0; // CRITICAL: Allow flex children to shrink/scroll
   background: #f9fafb;
+  overflow: hidden; // CRITICAL: No scrolling on page shell
+  position: relative;
 }
 
 .search-header {
-  background: linear-gradient(180deg, #ffffff 0%, #f9fafb 100%);
-  padding: 1.5rem 1rem 1.25rem;
-  border-bottom: 1px solid #e5e7eb;
+  // Top area: PINNED at top (sticky for proper behavior)
+  
+  // iOS Safe Area: Account for notch/status bar
+  padding-top: calc(1.5rem + env(safe-area-inset-top, 0));
+  padding-left: max(1rem, env(safe-area-inset-left, 1rem));
+  padding-right: max(1rem, env(safe-area-inset-right, 1rem));
+  padding-bottom: 1.25rem;
+  
+  // Sticky positioning: Stays at top when content scrolls
   position: sticky;
   top: 0;
-  z-index: 100;
+  z-index: 150;
+  
+  // Solid background: No transparency, no gradient
+  background: #ffffff;
+  
+  // Border for visual separation
+  border-bottom: 1px solid #e5e7eb;
+  
+  // CRITICAL: Prevent shrinking - header stays fixed size
+  flex: 0 0 auto; // Shorthand for flex-grow: 0, flex-shrink: 0, flex-basis: auto
 }
 
 // Hero Section (title + subtitle + location)
@@ -83,10 +104,17 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   overflow: visible;
   padding: 1rem;
+  
+  // Mobile: Critical - no transform that breaks sticky
+  // Parent has sticky positioning, so transform must be none
+  transform: none;
+  will-change: auto; // Don't force GPU acceleration here
 
   &:hover {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
     border-color: #d1d5db;
+    // Mobile: No transform on hover (breaks sticky)
+    transform: none;
   }
 }
 
@@ -124,9 +152,35 @@
 }
 
 .search-content {
+  // Results area: DEDICATED SCROLL CONTAINER
+  // This is the ONLY element that scrolls
+  
+  // CRITICAL: Take remaining space and enable scrolling
+  flex: 1 1 auto; // Grow to fill, allow shrink, auto basis
+  min-height: 0; // CRITICAL: Without this, flex child won't scroll!
+  overflow-y: auto; // ONLY this container scrolls
+  overflow-x: hidden;
+  
+  // Mobile: Smooth momentum scrolling
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain; // Prevent pull-to-refresh
+  
+  // Mobile: Safe area handling for bottom gestures
+  padding: 1.5rem 1rem calc(1.5rem + env(safe-area-inset-bottom, 0));
+  padding-left: max(1rem, env(safe-area-inset-left, 1rem));
+  padding-right: max(1rem, env(safe-area-inset-right, 1rem));
+  
+  // Layout
   max-width: 1400px;
   margin: 0 auto;
-  padding: 1.5rem 1rem;
+  width: 100%; // Ensure full width for centering
+  
+  // Mobile: Force own stacking context (prevent z-index issues)
+  position: relative;
+  z-index: 1;
+  
+  // Background
+  background: #f9fafb;
 }
 
 // NEW: Mobile-First Layout
@@ -605,32 +659,97 @@
   }
 }
 
+// Mobile-first responsive adjustments
 @media (max-width: 768px) {
+  .search-page {
+    // Mobile: Use dynamic viewport height, but lock to viewport (no stretching)
+    height: 100dvh;
+    min-height: 0; // CRITICAL: Ensure flex scrolling works
+  }
+
   .search-header {
-    padding: 1.25rem 1rem 1rem;
+    // Mobile: Adjust padding (safe-area already handled above)
+    padding-top: calc(1.25rem + env(safe-area-inset-top, 0));
+    padding-bottom: 1rem;
   }
 
   .page-title {
     font-size: 1.5rem;
     margin-bottom: 0.5rem;
+    // Mobile: Prevent text overflow/wrapping issues
+    word-break: break-word;
   }
 
   .page-subtitle {
     font-size: 0.875rem;
+    line-height: 1.5;
   }
 
   .search-content {
+    // Mobile: Tighter padding for small screens
     padding: 1rem;
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0));
+    padding-left: max(1rem, env(safe-area-inset-left, 1rem));
+    padding-right: max(1rem, env(safe-area-inset-right, 1rem));
+    
+    // Mobile: Force smooth scrolling
+    -webkit-overflow-scrolling: touch;
+    // Mobile: Force scrollbar space (prevents layout shift)
+    overflow-y: scroll;
   }
 
   .pending-actions-panel {
-    left: 1rem;
-    right: 1rem;
+    left: max(1rem, env(safe-area-inset-left, 1rem));
+    right: max(1rem, env(safe-area-inset-right, 1rem));
+    bottom: calc(1rem + env(safe-area-inset-bottom, 0));
     max-width: none;
+  }
+  
+  // Mobile: Ensure search card doesn't have transforms
+  .search-card {
+    transform: none !important;
   }
 }
 
-// Load More Button
+// Pagination Controls (Show 5 more button)
+.pagination-controls {
+  display: flex;
+  justify-content: center;
+  padding: 2rem 0 1rem;
+  margin-top: 1.5rem;
+}
+
+.show-more-button {
+  padding: 0.875rem 2rem;
+  background: #fff;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+
+  &:hover:not(:disabled) {
+    background: #3b82f6;
+    color: white;
+    border-color: #3b82f6;
+    box-shadow: 0 2px 6px rgba(59, 130, 246, 0.3);
+    transform: translateY(-1px);
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(0);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+// Load More Button (legacy, kept for backward compatibility)
 .load-more-container {
   display: flex;
   justify-content: center;

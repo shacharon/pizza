@@ -65,11 +65,19 @@ export interface WSClientUIStateChanged {
   };
 }
 
+export interface WSClientRevealLimitReached {
+  type: 'reveal_limit_reached';
+  requestId: string;
+  sessionId?: string;
+  uiLanguage: 'he' | 'en';
+}
+
 export type WSClientMessage =
   | WSClientEnvelope
   | WSClientSubscribeLegacy
   | WSClientActionClicked
-  | WSClientUIStateChanged;
+  | WSClientUIStateChanged
+  | WSClientRevealLimitReached;
 
 /**
  * Server → Client Messages
@@ -153,10 +161,12 @@ export interface WSServerAssistant {
   type: 'assistant';
   requestId: string;
   payload: {
-    type: 'GATE_FAIL' | 'CLARIFY' | 'SUMMARY';
+    type: 'GATE_FAIL' | 'CLARIFY' | 'SUMMARY' | 'SEARCH_FAILED' | 'GENERIC_QUERY_NARRATION' | 'NUDGE_REFINE';
     message: string;
     question: string | null;
     blocksSearch: boolean;
+    suggestedAction?: 'REFINE_QUERY';
+    uiLanguage?: 'he' | 'en';
   };
 }
 

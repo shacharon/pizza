@@ -24,6 +24,13 @@ export interface SearchJob {
   ownerSessionId?: string | null;
   // Idempotency: Key for deduplication (sessionId + normalizedQuery + mode + locationHash)
   idempotencyKey?: string;
+  // Candidate pool: Raw Google results for local soft-filter requery
+  candidatePool?: {
+    candidates: any[]; // PlaceResult[] from Google Maps
+    searchContext: any; // SearchContext snapshot (for requery decision)
+    fetchedAt: number; // Timestamp when pool was fetched
+    route: 'NEARBY' | 'TEXTSEARCH';
+  };
 }
 
 export interface ISearchJobStore {
@@ -72,4 +79,16 @@ export interface ISearchJobStore {
    * Returns job if found with status RUNNING or DONE_SUCCESS (within fresh window)
    */
   findByIdempotencyKey(idempotencyKey: string, freshWindowMs?: number): Promise<SearchJob | null> | SearchJob | null;
+
+  /**
+   * Store candidate pool for local soft-filter requery
+   * IDOR Protection: Only owner (sessionId) can store/retrieve pool
+   */
+  setCandidatePool(requestId: string, pool: SearchJob['candidatePool']): Promise<void> | void;
+
+  /**
+   * Get candidate pool (IDOR-protected: validates sessionId ownership)
+   * Returns null if not found or if requestor is not the owner
+   */
+  getCandidatePool(requestId: string, sessionId: string): Promise<SearchJob['candidatePool'] | null> | SearchJob['candidatePool'] | null;
 }

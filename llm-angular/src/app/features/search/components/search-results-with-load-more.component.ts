@@ -363,40 +363,40 @@ export class SearchResultsWithLoadMoreComponent implements OnInit, OnDestroy {
   // TODO: Inject your actual services
   // private readonly searchService = inject(SearchService);
   // private readonly wsService = inject(WebSocketService);
-  
+
   private readonly destroy$ = new Subject<void>();
 
   // Full result pool from backend
   private readonly resultPool = signal<RestaurantResult[]>([]);
-  
+
   // Current pagination limit
   private readonly currentLimit = signal<number>(10);
-  
+
   // Ranking signals (for load_more event)
   private readonly rankingSignals = signal<RankingSignals | null>(null);
-  
+
   // Current request ID
   private readonly requestId = signal<string>('');
-  
+
   // Loading state
   readonly loading = signal<boolean>(false);
-  
+
   // Assistant suggestion
   readonly assistantSuggestion = signal<RankingSuggestion | null>(null);
   readonly showSuggestion = signal<boolean>(false);
-  
+
   // Computed: Results to display (first N from pool)
   readonly displayedResults = computed(() => {
     const pool = this.resultPool();
     const limit = this.currentLimit();
     return pool.slice(0, limit);
   });
-  
+
   // Computed: Total pool size
   readonly totalPool = computed(() => this.resultPool().length);
-  
+
   // Computed: Has more results to load
-  readonly hasMore = computed(() => 
+  readonly hasMore = computed(() =>
     this.currentLimit() < this.totalPool()
   );
 
@@ -407,7 +407,7 @@ export class SearchResultsWithLoadMoreComponent implements OnInit, OnDestroy {
     //   .subscribe(suggestion => {
     //     this.onRankingSuggestion(suggestion);
     //   });
-    
+
     // Example: Simulate search response
     this.simulateSearchResponse();
   }
@@ -429,10 +429,10 @@ export class SearchResultsWithLoadMoreComponent implements OnInit, OnDestroy {
       this.currentLimit() + 5,
       this.totalPool()
     );
-    
+
     // Update limit (triggers re-render via computed)
     this.currentLimit.set(newLimit);
-    
+
     // Send WS event to backend
     this.sendLoadMoreEvent({
       requestId: this.requestId(),
@@ -456,9 +456,9 @@ export class SearchResultsWithLoadMoreComponent implements OnInit, OnDestroy {
     //   newOffset: params.newOffset,
     //   totalShown: params.totalShown
     // });
-    
+
     console.log('[LOAD_MORE] Sending WS event:', params);
-    
+
     // Simulate ranking suggestion after 1 second
     setTimeout(() => {
       this.onRankingSuggestion({
@@ -475,16 +475,16 @@ export class SearchResultsWithLoadMoreComponent implements OnInit, OnDestroy {
   onSearchResponse(response: SearchResponse): void {
     // Store full pool
     this.resultPool.set(response.results);
-    
+
     // Store ranking signals
     this.rankingSignals.set(response.meta.rankingSignals || null);
-    
+
     // Store request ID
     this.requestId.set(response.requestId);
-    
+
     // Reset pagination to first 10
     this.currentLimit.set(10);
-    
+
     // Clear any previous suggestion
     this.dismissSuggestion();
   }
@@ -494,7 +494,7 @@ export class SearchResultsWithLoadMoreComponent implements OnInit, OnDestroy {
    */
   onRankingSuggestion(suggestion: RankingSuggestion): void {
     this.assistantSuggestion.set(suggestion);
-    
+
     // Show with animation after short delay
     setTimeout(() => {
       this.showSuggestion.set(true);
@@ -506,7 +506,7 @@ export class SearchResultsWithLoadMoreComponent implements OnInit, OnDestroy {
    */
   dismissSuggestion(): void {
     this.showSuggestion.set(false);
-    
+
     // Clear after animation
     setTimeout(() => {
       this.assistantSuggestion.set(null);
@@ -518,7 +518,7 @@ export class SearchResultsWithLoadMoreComponent implements OnInit, OnDestroy {
    */
   applySuggestion(action: RankingSuggestion['suggestedAction']): void {
     console.log('[SUGGESTION] Applying action:', action);
-    
+
     switch (action) {
       case 'REMOVE_OPEN_NOW':
         // TODO: Remove openNow filter and trigger new search
@@ -526,33 +526,33 @@ export class SearchResultsWithLoadMoreComponent implements OnInit, OnDestroy {
         // this.searchService.search();
         alert('הסרת סינון "פתוח עכשיו" - יש לחפש מחדש');
         break;
-      
+
       case 'ADD_MIN_RATING':
         // TODO: Add minRating=4.0 filter and trigger new search
         // this.searchService.addFilter('minRating', 4.0);
         // this.searchService.search();
         alert('הוספת סינון דירוג מינימלי 4.0 - יש לחפש מחדש');
         break;
-      
+
       case 'REFINE_LOCATION':
         // TODO: Open location refinement dialog
         // this.dialogService.openLocationDialog();
         alert('פתיחת תיבת דו-שיח לחידוד מיקום');
         break;
-      
+
       case 'REMOVE_PRICE':
         // TODO: Remove price filter and trigger new search
         // this.searchService.removeFilter('price');
         // this.searchService.search();
         alert('הסרת סינון מחיר - יש לחפש מחדש');
         break;
-      
+
       case 'NONE':
         // Just dismiss
         this.dismissSuggestion();
         break;
     }
-    
+
     this.dismissSuggestion();
   }
 

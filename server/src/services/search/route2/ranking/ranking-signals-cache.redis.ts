@@ -3,12 +3,14 @@
  * 
  * Stores ranking signals in Redis with TTL for distributed access.
  * Includes IDOR protection via session/user ownership verification.
+ * 
+ * Uses shared RedisService (same lifecycle as RedisJobStore).
  */
 
 import type { Redis } from 'ioredis';
 import type { RankingSignals } from './ranking-signals.js';
 import { logger } from '../../../../lib/logger/structured-logger.js';
-import { getExistingRedisClient } from '../../../../lib/redis/redis-client.js';
+import { RedisService } from '../../../../infra/redis/redis.service.js';
 import { hashSessionId } from '../../../../utils/security.utils.js';
 
 const KEY_PREFIX = 'ranking:signals:';
@@ -27,14 +29,20 @@ export class RankingSignalsCacheRedis {
   private redis: Redis | null = null;
 
   constructor() {
-    this.redis = getExistingRedisClient();
-    
+    // No initialization during module load
+    // Redis client is retrieved on-demand via RedisService.getClientOrNull()
+  }
+
+  /**
+   * Get Redis client from shared RedisService
+   * Fail-open: returns null if Redis unavailable (no repeated warnings)
+   */
+  private getRedis(): Redis | null {
     if (!this.redis) {
-      logger.warn({
-        event: 'ranking_cache_redis_unavailable',
-        msg: '[RANKING_CACHE] Redis not available, ranking suggestions will be disabled'
-      });
+      // Use shared RedisService (same lifecycle as RedisJobStore)
+      this.redis = RedisService.getClientOrNull();
     }
+    return this.redis;
   }
 
   /**
@@ -48,7 +56,10 @@ export class RankingSignalsCacheRedis {
     sessionId?: string,
     userId?: string
   ): Promise<void> {
-    if (!this.redis) {
+    const redis = this.getRedis();
+
+    if (!redis) {
+      // Fail-open: Redis unavailable, skip cache silently
       logger.debug({
         requestId,
         event: 'ranking_signals_cache_skip_redis_unavailable'
@@ -69,7 +80,7 @@ export class RankingSignalsCacheRedis {
       const key = KEY_PREFIX + requestId;
       const value = JSON.stringify(entry);
 
-      await this.redis.setex(key, TTL_SECONDS, value);
+      await redis.setex(key, TTL_SECONDS, value);
 
       logger.debug({
         requestId,
@@ -101,7 +112,10 @@ export class RankingSignalsCacheRedis {
     sessionId?: string,
     userId?: string
   ): Promise<{ signals: RankingSignals; query: string; uiLanguage: 'he' | 'en' } | null> {
-    if (!this.redis) {
+    const redis = this.getRedis();
+
+    if (!redis) {
+      // Fail-open: Redis unavailable, return null silently
       logger.debug({
         requestId,
         event: 'ranking_cache_get_skip_redis_unavailable'
@@ -111,7 +125,7 @@ export class RankingSignalsCacheRedis {
 
     try {
       const key = KEY_PREFIX + requestId;
-      const value = await this.redis.get(key);
+      const value = await redis.get(key);
 
       if (!value) {
         logger.debug({
@@ -125,7 +139,7 @@ export class RankingSignalsCacheRedis {
 
       // IDOR Protection: Verify ownership
       const ownershipValid = this.verifyOwnership(entry, sessionId, userId, requestId);
-      
+
       if (!ownershipValid) {
         logger.warn({
           requestId,
@@ -245,11 +259,12 @@ export class RankingSignalsCacheRedis {
    * Clear cache entry (for testing)
    */
   async clear(requestId: string): Promise<void> {
-    if (!this.redis) return;
+    const redis = this.getRedis();
+    if (!redis) return;
 
     try {
       const key = KEY_PREFIX + requestId;
-      await this.redis.del(key);
+      await redis.del(key);
     } catch (error) {
       // Ignore errors in test cleanup
     }
@@ -259,20 +274,22 @@ export class RankingSignalsCacheRedis {
    * Check if Redis is available
    */
   isAvailable(): boolean {
-    return this.redis !== null;
+    return this.getRedis() !== null;
   }
 
   /**
    * Get cache stats (for monitoring)
    */
   async getStats(): Promise<{ available: boolean; totalKeys?: number }> {
-    if (!this.redis) {
+    const redis = this.getRedis();
+
+    if (!redis) {
       return { available: false };
     }
 
     try {
       const pattern = KEY_PREFIX + '*';
-      const keys = await this.redis.keys(pattern);
+      const keys = await redis.keys(pattern);
       return {
         available: true,
         totalKeys: keys.length

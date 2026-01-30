@@ -31,7 +31,7 @@ import { ASSISTANT_ROUTING, isTypeAllowedOnChannel } from './assistant-routing.t
  */
 export interface AssistantMessage {
   id: string;               // Unique ID (requestId-type-timestamp)
-  type: 'CLARIFY' | 'SUMMARY' | 'GATE_FAIL';
+  type: 'CLARIFY' | 'SUMMARY' | 'GATE_FAIL' | 'NUDGE_REFINE';
   message: string;
   question: string | null;
   blocksSearch: boolean;
@@ -267,7 +267,7 @@ export class SearchAssistantHandler {
    * DEDUPLICATION FIX: Hard guard prevents duplicate messages from WS/HTTP race
    */
   addMessage(
-    type: 'CLARIFY' | 'SUMMARY' | 'GATE_FAIL',
+    type: 'CLARIFY' | 'SUMMARY' | 'GATE_FAIL' | 'NUDGE_REFINE',
     message: string,
     requestId: string,
     question: string | null = null,

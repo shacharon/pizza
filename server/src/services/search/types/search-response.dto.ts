@@ -100,35 +100,35 @@ export interface SearchResponseMeta {
 export interface SearchResponse {
   // Request ID (for WebSocket subscription)
   requestId: string;
-  
+
   // Session
   sessionId: string;
-  
+
   // Query info
   query: SearchResponseQuery;
-  
+
   // Results (flat list for backward compatibility)
   results: RestaurantResult[];
-  
+
   // Grouped results (Answer-First UX)
   groups?: ResultGroup[];
-  
+
   // UI suggestions
   chips: RefinementChip[];
-  
+
   // REQUIRED: Assist payload (AI assistant)
   assist: AssistPayload;
-  
+
   // Optional: Proposed actions (Human-in-the-Loop pattern)
   proposedActions?: ProposedActions;
-  
+
   // Optional: Clarification (Answer-First UX)
   clarification?: import('./search.types.js').Clarification;
   requiresClarification?: boolean;  // Shorthand flag for easier UI logic
-  
+
   // Optional: Diagnostics (dev/debug only)
   diagnostics?: Diagnostics;
-  
+
   // Metadata
   meta: SearchResponseMeta;
 }

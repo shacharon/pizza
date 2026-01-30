@@ -84,6 +84,43 @@ if (!googleApiKey) {
   });
 }
 
+// Phase 1: EAGER Redis initialization (before listen, before routes)
+// Prevents /ws-ticket 503 spam after deploy when Redis container is starting
+// Behavior:
+// - Production: Fail-closed (exit if Redis unavailable) - prevents cascading failures
+// - Development: Continue in degraded mode (ws-ticket will 503, but server runs)
+import { RedisService } from './infra/redis/redis.service.js';
+
+const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+const env = (process.env.NODE_ENV || 'development') as 'production' | 'development' | 'staging';
+
+try {
+  await RedisService.start(
+    {
+      url: redisUrl,
+      maxRetriesPerRequest: 2,
+      connectTimeout: 2000,
+      commandTimeout: 2000,
+      enableOfflineQueue: false
+    },
+    {
+      timeout: 8000, // 8s startup timeout (ECS healthcheck allows this)
+      env,
+      failClosed: env === 'production' // Exit on failure in production
+    }
+  );
+} catch (error) {
+  // RedisService.start() handles process.exit() in production
+  // This catch is for unexpected errors
+  logger.fatal({
+    error: error instanceof Error ? error.message : 'unknown',
+    env
+  }, '[BOOT] Unexpected error during Redis startup');
+  if (env === 'production') {
+    process.exit(1);
+  }
+}
+
 const app = createApp();
 const server = app.listen(port, () => {
   logger.info(`Server listening on http://localhost:${port}`);
@@ -122,7 +159,7 @@ if (llmProvider) {
  * P0 Scale Safety: Drain in-flight requests before termination to prevent job loss.
  * ECS stopTimeout should be set to 60s to allow full drain cycle.
  */
-function shutdown(signal: NodeJS.Signals) {
+async function shutdown(signal: NodeJS.Signals) {
   logger.info({
     signal,
     event: 'shutdown_initiated',
@@ -164,6 +201,20 @@ function shutdown(signal: NodeJS.Signals) {
     logger.error({
       error: err instanceof Error ? err.message : 'unknown',
       msg: '[Shutdown] State store shutdown error (non-fatal)'
+    });
+  }
+
+  // Phase 3.5: Close Redis connection
+  try {
+    await RedisService.close();
+    logger.info({
+      event: 'redis_closed',
+      msg: '[Shutdown] Redis connection closed'
+    });
+  } catch (err) {
+    logger.error({
+      error: err instanceof Error ? err.message : 'unknown',
+      msg: '[Shutdown] Redis shutdown error (non-fatal)'
     });
   }
 

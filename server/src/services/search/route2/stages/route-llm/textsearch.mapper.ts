@@ -11,6 +11,9 @@ import type { Message } from '../../../../../llm/types.js';
 import { logger } from '../../../../../lib/logger/structured-logger.js';
 import { resolveLLM } from '../../../../../lib/llm/index.js';
 import { TextSearchLLMResponseSchema, type TextSearchMapping } from './schemas.js';
+import { canonicalizeTextQuery } from '../../../utils/google-query-normalizer.js';
+import { generateCanonicalQuery } from './canonical-query.generator.js';
+import { getCachedCanonicalQuery } from './canonical-query.cache.js';
 
 const TEXTSEARCH_MAPPER_VERSION = 'textsearch_mapper_v2';
 
@@ -168,7 +171,7 @@ export async function executeTextSearchMapper(
         error: lastError?.message || String(lastError),
         msg: '[ROUTE2] textsearch_mapper LLM failed, using fallback'
       });
-      return buildDeterministicMapping(intent, request, finalFilters, requestId);
+      return buildDeterministicMapping(intent, request, finalFilters, context);
     }
 
     // Using 'as any' because the LLM response doesn't contain 'bias' anymore
@@ -177,6 +180,54 @@ export async function executeTextSearchMapper(
     // CRITICAL: Override LLM's region/language with filters_resolved values (single source of truth)
     mapping.region = finalFilters.regionCode;
     mapping.language = finalFilters.providerLanguage;
+
+    // CRITICAL: Canonicalize textQuery to avoid chatty conversational queries
+    const canonicalized = canonicalizeTextQuery(mapping.textQuery, requestId);
+    if (canonicalized.normalized) {
+      logger.info({
+        requestId,
+        stage: 'textsearch_mapper',
+        event: 'textquery_canonicalized',
+        originalTextQuery: mapping.textQuery,
+        canonicalTextQuery: canonicalized.canonicalTextQuery,
+        reason: canonicalized.reason
+      }, '[TEXTSEARCH] Canonicalized chatty query');
+      mapping.textQuery = canonicalized.canonicalTextQuery;
+    }
+
+    // CANONICAL QUERY GENERATION (LLM)
+    // Generate Google-optimized canonical query with caching
+    const canonicalResult = await getCachedCanonicalQuery(
+      mapping.textQuery,
+      finalFilters.uiLanguage as 'he' | 'en',
+      finalFilters.regionCode,
+      () => generateCanonicalQuery(
+        mapping.textQuery,
+        intent.cityText || null,
+        {
+          requestId,
+          traceId,
+          sessionId,
+          llmProvider,
+          uiLanguage: finalFilters.uiLanguage as 'he' | 'en',
+          regionCode: finalFilters.regionCode
+        }
+      ),
+      requestId
+    );
+
+    // Use canonical query if it was successfully rewritten
+    if (canonicalResult.wasRewritten) {
+      logger.info({
+        requestId,
+        stage: 'textsearch_mapper',
+        event: 'canonical_query_applied',
+        originalTextQuery: mapping.textQuery,
+        canonicalTextQuery: canonicalResult.googleQuery,
+        confidence: canonicalResult.confidence
+      }, '[TEXTSEARCH] Applied LLM-generated canonical query');
+      mapping.textQuery = canonicalResult.googleQuery;
+    }
 
     // CRITICAL: Manually inject 'bias' property as undefined.
     // This ensures that 'applyLocationBias' function doesn't crash 
@@ -196,25 +247,73 @@ export async function executeTextSearchMapper(
 
   } catch (error) {
     // Fallback logic if LLM fails or returns 400
-    return buildDeterministicMapping(intent, request, finalFilters, requestId);
+    return buildDeterministicMapping(intent, request, finalFilters, context);
   }
 }
 /**
  * Build deterministic mapping when LLM fails
  * Uses filters_resolved as single source of truth for region/language
  */
-function buildDeterministicMapping(
+async function buildDeterministicMapping(
   intent: IntentResult,
   request: SearchRequest,
   finalFilters: FinalSharedFilters,
-  requestId?: string
-): TextSearchMapping {
+  context: Route2Context
+): Promise<TextSearchMapping> {
+  const { requestId, traceId, sessionId, llmProvider } = context;
   const statusWords = ['פתוחות', 'פתוח', 'סגורות', 'סגור', 'open', 'closed'];
   let cleanedQuery = request.query;
   for (const word of statusWords) {
     cleanedQuery = cleanedQuery.replace(new RegExp(`\\b${word}\\b`, 'gi'), '');
   }
   cleanedQuery = cleanedQuery.trim().replace(/\s+/g, ' ');
+
+  // Canonicalize textQuery to avoid chatty conversational queries
+  const canonicalized = canonicalizeTextQuery(cleanedQuery, requestId);
+  if (canonicalized.normalized) {
+    logger.info({
+      requestId,
+      stage: 'textsearch_mapper_fallback',
+      event: 'textquery_canonicalized',
+      originalTextQuery: cleanedQuery,
+      canonicalTextQuery: canonicalized.canonicalTextQuery,
+      reason: canonicalized.reason
+    }, '[TEXTSEARCH] Canonicalized chatty query in fallback');
+    cleanedQuery = canonicalized.canonicalTextQuery;
+  }
+
+  // CANONICAL QUERY GENERATION (LLM) - Also in fallback path
+  const canonicalResult = await getCachedCanonicalQuery(
+    cleanedQuery,
+    finalFilters.uiLanguage as 'he' | 'en',
+    finalFilters.regionCode,
+    () => generateCanonicalQuery(
+      cleanedQuery,
+      intent.cityText || null,
+      {
+        requestId,
+        traceId,
+        sessionId,
+        llmProvider,
+        uiLanguage: finalFilters.uiLanguage as 'he' | 'en',
+        regionCode: finalFilters.regionCode
+      }
+    ),
+    requestId
+  );
+
+  // Use canonical query if it was successfully rewritten
+  if (canonicalResult.wasRewritten) {
+    logger.info({
+      requestId,
+      stage: 'textsearch_mapper_fallback',
+      event: 'canonical_query_applied',
+      originalTextQuery: cleanedQuery,
+      canonicalTextQuery: canonicalResult.googleQuery,
+      confidence: canonicalResult.confidence
+    }, '[TEXTSEARCH] Applied LLM-generated canonical query in fallback');
+    cleanedQuery = canonicalResult.googleQuery;
+  }
 
   const mapping: TextSearchMapping = {
     providerMethod: 'textSearch',
@@ -257,7 +356,7 @@ function applyLocationBias(
       center: { lat: request.userLocation.lat, lng: request.userLocation.lng },
       radiusMeters: 20000 // Default 20km for user location bias
     };
-    
+
     logger.info({
       requestId,
       stage: 'textsearch_mapper',
@@ -267,7 +366,7 @@ function applyLocationBias(
       lng: bias.center.lng,
       radiusMeters: bias.radiusMeters
     }, '[TEXTSEARCH] Location bias applied from userLocation (default anchor)');
-    
+
     return { bias, source: 'userLocation' };
   }
 
@@ -281,10 +380,10 @@ function applyLocationBias(
       source: 'cityText_pending_geocode',
       cityText: mapping.cityText
     }, '[TEXTSEARCH] Location bias planned from cityText (will be geocoded in handler)');
-    
+
     // Return undefined bias but indicate it's planned (handler will geocode)
-    return { 
-      bias: undefined, 
+    return {
+      bias: undefined,
       source: 'cityText_pending_geocode'
     };
   }

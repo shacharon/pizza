@@ -5,7 +5,7 @@
  * Each purpose can have its own model and timeout configuration.
  */
 
-export type LLMPurpose = 
+export type LLMPurpose =
   | 'gate'           // Gate2 stage - fast food/non-food classification
   | 'intent'         // Intent stage - route decision (TEXTSEARCH/NEARBY/LANDMARK)
   | 'baseFilters'    // Base filters extraction (language, openState, etc.)

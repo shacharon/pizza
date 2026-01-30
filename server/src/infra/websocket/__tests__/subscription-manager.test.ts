@@ -280,6 +280,31 @@ describe('SubscriptionManager', () => {
     });
   });
 
+  describe('ESM compatibility (P0 fix)', () => {
+    it('should not throw "require is not defined" error in ESM runtime', () => {
+      const ws = createMockWebSocket('client-1') as WebSocket;
+      (ws as any).clientId = 'test-client-id';
+      
+      // This should not throw ReferenceError: require is not defined
+      // The subscribe method uses crypto.createHash() which was previously require('crypto')
+      assert.doesNotThrow(() => {
+        manager.subscribe('search', 'req-test-123', 'session-test-456', ws);
+      });
+    });
+
+    it('should handle crypto hashing in subscribe without require()', () => {
+      const ws = createMockWebSocket('client-1') as WebSocket;
+      (ws as any).clientId = 'test-client-id';
+      
+      // Verify the subscribe completes successfully with crypto operations
+      manager.subscribe('search', 'req-hash-test', 'session-hash-test', ws);
+      
+      const subscribers = manager.getSubscribers('search:req-hash-test');
+      assert.ok(subscribers, 'Subscribers should be defined after subscribe');
+      assert.strictEqual(subscribers!.size, 1, 'Should have 1 subscriber');
+    });
+  });
+
   describe('getStats', () => {
     it('should return zero stats when no subscriptions', () => {
       const stats = manager.getStats();

@@ -54,6 +54,7 @@ export class SearchFacade {
   readonly assist = this.searchStore.assist;
   readonly proposedActions = this.searchStore.proposedActions;
   readonly hasResults = this.searchStore.hasResults;
+  readonly isStopped = this.searchStore.isStopped;
   readonly selectedRestaurant = this.sessionStore.selectedRestaurant;
   readonly pendingActions = this.actionsStore.pending;
   readonly executedActions = this.actionsStore.executed;
@@ -152,6 +153,36 @@ export class SearchFacade {
     // Subscribe to WebSocket messages via handler
     this.wsHandler.subscribeToMessages(msg => this.handleWsMessage(msg));
 
+    // Subscribe to ticket unavailable events (503 Redis unavailable)
+    // Triggers immediate polling fallback without waiting for deferred polling
+    this.wsHandler.ticketUnavailable$.subscribe(() => {
+      const requestId = this.currentRequestId();
+      const query = this.query();
+      
+      if (requestId && query) {
+        safeLog('SearchFacade', 'ws-ticket unavailable - starting immediate polling fallback', { requestId });
+        
+        // Cancel deferred polling start and start immediately
+        this.apiHandler.cancelPollingStart();
+        
+        // Start polling immediately (no delay)
+        this.apiHandler.startPolling(
+          requestId,
+          query,
+          (response) => this.handleSearchResponse(response, query),
+          (error) => {
+            this.searchStore.setError(error);
+            this.searchStore.setLoading(false);
+            this.assistantHandler.setStatus('failed');
+            this.assistantHandler.setError(error + ' - Please retry');
+            this.inputStateMachine.searchFailed();
+          },
+          undefined, // onProgress
+          { delayMs: 0, fastIntervalBase: 500, slowInterval: 2000, backoffAt: 10000, maxDuration: 30000, fastJitter: 200 } // immediate start
+        );
+      }
+    });
+
     // Connect to WebSocket
     this.wsHandler.connect();
   }
@@ -218,7 +249,7 @@ export class SearchFacade {
       // - Fresh search (query changed): Generate NEW key, clear old one
       // - Retry (same query): Reuse EXISTING key to prevent duplicates during ECS autoscaling
       const isRetry = this.searchStore.query() === query && !!this.currentIdempotencyKey;
-      
+
       if (!isRetry) {
         // Fresh search: Generate new key
         this.currentIdempotencyKey = this.generateIdempotencyKey();
@@ -329,9 +360,38 @@ export class SearchFacade {
       return;
     }
 
+    // CLARIFY FIX: If in CLARIFY state, don't store results
+    // User must answer clarification question first - results are not valid
+    if (this.cardState() === 'CLARIFY') {
+      safeLog('SearchFacade', 'Ignoring results - waiting for clarification', {
+        requestId: response.requestId,
+        cardState: 'CLARIFY'
+      });
+      // Cancel any further polling attempts
+      this.apiHandler.cancelPolling();
+      return;
+    }
+
+    // INVARIANT CHECK: Validate DONE_STOPPED responses have no results
+    // This should never trigger (backend enforces it), but defensive check
+    const isDoneStopped = response.meta?.failureReason !== 'NONE';
+    const isClarify = response.assist?.type === 'clarify';
+    if ((isDoneStopped || isClarify) && response.results.length > 0) {
+      safeLog('SearchFacade', 'WARNING: CLARIFY/STOPPED response had results - sanitizing', {
+        requestId: response.requestId,
+        resultCount: response.results.length,
+        assistType: response.assist?.type,
+        failureReason: response.meta?.failureReason
+      });
+      // FAIL-SAFE: Force empty results (defensive)
+      response.results = [];
+      response.groups = undefined;
+    }
+
     safeLog('SearchFacade', 'Handling search response', {
       requestId: response.requestId,
-      resultCount: response.results.length
+      resultCount: response.results.length,
+      isStopped: isDoneStopped || isClarify
     });
 
     // Store requestId if not already set
@@ -347,10 +407,7 @@ export class SearchFacade {
     this.inFlightQuery = null;
 
     // CARD STATE: Successful results = terminal STOP state
-    if (this.cardState() !== 'CLARIFY') {
-      // Don't override CLARIFY state - it's explicitly non-terminal
-      this._cardState.set('STOP');
-    }
+    this._cardState.set('STOP');
 
     // Update input state machine
     this.inputStateMachine.searchComplete();
@@ -358,7 +415,8 @@ export class SearchFacade {
     safeLog('SearchFacade', 'Search completed', {
       requestId: response.requestId,
       resultCount: response.results.length,
-      cardState: this.cardState()
+      cardState: this.cardState(),
+      isStopped: this.searchStore.isStopped()
     });
   }
 
@@ -382,7 +440,7 @@ export class SearchFacade {
 
           // DEDUP FIX: Strict type validation - only LLM assistant messages
           // System notifications MUST NOT render as assistant messages
-          const validTypes = ['CLARIFY', 'SUMMARY', 'GATE_FAIL'];
+          const validTypes = ['CLARIFY', 'SUMMARY', 'GATE_FAIL', 'NUDGE_REFINE'];
           if (!narrator || !narrator.type || !validTypes.includes(narrator.type)) {
             safeLog('SearchFacade', 'Ignoring non-LLM assistant message', { type: narrator?.type || 'unknown' });
             return;
@@ -394,7 +452,7 @@ export class SearchFacade {
           const assistMessage = narrator.message || narrator.question || '';
           if (assistMessage) {
             this.assistantHandler.addMessage(
-              narrator.type as 'CLARIFY' | 'SUMMARY' | 'GATE_FAIL',
+              narrator.type as 'CLARIFY' | 'SUMMARY' | 'GATE_FAIL' | 'NUDGE_REFINE',
               assistMessage,
               narratorMsg.requestId,
               narrator.question || null,
@@ -408,6 +466,11 @@ export class SearchFacade {
 
             // Stop loading immediately
             this.searchStore.setLoading(false);
+
+            // CLARIFY FIX: Clear previous results to prevent stale data from rendering
+            // User must answer clarification question - old results are not valid
+            this.searchStore.reset();
+            this.searchStore.setQuery(this.searchStore.query()); // Preserve query text
 
             // CARD STATE: Set to CLARIFY (non-terminal, card stays active)
             this._cardState.set('CLARIFY');
@@ -524,6 +587,20 @@ export class SearchFacade {
         safeError('SearchFacade', 'Action proposal error', { error });
       }
     });
+  }
+
+  /**
+   * Add assistant message (public wrapper for assistantHandler)
+   * Used for local fallback messages when WS is not connected
+   */
+  addAssistantMessage(
+    type: 'CLARIFY' | 'SUMMARY' | 'GATE_FAIL' | 'NUDGE_REFINE',
+    message: string,
+    requestId: string,
+    question: string | null,
+    blocksSearch: boolean
+  ): void {
+    this.assistantHandler.addMessage(type, message, requestId, question, blocksSearch);
   }
 
   approveAction(actionId: string): void {

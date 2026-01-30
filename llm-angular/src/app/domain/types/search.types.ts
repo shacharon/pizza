@@ -79,6 +79,42 @@ export interface DietaryHint {
 // Alias for backward compatibility
 export type RestaurantResult = Restaurant;
 
+/**
+ * UX SIGNALS MODEL
+ * Canonical priority system for card visual hints
+ * 
+ * PRIORITY ORDER (only ONE signal per card):
+ * 1. OPEN/CLOSED (hard rule - always wins if exists)
+ * 2. PRICE (cheap/mid/expensive)
+ * 3. DISTANCE (nearby signal)
+ * 4. INTENT_MATCH (e.g., "Great for breakfast")
+ * 5. POPULARITY (highly rated)
+ * 
+ * UI consumes this signal, not raw fields.
+ */
+export type CardSignalType = 
+  | 'OPEN_NOW'        // Priority 1: Currently open
+  | 'CLOSED_NOW'      // Priority 1: Currently closed
+  | 'PRICE_CHEAP'     // Priority 2: $ (priceLevel 1)
+  | 'PRICE_MID'       // Priority 2: $$ (priceLevel 2)
+  | 'PRICE_EXPENSIVE' // Priority 2: $$$ (priceLevel 3+)
+  | 'NEARBY'          // Priority 3: < 500m distance
+  | 'INTENT_MATCH'    // Priority 4: Matches query intent
+  | 'POPULAR';        // Priority 5: Highly rated (>= 4.5 rating, >= 100 reviews)
+
+export interface CardSignal {
+  type: CardSignalType;
+  priority: 1 | 2 | 3 | 4 | 5;
+  label: string;      // UI display text (e.g., "פתוח עכשיו", "$$", "קרוב")
+  metadata?: {        // Optional context for signal
+    distanceMeters?: number;
+    priceLevel?: number;
+    matchReason?: string;
+    rating?: number;
+    reviewCount?: number;
+  };
+}
+
 export interface Coordinates {
   lat: number;
   lng: number;

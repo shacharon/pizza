@@ -38,14 +38,15 @@ export class PendingSubscriptionsManager {
 
     this.pendingSubscriptions.set(pendingKey, pendingSub);
 
-    logger.info({
+    // Note: ws_subscribe_ack will be logged by subscription-manager after registration
+    logger.debug({
       clientId: (ws as any).clientId,
       channel,
       requestIdHash: this.hashRequestId(requestId),
       sessionHash: hashSessionId(sessionId),
       pending: true,
       ttlMs: PENDING_SUB_TTL_MS,
-      event: 'ws_subscribe_ack'
+      event: 'pending_subscription_registered'
     }, 'Subscribe pending - awaiting job creation');
   }
 

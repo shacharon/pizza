@@ -16,6 +16,7 @@ import { generateTextSearchCacheKey } from '../../../../../lib/cache/googleCache
 import { getCacheService, raceWithCleanup } from './cache-manager.js';
 import { fetchAllPages } from './pagination-handler.js';
 import { executeRetryStrategy } from './retry-strategy.js';
+import { normalizeTextQuery } from './textquery-normalizer.js';
 import type { RouteLLMMapping, Route2Context } from '../../types.js';
 
 // Field mask for Google Places API (New) - includes opening hours data
@@ -36,7 +37,7 @@ export async function executeTextSearch(
   const biasSource = mapping.bias
     ? 'userLocation_or_llm'
     : (mapping.cityText ? 'cityText_pending_geocode' : null);
-  
+
   logger.info({
     requestId,
     provider: 'google_places_new',
@@ -207,10 +208,16 @@ async function executeTextSearchAttempt(
   apiKey: string,
   requestId: string
 ): Promise<any[]> {
-  const maxResults = 20; // Limit total results across pages
+  const maxResults = 40; // Fetch up to 40 results across pages (2 pages × 20)
+
+  // Normalize textQuery (fix chatty queries like "מה יש לאכול")
+  const { canonicalTextQuery, wasNormalized, reason } = normalizeTextQuery(mapping.textQuery, requestId);
 
   // If cityText exists and no bias is set, geocode the city to create location bias
-  let enrichedMapping = mapping;
+  let enrichedMapping = {
+    ...mapping,
+    textQuery: canonicalTextQuery // Use canonical query
+  };
   if (mapping.cityText && !mapping.bias) {
     try {
       const cityCoords = await callGoogleGeocodingAPI(
@@ -277,7 +284,7 @@ async function executeTextSearchAttempt(
       finalBiasSource = 'userLocation_or_llm';
     }
   }
-  
+
   logger.info({
     requestId,
     event: 'textsearch_request_payload',

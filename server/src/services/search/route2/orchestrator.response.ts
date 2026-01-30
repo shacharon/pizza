@@ -20,8 +20,52 @@ import { publishRankingSuggestionDeferred } from './assistant/ranking-suggestion
 import { rankingSignalsCache } from './ranking/ranking-signals-cache.redis.js';
 
 /**
+ * DEFENSIVE INVARIANT: Validate response for CLARIFY/STOPPED states
+ * Ensures CLARIFY responses NEVER contain results or pagination
+ */
+function validateClarifyResponse(response: SearchResponse): SearchResponse {
+  const isClarify = response.assist.type === 'clarify';
+  const isDoneStopped = response.meta.failureReason !== 'NONE';
+
+  if (isClarify || isDoneStopped) {
+    // INVARIANT VIOLATION: CLARIFY/STOPPED must have empty results
+    if (response.results.length > 0) {
+      logger.error({
+        requestId: response.requestId,
+        assistType: response.assist.type,
+        failureReason: response.meta.failureReason,
+        resultCount: response.results.length,
+        event: 'clarify_invariant_violated',
+        msg: '[ROUTE2] CLARIFY response had results - sanitizing (BUG)'
+      });
+      // FAIL-SAFE: Force empty results
+      response.results = [];
+      delete response.groups;
+    }
+
+    // INVARIANT VIOLATION: CLARIFY/STOPPED must have no pagination
+    if (response.meta.pagination) {
+      logger.error({
+        requestId: response.requestId,
+        assistType: response.assist.type,
+        failureReason: response.meta.failureReason,
+        hasPagination: true,
+        event: 'clarify_pagination_invariant_violated',
+        msg: '[ROUTE2] CLARIFY response had pagination - sanitizing (BUG)'
+      });
+      // FAIL-SAFE: Remove pagination
+      delete response.meta.pagination;
+    }
+  }
+
+  return response;
+}
+
+/**
  * Build early exit response (gate stop, clarify, location required, etc.)
  * Shared builder to reduce duplication across guard clauses
+ * 
+ * INVARIANT: Always returns empty results[] and no pagination
  */
 export function buildEarlyExitResponse(params: {
   requestId: string;
@@ -35,7 +79,7 @@ export function buildEarlyExitResponse(params: {
   failureReason: FailureReason;
   startTime: number;
 }): SearchResponse {
-  return {
+  const response: SearchResponse = {
     requestId: params.requestId,
     sessionId: params.sessionId,
     query: {
@@ -53,7 +97,7 @@ export function buildEarlyExitResponse(params: {
       },
       language: params.language
     },
-    results: [],
+    results: [], // INVARIANT: Always empty for CLARIFY/STOPPED
     chips: [],
     assist: { type: params.assistType, message: params.assistMessage },
     meta: {
@@ -63,8 +107,12 @@ export function buildEarlyExitResponse(params: {
       confidence: params.confidence,
       source: params.source,
       failureReason: params.failureReason
+      // INVARIANT: No pagination field for CLARIFY/STOPPED
     }
   };
+
+  // DEFENSIVE: Validate invariants before returning
+  return validateClarifyResponse(response);
 }
 
 /**
@@ -176,11 +224,36 @@ export async function buildFinalResponse(
   }
 
   // Build final response
-  // Pagination metadata: Return ALL results in first response
+  // Pagination metadata: Return ALL results (up to 40) in first response
   // Frontend will handle local pagination (no new search on "load more")
   const totalPool = finalResults.length;
-  const shownNow = totalPool;  // All results returned initially
+  const shownNow = totalPool;  // All results returned initially (up to 40)
   const hasMore = false;  // No server-side pagination
+
+  // Log paging metadata (proof of pagination behavior)
+  logger.info({
+    requestId,
+    event: 'pagination_meta',
+    fetchedCount: totalPool,           // Total fetched from Google (up to 40)
+    returnedCount: shownNow,           // Total returned to client (all 40)
+    clientVisibleCount: 12,            // Frontend shows 12 initially (updated from 10)
+    clientNextIncrement: 5,            // Frontend loads +5 on "Load More"
+    serverPagination: false            // All results returned, client handles pagination
+  }, '[ROUTE2] Pagination metadata (client-side)');
+
+  // Log final response order to prove no re-sorting after ranking
+  const finalOrder = finalResults.slice(0, 10).map((r, idx) => ({
+    idx,
+    placeId: r.placeId || r.id,
+    name: r.name || 'Unknown'
+  }));
+
+  logger.info({
+    requestId,
+    event: 'final_response_order',
+    count: finalResults.length,
+    first10: finalOrder
+  }, '[ROUTE2] Final response order (no re-sorting after ranking)');
 
   const response: SearchResponse = {
     requestId,
@@ -249,7 +322,7 @@ export async function buildFinalResponse(
       sessionId,
       undefined // userId not currently tracked
     );
-    
+
     logger.debug({
       requestId,
       profile: rankingSignals.profile,
@@ -259,5 +332,6 @@ export async function buildFinalResponse(
     }, '[RANKING] Stored signals in Redis for load_more events');
   }
 
-  return response;
+  // DEFENSIVE: Validate invariants before returning (should never trigger for success case)
+  return validateClarifyResponse(response);
 }

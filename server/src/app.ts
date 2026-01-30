@@ -10,8 +10,7 @@ import { securityHeadersMiddleware } from './middleware/security-headers.middlew
 import { createRateLimiter } from './middleware/rate-limit.middleware.js';
 
 import { createV1Router } from './routes/v1/index.js';
-import { getExistingRedisClient } from './lib/redis/redis-client.js';
-import { healthCheckHandler } from './controllers/health.controler.js';
+import { livenessHandler, readinessHandler, legacyHealthCheckHandler } from './controllers/health.controller.js';
 import { getConfig } from './config/env.js';
 import { validateOrigin, getSafeOriginSummary } from './lib/security/origin-validator.js';
 import { logger } from './lib/logger/structured-logger.js';
@@ -79,11 +78,25 @@ export function createApp() {
     return next(err);
   });
 
+  // Health & Readiness endpoints
+  // /health - Liveness (process alive?)
+  // /ready - Readiness (can serve traffic? Redis ready?)
+  // /healthz - Legacy (deprecated, use /ready)
+  
+  app.get('/health', livenessHandler);
+  app.get('/ready', (req, res) => {
+    Promise.resolve(readinessHandler(req, res)).catch((err) => {
+      logger.error({ error: err.message }, '[Health] Readiness check error');
+      res.status(503).json({ status: 'ERROR', ready: false });
+    });
+  });
+  
+  // Legacy endpoint (backward compatibility)
   app.get('/healthz', (req, res) => {
-    const redisClient = getExistingRedisClient();
-    Promise.resolve(healthCheckHandler(req as any, res as any, redisClient ?? undefined)).catch((err) =>
-      (req as any)?.log?.error?.({ err }, 'healthz_failed')
-    );
+    Promise.resolve(legacyHealthCheckHandler(req, res)).catch((err) => {
+      logger.error({ error: err.message }, '[Health] Legacy healthz error');
+      res.status(503).json({ status: 'ERROR' });
+    });
   });
 
   // ─────────────────────────────────────────────

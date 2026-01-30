@@ -10,7 +10,8 @@ import crypto from 'crypto';
 import { logger } from '../../lib/logger/structured-logger.js';
 import type { WSClientMessage, WSServerMessage, WSChannel } from './websocket-protocol.js';
 import { isWSClientMessage } from './websocket-protocol.js';
-import Redis from 'ioredis';
+import type Redis from 'ioredis';
+import { RedisService } from '../redis/redis.service.js';
 import { SOFT_CLOSE_REASONS } from './ws-close-reasons.js';
 
 // Configuration and auth
@@ -64,20 +65,27 @@ export class WebSocketManager {
   private subscriptionAck!: SubscriptionAckService;
   private subscribeHandler!: SubscribeHandlerService;
 
+  // Idempotency tracking for NUDGE_REFINE (in-memory, per-process)
+  // Tracks requestIds that have already received NUDGE_REFINE message
+  private nudgeRefineSent = new Set<string>();
+
   constructor(server: HTTPServer, config?: Partial<WebSocketManagerConfig>) {
     // 1. Resolve and validate configuration
     this.config = resolveWebSocketConfig(config);
 
-    // 2. Initialize Redis Connection
+    // 2. Use shared Redis client (initialized by server.ts)
     if (this.config.redisUrl) {
-      this.redis = new Redis.Redis(this.config.redisUrl, {
-        maxRetriesPerRequest: 3,
-        enableReadyCheck: true
-      });
-      logger.info(
-        { redisUrl: this.config.redisUrl.split('@')[1] || 'local' },
-        'WebSocketManager: Redis enabled'
-      );
+      this.redis = RedisService.getClientOrNull();
+      if (this.redis) {
+        logger.info(
+          { redisUrl: this.config.redisUrl.split('@')[1] || 'local' },
+          'WebSocketManager: Using shared Redis client'
+        );
+      } else {
+        logger.warn(
+          { msg: 'WebSocketManager: Redis client not available (may still be initializing)' }
+        );
+      }
     }
 
     // 3. Validate Redis requirement for auth
@@ -229,7 +237,8 @@ export class WebSocketManager {
           this.cleanup.bind(this)
         ),
         sendError: this.sendError.bind(this),
-        onLoadMore: this.handleLoadMore.bind(this)
+        onLoadMore: this.handleLoadMore.bind(this),
+        onRevealLimitReached: this.handleRevealLimitReached.bind(this)
       }
     );
 
@@ -266,6 +275,199 @@ export class WebSocketManager {
       loadMoreMessage.totalShown,
       userId
     );
+  }
+
+  /**
+   * Handle reveal_limit_reached event from client
+   * Sends deterministic NUDGE_REFINE assistant message (no LLM, no counts)
+   * 
+   * Requirements:
+   * - Owner auth check (like subscribe)
+   * - Idempotent: Only send once per requestId
+   * - Deterministic: Select message from copypack using hash(requestId) % N
+   * - No LLM calls, no counts, no ranking claims
+   */
+  private async handleRevealLimitReached(ws: WebSocket, message: WSClientMessage): Promise<void> {
+    const revealLimitMessage = message as any;
+    const requestId = revealLimitMessage.requestId;
+    const uiLanguage = (revealLimitMessage.uiLanguage || 'en') as 'he' | 'en';
+
+    logger.info({
+      requestId,
+      uiLanguage,
+      event: 'reveal_limit_reached_handler'
+    }, '[WS] Handling reveal limit reached event');
+
+    // 1. Idempotency check: Only send once per requestId
+    if (this.nudgeRefineSent.has(requestId)) {
+      logger.debug({
+        requestId,
+        event: 'nudge_refine_duplicate'
+      }, '[WS] NUDGE_REFINE already sent for this requestId, skipping');
+      return;
+    }
+
+    // 2. Owner auth check (like subscribe)
+    // Extract connection identity
+    const wsSessionId = (ws as any).sessionId || 'anonymous';
+    const wsUserId = (ws as any).userId;
+    const clientId = (ws as any).clientId || 'unknown';
+
+    // Verify ownership using SubscriptionManager's internal verifier
+    const ownershipVerifier = (this.subscriptionManager as any).ownershipVerifier;
+    
+    if (!ownershipVerifier) {
+      logger.error({
+        requestId,
+        event: 'nudge_refine_no_verifier'
+      }, '[WS] OwnershipVerifier not available');
+      return;
+    }
+
+    try {
+      const ownershipDecision = await ownershipVerifier.verifyOwnership(
+        requestId,
+        wsSessionId,
+        wsUserId,
+        clientId,
+        'assistant'
+      );
+
+      if (ownershipDecision.result !== 'ALLOW') {
+        logger.warn({
+          requestId,
+          clientId,
+          reason: ownershipDecision.reason || 'unknown',
+          event: 'nudge_refine_auth_denied'
+        }, '[WS] reveal_limit_reached auth denied - not owner');
+        return;
+      }
+    } catch (error) {
+      logger.error({
+        requestId,
+        error: error instanceof Error ? error.message : 'unknown',
+        event: 'nudge_refine_auth_error'
+      }, '[WS] Error checking reveal_limit_reached ownership');
+      return;
+    }
+
+    // 3. Load copypack and select message deterministically
+    const messageData = await this.selectNudgeMessage(requestId, uiLanguage);
+
+    if (!messageData) {
+      logger.error({
+        requestId,
+        uiLanguage,
+        event: 'nudge_refine_selection_failed'
+      }, '[WS] Failed to select NUDGE_REFINE message');
+      return;
+    }
+
+    // 4. Mark as sent (idempotency)
+    this.nudgeRefineSent.add(requestId);
+
+    // 5. Build and publish NUDGE_REFINE message
+    const assistantMessage: WSServerMessage = {
+      type: 'assistant',
+      requestId,
+      payload: {
+        type: 'NUDGE_REFINE',
+        message: messageData.text,
+        question: null,
+        blocksSearch: messageData.blocksSearch,
+        suggestedAction: messageData.suggestedAction,
+        uiLanguage
+      }
+    };
+
+    // Publish to assistant channel only (no broadcast)
+    this.publishToChannel('assistant', requestId, undefined, assistantMessage);
+
+    logger.info({
+      requestId,
+      type: 'NUDGE_REFINE',
+      lang: uiLanguage,
+      index: messageData.index,
+      event: 'nudge_refine_sent'
+    }, '[WS] NUDGE_REFINE message sent (deterministic, no LLM)');
+  }
+
+  /**
+   * Select NUDGE_REFINE message from copypack (deterministic, no LLM)
+   * Uses hash(requestId) % N for deterministic selection
+   */
+  private async selectNudgeMessage(
+    requestId: string,
+    language: 'he' | 'en'
+  ): Promise<{ text: string; blocksSearch: boolean; suggestedAction: 'REFINE_QUERY'; index: number } | null> {
+    try {
+      // Load copypack
+      const fs = await import('fs/promises');
+      const path = await import('path');
+      const copypackPath = path.join(
+        process.cwd(),
+        'src/services/search/route2/assistant/copypack/ws-nudge-copypack-v1.json'
+      );
+
+      const copypackData = await fs.readFile(copypackPath, 'utf-8');
+      const copypack = JSON.parse(copypackData);
+
+      const messages = copypack.messages[language];
+
+      if (!Array.isArray(messages) || messages.length === 0) {
+        logger.error({
+          language,
+          event: 'copypack_invalid'
+        }, '[WS] Invalid copypack format');
+        return null;
+      }
+
+      // Deterministic selection: hash(requestId) % N
+      // Simple hash: sum of char codes
+      let hash = 0;
+      for (let i = 0; i < requestId.length; i++) {
+        hash += requestId.charCodeAt(i);
+      }
+      const index = hash % messages.length;
+
+      const selectedMessage = messages[index];
+
+      logger.info({
+        requestId,
+        type: 'NUDGE_REFINE',
+        lang: language,
+        index,
+        totalMessages: messages.length,
+        hash,
+        event: 'nudge_refine_selected'
+      }, '[WS] NUDGE_REFINE message selected (deterministic)');
+
+      return {
+        text: selectedMessage.text,
+        blocksSearch: selectedMessage.blocksSearch || false,
+        suggestedAction: 'REFINE_QUERY' as const,
+        index
+      };
+
+    } catch (error) {
+      logger.error({
+        error: error instanceof Error ? error.message : 'unknown',
+        event: 'copypack_load_failed'
+      }, '[WS] Failed to load copypack, using hardcoded fallback');
+
+      // Hardcoded fallback
+      const fallbackMessages = {
+        en: 'Showing all results. For more precise matches, try refining your search - for example, add a specific location or cuisine type.',
+        he: 'הצגת כל התוצאות. כדי לקבל תוצאות מדויקות יותר, נסה לחדד את החיפוש - למשל, הוסף מיקום ספציפי או סוג מטבח מסוים.'
+      };
+
+      return {
+        text: fallbackMessages[language],
+        blocksSearch: false,
+        suggestedAction: 'REFINE_QUERY' as const,
+        index: 0
+      };
+    }
   }
 
   private cleanup(ws: WebSocket): void {

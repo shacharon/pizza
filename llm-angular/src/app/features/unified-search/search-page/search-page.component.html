@@ -152,11 +152,20 @@
       </div>
 
       <div class="results-grid">
-        @for (restaurant of filteredResults(); track trackByRestaurant($index, restaurant)) {
+        @for (restaurant of visibleResults(); track trackByRestaurant($index, restaurant)) {
         <app-restaurant-card [restaurant]="restaurant" [selected]="facade.selectedRestaurant()?.id === restaurant.id"
           (cardClick)="onCardClick($event)" (actionClick)="onActionClick($event, restaurant)" />
         }
       </div>
+
+      <!-- Pagination: Load more button (no count shown) -->
+      @if (canShowMore()) {
+      <div class="pagination-controls">
+        <button class="show-more-button" (click)="loadMore()">
+          Load more
+        </button>
+      </div>
+      }
     </section>
     }
 

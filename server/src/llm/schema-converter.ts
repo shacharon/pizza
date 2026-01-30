@@ -39,8 +39,9 @@ export class SchemaConverter {
     }
   ): SchemaConversionResult {
     // Convert Zod schema to JSON Schema for OpenAI Structured Outputs
+    // Use jsonSchema7 target (not openApi3) to ensure root has type: "object"
     const jsonSchema = zodToJsonSchema(schema as any, {
-      target: 'openApi3',
+      target: 'jsonSchema7',
       $refStrategy: 'none'
     }) as any;
 

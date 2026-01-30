@@ -51,7 +51,7 @@ function createFallbackResult(query: string, isTimeout: boolean): IntentResult {
 
 
 /**
- * Execute INTENT stage
+ * Execute INTENT stage with retry on timeout
  * 
  * @param request Search request
  * @param context Pipeline context
@@ -78,23 +78,75 @@ export async function executeIntentStage(
       { role: 'user', content: request.query }
     ];
 
-    const response = await llmProvider.completeJSON(
-      messages,
-      IntentLLMSchema,
-      {
-        model,
-        temperature: 0.1,
-        timeout: timeoutMs,
-        requestId,
-        ...(traceId && { traceId }),
-        ...(sessionId && { sessionId }),
-        stage: 'intent',
-        promptVersion: INTENT_PROMPT_VERSION,
-        promptHash: INTENT_PROMPT_HASH,
-        schemaHash: INTENT_SCHEMA_HASH
-      },
-      INTENT_JSON_SCHEMA  // Pass static schema to avoid double conversion
-    );
+    // Try initial call
+    let response;
+    let retryAttempted = false;
+    
+    try {
+      response = await llmProvider.completeJSON(
+        messages,
+        IntentLLMSchema,
+        {
+          model,
+          temperature: 0.1,
+          timeout: timeoutMs,
+          requestId,
+          ...(traceId && { traceId }),
+          ...(sessionId && { sessionId }),
+          stage: 'intent',
+          promptVersion: INTENT_PROMPT_VERSION,
+          promptHash: INTENT_PROMPT_HASH,
+          schemaHash: INTENT_SCHEMA_HASH
+        },
+        INTENT_JSON_SCHEMA  // Pass static schema to avoid double conversion
+      );
+    } catch (firstError) {
+      // Retry ONLY on abort_timeout errors
+      if (isAbortTimeoutError(firstError)) {
+        logger.warn({
+          requestId,
+          pipelineVersion: 'route2',
+          stage: 'intent',
+          event: 'intent_timeout_retry',
+          error: firstError instanceof Error ? firstError.message : String(firstError),
+          msg: '[ROUTE2] Intent LLM timeout - retrying once after 250ms'
+        });
+
+        // Short backoff: 250ms
+        await new Promise(resolve => setTimeout(resolve, 250));
+        retryAttempted = true;
+
+        // Retry once
+        response = await llmProvider.completeJSON(
+          messages,
+          IntentLLMSchema,
+          {
+            model,
+            temperature: 0.1,
+            timeout: timeoutMs,
+            requestId,
+            ...(traceId && { traceId }),
+            ...(sessionId && { sessionId }),
+            stage: 'intent',
+            promptVersion: INTENT_PROMPT_VERSION,
+            promptHash: INTENT_PROMPT_HASH,
+            schemaHash: INTENT_SCHEMA_HASH
+          },
+          INTENT_JSON_SCHEMA
+        );
+
+        logger.info({
+          requestId,
+          pipelineVersion: 'route2',
+          stage: 'intent',
+          event: 'intent_retry_success',
+          msg: '[ROUTE2] Intent LLM retry succeeded'
+        });
+      } else {
+        // Re-throw non-timeout errors immediately
+        throw firstError;
+      }
+    }
 
     if (!response || !response.data) {
       logger.warn({
@@ -166,7 +218,8 @@ export async function executeIntentStage(
     endStage(context, 'intent', startTime, {
       route: llmResult.route,
       confidence: llmResult.confidence,
-      reason: llmResult.reason
+      reason: llmResult.reason,
+      ...(retryAttempted && { retryAttempted: true })
     });
 
     // Normalize null to undefined for cityText

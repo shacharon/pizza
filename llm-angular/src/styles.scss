@@ -18,7 +18,31 @@
     --space: 8px;
 }
 
+html, body {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    // Prevent body scroll - only dedicated containers scroll
+    overflow: hidden;
+    // Prevent iOS text size adjustment
+    -webkit-text-size-adjust: 100%;
+}
+
 body {
     background: var(--bg);
     color: var(--text);
+}
+
+// Prevent pull-to-refresh and overscroll bounce
+html {
+    overscroll-behavior: none;
+}
+
+// App root must fill viewport
+app-root {
+    display: block;
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
 }

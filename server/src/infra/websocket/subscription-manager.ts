@@ -65,12 +65,21 @@ export class SubscriptionManager {
     }
     this.socketToSubscriptions.get(client)!.add(key);
 
-    logger.debug({
+    // CONSOLIDATED LOG: ws_subscribe_ack (after successful registration)
+    // This is the single source of truth for subscription acknowledgment
+    const clientId = (client as any).clientId;
+    const requestIdHash = crypto.createHash('sha256').update(requestId).digest('hex').substring(0, 12);
+    const sessionHash = crypto.createHash('sha256').update(sessionId || 'anonymous').digest('hex').substring(0, 12);
+    
+    logger.info({
+      clientId,
       channel,
-      requestId,
-      sessionId: sessionId || 'none',
-      subscriberCount: this.subscriptions.get(key)!.size
-    }, 'WebSocket subscribed to channel');
+      requestIdHash,
+      sessionHash,
+      pending: false,
+      subscriberCount: this.subscriptions.get(key)!.size,
+      event: 'ws_subscribe_ack'
+    }, 'Subscribe accepted - registration complete');
   }
 
   /** Unsubscribe from a channel */

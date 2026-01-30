@@ -16,7 +16,7 @@ import crypto from 'crypto';
 import { logger } from '../../lib/logger/structured-logger.js';
 import { getConfig } from '../../config/env.js';
 import { authenticateJWT, type AuthenticatedRequest } from '../../middleware/auth.middleware.js';
-import { getExistingRedisClient } from '../../lib/redis/redis-client.js';
+import { RedisService } from '../../infra/redis/redis.service.js';
 
 const router = Router();
 const config = getConfig();
@@ -153,7 +153,10 @@ function generateTicket(): string {
  * 
  * Error codes:
  * - MISSING_SESSION (401): JWT missing sessionId
- * - WS_REDIS_UNAVAILABLE (503): Redis not available
+ * - WS_TICKET_REDIS_UNAVAILABLE (503): Redis not available
+ * 
+ * Error headers:
+ * - Retry-After: 2 (seconds) - Client should retry after 2 seconds
  */
 router.post('/ws-ticket', authenticateJWT, async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
@@ -182,24 +185,52 @@ router.post('/ws-ticket', authenticateJWT, async (req: Request, res: Response) =
       });
     }
 
-    // Get Redis client
-    const redis = getExistingRedisClient();
+    // Check Redis readiness (synchronous, fast)
+    // After EAGER initialization in server.ts, this should always be true
+    // If false: Redis container failed to start or connection lost
+    if (!RedisService.isReady()) {
+      // Log once per request (concise, no stack spam)
+      logger.error(
+        {
+          traceId,
+          sessionId,
+          event: 'ws_ticket_redis_not_ready'
+        },
+        '[WSTicket] Redis not ready - ticket service unavailable'
+      );
 
+      return res.status(503)
+        .header('Retry-After', '2') // Standard HTTP retry header
+        .json({
+          errorCode: 'WS_TICKET_REDIS_NOT_READY',
+          message: 'Ticket service temporarily unavailable',
+          traceId,
+          retryAfter: 2
+        });
+    }
+
+    // Get Redis client (guaranteed available after isReady() check)
+    const redis = RedisService.getClientOrNull();
+
+    // Defense: Should never happen after isReady() returns true
     if (!redis) {
       logger.error(
         {
           traceId,
-          sessionId
+          sessionId,
+          event: 'ws_ticket_redis_inconsistent'
         },
-        '[WSTicket] Redis client not available'
+        '[WSTicket] CRITICAL: isReady() true but client null'
       );
 
-      return res.status(503).json({
-        error: 'WS_REDIS_UNAVAILABLE',
-        code: 'WS_REDIS_UNAVAILABLE',
-        message: 'Ticket service temporarily unavailable',
-        traceId
-      });
+      return res.status(503)
+        .header('Retry-After', '2')
+        .json({
+          errorCode: 'WS_TICKET_REDIS_NOT_READY',
+          message: 'Ticket service temporarily unavailable',
+          traceId,
+          retryAfter: 2
+        });
     }
 
     // Generate ticket

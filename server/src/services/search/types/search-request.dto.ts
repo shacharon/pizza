@@ -24,22 +24,22 @@ const filtersSchema = z.object({
 export const searchRequestSchema = z.object({
   // Required: user's query
   query: z.string().min(1).max(500),
-  
+
   // Optional: session ID for context
   sessionId: z.string().optional(),
-  
+
   // Optional: user's location (for "near me" queries)
   userLocation: coordinatesSchema.nullish(),
-  
+
   // Optional: explicit filters
   filters: filtersSchema,
-  
+
   // Optional: clear session context (intent reset)
   clearContext: z.boolean().optional(),
-  
+
   // Optional: enable debug mode (include diagnostics in response)
   debug: z.boolean().optional(),
-  
+
   // Optional: pagination (for "load more" UX)
   pagination: z.object({
     limit: z.number().int().min(1).max(100).optional().default(10),  // Results per page
@@ -79,11 +79,11 @@ export function safeParseSearchRequest(data: unknown): {
   error?: string;
 } {
   const result = searchRequestSchema.safeParse(data);
-  
+
   if (result.success) {
     return { success: true, data: result.data };
   }
-  
+
   return {
     success: false,
     error: result.error.issues.map(e => `${e.path.join('.')}: ${e.message}`).join(', '),

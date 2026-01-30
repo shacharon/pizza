@@ -28,25 +28,40 @@ export class SearchStore {
   readonly proposedActions = computed(() => this._response()?.proposedActions);
   readonly hasResults = computed(() => this.results().length > 0);
   readonly assist = computed(() => this._response()?.assist);
-  
+
   // NEW: Groups support (Phase B)
   readonly groups = computed(() => this._response()?.groups);
   readonly hasGroups = computed(() => {
     const groups = this.groups();
     return groups !== undefined && groups.length > 0;
   });
-  readonly exactResults = computed(() => 
+  readonly exactResults = computed(() =>
     this.groups()?.find((g: ResultGroup) => g.kind === 'EXACT')?.results || []
   );
-  readonly nearbyResults = computed(() => 
+  readonly nearbyResults = computed(() =>
     this.groups()?.find((g: ResultGroup) => g.kind === 'NEARBY')?.results || []
   );
   readonly exactCount = computed(() => this.exactResults().length);
   readonly nearbyCount = computed(() => this.nearbyResults().length);
-  
+
   // NEW: Clarification support (Answer-First UX)
   readonly clarification = computed(() => this._response()?.clarification);
   readonly requiresClarification = computed(() => this._response()?.requiresClarification ?? false);
+
+  // CLARIFY FIX: Derived flag for DONE_STOPPED / blocksSearch state
+  // When true, UI must NOT show results, only assistant message
+  readonly isStopped = computed(() => {
+    const response = this._response();
+    if (!response) return false;
+
+    // Check 1: DONE_STOPPED (pipeline stopped early)
+    const isDoneStopped = response.meta?.failureReason !== 'NONE';
+
+    // Check 2: blocksSearch (assistant requires user input)
+    const blocksSearch = response.assist?.type === 'clarify';
+
+    return isDoneStopped || blocksSearch;
+  });
 
   // Mutations
   setQuery(query: string): void {

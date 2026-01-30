@@ -70,7 +70,7 @@ Five distinct LLM purposes are defined:
 | Purpose | Description | Default Timeout | Default Model |
 |---------|-------------|-----------------|---------------|
 | `gate` | Gate2 stage - fast food/non-food classification | 2500ms | gpt-4o-mini |
-| `intent` | Intent stage - route decision (TEXTSEARCH/NEARBY/LANDMARK) | 2500ms | gpt-4o-mini |
+| `intent` | Intent stage - route decision (TEXTSEARCH/NEARBY/LANDMARK) | 3500ms | gpt-4o-mini |
 | `baseFilters` | Base filters extraction (language, openState, etc.) | 2000ms | gpt-4o-mini |
 | `routeMapper` | Route-specific query mapping | 3500ms | gpt-4o-mini |
 | `assistant` | Assistant messages - LLM-generated UX guidance | 3000ms | gpt-4o-mini |

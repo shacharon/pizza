@@ -65,7 +65,7 @@ export class InMemorySearchJobStore implements ISearchJobStore {
 
     job.status = status;
     job.updatedAt = Date.now();
-    
+
     if (progress !== undefined) {
       job.progress = progress;
     }
@@ -151,12 +151,12 @@ export class InMemorySearchJobStore implements ISearchJobStore {
    */
   deleteJob(requestId: string): void {
     const job = this.jobs.get(requestId);
-    
+
     // Clean up idempotency index if key exists
     if (job?.idempotencyKey) {
       this.idempotencyIndex.delete(job.idempotencyKey);
     }
-    
+
     this.jobs.delete(requestId);
     logger.info({ requestId, msg: '[JobStore] Job deleted' });
   }
@@ -230,7 +230,7 @@ export class InMemorySearchJobStore implements ISearchJobStore {
 
     const now = Date.now();
     const validStatuses: JobStatus[] = ['RUNNING', 'DONE_SUCCESS'];
-    
+
     // For RUNNING jobs, return immediately
     if (job.status === 'RUNNING') {
       return job;
@@ -242,6 +242,58 @@ export class InMemorySearchJobStore implements ISearchJobStore {
     }
 
     return null;
+  }
+
+  /**
+   * Store candidate pool for local soft-filter requery
+   */
+  setCandidatePool(requestId: string, pool: SearchJob['candidatePool']): void {
+    const job = this.jobs.get(requestId);
+    if (!job) {
+      logger.warn({ requestId, msg: '[JobStore] setCandidatePool called but job not found' });
+      return;
+    }
+
+    job.candidatePool = pool;
+    job.updatedAt = Date.now();
+
+    logger.info({
+      requestId,
+      candidateCount: pool?.candidates.length ?? 0,
+      route: pool?.route,
+      msg: '[JobStore] Candidate pool stored'
+    });
+  }
+
+  /**
+   * Get candidate pool (IDOR-protected: validates sessionId ownership)
+   * Returns null if not found or if requestor is not the owner
+   */
+  getCandidatePool(requestId: string, sessionId: string): SearchJob['candidatePool'] | null {
+    const job = this.jobs.get(requestId);
+    if (!job) {
+      return null;
+    }
+
+    // Check TTL
+    if (Date.now() - job.createdAt > this.ttlMs) {
+      this.jobs.delete(requestId);
+      return null;
+    }
+
+    // IDOR Protection: Verify ownership via sessionId
+    if (job.sessionId !== sessionId) {
+      logger.warn({
+        requestId,
+        jobSessionId: job.sessionId,
+        requestSessionId: sessionId,
+        event: 'candidate_pool_access_denied',
+        msg: '[JobStore] IDOR protection: sessionId mismatch'
+      });
+      return null;
+    }
+
+    return job.candidatePool ?? null;
   }
 
   /**

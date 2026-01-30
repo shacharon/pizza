@@ -1,10 +1,22 @@
 :host {
-    display: block;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    // Mobile: Prevent any transform that breaks sticky
+    transform: none;
+    -webkit-transform: none;
 }
 
 .topbar {
     background: #111;
     color: #fff;
+    /* FIX: Ensure topbar is always above sticky search header */
+    position: relative;
+    z-index: 200; /* Higher than search-header (z-index: 150) */
+    flex-shrink: 0; /* Don't let topbar shrink */
+    
+    // Mobile: Safe area support
+    padding-top: env(safe-area-inset-top, 0);
 }
 
 .nav {
@@ -14,6 +26,8 @@
     gap: 16px;
     align-items: center;
     padding: 10px 16px;
+    padding-left: max(16px, env(safe-area-inset-left, 16px));
+    padding-right: max(16px, env(safe-area-inset-right, 16px));
 }
 
 .brand {
@@ -31,7 +45,16 @@
 }
 
 .container {
-    max-width: 960px;
-    margin: 16px auto;
-    padding: 0 16px;
+    // Allow full-height routes (like search-page) to control their own layout
+    flex: 1; /* Take remaining space after topbar */
+    overflow: hidden; /* Prevent container scroll - let children handle it */
+    display: flex;
+    flex-direction: column;
+    
+    // Mobile: Critical - no transform that breaks sticky
+    transform: none;
+    -webkit-transform: none;
+    // Mobile: Create own stacking context
+    position: relative;
+    z-index: 1;
 }

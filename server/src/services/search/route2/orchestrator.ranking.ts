@@ -3,11 +3,11 @@
  * Handles LLM-driven ranking profile selection and deterministic scoring
  */
 
-import type { Route2Context, IntentResult } from './types.js';
+import type { Route2Context, IntentResult, RouteLLMMapping } from './types.js';
 import type { FinalSharedFilters } from './shared/shared-filters.types.js';
 import { getRankingLLMConfig } from '../config/ranking.config.js';
 import { selectRankingProfile, type RankingContext } from './ranking/ranking-profile-llm.service.js';
-import { rankResults } from './ranking/results-ranker.js';
+import { rankResults, computeScoreBreakdown } from './ranking/results-ranker.js';
 import { buildRankingSignals, type RankingSignals, type RelaxationApplied, type OpenUnknownStats } from './ranking/ranking-signals.js';
 import { logger } from '../../../lib/logger/structured-logger.js';
 
@@ -34,7 +34,8 @@ export async function applyRankingIfEnabled(
   finalFilters: FinalSharedFilters,
   resultsBeforeFilters: number,
   relaxApplied: RelaxationApplied,
-  ctx: Route2Context
+  ctx: Route2Context,
+  mapping?: RouteLLMMapping
 ): Promise<RankingResult> {
   const { requestId } = ctx;
   const rankingConfig = getRankingLLMConfig();
@@ -42,7 +43,7 @@ export async function applyRankingIfEnabled(
   // Compute open/unknown stats from filtered results
   const openUnknownStats: OpenUnknownStats = computeOpenUnknownStats(finalResults);
 
-  // Feature flag check - default behavior unchanged
+  // Feature flag check - skip if disabled or mode is GOOGLE
   if (!rankingConfig.enabled || rankingConfig.defaultMode !== 'LLM_SCORE') {
     logger.info({
       requestId,
@@ -51,7 +52,7 @@ export async function applyRankingIfEnabled(
       enabled: rankingConfig.enabled,
       mode: rankingConfig.defaultMode
     }, '[RANKING] Skipping LLM ranking (feature disabled or mode not LLM_SCORE)');
-    
+
     // Still build signals with default BALANCED profile
     const signals = buildRankingSignals({
       query: ctx.query ?? '',
@@ -63,7 +64,7 @@ export async function applyRankingIfEnabled(
       relaxApplied,
       openUnknownStats
     });
-    
+
     return { rankedResults: finalResults, signals };
   }
 
@@ -74,7 +75,7 @@ export async function applyRankingIfEnabled(
       event: 'ranking_skipped',
       reason: 'empty_results'
     }, '[RANKING] Skipping ranking (no results)');
-    
+
     // Build signals even with no results
     const signals = buildRankingSignals({
       query: ctx.query ?? '',
@@ -86,11 +87,26 @@ export async function applyRankingIfEnabled(
       relaxApplied,
       openUnknownStats
     });
-    
+
     return { rankedResults: finalResults, signals };
   }
 
   try {
+    // Log BEFORE ordering - first 10 placeIds in original Google order
+    const beforeOrder = finalResults.slice(0, 10).map((r, idx) => ({
+      idx,
+      placeId: r.placeId || r.id,
+      rating: r.rating,
+      userRatingCount: r.userRatingsTotal
+    }));
+
+    logger.info({
+      requestId,
+      event: 'ranking_input_order',
+      count: finalResults.length,
+      first10: beforeOrder
+    }, '[RANKING] Input order (Google)');
+
     // Build minimal context for LLM (no restaurant data)
     const rankingContext: RankingContext = {
       query: ctx.query ?? '',
@@ -103,11 +119,15 @@ export async function applyRankingIfEnabled(
       }
     };
 
-    // Step 1: LLM selects profile and weights
+    // Extract biasRadiusMeters from mapping (for deterministic profile selection)
+    const biasRadiusMeters = mapping && 'bias' in mapping ? mapping.bias?.radiusMeters : undefined;
+
+    // Step 1: LLM selects profile and weights (with deterministic fallback)
     const selection = await selectRankingProfile(
       rankingContext,
       ctx.llmProvider,
-      requestId
+      requestId,
+      biasRadiusMeters
     );
 
     // Step 2: Deterministically score and sort results
@@ -115,6 +135,33 @@ export async function applyRankingIfEnabled(
       weights: selection.weights,
       userLocation: ctx.userLocation ?? null
     });
+
+    // Log AFTER ordering - first 10 placeIds after ranking
+    const afterOrder = rankedResults.slice(0, 10).map((r, idx) => ({
+      idx,
+      placeId: r.placeId || r.id,
+      rating: r.rating,
+      userRatingCount: r.userRatingsTotal
+    }));
+
+    logger.info({
+      requestId,
+      event: 'ranking_output_order',
+      count: rankedResults.length,
+      first10: afterOrder
+    }, '[RANKING] Output order (ranked)');
+
+    // Log score breakdown for top 10 results
+    const scoreBreakdowns = rankedResults.slice(0, 10).map(r =>
+      computeScoreBreakdown(r, selection.weights, ctx.userLocation ?? null)
+    );
+
+    logger.info({
+      requestId,
+      event: 'ranking_score_breakdown',
+      profile: selection.profile,
+      top10: scoreBreakdowns
+    }, '[RANKING] Score breakdown for top 10 results');
 
     // Log ranking event (single structured event)
     logger.info({
@@ -142,7 +189,7 @@ export async function applyRankingIfEnabled(
     return { rankedResults, signals };
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    
+
     logger.error({
       requestId,
       event: 'ranking_failed',
@@ -160,7 +207,7 @@ export async function applyRankingIfEnabled(
       relaxApplied,
       openUnknownStats
     });
-    
+
     return { rankedResults: finalResults, signals };
   }
 }

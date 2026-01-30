@@ -44,6 +44,12 @@ export class WsClientService {
   // Connection status signal (PUBLIC API)
   readonly connectionStatus = signal<ConnectionStatus>('disconnected');
 
+  // Polling fallback signal (PUBLIC API)
+  // Emitted when ws-ticket returns 503 (Redis unavailable)
+  // Triggers immediate switch to polling mode for active searches
+  private ticketUnavailableSubject = new Subject<void>();
+  readonly ticketUnavailable$ = this.ticketUnavailableSubject.asObservable();
+
   // Message stream (PUBLIC API)
   // P0-3: Apply backpressure throttling to prevent memory blowups on message bursts
   // - Throttles to max 10 messages/sec (100ms window)
@@ -84,7 +90,8 @@ export class WsClientService {
       onMessage: (event) => this.router.handleMessage(event),
       onClose: (event) => { /* handled internally by connection */ },
       onError: (event) => { /* handled internally by connection */ },
-      onStatusChange: (status) => this.connectionStatus.set(status)
+      onStatusChange: (status) => this.connectionStatus.set(status),
+      onTicketUnavailable: () => this.ticketUnavailableSubject.next()
     };
 
     // Router callbacks

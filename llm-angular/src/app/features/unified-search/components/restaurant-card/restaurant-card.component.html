@@ -6,7 +6,8 @@
   }
 
   <!-- P0 Security: Secure photo loading via backend proxy -->
-  @if (photoSrc() && !photoError()) {
+  <!-- Non-blocking: Show placeholder first, load photo after initial render -->
+  @if (shouldLoadPhoto() && photoSrc() && !photoError()) {
   <img class="restaurant-photo" [src]="getCurrentPhotoSrc()" [alt]="restaurant().name + ' restaurant photo'"
     loading="lazy" (error)="onPhotoError()" [attr.aria-label]="'Photo of ' + restaurant().name" />
   } @else {
@@ -29,11 +30,12 @@
 
     <div class="restaurant-meta">
       @if (restaurant().rating) {
-      <span class="rating" [attr.aria-label]="'Rating: ' + restaurant().rating">
-        {{ getRatingStars(restaurant().rating) }}
-        <span class="rating-value">{{ restaurant().rating }}</span>
+      <span class="rating" 
+        [attr.data-low-reviews]="isLowReviewCount() ? 'true' : 'false'"
+        [attr.aria-label]="'Rating: ' + restaurant().rating">
+        ⭐ {{ restaurant().rating }}
         @if (restaurant().userRatingsTotal) {
-        <span class="rating-count">({{ restaurant().userRatingsTotal }})</span>
+        <span class="rating-reviews"> · {{ formatReviewCount(restaurant().userRatingsTotal!) }} ביקורות</span>
         }
       </span>
       }
@@ -43,20 +45,23 @@
         {{ getPriceLevel(restaurant().priceLevel) }}
       </span>
       }
-
-      @if (getOpenStatus()) {
-      <span class="open-status" [class.open]="getOpenStatus() === 'open'" [class.closed]="getOpenStatus() === 'closed'"
-        [class.unknown]="getOpenStatus() === 'unknown'" [attr.aria-label]="getOpenStatusLabel()">
-        {{ getOpenStatusLabel() }}
-      </span>
-      }
     </div>
 
-    <p class="restaurant-address">{{ restaurant().address }}</p>
+    <p class="restaurant-address">{{ getShortAddress(restaurant().address) }}</p>
 
-    @if (restaurant().tags && restaurant().tags!.length > 0) {
+    <!-- UX SIGNALS: Canonical card signal (priority-based) -->
+    @if (cardSignal()) {
+    <p class="card-signal-text" 
+      [class.emphasized]="isCardSignalEmphasized()"
+      [style.color]="getCardSignalColor()"
+      [attr.aria-label]="'Signal: ' + getCardSignalLabel()">
+      {{ getCardSignalLabel() }}
+    </p>
+    }
+
+    @if (getDisplayTags().length > 0) {
     <div class="restaurant-tags">
-      @for (tag of restaurant().tags; track tag) {
+      @for (tag of getDisplayTags(); track tag) {
       <span class="tag">{{ tag }}</span>
       }
     </div>
@@ -64,19 +69,20 @@
   </div>
 
   <div class="quick-actions">
-    <button type="button" class="action-button" (click)="onAction($event, 'GET_DIRECTIONS')"
+    <!-- Secondary actions (all equal weight) -->
+    <button type="button" class="action-button icon-only maps" (click)="onAction($event, 'GET_DIRECTIONS')"
       [disabled]="!isActionAvailable('GET_DIRECTIONS')"
-      [title]="isActionAvailable('GET_DIRECTIONS') ? 'Get directions' : 'Location not available'"
-      [attr.aria-label]="isActionAvailable('GET_DIRECTIONS') ? 'Get directions to ' + restaurant().name : 'Directions not available'">
+      [title]="isActionAvailable('GET_DIRECTIONS') ? 'הצג במפות' : 'Location not available'"
+      [attr.aria-label]="isActionAvailable('GET_DIRECTIONS') ? 'Show ' + restaurant().name + ' on maps' : 'Location not available'">
       📍
     </button>
-    <button type="button" class="action-button" (click)="onAction($event, 'CALL_RESTAURANT')"
+    <button type="button" class="action-button icon-only" (click)="onAction($event, 'CALL_RESTAURANT')"
       [disabled]="!isActionAvailable('CALL_RESTAURANT')"
       [title]="isActionAvailable('CALL_RESTAURANT') ? 'Call restaurant' : 'Phone number not available'"
       [attr.aria-label]="isActionAvailable('CALL_RESTAURANT') ? 'Call ' + restaurant().name : 'Phone number not available'">
       📞
     </button>
-    <button type="button" class="action-button favorite" (click)="onAction($event, 'SAVE_FAVORITE')"
+    <button type="button" class="action-button icon-only favorite" (click)="onAction($event, 'SAVE_FAVORITE')"
       [disabled]="!isActionAvailable('SAVE_FAVORITE')" title="Save to favorites"
       [attr.aria-label]="'Save ' + restaurant().name + ' to favorites'">
       ❤️

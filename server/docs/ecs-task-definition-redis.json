@@ -1,0 +1,115 @@
+{
+  "family": "piza-api-task",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "containerDefinitions": [
+    {
+      "name": "redis",
+      "image": "redis:7-alpine",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 6379,
+          "protocol": "tcp"
+        }
+      ],
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "redis-cli ping | grep PONG"
+        ],
+        "interval": 5,
+        "timeout": 2,
+        "retries": 12,
+        "startPeriod": 10
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/piza-api",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "redis"
+        }
+      },
+      "environment": [
+        {
+          "name": "REDIS_APPENDONLY",
+          "value": "no"
+        },
+        {
+          "name": "REDIS_MAXMEMORY",
+          "value": "256mb"
+        },
+        {
+          "name": "REDIS_MAXMEMORY_POLICY",
+          "value": "allkeys-lru"
+        }
+      ]
+    },
+    {
+      "name": "api",
+      "image": "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/piza-api:${IMAGE_TAG}",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 3000,
+          "protocol": "tcp"
+        }
+      ],
+      "dependsOn": [
+        {
+          "containerName": "redis",
+          "condition": "HEALTHY"
+        }
+      ],
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "curl -f http://localhost:3000/api/v1/ready || exit 1"
+        ],
+        "interval": 10,
+        "timeout": 3,
+        "retries": 3,
+        "startPeriod": 30
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/piza-api",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "api"
+        }
+      },
+      "environment": [
+        {
+          "name": "NODE_ENV",
+          "value": "production"
+        },
+        {
+          "name": "REDIS_URL",
+          "value": "redis://localhost:6379"
+        },
+        {
+          "name": "ENABLE_REDIS_JOBSTORE",
+          "value": "true"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "JWT_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:${AWS_ACCOUNT_ID}:secret:piza/jwt-secret"
+        },
+        {
+          "name": "GOOGLE_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:${AWS_ACCOUNT_ID}:secret:piza/google-api-key"
+        },
+        {
+          "name": "OPENAI_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:${AWS_ACCOUNT_ID}:secret:piza/openai-api-key"
+        }
+      ]
+    }
+  ]
+}

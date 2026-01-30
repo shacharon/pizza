@@ -44,8 +44,8 @@ describe('LLM Resolver', () => {
       const assistantResolved = resolveLLM('assistant');
 
       assert.strictEqual(gateResolved.timeoutMs, 2500);
-      assert.strictEqual(intentResolved.timeoutMs, 2500);
-      assert.strictEqual(baseFiltersResolved.timeoutMs, 2000);
+      assert.strictEqual(intentResolved.timeoutMs, 3500);
+      assert.strictEqual(baseFiltersResolved.timeoutMs, 3200);
       assert.strictEqual(routeMapperResolved.timeoutMs, 3500);
       assert.strictEqual(assistantResolved.timeoutMs, 3000);
     });
@@ -186,8 +186,8 @@ describe('LLM Resolver', () => {
       const resolved = getAllResolvedLLMs();
 
       assert.strictEqual(resolved.gate.timeoutMs, 2500);
-      assert.strictEqual(resolved.intent.timeoutMs, 2500);
-      assert.strictEqual(resolved.baseFilters.timeoutMs, 2000);
+      assert.strictEqual(resolved.intent.timeoutMs, 3500);
+      assert.strictEqual(resolved.baseFilters.timeoutMs, 3200);
       assert.strictEqual(resolved.routeMapper.timeoutMs, 3500);
       assert.strictEqual(resolved.assistant.timeoutMs, 3000);
     });

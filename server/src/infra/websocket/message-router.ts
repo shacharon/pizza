@@ -47,6 +47,7 @@ export class WebSocketMessageRouter {
       onSubscribe: (ws: WebSocket, message: WSClientMessage) => Promise<void>;
       sendError: (ws: WebSocket, error: string, message: string) => void;
       onLoadMore?: (ws: WebSocket, message: WSClientMessage) => Promise<void>;
+      onRevealLimitReached?: (ws: WebSocket, message: WSClientMessage) => Promise<void>;
     }
   ): Promise<RouteResult> {
     const wsSessionId = (ws as any).sessionId as string | undefined;
@@ -65,9 +66,22 @@ export class WebSocketMessageRouter {
           return { success: false };
         }
 
-        // Delegate to subscribe handler
-        await callbacks.onSubscribe(ws, message);
-        return { success: true };
+        // Delegate to subscribe handler with error handling
+        try {
+          await callbacks.onSubscribe(ws, message);
+          return { success: true };
+        } catch (error) {
+          logger.error({
+            clientId,
+            sessionId: wsSessionId || 'none',
+            error: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined,
+            event: 'subscribe_handler_error'
+          }, 'Subscribe handler threw error');
+          
+          callbacks.sendError(ws, 'internal_error', 'Failed to process subscribe request');
+          return { success: false };
+        }
       }
 
       case 'unsubscribe': {
@@ -149,6 +163,25 @@ export class WebSocketMessageRouter {
         // Delegate to load more handler if provided
         if (callbacks.onLoadMore) {
           await callbacks.onLoadMore(ws, message);
+        }
+
+        return { success: true };
+      }
+
+      case 'reveal_limit_reached': {
+        const revealLimitMessage = message as any;
+        logger.info(
+          {
+            clientId,
+            requestIdHash: this.config.isProduction ? this.hashRequestId(revealLimitMessage.requestId) : revealLimitMessage.requestId,
+            uiLanguage: revealLimitMessage.uiLanguage
+          },
+          'websocket_reveal_limit_reached_event'
+        );
+
+        // Delegate to reveal limit handler if provided
+        if (callbacks.onRevealLimitReached) {
+          await callbacks.onRevealLimitReached(ws, message);
         }
 
         return { success: true };

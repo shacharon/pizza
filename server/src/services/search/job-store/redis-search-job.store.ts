@@ -19,9 +19,9 @@ export class RedisSearchJobStore implements ISearchJobStore {
     this.redis = redisClient;
     this.ttlSeconds = ttlSeconds;
 
-    logger.info({ 
-      ttlSeconds: this.ttlSeconds, 
-      msg: '[RedisJobStore] Initialized with shared Redis client' 
+    logger.info({
+      ttlSeconds: this.ttlSeconds,
+      msg: '[RedisJobStore] Initialized with shared Redis client'
     });
   }
 
@@ -76,7 +76,7 @@ export class RedisSearchJobStore implements ISearchJobStore {
 
     job.status = status;
     job.updatedAt = Date.now();
-    
+
     if (progress !== undefined) {
       job.progress = progress;
     }
@@ -160,7 +160,7 @@ export class RedisSearchJobStore implements ISearchJobStore {
   async getJob(requestId: string): Promise<SearchJob | null> {
     const key = this.getKey(requestId);
     const data = await this.redis.get(key);
-    
+
     if (!data) {
       return null;
     }
@@ -175,13 +175,13 @@ export class RedisSearchJobStore implements ISearchJobStore {
 
   async deleteJob(requestId: string): Promise<void> {
     const job = await this.getJob(requestId);
-    
+
     // Clean up idempotency index if key exists
     if (job?.idempotencyKey) {
       const idempotencyKey = this.getIdempotencyKey(job.idempotencyKey);
       await this.redis.del(idempotencyKey);
     }
-    
+
     const key = this.getKey(requestId);
     await this.redis.del(key);
     logger.info({ requestId, msg: '[RedisJobStore] Job deleted' });
@@ -196,7 +196,7 @@ export class RedisSearchJobStore implements ISearchJobStore {
   async findByIdempotencyKey(idempotencyKey: string, freshWindowMs: number = 5000): Promise<SearchJob | null> {
     const key = this.getIdempotencyKey(idempotencyKey);
     const requestId = await this.redis.get(key);
-    
+
     if (!requestId) {
       return null;
     }
@@ -210,7 +210,7 @@ export class RedisSearchJobStore implements ISearchJobStore {
 
     const now = Date.now();
     const validStatuses: JobStatus[] = ['RUNNING', 'DONE_SUCCESS'];
-    
+
     // For RUNNING jobs, return immediately
     if (job.status === 'RUNNING') {
       return job;
@@ -222,6 +222,55 @@ export class RedisSearchJobStore implements ISearchJobStore {
     }
 
     return null;
+  }
+
+  /**
+   * Store candidate pool for local soft-filter requery
+   */
+  async setCandidatePool(requestId: string, pool: SearchJob['candidatePool']): Promise<void> {
+    const job = await this.getJob(requestId);
+    if (!job) {
+      logger.warn({ requestId, msg: '[RedisJobStore] setCandidatePool called but job not found' });
+      return;
+    }
+
+    job.candidatePool = pool;
+    job.updatedAt = Date.now();
+
+    const key = this.getKey(requestId);
+    await this.redis.setex(key, this.ttlSeconds, JSON.stringify(job));
+
+    logger.info({
+      requestId,
+      candidateCount: pool?.candidates.length ?? 0,
+      route: pool?.route,
+      msg: '[RedisJobStore] Candidate pool stored'
+    });
+  }
+
+  /**
+   * Get candidate pool (IDOR-protected: validates sessionId ownership)
+   * Returns null if not found or if requestor is not the owner
+   */
+  async getCandidatePool(requestId: string, sessionId: string): Promise<SearchJob['candidatePool'] | null> {
+    const job = await this.getJob(requestId);
+    if (!job) {
+      return null;
+    }
+
+    // IDOR Protection: Verify ownership via sessionId
+    if (job.sessionId !== sessionId) {
+      logger.warn({
+        requestId,
+        jobSessionId: job.sessionId,
+        requestSessionId: sessionId,
+        event: 'candidate_pool_access_denied',
+        msg: '[RedisJobStore] IDOR protection: sessionId mismatch'
+      });
+      return null;
+    }
+
+    return job.candidatePool ?? null;
   }
 
   /**

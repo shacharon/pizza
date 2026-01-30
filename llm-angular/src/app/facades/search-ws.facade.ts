@@ -21,6 +21,9 @@ export class SearchWsHandler {
   // Connection status
   readonly connectionStatus = this.wsClient.connectionStatus;
 
+  // Ticket unavailable stream (for polling fallback)
+  readonly ticketUnavailable$ = this.wsClient.ticketUnavailable$;
+
   /**
    * Connect to WebSocket
    */
@@ -117,7 +120,7 @@ export class SearchWsHandler {
     // Only messages with type='assistant' AND valid payload.type should be processed
     if ((msg as any).type === 'assistant' && 'payload' in (msg as any)) {
       const payload = (msg as any).payload;
-      const validTypes = ['CLARIFY', 'SUMMARY', 'GATE_FAIL'];
+      const validTypes = ['CLARIFY', 'SUMMARY', 'GATE_FAIL', 'NUDGE_REFINE'];
 
       // Validate payload has proper assistant type
       if (payload && payload.type && validTypes.includes(payload.type)) {
@@ -133,7 +136,7 @@ export class SearchWsHandler {
     // Handle assistant channel messages (legacy with channel field)
     if ('channel' in (msg as any) && (msg as any).channel === 'assistant') {
       const payload = (msg as any).payload;
-      const validTypes = ['CLARIFY', 'SUMMARY', 'GATE_FAIL'];
+      const validTypes = ['CLARIFY', 'SUMMARY', 'GATE_FAIL', 'NUDGE_REFINE'];
 
       // Validate legacy format also has proper type
       if (payload && payload.type && validTypes.includes(payload.type)) {

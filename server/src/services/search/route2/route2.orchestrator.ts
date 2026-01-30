@@ -191,8 +191,8 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
     if (genericQueryResponse) return genericQueryResponse;
 
     // Fire parallel tasks AFTER guard checks pass
-    // If we reach here, query has location anchor or is not generic
-    const parallelTasks = fireParallelTasks(request, ctx);
+    // Optimizes LLM calls for generic queries with location (skips unnecessary calls)
+    const parallelTasks = fireParallelTasks(request, gateResult, intentDecision, ctx);
     baseFiltersPromise = parallelTasks.baseFiltersPromise;
     postConstraintsPromise = parallelTasks.postConstraintsPromise;
 
@@ -246,6 +246,19 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
       },
       '[ROUTE2] Route-LLM mapping completed (using early context)'
     );
+
+    // DEBUG: Log normalized query effect on routing
+    // Shows how query normalization impacts route selection and final textQuery
+    if (mapping.providerMethod === 'textSearch') {
+      logger.debug({
+        event: 'normalized_query_effect',
+        requestId,
+        rawQuery: request.query,
+        canonicalTextQuery: mapping.textQuery,
+        route: intentDecision.route,
+        profileSelected: intentDecision.route // Route serves as the "profile" for this query
+      }, '[ROUTE2] Query normalization applied for routing');
+    }
 
     // Guard: NEARBY requires userLocation
     const nearbyGuardResponse = await handleNearbyLocationGuard(request, gateResult, intentDecision, mapping, ctx, wsManager);
@@ -314,7 +327,8 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
       finalFilters,
       postFilterResult.stats.before,
       postFilterResult.relaxed || {},
-      ctx
+      ctx,
+      mapping // Pass mapping for biasRadiusMeters extraction
     );
 
     const finalResults = rankingResult.rankedResults;

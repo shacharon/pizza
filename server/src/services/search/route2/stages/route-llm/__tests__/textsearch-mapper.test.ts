@@ -82,13 +82,13 @@ describe('TEXTSEARCH Mapper - Bias Cleanup', () => {
     // Assertions
     assert.strictEqual(result.providerMethod, 'textSearch');
     assert.strictEqual(result.textQuery, 'מסעדות איטלקיות בגדרה');
-    
+
     // UPDATED: With userLocation present, bias should be set from userLocation
     assert.ok(result.bias, 'Bias should be set when userLocation is present');
     assert.strictEqual(result.bias?.center.lat, 32.0804);
     assert.strictEqual(result.bias?.center.lng, 34.7807);
     assert.strictEqual(result.bias?.radiusMeters, 20000);
-    
+
     // Ensure no dummy coordinates
     if (result.bias !== null && result.bias !== undefined) {
       assert.notDeepStrictEqual(result.bias, {

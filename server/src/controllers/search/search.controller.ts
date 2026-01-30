@@ -36,15 +36,15 @@ function generateIdempotencyKey(params: {
 }): string {
   // Normalize query: lowercase, trim, collapse whitespace
   const normalizedQuery = params.query.toLowerCase().trim().replace(/\s+/g, ' ');
-  
+
   // Hash location if present (to handle float precision issues)
   const locationHash = params.userLocation
     ? `${params.userLocation.lat.toFixed(4)},${params.userLocation.lng.toFixed(4)}`
     : 'no-location';
-  
+
   // Combine components
   const rawKey = `${params.sessionId}:${normalizedQuery}:${params.mode}:${locationHash}`;
-  
+
   // Hash for consistent length and privacy
   return crypto.createHash('sha256').update(rawKey).digest('hex');
 }
