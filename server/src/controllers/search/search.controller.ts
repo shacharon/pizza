@@ -27,13 +27,20 @@ const router = Router();
 
 /**
  * Generate idempotency key for deduplication
- * Key = hash(sessionId + normalizedQuery + mode + locationHash)
+ * Key = hash(sessionId + normalizedQuery + mode + locationHash + filters)
+ * Includes user-provided filters to ensure "same search" actually dedups correctly
  */
 function generateIdempotencyKey(params: {
   sessionId: string;
   query: string;
   mode: 'sync' | 'async';
   userLocation?: { lat: number; lng: number } | null;
+  filters?: {
+    openNow?: boolean;
+    priceLevel?: number;
+    dietary?: string[];
+    mustHave?: string[];
+  } | null;
 }): string {
   // Normalize query: lowercase, trim, collapse whitespace
   const normalizedQuery = params.query.toLowerCase().trim().replace(/\s+/g, ' ');
@@ -43,8 +50,35 @@ function generateIdempotencyKey(params: {
     ? `${params.userLocation.lat.toFixed(4)},${params.userLocation.lng.toFixed(4)}`
     : 'no-location';
 
+  // Serialize filters (normalized and sorted for consistency)
+  let filtersHash = 'no-filters';
+  if (params.filters) {
+    const filterParts: string[] = [];
+    
+    if (params.filters.openNow !== undefined) {
+      filterParts.push(`openNow:${params.filters.openNow}`);
+    }
+    if (params.filters.priceLevel !== undefined) {
+      filterParts.push(`priceLevel:${params.filters.priceLevel}`);
+    }
+    if (params.filters.dietary && params.filters.dietary.length > 0) {
+      // Sort dietary array for consistent hashing
+      const sortedDietary = [...params.filters.dietary].sort();
+      filterParts.push(`dietary:${sortedDietary.join(',')}`);
+    }
+    if (params.filters.mustHave && params.filters.mustHave.length > 0) {
+      // Sort mustHave array for consistent hashing
+      const sortedMustHave = [...params.filters.mustHave].sort();
+      filterParts.push(`mustHave:${sortedMustHave.join(',')}`);
+    }
+
+    if (filterParts.length > 0) {
+      filtersHash = filterParts.join('|');
+    }
+  }
+
   // Combine components
-  const rawKey = `${params.sessionId}:${normalizedQuery}:${params.mode}:${locationHash}`;
+  const rawKey = `${params.sessionId}:${normalizedQuery}:${params.mode}:${locationHash}:${filtersHash}`;
 
   // Hash for consistent length and privacy
   return crypto.createHash('sha256').update(rawKey).digest('hex');
@@ -114,7 +148,8 @@ router.post('/', async (req: Request, res: Response) => {
         sessionId: ownerSessionId || 'anonymous',
         query: queryData.query,
         mode,
-        userLocation: queryData.userLocation
+        userLocation: queryData.userLocation,
+        filters: queryData.filters || null
       });
 
       // Check for existing job with same idempotency key
@@ -173,30 +208,47 @@ router.post('/', async (req: Request, res: Response) => {
           const isStaleByUpdatedAt = updatedAgeMs > DEDUP_RUNNING_MAX_AGE_MS;
           const isStaleByAge = ageMs > DEDUP_RUNNING_MAX_AGE_MS;
 
-          if (isStaleByUpdatedAt || isStaleByAge) {
-            // Stale RUNNING job - do not reuse
+          // Check if there are active WS subscribers (job is "alive" if subscribed)
+          const hasActiveSubscribers = wsManager.hasActiveSubscribers(
+            candidateJob.requestId,
+            candidateJob.sessionId
+          );
+
+          if ((isStaleByUpdatedAt || isStaleByAge) && !hasActiveSubscribers) {
+            // Stale RUNNING job with no active subscribers - do not reuse
             shouldReuse = false;
             reuseReason = isStaleByUpdatedAt
-              ? `STALE_RUNNING_NO_HEARTBEAT (updatedAgeMs: ${updatedAgeMs}ms > ${DEDUP_RUNNING_MAX_AGE_MS}ms)`
-              : `STALE_RUNNING_TOO_OLD (ageMs: ${ageMs}ms > ${DEDUP_RUNNING_MAX_AGE_MS}ms)`;
+              ? `STALE_RUNNING_NO_HEARTBEAT (updatedAgeMs: ${updatedAgeMs}ms > ${DEDUP_RUNNING_MAX_AGE_MS}ms, no subscribers)`
+              : `STALE_RUNNING_TOO_OLD (ageMs: ${ageMs}ms > ${DEDUP_RUNNING_MAX_AGE_MS}ms, no subscribers)`;
 
-            // Fail-safe: Mark stale RUNNING job as failed
+            // Fail-safe: Mark stale RUNNING job as failed (idempotent - only if still RUNNING)
             try {
-              await searchJobStore.setError(
-                candidateJob.requestId,
-                'STALE_RUNNING',
-                `Job marked as stale during deduplication check (updatedAgeMs: ${updatedAgeMs}ms)`,
-                'SEARCH_FAILED'
-              );
+              // Re-fetch job to ensure it's still RUNNING (avoid race conditions)
+              const currentJob = await searchJobStore.getJob(candidateJob.requestId);
+              if (currentJob && currentJob.status === 'RUNNING') {
+                await searchJobStore.setError(
+                  candidateJob.requestId,
+                  'STALE_RUNNING',
+                  `Job marked as stale during deduplication check (updatedAgeMs: ${updatedAgeMs}ms, no active subscribers)`,
+                  'SEARCH_FAILED'
+                );
 
-              logger.warn({
-                requestId: candidateJob.requestId,
-                event: 'stale_running_marked_failed',
-                ageMs,
-                updatedAgeMs,
-                maxAgeMs: DEDUP_RUNNING_MAX_AGE_MS,
-                reason: 'STALE_RUNNING_DEDUP_RESET'
-              }, '[Deduplication] Marked stale RUNNING job as DONE_FAILED');
+                logger.warn({
+                  requestId: candidateJob.requestId,
+                  event: 'stale_running_marked_failed',
+                  ageMs,
+                  updatedAgeMs,
+                  maxAgeMs: DEDUP_RUNNING_MAX_AGE_MS,
+                  hasActiveSubscribers: false,
+                  reason: 'STALE_RUNNING_DEDUP_RESET'
+                }, '[Deduplication] Marked stale RUNNING job as DONE_FAILED (no heartbeat, no subscribers)');
+              } else {
+                logger.debug({
+                  requestId: candidateJob.requestId,
+                  currentStatus: currentJob?.status || 'NOT_FOUND',
+                  event: 'stale_marking_skipped'
+                }, '[Deduplication] Skipped marking stale job - already transitioned to terminal state');
+              }
             } catch (markErr) {
               // Non-fatal: if marking fails, still create new job
               logger.error({
@@ -205,6 +257,19 @@ router.post('/', async (req: Request, res: Response) => {
                 operation: 'setError'
               }, '[Deduplication] Failed to mark stale RUNNING job as failed (non-fatal)');
             }
+          } else if (hasActiveSubscribers) {
+            // Job has active subscribers - keep it alive even if heartbeat missed
+            shouldReuse = true;
+            reuseReason = `RUNNING_ALIVE (has ${hasActiveSubscribers ? 'active subscribers' : 'recent heartbeat'})`;
+            existingJob = candidateJob;
+
+            logger.info({
+              requestId: candidateJob.requestId,
+              event: 'dedup_kept_alive_by_subscribers',
+              ageMs,
+              updatedAgeMs,
+              hasActiveSubscribers: true
+            }, '[Deduplication] Keeping RUNNING job alive - has active WebSocket subscribers');
           } else {
             // Fresh RUNNING job - reuse it
             shouldReuse = true;
@@ -377,6 +442,23 @@ router.get('/:requestId/result', async (req: Request, res: Response) => {
     }, '[HTTP] Job not found in store - may have expired or never created');
     return res.status(404).json({ code: 'NOT_FOUND', requestId });
   }
+
+  // Calculate age metrics for observability and staleness detection
+  const now = Date.now();
+  const ageMs = now - job.createdAt;
+  const updatedAgeMs = now - job.updatedAt;
+
+  // Log status for observability (especially for RUNNING jobs)
+  logger.info({
+    requestId,
+    event: 'getResult_status',
+    status: job.status,
+    hasResult: !!job.result,
+    ageMs,
+    updatedAgeMs,
+    progress: job.progress,
+    isStale: job.status === 'RUNNING' && updatedAgeMs > DEDUP_RUNNING_MAX_AGE_MS
+  }, `[HTTP] GET /result - status: ${job.status}, ageMs: ${ageMs}, updatedAgeMs: ${updatedAgeMs}`);
 
   // Check job status
   if (job.status === 'DONE_FAILED') {

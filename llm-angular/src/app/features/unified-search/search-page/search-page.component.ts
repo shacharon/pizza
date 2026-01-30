@@ -718,6 +718,33 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   trackByAction(_index: number, action: any): string {
     return action.id;
   }
+
+  /**
+   * Get display name for ranking profile
+   */
+  getProfileDisplayName(profile: string): string {
+    const profileNames: Record<string, string> = {
+      'BALANCED': 'Balanced',
+      'QUALITY_FIRST': 'Quality First',
+      'DISTANCE_FIRST': 'Distance First',
+      'POPULARITY_FIRST': 'Popularity First',
+      'OPEN_FIRST': 'Open Now Priority',
+      'GOOGLE_ORDER': 'Google Order'
+    };
+    return profileNames[profile] || profile;
+  }
+
+  /**
+   * Get display text for distance origin
+   */
+  getOriginDisplayText(origin: 'CITY_CENTER' | 'USER_LOCATION' | 'NONE'): string {
+    const originTexts: Record<string, string> = {
+      'CITY_CENTER': '📍 from city center',
+      'USER_LOCATION': '📍 from your location',
+      'NONE': ''
+    };
+    return originTexts[origin] || '';
+  }
 }
 
 

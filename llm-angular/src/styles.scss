@@ -19,17 +19,15 @@
 }
 
 html, body {
-    min-height: 100%;
+    height: 100%;
     width: 100%;
     margin: 0;
     padding: 0;
-    // Enable body scroll (default behavior)
+    // CRITICAL: Enable natural body scroll for sticky positioning
     overflow-x: hidden;
     overflow-y: auto;
     // Prevent iOS text size adjustment
     -webkit-text-size-adjust: 100%;
-    // Smooth scrolling (optional - can cause scroll jump in some browsers)
-    scroll-behavior: smooth;
 }
 
 // CRITICAL: Reset any Tailwind/browser defaults that might cause scroll jump

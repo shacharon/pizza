@@ -173,9 +173,9 @@ export async function publishSearchFailedAssistant(
     // Extract query from context (best-effort)
     const query = ctx.query || '';
 
-    // Resolve language with deterministic fallback chain
+    // Resolve language with LLM-based detection
     const resolvedLanguage = await import('../orchestrator.helpers.js')
-      .then(m => m.resolveAssistantLanguage(ctx, undefined, undefined));
+      .then(m => m.resolveAssistantLanguage(ctx, undefined, undefined, undefined));
 
     const context: AssistantContext = {
       type: 'SEARCH_FAILED',

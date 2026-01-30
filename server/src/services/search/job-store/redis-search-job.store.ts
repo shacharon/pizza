@@ -77,8 +77,10 @@ export class RedisSearchJobStore implements ISearchJobStore {
     job.status = status;
     job.updatedAt = Date.now();
 
+    // MONOTONIC INVARIANT: Progress never decreases
     if (progress !== undefined) {
-      job.progress = progress;
+      const currentProgress = job.progress ?? 0;
+      job.progress = Math.max(currentProgress, progress);
     }
 
     const key = this.getKey(requestId);
@@ -87,8 +89,38 @@ export class RedisSearchJobStore implements ISearchJobStore {
     logger.info({
       requestId,
       status,
-      progress,
+      progress: job.progress,
       msg: '[RedisJobStore] Status updated'
+    });
+  }
+
+  async updateHeartbeat(requestId: string): Promise<void> {
+    const job = await this.getJob(requestId);
+    if (!job) {
+      logger.debug({ requestId, msg: '[RedisJobStore] updateHeartbeat called but job not found' });
+      return;
+    }
+
+    // Only update heartbeat for RUNNING jobs
+    if (job.status !== 'RUNNING') {
+      logger.debug({ 
+        requestId, 
+        status: job.status,
+        msg: '[RedisJobStore] updateHeartbeat skipped - job not RUNNING' 
+      });
+      return;
+    }
+
+    job.updatedAt = Date.now();
+
+    const key = this.getKey(requestId);
+    await this.redis.setex(key, this.ttlSeconds, JSON.stringify(job));
+
+    logger.debug({
+      requestId,
+      status: job.status,
+      progress: job.progress,
+      msg: '[RedisJobStore] Heartbeat updated'
     });
   }
 

@@ -15,13 +15,13 @@ import { canonicalizeTextQuery } from '../../../utils/google-query-normalizer.js
 import { generateCanonicalQuery } from './canonical-query.generator.js';
 import { getCachedCanonicalQuery } from './canonical-query.cache.js';
 
-const TEXTSEARCH_MAPPER_VERSION = 'textsearch_mapper_v2';
+const TEXTSEARCH_MAPPER_VERSION = 'textsearch_mapper_v3_cuisine_enforcement';
 
 const TEXTSEARCH_MAPPER_PROMPT = `// Use English comments for code/prompts as requested
 // Context: userLatitude: {{lat}}, userLongitude: {{lng}}, hasUserLocation: {{hasLocation}}
 
 You are a query rewriter for Google Places Text Search API.
-Your goal is to transform user input into a highly effective search string for Google.
+Your goal is to transform user input into a highly effective search string for Google AND identify explicit cuisine requirements for post-filtering.
 
 Output ONLY JSON with these fields:
 {
@@ -30,7 +30,11 @@ Output ONLY JSON with these fields:
   "region": "IL|FR|US|etc",
   "language": "he|en|ru|ar|fr|es|other",
   "locationBias": { "lat": number, "lng": number } | null,
-  "reason": "token"
+  "reason": "token",
+  "requiredTerms": ["string"],
+  "preferredTerms": ["string"],
+  "strictness": "STRICT" | "RELAX_IF_EMPTY",
+  "typeHint": "restaurant" | "cafe" | "bar" | "any"
 }
 
 Rules:
@@ -39,6 +43,21 @@ Rules:
 3) If the user says "near me" (לידי/בקרבתי) and hasUserLocation is true, DO NOT include "near me" in textQuery. Instead, set the locationBias field with the provided coordinates and keep the textQuery focused on the entity (e.g., "מסעדות").
 4) If place-type is missing (e.g., "dairy in Ashdod"), add "restaurant" (מסעדה) prefix.
 5) Reason must be: "original_preserved", "place_type_added", "filler_removed", or "location_bias_applied".
+
+CUISINE ENFORCEMENT (NO HARDCODED RULES - USE LLM UNDERSTANDING ONLY):
+6) If the query contains EXPLICIT cuisine intent (examples: "איטלקיות", "איטלקי", "Italian", "sushi", "דג", "בשר", "פיצה"):
+   - Set strictness = "STRICT"
+   - Set requiredTerms = [cuisine term(s) from query, e.g., "איטלקית", "איטלקי"]
+   - Set preferredTerms = [related terms if applicable, e.g., "פסטה", "פיצה" for Italian]
+   - Set typeHint based on query context (restaurant/cafe/bar/any)
+   
+7) If no explicit cuisine (generic query like "מסעדות בחיפה", "good restaurants"):
+   - Set strictness = "RELAX_IF_EMPTY"
+   - Leave requiredTerms = []
+   - Leave preferredTerms = []
+   - Set typeHint = "restaurant"
+
+8) textQuery must be SHORT (<=5 words) and MUST include city if present in original query.
 `;
 
 const TEXTSEARCH_MAPPER_PROMPT_HASH = createHash('sha256')
@@ -234,6 +253,12 @@ export async function executeTextSearchMapper(
     // and downstream types remain compatible.
     mapping.bias = undefined;
 
+    // Ensure cuisine enforcement fields have defaults (in case LLM didn't return them)
+    mapping.requiredTerms = mapping.requiredTerms || [];
+    mapping.preferredTerms = mapping.preferredTerms || [];
+    mapping.strictness = mapping.strictness || 'RELAX_IF_EMPTY';
+    mapping.typeHint = mapping.typeHint || 'restaurant';
+
     // Propagate cityText from intent if present
     if (intent.cityText) {
       mapping.cityText = intent.cityText;
@@ -322,6 +347,10 @@ async function buildDeterministicMapping(
     language: finalFilters.providerLanguage,
     bias: undefined,
     reason: 'deterministic_fallback',
+    requiredTerms: [],  // No cuisine enforcement in fallback
+    preferredTerms: [],
+    strictness: 'RELAX_IF_EMPTY',
+    typeHint: 'restaurant',
     ...(intent.cityText && { cityText: intent.cityText })
   };
 

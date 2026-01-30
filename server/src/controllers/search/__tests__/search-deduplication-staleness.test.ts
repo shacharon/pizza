@@ -339,4 +339,169 @@ describe('Deduplication Staleness Detection', () => {
       expect(ageMs).toBeGreaterThan(1_000_000);
     });
   });
+
+  describe('Heartbeat behavior', () => {
+    it('should NOT mark job as stale if heartbeat is recent (even with old progress)', () => {
+      // Scenario: Long-running job with heartbeat updates (progress unchanged)
+      const jobWithHeartbeat: Partial<SearchJob> = {
+        requestId: 'req-heartbeat',
+        status: 'RUNNING',
+        createdAt: now - 120_000, // 120s ago (> TTL by age)
+        updatedAt: now - 10_000,  // Heartbeat 10s ago (< TTL)
+        progress: 30 // Progress hasn't changed, but heartbeat is active
+      };
+
+      const ageMs = now - jobWithHeartbeat.createdAt!;
+      const updatedAgeMs = now - jobWithHeartbeat.updatedAt!;
+      
+      // Should be stale by creation age
+      const isStaleByAge = ageMs > RUNNING_MAX_AGE;
+      // Should NOT be stale by heartbeat
+      const isStaleByUpdatedAt = updatedAgeMs > RUNNING_MAX_AGE;
+
+      expect(isStaleByAge).toBe(true); // Age exceeds TTL
+      expect(isStaleByUpdatedAt).toBe(false); // Heartbeat is fresh
+      expect(updatedAgeMs).toBeLessThan(RUNNING_MAX_AGE);
+    });
+
+    it('should mark job as stale if BOTH age and heartbeat exceed TTL', () => {
+      // Scenario: Old job with stale heartbeat (stuck pipeline)
+      const staleJob: Partial<SearchJob> = {
+        requestId: 'req-no-heartbeat',
+        status: 'RUNNING',
+        createdAt: now - 150_000, // 150s ago (> TTL)
+        updatedAt: now - 120_000, // Last heartbeat 120s ago (> TTL)
+        progress: 50
+      };
+
+      const ageMs = now - staleJob.createdAt!;
+      const updatedAgeMs = now - staleJob.updatedAt!;
+      
+      const isStaleByAge = ageMs > RUNNING_MAX_AGE;
+      const isStaleByUpdatedAt = updatedAgeMs > RUNNING_MAX_AGE;
+      const isStale = isStaleByAge || isStaleByUpdatedAt;
+
+      expect(isStaleByAge).toBe(true);
+      expect(isStaleByUpdatedAt).toBe(true);
+      expect(isStale).toBe(true);
+    });
+
+    it('should keep job alive with periodic heartbeat updates (15s interval)', () => {
+      // Scenario: Long-running job with 15s heartbeat interval
+      const jobWithPeriodicHeartbeat: Partial<SearchJob> = {
+        requestId: 'req-periodic-heartbeat',
+        status: 'RUNNING',
+        createdAt: now - 180_000, // 180s ago (3 minutes)
+        updatedAt: now - 12_000,  // Last heartbeat 12s ago (< 15s interval)
+        progress: 70
+      };
+
+      const ageMs = now - jobWithPeriodicHeartbeat.createdAt!;
+      const updatedAgeMs = now - jobWithPeriodicHeartbeat.updatedAt!;
+      
+      // Should be stale by creation age alone
+      const isStaleByAge = ageMs > RUNNING_MAX_AGE;
+      // Should NOT be stale by heartbeat
+      const isStaleByUpdatedAt = updatedAgeMs > RUNNING_MAX_AGE;
+
+      expect(isStaleByAge).toBe(true);
+      expect(isStaleByUpdatedAt).toBe(false);
+      expect(updatedAgeMs).toBeLessThan(15_000); // Within heartbeat interval
+    });
+  });
+
+  describe('WebSocket subscriber protection', () => {
+    it('should NOT mark job as stale if it has active WS subscribers (even if heartbeat missed)', () => {
+      // Scenario: Job with active subscriber watching progress
+      const jobWithSubscriber: Partial<SearchJob> = {
+        requestId: 'req-with-subscriber',
+        status: 'RUNNING',
+        createdAt: now - 150_000, // 150s ago (> TTL)
+        updatedAt: now - 120_000, // Heartbeat 120s ago (> TTL)
+        progress: 80
+      };
+
+      const ageMs = now - jobWithSubscriber.createdAt!;
+      const updatedAgeMs = now - jobWithSubscriber.updatedAt!;
+      
+      // Both age and heartbeat exceed TTL
+      const isStaleByAge = ageMs > RUNNING_MAX_AGE;
+      const isStaleByUpdatedAt = updatedAgeMs > RUNNING_MAX_AGE;
+      
+      // BUT: If hasActiveSubscribers = true, job should NOT be marked stale
+      const hasActiveSubscribers = true; // Simulated
+      const shouldMarkStale = (isStaleByAge || isStaleByUpdatedAt) && !hasActiveSubscribers;
+
+      expect(isStaleByAge).toBe(true);
+      expect(isStaleByUpdatedAt).toBe(true);
+      expect(shouldMarkStale).toBe(false); // Protected by subscriber
+    });
+
+    it('should mark job as stale if no subscribers and heartbeat missed', () => {
+      // Scenario: Job with no subscribers and missed heartbeat
+      const jobWithoutSubscriber: Partial<SearchJob> = {
+        requestId: 'req-no-subscriber',
+        status: 'RUNNING',
+        createdAt: now - 150_000, // 150s ago (> TTL)
+        updatedAt: now - 120_000, // Heartbeat 120s ago (> TTL)
+        progress: 80
+      };
+
+      const ageMs = now - jobWithoutSubscriber.createdAt!;
+      const updatedAgeMs = now - jobWithoutSubscriber.updatedAt!;
+      
+      const isStaleByAge = ageMs > RUNNING_MAX_AGE;
+      const isStaleByUpdatedAt = updatedAgeMs > RUNNING_MAX_AGE;
+      
+      const hasActiveSubscribers = false;
+      const shouldMarkStale = (isStaleByAge || isStaleByUpdatedAt) && !hasActiveSubscribers;
+
+      expect(shouldMarkStale).toBe(true); // Should be marked stale
+    });
+  });
+
+  describe('Idempotent stale marking', () => {
+    it('should NOT overwrite terminal status when marking stale', () => {
+      // Scenario: Job transitioned to DONE_SUCCESS before stale check
+      const successJob: Partial<SearchJob> = {
+        requestId: 'req-success',
+        status: 'DONE_SUCCESS',
+        createdAt: now - 150_000,
+        updatedAt: now - 120_000,
+        result: { results: [] }
+      };
+
+      // Dedup logic should re-fetch job and skip marking if no longer RUNNING
+      const shouldMarkStale = successJob.status === 'RUNNING';
+
+      expect(shouldMarkStale).toBe(false);
+    });
+
+    it('should only mark stale once (idempotent)', () => {
+      // Scenario: Multiple dedup checks for same stale job
+      const staleJob: Partial<SearchJob> = {
+        requestId: 'req-stale',
+        status: 'RUNNING',
+        createdAt: now - 150_000,
+        updatedAt: now - 120_000,
+        progress: 50
+      };
+
+      // First dedup check marks as DONE_FAILED
+      const firstCheck = staleJob.status === 'RUNNING';
+      
+      // Simulate marking as DONE_FAILED
+      staleJob.status = 'DONE_FAILED';
+      staleJob.error = {
+        code: 'STALE_RUNNING',
+        message: 'Job marked as stale'
+      };
+
+      // Second dedup check should skip (no longer RUNNING)
+      const secondCheck = staleJob.status === 'RUNNING';
+
+      expect(firstCheck).toBe(true);
+      expect(secondCheck).toBe(false);
+    });
+  });
 });

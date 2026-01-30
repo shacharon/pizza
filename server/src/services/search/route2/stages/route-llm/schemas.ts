@@ -21,22 +21,29 @@ const LocationSchema = z.object({
 /**
  * 1. This is for OpenAI (Strict Mode Friendly)
  * NO bias field here to avoid 400 error.
+ * INCLUDES cuisine enforcement fields for explicit cuisine queries.
  */
 export const TextSearchLLMResponseSchema = z.object({
   providerMethod: z.literal('textSearch'),
   textQuery: z.string().min(1),
   region: z.string().regex(/^[A-Z]{2}$/),
   language: z.enum(['he', 'en', 'ru', 'ar', 'fr', 'es', 'other']),
-  reason: z.string().min(1)
+  reason: z.string().min(1),
+  // Cuisine enforcement fields (LLM-only, no hardcoded rules)
+  requiredTerms: z.array(z.string()).default([]),
+  preferredTerms: z.array(z.string()).default([]),
+  strictness: z.enum(['STRICT', 'RELAX_IF_EMPTY']).default('RELAX_IF_EMPTY'),
+  typeHint: z.enum(['restaurant', 'cafe', 'bar', 'any']).default('restaurant')
 }).strict();
 
 /**
  * 2. This is for your App logic
- * Includes the bias field and cityText.
+ * Includes the bias field, cityText, and cityCenter (resolved coordinates).
  */
 export const TextSearchMappingSchema = TextSearchLLMResponseSchema.extend({
   bias: LocationBiasSchema.nullable().optional(),
-  cityText: z.string().min(1).optional()
+  cityText: z.string().min(1).optional(),
+  cityCenter: LocationSchema.nullable().optional() // Resolved city center coordinates for ranking
 }).strict();
 
 export type TextSearchMapping = z.infer<typeof TextSearchMappingSchema>;

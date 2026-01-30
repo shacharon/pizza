@@ -8,6 +8,7 @@ import { createHash } from 'crypto';
 // TextSearch JSON Schema
 // Flattened bias fields to avoid oneOf/anyOf (OpenAI strict mode compatibility)
 // Fixed schema: Removed 'bias' to avoid OpenAI's union type restrictions (oneOf/anyOf)
+// INCLUDES cuisine enforcement fields for explicit cuisine queries
 export const TEXTSEARCH_JSON_SCHEMA = {
     type: 'object',
     properties: {
@@ -15,13 +16,34 @@ export const TEXTSEARCH_JSON_SCHEMA = {
         textQuery: { type: 'string', minLength: 1 },
         region: { type: 'string', pattern: '^[A-Z]{2}$' },
         language: { type: 'string', enum: ['he', 'en', 'ru', 'ar', 'fr', 'es', 'other'] },
-        reason: { type: 'string', minLength: 1 }
+        reason: { type: 'string', minLength: 1 },
+        // Cuisine enforcement fields (optional with defaults)
+        requiredTerms: { 
+            type: 'array', 
+            items: { type: 'string' },
+            default: []
+        },
+        preferredTerms: { 
+            type: 'array', 
+            items: { type: 'string' },
+            default: []
+        },
+        strictness: { 
+            type: 'string', 
+            enum: ['STRICT', 'RELAX_IF_EMPTY'],
+            default: 'RELAX_IF_EMPTY'
+        },
+        typeHint: { 
+            type: 'string', 
+            enum: ['restaurant', 'cafe', 'bar', 'any'],
+            default: 'restaurant'
+        }
     },
-    required: ['providerMethod', 'textQuery', 'region', 'language', 'reason'],
+    required: ['providerMethod', 'textQuery', 'region', 'language', 'reason', 'requiredTerms', 'preferredTerms', 'strictness', 'typeHint'],
     additionalProperties: false
 } as const;
 
-export const TEXTSEARCH_SCHEMA_HASH = 'textsearch_v2_no_bias';
+export const TEXTSEARCH_SCHEMA_HASH = 'textsearch_v3_cuisine_enforcement';
 
 // Nearby JSON Schema
 // Apply similar logic to NEARBY and LANDMARK if they use anyOf

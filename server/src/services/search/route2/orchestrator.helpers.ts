@@ -39,71 +39,84 @@ function toAssistantLanguage(lang: unknown): 'he' | 'en' | 'other' {
 }
 
 /**
- * Decide assistant language using deterministic fallback chain (pure decision logic)
+ * Language confidence threshold for LLM language detection
+ * If LLM languageConfidence >= threshold, use detected language
+ * Otherwise, fallback to uiLanguage
+ */
+const LANGUAGE_CONFIDENCE_THRESHOLD = 0.7;
+
+/**
+ * Decide assistant language using LLM detection with confidence threshold
  * 
- * Priority chain:
- * 1. ctx.queryLanguage (DETERMINISTIC query text detection) ← PRIMARY SOURCE
- * 2. detectedLanguage from stage (gate/intent/mapping)
- * 3. sharedFilters.final.uiLanguage (UI preference)
- * 4. sharedFilters.preGoogle.language (base filters)
- * 5. Final fallback: 'en'
+ * Rules:
+ * 1. If detectedLanguage exists AND languageConfidence >= threshold → use detectedLanguage
+ * 2. Else if uiLanguage available → use uiLanguage
+ * 3. Else → use 'en' (should rarely happen)
  * 
- * @returns { language, source } - decision result with source attribution
+ * @returns { language, source, confidence } - decision result with source attribution
  */
 function decideAssistantLanguage(
   ctx: Route2Context,
-  detectedLanguage?: unknown
-): { language: 'he' | 'en'; source: string } {
-  // Priority 1: Deterministic query language detection (NEW - highest priority)
-  if (ctx.queryLanguage) {
-    return { language: ctx.queryLanguage, source: 'queryLanguage' };
-  }
-
-  // Priority 2: Detected language from stage (gate/intent/mapping)
-  if (detectedLanguage) {
+  detectedLanguage?: unknown,
+  languageConfidence?: number
+): { language: 'he' | 'en'; source: string; confidence?: number } {
+  // Priority 1: LLM-detected language with confidence check
+  if (detectedLanguage && languageConfidence !== undefined) {
     const normalized = toAssistantLanguage(detectedLanguage);
-    if (normalized === 'he') {
-      return { language: 'he', source: 'detectedLanguage' };
-    } else if (normalized === 'en') {
-      return { language: 'en', source: 'detectedLanguage' };
+    
+    if (languageConfidence >= LANGUAGE_CONFIDENCE_THRESHOLD) {
+      // High confidence - use LLM detection
+      if (normalized === 'he') {
+        return { language: 'he', source: 'llm_confident', confidence: languageConfidence };
+      } else if (normalized === 'en') {
+        return { language: 'en', source: 'llm_confident', confidence: languageConfidence };
+      }
+      // If 'other' (ru/ar/fr/es), fall through to uiLanguage
+    } else {
+      // Low confidence - fall through to uiLanguage
     }
-    // Fall through to priority 3 if 'other'
   }
 
-  // Priority 3: Resolved filters UI language
+  // Priority 2: UI language (from resolved filters)
   if (ctx.sharedFilters?.final?.uiLanguage) {
-    return { language: ctx.sharedFilters.final.uiLanguage, source: 'uiLanguage' };
+    return { 
+      language: ctx.sharedFilters.final.uiLanguage, 
+      source: languageConfidence !== undefined && languageConfidence < LANGUAGE_CONFIDENCE_THRESHOLD 
+        ? 'uiLanguage_low_confidence' 
+        : 'uiLanguage',
+      confidence: languageConfidence
+    };
   }
 
-  // Priority 4: Base filters language
+  // Priority 3: Base filters language (should rarely reach here)
   if (ctx.sharedFilters?.preGoogle?.language) {
     const lang = ctx.sharedFilters.preGoogle.language;
     if (lang === 'he') {
-      return { language: 'he', source: 'baseFilters' };
+      return { language: 'he', source: 'baseFilters', confidence: languageConfidence };
     } else if (lang === 'en') {
-      return { language: 'en', source: 'baseFilters' };
+      return { language: 'en', source: 'baseFilters', confidence: languageConfidence };
     }
-    // Fall through to fallback if other language
   }
 
-  // Final fallback: English (international default)
-  return { language: 'en', source: 'fallback' };
+  // Final fallback: 'en' (should rarely happen)
+  return { language: 'en', source: 'fallback', confidence: languageConfidence };
 }
 
 /**
- * Resolve assistant language with deterministic fallback chain
+ * Resolve assistant language using LLM detection with confidence threshold
  * Combines decision logic with observability logging
  * 
- * CRITICAL: Assistant responds in QUERY language, not region/UI language
+ * CRITICAL: Language comes from LLM only (no deterministic detection)
  * 
  * @returns 'he' | 'en' only (never 'other' - assistant must be decisive)
  */
 export function resolveAssistantLanguage(
   ctx: Route2Context,
   request?: SearchRequest,
-  detectedLanguage?: unknown
+  detectedLanguage?: unknown,
+  languageConfidence?: number
 ): 'he' | 'en' {
-  const { language, source } = decideAssistantLanguage(ctx, detectedLanguage);
+  const { language, source, confidence } = decideAssistantLanguage(ctx, detectedLanguage, languageConfidence);
 
   // Log language resolution (observability only)
   if (ctx.requestId) {
@@ -112,9 +125,10 @@ export function resolveAssistantLanguage(
       event: 'assistant_language_resolved',
       assistantLanguage: language,
       source,
-      queryLanguage: ctx.queryLanguage,
-      uiLanguage: ctx.sharedFilters?.final?.uiLanguage,
-      detectedLanguage: detectedLanguage ? String(detectedLanguage) : undefined
+      detectedLanguage: detectedLanguage ? String(detectedLanguage) : undefined,
+      languageConfidence: confidence,
+      confidenceThreshold: LANGUAGE_CONFIDENCE_THRESHOLD,
+      uiLanguage: ctx.sharedFilters?.final?.uiLanguage
     }, '[ASSISTANT] Language resolved for assistant message');
   }
 

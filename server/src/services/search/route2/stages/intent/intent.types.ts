@@ -10,6 +10,7 @@ export const IntentLLMSchema = z.object({
   confidence: z.number().min(0).max(1),
   reason: z.string().min(1),
   language: z.enum(['he', 'en', 'ru', 'ar', 'fr', 'es', 'other']),
+  languageConfidence: z.number().min(0).max(1),
   regionCandidate: z.string().regex(/^[A-Z]{2}$/), // ISO-3166-1 alpha-2 CANDIDATE (will be validated by filters_resolved)
   regionConfidence: z.number().min(0).max(1),
   regionReason: z.string().min(1),

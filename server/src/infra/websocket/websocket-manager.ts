@@ -616,4 +616,14 @@ export class WebSocketManager {
       messagesFailed: msgStats.failed
     };
   }
+
+  /**
+   * Check if there are active WebSocket subscribers for a given requestId
+   * Used for deduplication staleness detection (keep alive if subscribed)
+   */
+  hasActiveSubscribers(requestId: string, sessionId?: string): boolean {
+    const key = this.subscriptionManager.buildSubscriptionKey('search', requestId, sessionId);
+    const subscribers = this.subscriptionManager.getSubscribers(key);
+    return !!(subscribers && subscribers.size > 0);
+  }
 }

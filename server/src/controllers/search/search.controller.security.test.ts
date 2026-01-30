@@ -3,23 +3,39 @@
  * Tests for session-based authorization on async search results
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, beforeEach } from 'node:test';
+import assert from 'node:assert/strict';
 import type { Request, Response } from 'express';
 import { searchJobStore } from '../../services/search/job-store/index.js';
 
+// Extend Request type with custom properties used in the application
+interface RequestWithContext extends Request {
+  ctx?: {
+    traceId: string;
+    sessionId?: string;
+  };
+  traceId?: string;
+}
+
 describe('P0 Security: IDOR Protection', () => {
-  let mockReq: Partial<Request>;
+  let mockReq: Partial<RequestWithContext>;
   let mockRes: Partial<Response>;
   let statusSpy: any;
   let jsonSpy: any;
 
   beforeEach(() => {
-    statusSpy = vi.fn().mockReturnThis();
-    jsonSpy = vi.fn();
+    const statusReturn = {
+      json: (data: any) => {
+        jsonSpy(data);
+        return mockRes;
+      }
+    };
+    statusSpy = (code: number) => statusReturn;
+    jsonSpy = () => {};
 
     mockRes = {
-      status: statusSpy,
-      json: jsonSpy
+      status: statusSpy as any,
+      json: jsonSpy as any
     };
 
     mockReq = {
@@ -41,7 +57,7 @@ describe('P0 Security: IDOR Protection', () => {
 
       // Assert
       // Should return 400 with MISSING_SESSION_ID
-      expect(mockReq.ctx?.sessionId).toBeUndefined();
+      assert.strictEqual(mockReq.ctx, undefined);
     });
 
     it('should accept async job creation with valid X-Session-Id header', async () => {
@@ -52,10 +68,10 @@ describe('P0 Security: IDOR Protection', () => {
       };
 
       // Act
-      const sessionId = mockReq.ctx.sessionId;
+      const sessionId = mockReq.ctx?.sessionId;
 
       // Assert
-      expect(sessionId).toBe('sess_12345');
+      assert.strictEqual(sessionId, 'sess_12345');
     });
 
     it('should bind ownerSessionId when creating job', async () => {
@@ -73,8 +89,8 @@ describe('P0 Security: IDOR Protection', () => {
       const job = await searchJobStore.getJob(requestId);
 
       // Assert
-      expect(job).toBeDefined();
-      expect(job?.ownerSessionId).toBe(ownerSessionId);
+      assert.ok(job, 'Job should be defined');
+      assert.strictEqual(job?.ownerSessionId, ownerSessionId);
       
       // Cleanup
       await searchJobStore.deleteJob(requestId);
@@ -91,7 +107,7 @@ describe('P0 Security: IDOR Protection', () => {
       const job = await searchJobStore.getJob(requestId);
 
       // Assert
-      expect(job).toBeNull();
+      assert.strictEqual(job, null);
     });
 
     it('should return 401 when X-Session-Id header is missing', async () => {
@@ -107,12 +123,12 @@ describe('P0 Security: IDOR Protection', () => {
       mockReq.ctx = { traceId: 'test' }; // No sessionId
 
       const job = await searchJobStore.getJob(requestId);
-      const currentSessionId = mockReq.ctx.sessionId;
+      const currentSessionId = mockReq.ctx?.sessionId;
 
       // Assert
-      expect(job).toBeDefined();
-      expect(currentSessionId).toBeUndefined();
-      expect(job?.ownerSessionId).toBe('sess_owner');
+      assert.ok(job, 'Job should be defined');
+      assert.strictEqual(currentSessionId, undefined);
+      assert.strictEqual(job?.ownerSessionId, 'sess_owner');
 
       // Cleanup
       await searchJobStore.deleteJob(requestId);
@@ -131,13 +147,13 @@ describe('P0 Security: IDOR Protection', () => {
       mockReq.ctx = { traceId: 'test', sessionId: 'sess_attacker_bob' };
 
       const job = await searchJobStore.getJob(requestId);
-      const currentSessionId = mockReq.ctx.sessionId;
+      const currentSessionId = mockReq.ctx?.sessionId;
 
       // Assert
-      expect(job).toBeDefined();
-      expect(job?.ownerSessionId).toBe('sess_owner_alice');
-      expect(currentSessionId).toBe('sess_attacker_bob');
-      expect(currentSessionId).not.toBe(job?.ownerSessionId);
+      assert.ok(job, 'Job should be defined');
+      assert.strictEqual(job?.ownerSessionId, 'sess_owner_alice');
+      assert.strictEqual(currentSessionId, 'sess_attacker_bob');
+      assert.notStrictEqual(currentSessionId, job?.ownerSessionId);
 
       // Cleanup
       await searchJobStore.deleteJob(requestId);
@@ -161,12 +177,12 @@ describe('P0 Security: IDOR Protection', () => {
       mockReq.ctx = { traceId: 'test', sessionId: ownerSessionId };
 
       const job = await searchJobStore.getJob(requestId);
-      const currentSessionId = mockReq.ctx.sessionId;
+      const currentSessionId = mockReq.ctx?.sessionId;
 
       // Assert
-      expect(job).toBeDefined();
-      expect(currentSessionId).toBe(ownerSessionId);
-      expect(job?.status).toBe('DONE_SUCCESS');
+      assert.ok(job, 'Job should be defined');
+      assert.strictEqual(currentSessionId, ownerSessionId);
+      assert.strictEqual(job?.status, 'DONE_SUCCESS');
 
       // Cleanup
       await searchJobStore.deleteJob(requestId);
@@ -185,18 +201,18 @@ describe('P0 Security: IDOR Protection', () => {
       const hashed = hashSessionId(sessionId);
 
       // Assert
-      expect(hashed).toBeDefined();
-      expect(hashed).toHaveLength(12);
-      expect(hashed).not.toBe(sessionId);
-      expect(hashed).toMatch(/^[a-f0-9]{12}$/);
+      assert.ok(hashed, 'Hashed value should be defined');
+      assert.strictEqual(hashed.length, 12);
+      assert.notStrictEqual(hashed, sessionId);
+      assert.match(hashed, /^[a-f0-9]{12}$/);
     });
 
     it('should return "none" for missing session', () => {
       const { hashSessionId } = require('../../utils/security.utils.js');
 
-      expect(hashSessionId(undefined)).toBe('none');
-      expect(hashSessionId(null)).toBe('none');
-      expect(hashSessionId('')).toBe('none');
+      assert.strictEqual(hashSessionId(undefined), 'none');
+      assert.strictEqual(hashSessionId(null), 'none');
+      assert.strictEqual(hashSessionId(''), 'none');
     });
 
     it('should produce consistent hashes', () => {
@@ -206,7 +222,7 @@ describe('P0 Security: IDOR Protection', () => {
       const hash1 = hashSessionId(sessionId);
       const hash2 = hashSessionId(sessionId);
 
-      expect(hash1).toBe(hash2);
+      assert.strictEqual(hash1, hash2);
     });
   });
 });

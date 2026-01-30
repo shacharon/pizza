@@ -28,6 +28,7 @@ const DEFAULT_TIMEOUTS: Record<LLMPurpose, number> = {
   intent: 3500,        // Route decision, medium priority (increased from 2500ms for reliability with retry)
   baseFilters: 4500,   // Simple extraction (increased from 3200ms for more headroom)
   routeMapper: 3500,   // Query mapping, more complex
+  filterEnforcer: 4000, // Cuisine enforcement filtering, medium priority
   ranking_profile: 2500, // Ranking profile selection, similar to intent
   assistant: 3000      // Assistant messages (GATE_FAIL, CLARIFY, SUMMARY, SEARCH_FAILED)
 };
@@ -92,6 +93,10 @@ export function loadLLMConfig(): LLMConfig {
   if (process.env.ROUTE_MAPPER_TIMEOUT_MS) {
     const parsed = parseInt(process.env.ROUTE_MAPPER_TIMEOUT_MS, 10);
     if (!isNaN(parsed)) perPurposeTimeoutMs.routeMapper = parsed;
+  }
+  if (process.env.FILTER_ENFORCER_TIMEOUT_MS) {
+    const parsed = parseInt(process.env.FILTER_ENFORCER_TIMEOUT_MS, 10);
+    if (!isNaN(parsed)) perPurposeTimeoutMs.filterEnforcer = parsed;
   }
   if (process.env.ASSISTANT_TIMEOUT_MS) {
     const parsed = parseInt(process.env.ASSISTANT_TIMEOUT_MS, 10);

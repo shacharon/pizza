@@ -14,13 +14,15 @@ import { executeGate2Stage } from './stages/gate2.stage.js';
 import { executeIntentStage } from './stages/intent/intent.stage.js';
 import { executeRouteLLM } from './stages/route-llm/route-llm.dispatcher.js';
 import { executeGoogleMapsStage } from './stages/google-maps.stage.js';
+import { executeCuisineEnforcement, type CuisineEnforcerInput, type PlaceInput } from './stages/cuisine-enforcer/index.js';
 
 import { resolveUserRegionCode } from './utils/region-resolver.js';
-import { detectQueryLanguage } from './utils/query-language-detector.js';
 import { logger } from '../../../lib/logger/structured-logger.js';
 import { wsManager } from '../../../server.js';
 import { sanitizeQuery } from '../../../lib/telemetry/query-sanitizer.js';
 import { withTimeout } from '../../../lib/reliability/timeout-guard.js';
+import { searchJobStore } from '../job-store/index.js';
+import { JOB_MILESTONES } from '../job-store/job-milestones.js';
 
 // Extracted modules
 import { fireParallelTasks } from './orchestrator.parallel-tasks.js';
@@ -50,20 +52,6 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
 
   // Store query in context for assistant hooks on failures
   ctx.query = request.query;
-
-  // Detect query language (deterministic, for assistant messages)
-  ctx.queryLanguage = detectQueryLanguage(request.query);
-
-  logger.info(
-    {
-      requestId,
-      pipelineVersion: 'route2',
-      event: 'query_language_detected',
-      queryLanguage: ctx.queryLanguage,
-      queryLen
-    },
-    '[ROUTE2] Query language detected (deterministic)'
-  );
 
   let baseFiltersPromise = null;
   let postConstraintsPromise = null;
@@ -98,6 +86,14 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
 
     // STAGE 1: GATE2
     const gateResult = await executeGate2Stage(request, ctx);
+
+    // MILESTONE: GATE_DONE (25%)
+    try {
+      await searchJobStore.setStatus(requestId, 'RUNNING', JOB_MILESTONES.GATE_DONE);
+    } catch (err) {
+      // Non-fatal: progress tracking is optional
+      logger.debug({ requestId, error: err instanceof Error ? err.message : 'unknown' }, '[ROUTE2] Progress update failed (non-fatal)');
+    }
 
     // Debug stop after gate2
     if (shouldDebugStop(ctx, 'gate2')) {
@@ -146,6 +142,14 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
 
     // STAGE 2: INTENT
     let intentDecision = await executeIntentStage(request, ctx);
+
+    // MILESTONE: INTENT_DONE (40%)
+    try {
+      await searchJobStore.setStatus(requestId, 'RUNNING', JOB_MILESTONES.INTENT_DONE);
+    } catch (err) {
+      // Non-fatal: progress tracking is optional
+      logger.debug({ requestId, error: err instanceof Error ? err.message : 'unknown' }, '[ROUTE2] Progress update failed (non-fatal)');
+    }
 
     // Debug stop after intent
     if (shouldDebugStop(ctx, 'intent')) {
@@ -312,15 +316,128 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
       '[ROUTE2] Google fetch completed (parallel optimization saved time)'
     );
 
+    // MILESTONE: GOOGLE_DONE (60%)
+    try {
+      await searchJobStore.setStatus(requestId, 'RUNNING', JOB_MILESTONES.GOOGLE_DONE);
+    } catch (err) {
+      // Non-fatal: progress tracking is optional
+      logger.debug({ requestId, error: err instanceof Error ? err.message : 'unknown' }, '[ROUTE2] Progress update failed (non-fatal)');
+    }
+
+    // STAGE 5.5: CUISINE ENFORCEMENT (LLM-based post-Google filtering)
+    // Apply only if explicit cuisine requirements exist in mapping
+    let enforcedResults = googleResult.results;
+    let cuisineEnforcementApplied = false;
+    let cuisineEnforcementFailed = false;
+    
+    if (mapping.providerMethod === 'textSearch' && mapping.requiredTerms && mapping.requiredTerms.length > 0) {
+      logger.info({
+        requestId,
+        pipelineVersion: 'route2',
+        event: 'cuisine_enforcement_started',
+        strictness: mapping.strictness,
+        requiredTerms: mapping.requiredTerms,
+        preferredTerms: mapping.preferredTerms || [],
+        countIn: googleResult.results.length
+      }, '[ROUTE2] Starting cuisine enforcement');
+
+      try {
+        // Convert Google results to PlaceInput format
+        const placesForEnforcement: PlaceInput[] = googleResult.results.map(r => ({
+          placeId: r.placeId || r.id,
+          name: r.name || '',
+          types: r.types || [],
+          address: r.address || r.formattedAddress || '',
+          rating: r.rating,
+          userRatingsTotal: r.userRatingsTotal
+        }));
+
+        // Execute LLM-based enforcement
+        const enforcerInput: CuisineEnforcerInput = {
+          requiredTerms: mapping.requiredTerms,
+          preferredTerms: mapping.preferredTerms || [],
+          strictness: mapping.strictness || 'RELAX_IF_EMPTY',
+          places: placesForEnforcement
+        };
+
+        const enforcementResult = await executeCuisineEnforcement(
+          enforcerInput,
+          ctx.llmProvider,
+          requestId
+        );
+
+        logger.info({
+          requestId,
+          pipelineVersion: 'route2',
+          event: 'cuisine_enforcement_completed',
+          countIn: googleResult.results.length,
+          countOut: enforcementResult.keepPlaceIds.length,
+          relaxApplied: enforcementResult.relaxApplied,
+          relaxStrategy: enforcementResult.relaxStrategy
+        }, '[ROUTE2] Cuisine enforcement completed');
+
+        // Apply enforcement: filter and reorder by keepPlaceIds
+        if (enforcementResult.keepPlaceIds.length > 0) {
+          const keepSet = new Set(enforcementResult.keepPlaceIds);
+          enforcedResults = enforcementResult.keepPlaceIds
+            .map(placeId => googleResult.results.find(r => (r.placeId || r.id) === placeId))
+            .filter((r): r is NonNullable<typeof r> => r !== undefined);
+          cuisineEnforcementApplied = true;
+        } else if (!enforcementResult.relaxApplied) {
+          // No matches and no relaxation => enforcement failed, keep original
+          logger.warn({
+            requestId,
+            pipelineVersion: 'route2',
+            event: 'cuisine_enforcement_empty',
+            strictness: mapping.strictness
+          }, '[ROUTE2] Cuisine enforcement returned empty, keeping original results');
+          cuisineEnforcementFailed = true;
+        } else {
+          // Relaxation applied but still empty => keep original with flag
+          logger.warn({
+            requestId,
+            pipelineVersion: 'route2',
+            event: 'cuisine_enforcement_failed_after_relax',
+            relaxStrategy: enforcementResult.relaxStrategy
+          }, '[ROUTE2] Cuisine enforcement failed even after relaxation');
+          cuisineEnforcementFailed = true;
+        }
+
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        logger.error({
+          requestId,
+          pipelineVersion: 'route2',
+          event: 'cuisine_enforcement_error',
+          error: msg
+        }, '[ROUTE2] Cuisine enforcement failed, keeping original results');
+        // Fail gracefully: keep original results
+        cuisineEnforcementFailed = true;
+      }
+    }
+
     // STAGE 6: POST_FILTERS (await post constraints, apply filters)
     const postConstraints = await postConstraintsPromise;
-    const postFilterResult = applyPostFiltersToResults(googleResult.results, postConstraints, finalFilters, ctx);
+    const postFilterResult = applyPostFiltersToResults(enforcedResults, postConstraints, finalFilters, ctx);
 
     // Get merged filters for response building (using shared utility)
     const filtersForPostFilter = mergePostConstraints(finalFilters, postConstraints);
 
+    // MILESTONE: POST_CONSTRAINTS_DONE (75%)
+    try {
+      await searchJobStore.setStatus(requestId, 'RUNNING', JOB_MILESTONES.POST_CONSTRAINTS_DONE);
+    } catch (err) {
+      // Non-fatal: progress tracking is optional
+      logger.debug({ requestId, error: err instanceof Error ? err.message : 'unknown' }, '[ROUTE2] Progress update failed (non-fatal)');
+    }
+
     // STAGE 6.5: LLM RANKING (if enabled) + RANKING SIGNALS
     // Apply LLM-driven ranking to post-filtered results and build ranking signals
+    // Extract cityCenter from mapping if present (for distance calculation)
+    const cityCenter = (mapping.providerMethod === 'textSearch' && mapping.cityCenter) 
+      ? mapping.cityCenter 
+      : null;
+    
     const rankingResult = await applyRankingIfEnabled(
       postFilterResult.resultsFiltered,
       intentDecision,
@@ -328,11 +445,22 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
       postFilterResult.stats.before,
       postFilterResult.relaxed || {},
       ctx,
-      mapping // Pass mapping for biasRadiusMeters extraction
+      mapping, // Pass mapping for biasRadiusMeters extraction
+      cityCenter // Pass cityCenter for distance anchor (explicit city queries)
     );
 
     const finalResults = rankingResult.rankedResults;
     const rankingSignals = rankingResult.signals;
+    const rankingApplied = rankingResult.rankingApplied;
+    const orderExplain = rankingResult.orderExplain;
+
+    // MILESTONE: RANKING_DONE (90%)
+    try {
+      await searchJobStore.setStatus(requestId, 'RUNNING', JOB_MILESTONES.RANKING_DONE);
+    } catch (err) {
+      // Non-fatal: progress tracking is optional
+      logger.debug({ requestId, error: err instanceof Error ? err.message : 'unknown' }, '[ROUTE2] Progress update failed (non-fatal)');
+    }
 
     // STAGE 7: BUILD RESPONSE
     return await buildFinalResponse(
@@ -344,7 +472,10 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
       filtersForPostFilter,
       rankingSignals,
       ctx,
-      wsManager
+      wsManager,
+      rankingApplied,
+      cuisineEnforcementFailed,
+      orderExplain
     );
   } catch (error) {
     return await handlePipelineError(error, ctx, wsManager);

@@ -1,7 +1,7 @@
 :host {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
+    // CRITICAL: display: block (NOT flex) for natural document scroll
+    display: block;
+    min-height: 100vh;
     // Mobile: Prevent any transform that breaks sticky
     transform: none;
     -webkit-transform: none;
@@ -14,8 +14,6 @@
     position: relative;
     z-index: 200;
     /* Higher than search-header (z-index: 150) */
-    flex-shrink: 0;
-    /* Don't let topbar shrink */
 
     // Mobile: Safe area support
     padding-top: env(safe-area-inset-top, 0);
@@ -47,16 +45,13 @@
 }
 
 .container {
-    // Allow full-height routes (like search-page) to control their own layout
-    flex: 1;
-    /* Take remaining space after topbar */
+    // CRITICAL: display: block (NOT flex) for natural document scroll
+    display: block;
+    min-height: calc(100vh - 50px); // Account for topbar height
     
     // CRITICAL FIX: overflow: visible allows sticky positioning in children
     // overflow: hidden breaks position: sticky for descendants
     overflow: visible;
-    
-    display: flex;
-    flex-direction: column;
 
     // Mobile: Critical - no transform that breaks sticky
     transform: none;

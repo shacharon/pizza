@@ -45,6 +45,12 @@ export interface ISearchJobStore {
   setStatus(requestId: string, status: JobStatus, progress?: number): Promise<void> | void;
 
   /**
+   * Update job heartbeat (only updates updatedAt timestamp)
+   * Used to keep RUNNING jobs "alive" without changing status/progress
+   */
+  updateHeartbeat(requestId: string): Promise<void> | void;
+
+  /**
    * Store job result
    */
   setResult(requestId: string, result: unknown): Promise<void> | void;

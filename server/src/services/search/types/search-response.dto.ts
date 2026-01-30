@@ -95,6 +95,19 @@ export interface SearchResponseMeta {
     closedNowApiSupported: boolean;
     closedNowIsDerived: boolean;
   };
+  // Ranking order explanation (optional, for transparency)
+  order_explain?: {
+    profile: string;  // Ranking profile used (e.g., 'BALANCED', 'QUALITY_FIRST')
+    weights: {
+      rating: number;
+      reviews: number;
+      distance: number;
+      openBoost: number;
+    };
+    distanceOrigin: 'CITY_CENTER' | 'USER_LOCATION' | 'NONE';  // Where distance is measured from
+    distanceRef: { lat: number; lng: number } | null;  // Reference coordinates
+    reordered: boolean;  // Whether ranking was applied (true) or original Google order (false)
+  };
 }
 
 export interface SearchResponse {

@@ -66,8 +66,10 @@ export class InMemorySearchJobStore implements ISearchJobStore {
     job.status = status;
     job.updatedAt = Date.now();
 
+    // MONOTONIC INVARIANT: Progress never decreases
     if (progress !== undefined) {
-      job.progress = progress;
+      const currentProgress = job.progress ?? 0;
+      job.progress = Math.max(currentProgress, progress);
     }
 
     const durationMs = Math.round(performance.now() - startTime);
@@ -75,9 +77,40 @@ export class InMemorySearchJobStore implements ISearchJobStore {
     logger.info({
       requestId,
       status,
-      progress,
+      progress: job.progress,
       durationMs,
       msg: '[JobStore] Status updated'
+    });
+  }
+
+  /**
+   * Update job heartbeat (only updates updatedAt timestamp)
+   * Used to keep RUNNING jobs "alive" without changing status/progress
+   */
+  updateHeartbeat(requestId: string): void {
+    const job = this.jobs.get(requestId);
+    if (!job) {
+      logger.debug({ requestId, msg: '[InMemoryJobStore] updateHeartbeat called but job not found' });
+      return;
+    }
+
+    // Only update heartbeat for RUNNING jobs
+    if (job.status !== 'RUNNING') {
+      logger.debug({ 
+        requestId, 
+        status: job.status,
+        msg: '[InMemoryJobStore] updateHeartbeat skipped - job not RUNNING' 
+      });
+      return;
+    }
+
+    job.updatedAt = Date.now();
+
+    logger.debug({
+      requestId,
+      status: job.status,
+      progress: job.progress,
+      msg: '[InMemoryJobStore] Heartbeat updated'
     });
   }
 

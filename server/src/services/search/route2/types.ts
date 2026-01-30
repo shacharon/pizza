@@ -29,7 +29,6 @@ export interface Route2Context {
   sessionService?: any; // Optional session service for region caching
   llmProvider: LLMProvider;
   query?: string; // Original user query (for assistant context on failures)
-  queryLanguage?: 'he' | 'en'; // Detected language from query text (deterministic, for assistant messages)
   userLocation?: {
     lat: number;
     lng: number;
@@ -95,6 +94,7 @@ export interface IntentResult {
   confidence: number;
   reason: string;
   language: Gate2Language;
+  languageConfidence: number;
   regionCandidate: string | null; // ISO-3166-1 alpha-2 candidate (e.g., "IL", "GZ", "FR") or null if invalid - NOT final, must be validated by filters_resolved
   regionConfidence: number;
   regionReason: string;

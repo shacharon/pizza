@@ -204,6 +204,19 @@ export interface SearchMeta {
     closedNowApiSupported: boolean;
     closedNowIsDerived: boolean;
   };
+  // Order explanation (for ranking transparency)
+  order_explain?: {
+    profile: string;
+    weights: {
+      rating: number;
+      reviews: number;
+      distance: number;
+      openBoost: number;
+    };
+    distanceOrigin: 'CITY_CENTER' | 'USER_LOCATION' | 'NONE';
+    distanceRef: { lat: number; lng: number } | null;
+    reordered: boolean;
+  };
 }
 
 export interface ProposedActions {

@@ -6,6 +6,7 @@
 import { logger } from '../../lib/logger/structured-logger.js';
 import { publishSearchEvent } from '../../infra/websocket/search-ws.publisher.js';
 import { searchJobStore } from '../../services/search/job-store/index.js';
+import { JOB_MILESTONES } from '../../services/search/job-store/job-milestones.js';
 import { searchRoute2 } from '../../services/search/route2/index.js';
 import { CONTRACTS_VERSION } from '../../contracts/search.contracts.js';
 import type { Route2Context } from '../../services/search/route2/index.js';
@@ -30,19 +31,42 @@ export async function executeBackgroundSearch(params: BackgroundParams): Promise
 
   const ctxWithAbort = { ...context, signal: abortController.signal } as Route2Context & { signal: AbortSignal };
 
+  // Heartbeat ticker: Keep RUNNING jobs alive by updating updatedAt every 15s
+  const HEARTBEAT_INTERVAL_MS = 15_000; // 15 seconds
+  let heartbeatIntervalId: NodeJS.Timeout | null = null;
+
   try {
-    // Step 1: Accepted
+    // Step 1: Accepted (JOB_CREATED milestone)
     // P0 Fix: Non-fatal Redis write (job tracking is optional)
     try {
-      await searchJobStore.setStatus(requestId, 'RUNNING', 10);
+      await searchJobStore.setStatus(requestId, 'RUNNING', JOB_MILESTONES.JOB_CREATED);
       
       // OBSERVABILITY: Log status transition
       logger.info({
         requestId,
         status: 'RUNNING',
-        progress: 10,
+        progress: JOB_MILESTONES.JOB_CREATED,
         event: 'status_running'
       }, '[Observability] Job status set to RUNNING');
+
+      // Start heartbeat ticker to prevent stale detection
+      heartbeatIntervalId = setInterval(async () => {
+        try {
+          await searchJobStore.updateHeartbeat(requestId);
+        } catch (hbErr) {
+          logger.warn({
+            requestId,
+            error: hbErr instanceof Error ? hbErr.message : 'unknown',
+            operation: 'updateHeartbeat'
+          }, '[Heartbeat] Failed to update heartbeat (non-fatal)');
+        }
+      }, HEARTBEAT_INTERVAL_MS);
+
+      logger.debug({
+        requestId,
+        intervalMs: HEARTBEAT_INTERVAL_MS,
+        event: 'heartbeat_started'
+      }, '[Heartbeat] Started heartbeat ticker');
     } catch (redisErr) {
       logger.error({
         requestId,
@@ -63,43 +87,8 @@ export async function executeBackgroundSearch(params: BackgroundParams): Promise
         ts: new Date().toISOString(),
         stage: 'accepted',
         status: 'running',
-        progress: 10,
+        progress: JOB_MILESTONES.JOB_CREATED,
         message: 'Search started'
-      });
-    } catch (wsErr) {
-      logger.warn({
-        requestId,
-        error: wsErr instanceof Error ? wsErr.message : 'unknown',
-        event: 'ws_publish_error'
-      }, '[WS] Failed to publish progress event (non-fatal)');
-    }
-
-    // Step 2: Processing (route_llm)
-    // P0 Fix: Non-fatal Redis write
-    try {
-      await searchJobStore.setStatus(requestId, 'RUNNING', 50);
-    } catch (redisErr) {
-      logger.error({
-        requestId,
-        error: redisErr instanceof Error ? redisErr.message : 'unknown',
-        operation: 'setStatus',
-        stage: 'route_llm',
-        event: 'ws_error'
-      }, 'Redis JobStore write failed (non-fatal) - continuing pipeline');
-    }
-
-    // GUARDRAIL: WS publish is optional - never blocks search execution
-    try {
-      publishSearchEvent(requestId, {
-        channel: 'search',
-        contractsVersion: CONTRACTS_VERSION,
-        type: 'progress',
-        requestId,
-        ts: new Date().toISOString(),
-        stage: 'route_llm',
-        status: 'running',
-        progress: 50,
-        message: 'Processing search'
       });
     } catch (wsErr) {
       logger.warn({
@@ -153,13 +142,13 @@ export async function executeBackgroundSearch(params: BackgroundParams): Promise
     }
 
     try {
-      await searchJobStore.setStatus(requestId, terminalStatus, 100);
+      await searchJobStore.setStatus(requestId, terminalStatus, JOB_MILESTONES.TERMINAL);
       
       // OBSERVABILITY: Log terminal status
       logger.info({
         requestId,
         status: terminalStatus,
-        progress: 100,
+        progress: JOB_MILESTONES.TERMINAL,
         event: 'status_done'
       }, '[Observability] Job reached terminal status');
     } catch (redisErr) {
@@ -238,7 +227,7 @@ export async function executeBackgroundSearch(params: BackgroundParams): Promise
     }
 
     try {
-      await searchJobStore.setStatus(requestId, 'DONE_FAILED', 100);
+      await searchJobStore.setStatus(requestId, 'DONE_FAILED', JOB_MILESTONES.TERMINAL);
     } catch (redisErr) {
       logger.error({
         requestId,
@@ -270,5 +259,14 @@ export async function executeBackgroundSearch(params: BackgroundParams): Promise
     }
   } finally {
     clearTimeout(timeoutId);
+
+    // Stop heartbeat ticker
+    if (heartbeatIntervalId) {
+      clearInterval(heartbeatIntervalId);
+      logger.debug({
+        requestId,
+        event: 'heartbeat_stopped'
+      }, '[Heartbeat] Stopped heartbeat ticker');
+    }
   }
 }

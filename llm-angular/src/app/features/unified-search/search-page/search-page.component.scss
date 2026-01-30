@@ -1,16 +1,16 @@
 .search-page {
-  // Page shell: Flex column layout, NO scrolling here
-  display: flex;
-  flex-direction: column;
-  height: 100dvh; // FIXED: Lock to viewport height (not min-height!)
-  min-height: 0; // CRITICAL: Allow flex children to shrink/scroll
+  // Page shell: Natural flow layout for window-level scrolling
+  // CRITICAL: display: block (NOT flex) for natural document scroll
+  display: block;
+  min-height: calc(100vh - 50px); // Account for topbar
   background: #f9fafb;
-  overflow: hidden; // CRITICAL: No scrolling on page shell
   position: relative;
+  // NO overflow: hidden - allow natural page scroll
+  // NO height: 100vh - allow content to expand
 }
 
 .search-header {
-  // Top area: PINNED at top (sticky for proper behavior)
+  // Top area: STICKY PANEL - Stays at top while results scroll under it
   
   // iOS Safe Area: Account for notch/status bar
   padding-top: calc(1.5rem + env(safe-area-inset-top, 0));
@@ -23,14 +23,24 @@
   top: 0;
   z-index: 150;
   
-  // Solid background: No transparency, no gradient
+  // Solid background: Prevents results from showing "through"
   background: #ffffff;
   
-  // Border for visual separation
+  // Visual separation: Border + subtle shadow
   border-bottom: 1px solid #e5e7eb;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  
+  // Smooth transitions for scroll effects
+  transition: box-shadow 0.2s ease;
   
   // CRITICAL: Prevent shrinking - header stays fixed size
   flex: 0 0 auto; // Shorthand for flex-grow: 0, flex-shrink: 0, flex-basis: auto
+  
+  // CRITICAL: No transform/filter/perspective that breaks sticky
+  transform: none;
+  filter: none;
+  perspective: none;
+  will-change: auto;
 }
 
 // Hero Section (title + subtitle + location)
@@ -152,32 +162,20 @@
 }
 
 .search-content {
-  // Results area: DEDICATED SCROLL CONTAINER
-  // This is the ONLY element that scrolls
+  // Results area: Natural flow layout (window scrolls, not this container)
   
-  // CRITICAL: Take remaining space and enable scrolling
-  flex: 1 1 auto; // Grow to fill, allow shrink, auto basis
-  min-height: 0; // CRITICAL: Without this, flex child won't scroll!
-  overflow-y: auto; // ONLY this container scrolls
-  overflow-x: hidden;
-  
-  // Mobile: Smooth momentum scrolling
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior-y: contain; // Prevent pull-to-refresh
-  
-  // Mobile: Safe area handling for bottom gestures
-  padding: 1.5rem 1rem calc(1.5rem + env(safe-area-inset-bottom, 0));
+  // Layout: Minimal top padding - results start RIGHT UNDER the sticky header
+  padding: 0 1rem calc(1.5rem + env(safe-area-inset-bottom, 0));
   padding-left: max(1rem, env(safe-area-inset-left, 1rem));
   padding-right: max(1rem, env(safe-area-inset-right, 1rem));
   
-  // Layout
-  max-width: 1400px;
+  // NO overflow: auto - window scrolls instead
+  // NO flex - using block layout for natural document flow
+  
+  // Layout: Match search panel width (700px)
+  max-width: 700px;
   margin: 0 auto;
   width: 100%; // Ensure full width for centering
-  
-  // Mobile: Force own stacking context (prevent z-index issues)
-  position: relative;
-  z-index: 1;
   
   // Background
   background: #f9fafb;
@@ -249,7 +247,7 @@
 
 // NEW: Recent Searches (Phase B)
 .recent-searches {
-  padding: 2rem 0;
+  padding: 1rem 0 2rem;  // Reduced top padding
   max-width: 600px;
   margin: 0 auto;
 
@@ -320,31 +318,6 @@
 }
 
 // Popular Searches removed - discovery via free-text search + assistant only
-
-// Loading State
-.loading-state {
-  text-align: center;
-  padding: 5rem 2rem;
-}
-
-.loading-spinner {
-  font-size: 4rem;
-  animation: pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse {
-
-  0%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-
-  50% {
-    opacity: 0.4;
-    transform: scale(1.15);
-  }
-}
 
 // Error State
 .error-state {
@@ -568,6 +541,61 @@
   font-weight: 500;
 }
 
+// Order Explanation (Ranking Transparency)
+.order-explain {
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.8125rem;
+
+  .order-explain-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+
+    .order-label {
+      color: #6b7280;
+      font-weight: 500;
+    }
+
+    .order-profile {
+      color: #111827;
+      font-weight: 600;
+    }
+  }
+
+  .order-explain-details {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+
+    .order-weights {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+
+      .weight-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        color: #374151;
+        font-weight: 500;
+        font-size: 0.75rem;
+      }
+    }
+
+    .order-origin {
+      color: #6b7280;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+  }
+}
+
 .results-grid {
   display: grid;
   gap: 1.5rem;
@@ -662,9 +690,9 @@
 // Mobile-first responsive adjustments
 @media (max-width: 768px) {
   .search-page {
-    // Mobile: Use dynamic viewport height, but lock to viewport (no stretching)
-    height: 100dvh;
-    min-height: 0; // CRITICAL: Ensure flex scrolling works
+    // Mobile: Natural flow layout (window scrolls)
+    min-height: calc(100vh - 50px); // Account for topbar
+    // NO height: 100vh - allow content to expand naturally
   }
 
   .search-header {
@@ -686,16 +714,14 @@
   }
 
   .search-content {
-    // Mobile: Tighter padding for small screens
-    padding: 1rem;
+    // Mobile: Minimal top padding - results start under sticky header
+    padding: 0 1rem;
     padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0));
     padding-left: max(1rem, env(safe-area-inset-left, 1rem));
     padding-right: max(1rem, env(safe-area-inset-right, 1rem));
     
-    // Mobile: Force smooth scrolling
-    -webkit-overflow-scrolling: touch;
-    // Mobile: Force scrollbar space (prevents layout shift)
-    overflow-y: scroll;
+    // NO overflow-y - window scrolls instead
+    // NO -webkit-overflow-scrolling - not needed without scroll container
   }
 
   .pending-actions-panel {

@@ -127,7 +127,16 @@ export async function buildFinalResponse(
   filtersForPostFilter: any,
   rankingSignals: RankingSignals | null,
   ctx: Route2Context,
-  wsManager: WebSocketManager
+  wsManager: WebSocketManager,
+  rankingApplied: boolean,
+  cuisineEnforcementFailed: boolean = false,
+  orderExplain?: {
+    profile: string;
+    weights: { rating: number; reviews: number; distance: number; openBoost: number };
+    distanceOrigin: 'CITY_CENTER' | 'USER_LOCATION' | 'NONE';
+    distanceRef: { lat: number; lng: number } | null;
+    reordered: boolean;
+  }
 ): Promise<SearchResponse> {
   const { requestId, startTime } = ctx;
   const sessionId = resolveSessionId(request, ctx);
@@ -161,7 +170,7 @@ export async function buildFinalResponse(
   const assistantContext: AssistantSummaryContext = {
     type: 'SUMMARY',
     query: request.query,
-    language: resolveAssistantLanguage(ctx, request, detectedLanguage),
+    language: resolveAssistantLanguage(ctx, request, detectedLanguage, intentDecision.languageConfidence),
     resultCount: finalResults.length,
     top3Names,
     // INSIGHT METADATA: Provide data for intelligent narration
@@ -208,7 +217,7 @@ export async function buildFinalResponse(
     const narrationContext: AssistantGenericQueryNarrationContext = {
       type: 'GENERIC_QUERY_NARRATION',
       query: request.query,
-      language: resolveAssistantLanguage(ctx, request, detectedLanguage),
+      language: resolveAssistantLanguage(ctx, request, detectedLanguage, intentDecision.languageConfidence),
       resultCount: finalResults.length,
       usedCurrentLocation: true
     };
@@ -241,19 +250,26 @@ export async function buildFinalResponse(
     serverPagination: false            // All results returned, client handles pagination
   }, '[ROUTE2] Pagination metadata (client-side)');
 
-  // Log final response order to prove no re-sorting after ranking
+  // Log final response order with clear order source
   const finalOrder = finalResults.slice(0, 10).map((r, idx) => ({
     idx,
     placeId: r.placeId || r.id,
     name: r.name || 'Unknown'
   }));
 
+  const orderSource = rankingApplied ? 'ranking' : 'google';
+  const orderMessage = rankingApplied
+    ? '[ROUTE2] Final response order (ranked deterministically)'
+    : '[ROUTE2] Final response order (original Google order)';
+
   logger.info({
     requestId,
     event: 'final_response_order',
     count: finalResults.length,
-    first10: finalOrder
-  }, '[ROUTE2] Final response order (no re-sorting after ranking)');
+    first10: finalOrder,
+    orderSource,
+    reordered: rankingApplied
+  }, orderMessage);
 
   const response: SearchResponse = {
     requestId,
@@ -294,7 +310,11 @@ export async function buildFinalResponse(
         }
       }),
       // Ranking signals (when available)
-      ...(rankingSignals && { rankingSignals })
+      ...(rankingSignals && { rankingSignals }),
+      // Cuisine enforcement flag (when failed)
+      ...(cuisineEnforcementFailed && { cuisineEnforcementFailed: true }),
+      // Order explanation (for frontend transparency)
+      ...(orderExplain && { order_explain: orderExplain })
     }
   };
 

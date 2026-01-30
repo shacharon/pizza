@@ -43,6 +43,7 @@ function createFallbackResult(query: string, isTimeout: boolean): IntentResult {
     confidence: 0.3,
     reason: isTimeout ? 'fallback_timeout' : 'fallback',
     language: resolveFallbackLanguage(query),
+    languageConfidence: 0.5, // Moderate confidence for fallback
     regionCandidate: 'IL',
     regionConfidence: 0.1,
     regionReason: 'fallback_default'

@@ -85,14 +85,6 @@
 
     <!-- Cuisine chips removed - discovery via free-text search + assistant only -->
 
-    <!-- Loading State -->
-    @if (facade.loading()) {
-    <div class="loading-state">
-      <div class="loading-spinner">🔍</div>
-      <p>Searching for restaurants...</p>
-    </div>
-    }
-
     <!-- Error State -->
     @if (facade.error() && !facade.loading()) {
     <div class="error-state">
@@ -134,6 +126,35 @@
       <!-- Assistant SUMMARY message (from WS) is the only result announcement -->
       
       <div class="results-header">
+        <!-- Order Explanation (Ranking Transparency) -->
+        @if (facade.response()?.meta?.order_explain) {
+        <div class="order-explain">
+          <div class="order-explain-header">
+            <span class="order-label">Order:</span>
+            <span class="order-profile">{{ getProfileDisplayName(facade.response()!.meta.order_explain.profile) }}</span>
+          </div>
+          <div class="order-explain-details">
+            <span class="order-weights">
+              @if (facade.response()!.meta.order_explain.weights.rating > 0) {
+                <span class="weight-item">⭐ {{ (facade.response()!.meta.order_explain.weights.rating * 100) | number:'1.0-0' }}%</span>
+              }
+              @if (facade.response()!.meta.order_explain.weights.reviews > 0) {
+                <span class="weight-item">💬 {{ (facade.response()!.meta.order_explain.weights.reviews * 100) | number:'1.0-0' }}%</span>
+              }
+              @if (facade.response()!.meta.order_explain.weights.distance > 0) {
+                <span class="weight-item">📍 {{ (facade.response()!.meta.order_explain.weights.distance * 100) | number:'1.0-0' }}%</span>
+              }
+              @if (facade.response()!.meta.order_explain.weights.openBoost > 0) {
+                <span class="weight-item">🟢 {{ (facade.response()!.meta.order_explain.weights.openBoost * 100) | number:'1.0-0' }}%</span>
+              }
+            </span>
+            <span class="order-origin">
+              {{ getOriginDisplayText(facade.response()!.meta.order_explain.distanceOrigin) }}
+            </span>
+          </div>
+        </div>
+        }
+        
         <!-- Applied Filters Chips -->
         <div class="applied-filters">
           @if (closedFilterActive() === 'open') {

@@ -22,6 +22,10 @@ import type { RouteLLMMapping, Route2Context } from '../../types.js';
 // Field mask for Google Places API (New) - includes opening hours data
 const PLACES_FIELD_MASK = 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.priceLevel,places.currentOpeningHours,places.regularOpeningHours,places.utcOffsetMinutes,places.photos,places.types,places.googleMapsUri';
 
+// City center geocoding cache (in-memory, 1 hour TTL)
+const CITY_GEOCODE_CACHE = new Map<string, { coords: { lat: number; lng: number }; cachedAt: number }>();
+const CITY_GEOCODE_CACHE_TTL_MS = 3600_000; // 1 hour
+
 /**
  * Execute Google Places Text Search (New API)
  * Includes retry logic for low results and L1/L2 caching
@@ -234,51 +238,75 @@ async function executeTextSearchAttempt(
   const shouldPreferCityBias = hasExplicitCity && !mapping.bias;
 
   if (shouldPreferCityBias) {
-    try {
-      const cityCoords = await callGoogleGeocodingAPI(
-        mapping.cityText!,
-        mapping.region,
-        apiKey,
-        requestId
-      );
+    // Check cache first
+    const cacheKey = `${mapping.cityText!.toLowerCase().trim()}_${mapping.region || 'IL'}`;
+    const cached = CITY_GEOCODE_CACHE.get(cacheKey);
+    let cityCoords: { lat: number; lng: number } | null = null;
+    let servedFromCache = false;
 
-      if (cityCoords) {
-        // P0 FIX: Use smaller radius for explicit city searches (10km instead of 20km)
-        const radiusMeters = 10000; // 10km for city-center focus
+    if (cached && Date.now() - cached.cachedAt < CITY_GEOCODE_CACHE_TTL_MS) {
+      cityCoords = cached.coords;
+      servedFromCache = true;
+    } else {
+      // Geocode via API
+      try {
+        cityCoords = await callGoogleGeocodingAPI(
+          mapping.cityText!,
+          mapping.region,
+          apiKey,
+          requestId
+        );
 
-        logger.info({
-          requestId,
-          cityText: mapping.cityText,
-          coords: cityCoords,
-          radiusMeters,
-          hadOriginalBias: !!mapping.bias,
-          biasSource: 'cityCenter',
-          event: 'city_geocoded_for_bias'
-        }, '[GOOGLE] City geocoded successfully, applying city-center bias (explicit city preferred)');
-
-        enrichedMapping = {
-          ...mapping,
-          textQuery: canonicalTextQuery,
-          bias: {
-            type: 'locationBias' as const,
-            center: cityCoords,
-            radiusMeters // Smaller radius for city-specific searches
-          }
-        };
-      } else {
+        if (cityCoords) {
+          // Cache the result
+          CITY_GEOCODE_CACHE.set(cacheKey, {
+            coords: cityCoords,
+            cachedAt: Date.now()
+          });
+        }
+      } catch (error) {
         logger.warn({
           requestId,
           cityText: mapping.cityText,
-          event: 'city_geocoding_failed'
-        }, '[GOOGLE] City geocoding returned no results, proceeding without bias');
+          error: error instanceof Error ? error.message : 'unknown',
+          event: 'city_geocoding_error'
+        }, '[GOOGLE] City geocoding failed, proceeding without bias');
       }
-    } catch (error) {
+    }
+
+    if (cityCoords) {
+      // P0 FIX: Use smaller radius for explicit city searches (10km instead of 20km)
+      const radiusMeters = 10000; // 10km for city-center focus
+
+      logger.info({
+        requestId,
+        event: 'city_center_resolved',
+        cityText: mapping.cityText,
+        lat: cityCoords.lat,
+        lng: cityCoords.lng,
+        servedFromCache,
+        radiusMeters,
+        hadOriginalBias: !!mapping.bias,
+        biasSource: 'cityCenter'
+      }, '[GOOGLE] City center resolved, applying city-center bias');
+
+      enrichedMapping = {
+        ...mapping,
+        textQuery: canonicalTextQuery,
+        bias: {
+          type: 'locationBias' as const,
+          center: cityCoords,
+          radiusMeters // Smaller radius for city-specific searches
+        },
+        // Store cityCenter for ranking distance calculation
+        cityCenter: cityCoords
+      };
+    } else if (!servedFromCache) {
       logger.warn({
         requestId,
         cityText: mapping.cityText,
-        error: error instanceof Error ? error.message : 'unknown',
-        event: 'city_geocoding_error'
-      }, '[GOOGLE] City geocoding failed, proceeding without bias');
+        event: 'city_geocoding_failed'
+      }, '[GOOGLE] City geocoding returned no results, proceeding without bias');
     }
   }
 
@@ -324,6 +352,18 @@ async function executeTextSearchAttempt(
     }),
     maxResultCount: maxResults
   }, '[GOOGLE] Text Search request payload');
+
+  // NEW: Log when bias is actually applied to Google request
+  if (requestBody.locationBias) {
+    logger.info({
+      requestId,
+      event: 'google_textsearch_bias_applied',
+      biasType: finalBiasSource || 'unknown',
+      lat: requestBody.locationBias.circle.center.latitude,
+      lng: requestBody.locationBias.circle.center.longitude,
+      radiusMeters: requestBody.locationBias.circle.radius
+    }, '[GOOGLE] Location bias ACTUALLY applied to Google request');
+  }
 
   // Delegate pagination to pagination-handler
   const results = await fetchAllPages(requestBody, apiKey, requestId, maxResults);

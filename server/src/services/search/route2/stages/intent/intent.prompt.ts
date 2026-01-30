@@ -14,8 +14,9 @@ Analyze the user's query and determine the appropriate search strategy.
 Your task:
 1. Determine the search route: TEXTSEARCH, NEARBY, or LANDMARK
 2. Detect the query language: he, en, ru, ar, fr, es, or other
-3. Infer the region code (ISO-3166-1 alpha-2, e.g., "IL", "US", "FR")
-4. Extract city name if explicitly mentioned (e.g., "תל אביב", "חיפה")
+3. Provide languageConfidence (0-1): how confident you are in the language detection
+4. Infer the region code (ISO-3166-1 alpha-2, e.g., "IL", "US", "FR")
+5. Extract city name if explicitly mentioned (e.g., "תל אביב", "חיפה")
 
 Route Guidelines:
 - TEXTSEARCH: Query contains explicit location (city/area) like "פיצה בתל אביב" or "restaurants in New York"
@@ -27,6 +28,12 @@ Valid Reason Values:
 - For NEARBY: "near_me_phrase", "explicit_distance_from_me"
 - For LANDMARK: "landmark_detected"
 - For uncertain: "ambiguous"
+
+Language Detection:
+- languageConfidence: 0.9-1.0 for clear language signals (multi-word, script-specific)
+- languageConfidence: 0.7-0.9 for partial signals (short query, mixed script)
+- languageConfidence: 0.4-0.7 for single word or ambiguous queries
+- languageConfidence: 0.1-0.4 for very uncertain (emoji-only, numbers)
 
 Region Inference:
 - Use valid ISO-3166-1 alpha-2 codes ONLY: IL, US, GB, FR, DE, etc.
@@ -41,9 +48,11 @@ City Text Extraction:
 - Do NOT infer city from region or context
 
 Examples:
-- "מסעדות אסיאתיות בתל אביב" → TEXTSEARCH, reason: "explicit_city_mentioned", cityText: "תל אביב", regionCandidate: "IL"
-- "פיצה לידי" → NEARBY, reason: "near_me_phrase", cityText: null, regionCandidate: "IL"
-- "שווארמה" → TEXTSEARCH, reason: "default_textsearch", cityText: null, regionCandidate: "IL"
+- "מסעדות אסיאתיות בתל אביב" → language: "he", languageConfidence: 0.95, TEXTSEARCH, cityText: "תל אביב", regionCandidate: "IL"
+- "פיצה לידי" → language: "he", languageConfidence: 0.9, NEARBY, cityText: null, regionCandidate: "IL"
+- "שווארמה" → language: "he", languageConfidence: 0.85 (single word), TEXTSEARCH, cityText: null, regionCandidate: "IL"
+- "pizza" → language: "en", languageConfidence: 0.7 (single word), TEXTSEARCH, cityText: null, regionCandidate: "IL"
+- "restaurante español" → language: "es", languageConfidence: 0.95, TEXTSEARCH, cityText: null, regionCandidate: "ES"
 `;
 
 /**
@@ -57,6 +66,7 @@ export const INTENT_JSON_SCHEMA = {
     confidence: { type: "number", minimum: 0, maximum: 1 },
     reason: { type: "string", minLength: 1 },
     language: { type: "string", enum: ["he", "en", "ru", "ar", "fr", "es", "other"] },
+    languageConfidence: { type: "number", minimum: 0, maximum: 1 },
     regionCandidate: { type: "string", pattern: "^[A-Z]{2}$" },
     regionConfidence: { type: "number", minimum: 0, maximum: 1 },
     regionReason: { type: "string", minLength: 1 },
@@ -69,6 +79,7 @@ export const INTENT_JSON_SCHEMA = {
     "confidence",
     "reason",
     "language",
+    "languageConfidence",
     "regionCandidate",
     "regionConfidence",
     "regionReason",

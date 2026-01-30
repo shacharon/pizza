@@ -52,7 +52,7 @@ export async function handleNearMeLocationCheck(
       type: 'CLARIFY',
       reason: 'MISSING_LOCATION',
       query: request.query,
-      language: resolveAssistantLanguage(ctx, request, intentDecision.language)
+      language: resolveAssistantLanguage(ctx, request, intentDecision.language, intentDecision.languageConfidence)
     };
 
     const assistMessage = await generateAndPublishAssistant(

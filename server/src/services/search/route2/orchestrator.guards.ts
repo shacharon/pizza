@@ -47,7 +47,7 @@ export async function handleGateStop(
     type: 'GATE_FAIL',
     reason: 'NO_FOOD',
     query: request.query,
-    language: resolveAssistantLanguage(ctx, request, gateResult.gate.language)
+    language: resolveAssistantLanguage(ctx, request, gateResult.gate.language, undefined)
   };
 
   const assistMessage = await generateAndPublishAssistant(
@@ -126,7 +126,7 @@ export async function handleGateClarify(
     type: 'CLARIFY',
     reason: 'MISSING_FOOD',
     query: request.query,
-    language: resolveAssistantLanguage(ctx, request, gateResult.gate.language)
+    language: resolveAssistantLanguage(ctx, request, gateResult.gate.language, undefined)
   };
 
   const assistMessage = await generateAndPublishAssistant(
@@ -188,7 +188,7 @@ export async function handleNearbyLocationGuard(
     type: 'CLARIFY',
     reason: 'MISSING_LOCATION',
     query: request.query,
-    language: resolveAssistantLanguage(ctx, request, mapping.language)
+    language: resolveAssistantLanguage(ctx, request, mapping.language, undefined)
   };
 
   const assistMessage = await generateAndPublishAssistant(
@@ -308,7 +308,7 @@ export async function handleGenericQueryGuard(
   );
 
   // Determine which question to ask based on language
-  const language = resolveAssistantLanguage(ctx, request, gateResult.gate.language);
+  const language = resolveAssistantLanguage(ctx, request, gateResult.gate.language, undefined);
   const fallbackHttpMessage = language === 'he'
     ? "כדי לעזור לך למצוא מסעדה טובה, אני צריך לדעת: באיזה אזור אתה מחפש? (למשל: 'פיצה בתל אביב')"
     : "To help you find a good restaurant, I need to know: which area are you searching in? (e.g., 'pizza in Tel Aviv')";
