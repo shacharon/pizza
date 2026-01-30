@@ -1,17 +1,19 @@
 /**
- * Subscription Manager
+ * Subscription Manager (ORCHESTRATION)
  * Handles subscribe, unsubscribe, and message routing logic
+ * Delegates ownership verification to OwnershipVerifier
  */
 
 import { WebSocket } from 'ws';
 import crypto from 'crypto';
 import { logger } from '../../lib/logger/structured-logger.js';
-import { isWSClientMessage, normalizeToCanonical } from './websocket-protocol.js';
+import { normalizeToCanonical } from './websocket-protocol.js';
 import type { WSClientMessage, WSServerMessage, WSChannel } from './websocket-protocol.js';
-import type { WebSocketContext, SubscriptionKey, RequestOwner, PublishSummary } from './websocket.types.js';
+import type { WebSocketContext, SubscriptionKey } from './websocket.types.js';
 import { hashSessionId } from './websocket.types.js';
 import type { IRequestStateStore } from '../state/request-state.store.js';
 import type { ISearchJobStore } from '../../services/search/job-store/job-store.interface.js';
+import { OwnershipVerifier } from './ownership-verifier.js';
 
 /**
  * Subscription Manager Class
@@ -20,11 +22,14 @@ import type { ISearchJobStore } from '../../services/search/job-store/job-store.
 export class SubscriptionManager {
   private subscriptions = new Map<SubscriptionKey, Set<WebSocket>>();
   private socketToSubscriptions = new WeakMap<WebSocket, Set<SubscriptionKey>>();
+  private readonly ownershipVerifier: OwnershipVerifier;
 
   constructor(
     private requestStateStore: IRequestStateStore | undefined,
-    private jobStore: ISearchJobStore | undefined
-  ) { }
+    jobStore: ISearchJobStore | undefined
+  ) {
+    this.ownershipVerifier = new OwnershipVerifier(jobStore);
+  }
 
   /**
    * Build subscription key (requestId-based for both channels)
@@ -151,7 +156,7 @@ export class SubscriptionManager {
     const connUserId = ctx?.userId;
 
     const requestIdHash = this.hashRequestId(requestId || 'unknown');
-    const sessionHash = this.hashSessionId(connSessionId);
+    const sessionHash = hashSessionId(connSessionId);
 
     logger.info({
       clientId,
@@ -178,98 +183,31 @@ export class SubscriptionManager {
       return { success: false };
     }
 
-    // Step 3: Check ownership
-    let owner: RequestOwner | null = null;
-    try {
-      owner = await this.getRequestOwner(requestId);
-    } catch (err) {
-      logger.warn({
-        clientId,
-        channel,
-        requestIdHash,
-        error: err instanceof Error ? err.message : 'unknown',
-        reason: 'owner_lookup_failed'
-      }, 'Subscribe ownership check failed');
+    // Step 3: Verify ownership (delegated to OwnershipVerifier)
+    const ownershipDecision = await this.ownershipVerifier.verifyOwnership(
+      requestId,
+      connSessionId,
+      connUserId,
+      clientId,
+      channel
+    );
+
+    // Handle ownership decision
+    if (ownershipDecision.result === 'DENY') {
       return { success: false };
     }
 
-    // Step 4a: Owner exists - check match
-    if (owner) {
-      const ownerSessionId = owner.sessionId;
-      const ownerUserId = owner.userId;
-
-      // Check userId match if owner has userId
-      if (ownerUserId && ownerUserId !== connUserId) {
-        logger.warn({
-          clientId,
-          channel,
-          requestIdHash,
-          reason: 'session_mismatch',
-          event: 'ws_subscribe_nack'
-        }, 'Subscribe rejected - user mismatch');
-        return { success: false };
-      }
-
-      // Check sessionId match if owner has sessionId
-      if (ownerSessionId && ownerSessionId !== connSessionId) {
-        logger.warn({
-          clientId,
-          channel,
-          requestIdHash,
-          sessionHash,
-          reason: 'session_mismatch',
-          event: 'ws_subscribe_nack'
-        }, 'Subscribe rejected - session mismatch');
-        return { success: false };
-      }
-
-      // Owner matches - accept subscription
-      this.subscribe(channel, requestId, connSessionId, ws);
-
-      const resolvedKey = this.buildSubscriptionKey(channel, requestId, connSessionId);
-      logger.info({
-        clientId,
-        channel,
-        requestIdHash,
-        sessionHash,
-        subscriptionKey: resolvedKey,
-        pending: false,
-        event: 'ws_subscribe_ack'
-      }, 'Subscribe accepted - owner match');
-
-      return { success: true, pending: false, channel, requestId, sessionId: connSessionId };
+    if (ownershipDecision.result === 'PENDING') {
+      // Owner not yet set - register pending subscription
+      return { success: true, pending: true, channel, requestId, sessionId: connSessionId };
     }
 
-    // Step 4b: Owner is null - register pending subscription
-    return { success: true, pending: true, channel, requestId, sessionId: connSessionId };
-  }
+    // ALLOW - owner matches, accept subscription
+    this.subscribe(channel, requestId, connSessionId, ws);
 
-  /**
-   * Get request owner from JobStore
-   */
-  private async getRequestOwner(requestId: string): Promise<RequestOwner | null> {
-    if (!this.jobStore) {
-      return null;
-    }
-
-    try {
-      const job = await this.jobStore.getJob(requestId);
-      if (!job) {
-        return null;
-      }
-
-      const result: RequestOwner = {};
-      if (job.ownerUserId) result.userId = job.ownerUserId;
-      if (job.ownerSessionId) result.sessionId = job.ownerSessionId;
-
-      return Object.keys(result).length > 0 ? result : null;
-    } catch (err) {
-      logger.debug({
-        requestId: this.hashRequestId(requestId),
-        error: err instanceof Error ? err.message : 'unknown'
-      }, 'WS: Failed to get request owner');
-      return null;
-    }
+    const resolvedKey = this.buildSubscriptionKey(channel, requestId, connSessionId);
+    
+    return { success: true, pending: false, channel, requestId, sessionId: connSessionId };
   }
 
   /**
@@ -393,11 +331,4 @@ export class SubscriptionManager {
     return crypto.createHash('sha256').update(requestId).digest('hex').substring(0, 12);
   }
 
-  /**
-   * SESSIONHASH FIX: Use shared utility (now imported from websocket.types.ts)
-   * @deprecated Use hashSessionId() from websocket.types.js instead
-   */
-  private hashSessionId(sessionId: string): string {
-    return hashSessionId(sessionId);
-  }
 }

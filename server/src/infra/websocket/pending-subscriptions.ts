@@ -6,7 +6,7 @@
 import { WebSocket } from 'ws';
 import { logger } from '../../lib/logger/structured-logger.js';
 import type { PendingSubscription, SubscriptionKey } from './websocket.types.js';
-import { hashSessionId } from './websocket.types.js';
+import { hashSessionId } from '../../utils/security.utils.js';
 import type { WSChannel } from './websocket-protocol.js';
 import crypto from 'crypto';
 
@@ -42,7 +42,7 @@ export class PendingSubscriptionsManager {
       clientId: (ws as any).clientId,
       channel,
       requestIdHash: this.hashRequestId(requestId),
-      sessionHash: this.hashSessionId(sessionId),
+      sessionHash: hashSessionId(sessionId),
       pending: true,
       ttlMs: PENDING_SUB_TTL_MS,
       event: 'ws_subscribe_ack'
@@ -171,11 +171,4 @@ export class PendingSubscriptionsManager {
     return crypto.createHash('sha256').update(requestId).digest('hex').substring(0, 12);
   }
 
-  /**
-   * SESSIONHASH FIX: Use shared utility (now imported from websocket.types.ts)
-   * @deprecated Use hashSessionId() from websocket.types.js instead
-   */
-  private hashSessionId(sessionId: string): string {
-    return hashSessionId(sessionId);
-  }
 }

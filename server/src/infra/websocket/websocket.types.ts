@@ -3,7 +3,7 @@
  * Extracted from websocket-manager.ts for SRP compliance
  */
 
-import crypto from 'crypto';
+import { createHash } from 'node:crypto';
 import type { WebSocket } from 'ws';
 import type { WSChannel, WSServerMessage } from './websocket-protocol.js';
 import type { IRequestStateStore } from '../state/request-state.store.js';
@@ -85,13 +85,8 @@ export interface WebSocketStats {
 }
 
 /**
- * SESSIONHASH FIX: Shared utility for consistent sessionId hashing
- * Used by subscribe, publish, and logging across all WS components
- * 
- * Rules:
- * - 'anonymous' → 'anonymous' (special case, no hash)
- * - undefined/null → 'none' (missing session)
- * - Valid sessionId → SHA256 hash (first 12 chars)
+ * Hash sessionId for secure logging
+ * Shared utility to ensure consistent hashing across WebSocket components
  * 
  * @param sessionId - Session identifier from JWT/ticket
  * @returns Hashed or special-case string for logging
@@ -99,5 +94,5 @@ export interface WebSocketStats {
 export function hashSessionId(sessionId: string | undefined): string {
   if (!sessionId) return 'none';
   if (sessionId === 'anonymous') return 'anonymous';
-  return crypto.createHash('sha256').update(sessionId).digest('hex').substring(0, 12);
+  return createHash('sha256').update(sessionId).digest('hex').substring(0, 12);
 }

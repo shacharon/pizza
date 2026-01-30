@@ -1,31 +1,18 @@
 import { Redis } from 'ioredis';
 import { shouldSampleRandom, SLOW_THRESHOLDS, getCacheSamplingRate } from '../logging/sampling.js';
-
-interface L1CacheEntry {
-    value: unknown;
-    expiresAt: number;
-}
-
-interface CacheMetrics {
-    source: 'memory' | 'redis';
-    cacheTier: 'L1' | 'L2';
-    cacheAgeMs?: number | undefined;
-    ttlRemainingSec?: number | undefined;
-    durationMs?: number | undefined;
-}
-
-interface CacheResult {
-    hit: boolean;
-    value?: unknown;
-    metrics?: CacheMetrics;
-}
+import { CacheTiersService, type CacheResult } from './cache-tiers.service.js';
+import { getTTLForQuery, getTTLForEmptyResults } from './cache-policy.js';
 
 /**
- * GoogleCacheService
- * ניהול מטמון רב-שכבתי:
- * - L0: In-flight deduplication (מניעת קריאות כפולות בו-זמנית)
- * - L1: In-memory result cache (מהיר במיוחד, עד 60 שניות)
- * - L2: Redis cache (לטווח ארוך, עד 15 דקות)
+ * GoogleCacheService (ORCHESTRATION)
+ * Manages multi-tier caching with inflight deduplication
+ * 
+ * Architecture:
+ * - L0: In-flight deduplication (prevents concurrent duplicate requests)
+ * - L1/L2: Delegated to CacheTiersService
+ * - TTL policy: Delegated to cache-policy (pure)
+ * 
+ * Flow: L0 (inflight) → L1 (memory) → L2 (Redis) → Fetch
  * 
  * LOG NOISE REDUCTION:
  * - Routine cache operations log at DEBUG level with 5% sampling (configurable via LOG_CACHE_SAMPLE_RATE)
@@ -34,12 +21,11 @@ interface CacheResult {
  */
 export class GoogleCacheService {
     private inflightRequests: Map<string, Promise<unknown>> = new Map();
-    private l1Cache: Map<string, L1CacheEntry> = new Map();
-    private readonly L1_MAX_SIZE = 500;
     private readonly cacheSamplingRate: number;
+    private readonly cacheTiers: CacheTiersService;
 
     constructor(
-        private redis: Redis,
+        redis: Redis,
         private logger: {
             info(o: any, msg?: string): void;
             debug(o: any, msg?: string): void;
@@ -48,83 +34,14 @@ export class GoogleCacheService {
         }
     ) {
         this.cacheSamplingRate = getCacheSamplingRate();
+        this.cacheTiers = new CacheTiersService(redis, logger);
     }
 
-    // ========================================================================
-    // Pure Helper Methods (extracted for clarity and testability)
-    // ========================================================================
-
     /**
-     * Check if there's an inflight request for this key
+     * Check if there's an inflight request for this key (L0 deduplication)
      */
     private checkInflight<T>(key: string): Promise<T> | null {
         return this.inflightRequests.get(key) as Promise<T> | null;
-    }
-
-    /**
-     * Check L1 (in-memory) cache
-     * Pure function - returns result without side effects (except lazy expiry)
-     */
-    private checkL1Cache(key: string, safeTtl: number): CacheResult {
-        const l1Entry = this.l1Cache.get(key);
-        if (!l1Entry) return { hit: false };
-
-        const now = Date.now();
-        if (l1Entry.expiresAt <= now) {
-            this.l1Cache.delete(key); // Lazy expiry
-            return { hit: false };
-        }
-
-        const ttlRemainingMs = l1Entry.expiresAt - now;
-        const cacheAgeMs = safeTtl * 1000 - ttlRemainingMs;
-
-        return {
-            hit: true,
-            value: l1Entry.value,
-            metrics: {
-                source: 'memory',
-                cacheTier: 'L1',
-                cacheAgeMs: Math.max(0, Math.round(cacheAgeMs)),
-                ttlRemainingSec: Math.round(ttlRemainingMs / 1000)
-            }
-        };
-    }
-
-    /**
-     * Check L2 (Redis) cache
-     * Pure async function - returns result without side effects
-     */
-    private async checkL2Cache(key: string): Promise<CacheResult> {
-        if (!this.redis || this.redis.status !== 'ready') {
-            return { hit: false };
-        }
-
-        const cachedValue = await this.redis.get(key);
-        if (!cachedValue) return { hit: false };
-
-        try {
-            const parsed = JSON.parse(cachedValue);
-            
-            // Get TTL for observability
-            let ttlRemainingSec: number | undefined;
-            try {
-                const ttl = await this.redis.ttl(key);
-                ttlRemainingSec = ttl > 0 ? ttl : undefined;
-            } catch { }
-
-            return {
-                hit: true,
-                value: parsed,
-                metrics: {
-                    source: 'redis',
-                    cacheTier: 'L2',
-                    ttlRemainingSec
-                }
-            };
-        } catch (parseError) {
-            this.logger.warn({ event: 'CACHE_CORRUPT', key }, 'Failed to parse cached JSON');
-            return { hit: false };
-        }
     }
 
     /**
@@ -133,7 +50,7 @@ export class GoogleCacheService {
     private tryCheckL1(key: string, safeTtl: number): CacheResult {
         const startTime = Date.now();
         try {
-            const result = this.checkL1Cache(key, safeTtl);
+            const result = this.cacheTiers.checkL1(key, safeTtl);
             if (result.hit) {
                 const durationMs = Date.now() - startTime;
                 this.logCacheOperation('L1_CACHE_HIT', key, {
@@ -163,7 +80,7 @@ export class GoogleCacheService {
     private async tryCheckL2(key: string): Promise<CacheResult> {
         const startTime = Date.now();
         try {
-            const result = await this.checkL2Cache(key);
+            const result = await this.cacheTiers.checkL2(key);
             if (result.hit) {
                 const durationMs = Date.now() - startTime;
                 this.logCacheOperation('CACHE_HIT', key, {
@@ -225,43 +142,25 @@ export class GoogleCacheService {
     }
 
     /**
-     * Populate L1 cache (safe, with error handling)
+     * Populate L1 cache (delegated to CacheTiersService)
      */
     private populateL1(key: string, value: unknown, ttl: number): void {
-        try {
-            this.setL1Cache(key, value, ttl);
-        } catch (l1WriteError) {
-            this.logger.warn({
-                event: 'L1_WRITE_ERROR',
-                key,
-                error: String(l1WriteError)
-            });
-        }
+        this.cacheTiers.setL1(key, value, ttl);
     }
 
     /**
-     * Populate L2 (Redis) cache (safe, with error handling)
+     * Populate L2 (Redis) cache (delegated to CacheTiersService)
      */
     private async populateL2(key: string, value: unknown, ttl: number): Promise<void> {
         const startTime = Date.now();
-        try {
-            if (this.redis && this.redis.status === 'ready') {
-                await this.redis.set(key, JSON.stringify(value), 'EX', ttl);
-                const durationMs = Date.now() - startTime;
+        await this.cacheTiers.setL2(key, value, ttl);
+        const durationMs = Date.now() - startTime;
 
-                this.logCacheOperation('CACHE_STORE', key, {
-                    cacheTier: 'L2',
-                    ttlUsed: ttl,
-                    durationMs
-                });
-            }
-        } catch (setErr) {
-            this.logger.warn({
-                event: 'REDIS_WRITE_ERROR',
-                key,
-                error: String(setErr)
-            });
-        }
+        this.logCacheOperation('CACHE_STORE', key, {
+            cacheTier: 'L2',
+            ttlUsed: ttl,
+            durationMs
+        });
     }
 
     /**
@@ -274,8 +173,8 @@ export class GoogleCacheService {
     ): Promise<T> {
         try {
             const res = await fetchFn();
-            const isEmptyArray = Array.isArray(res) && res.length === 0;
-            const redisTtl = isEmptyArray ? 120 : safeTtl;
+            const isEmpty = Array.isArray(res) && res.length === 0;
+            const redisTtl = isEmpty ? getTTLForEmptyResults() : safeTtl;
 
             // Populate L1 cache
             this.populateL1(key, res, redisTtl);
@@ -356,35 +255,10 @@ export class GoogleCacheService {
         }
     }
 
-    private setL1Cache(key: string, value: unknown, baseTtlSeconds: number): void {
-        try {
-            const isEmptyArray = Array.isArray(value) && value.length === 0;
-            const l1TtlSeconds = isEmptyArray ? 30 : Math.min(baseTtlSeconds, 60);
-
-            // ניהול גודל המטמון (FIFO)
-            if (this.l1Cache.size >= this.L1_MAX_SIZE && !this.l1Cache.has(key)) {
-                const firstKey = this.l1Cache.keys().next().value;
-                if (firstKey !== undefined) this.l1Cache.delete(firstKey);
-            }
-
-            this.l1Cache.set(key, {
-                value,
-                expiresAt: Date.now() + (l1TtlSeconds * 1000)
-            });
-        } catch (err) {
-            // L1 cache is non-critical, just log and continue
-            this.logger.warn({
-                event: 'L1_SET_ERROR',
-                key,
-                error: err instanceof Error ? err.message : String(err)
-            });
-        }
-    }
-
+    /**
+     * Get TTL for query (delegated to cache-policy)
+     */
     getTTL(query: string): number {
-        const timeKeywords = ['open', 'now', 'פתוח', 'עכשיו'];
-        const normalized = query.toLowerCase();
-        const isTimeSensitive = timeKeywords.some(k => normalized.includes(k));
-        return isTimeSensitive ? 300 : 900;
+        return getTTLForQuery(query);
     }
 }

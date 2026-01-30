@@ -1,7 +1,7 @@
 /**
- * Phase 3: WebSocket Manager (Thin Orchestrator)
- * Manages WebSocket connections, subscriptions, and message routing
- * Refactored: Extracted responsibilities into focused modules (SOLID)
+ * Phase 4: WebSocket Manager (Thin Lifecycle + Wiring)
+ * Manages WebSocket connections and coordinates extracted services
+ * Refactored Pass 2: Extracted backlog drain, activation, and publishing (SOLID)
  */
 
 import { WebSocketServer, WebSocket } from 'ws';
@@ -11,26 +11,32 @@ import { logger } from '../../lib/logger/structured-logger.js';
 import type { WSClientMessage, WSServerMessage, WSChannel } from './websocket-protocol.js';
 import { isWSClientMessage } from './websocket-protocol.js';
 import Redis from 'ioredis';
-import { HARD_CLOSE_REASONS, SOFT_CLOSE_REASONS } from './ws-close-reasons.js';
+import { SOFT_CLOSE_REASONS } from './ws-close-reasons.js';
 
-// Extracted modules
+// Configuration and auth
 import { resolveWebSocketConfig, validateRedisForAuth } from './websocket.config.js';
 import { verifyClient } from './auth-verifier.js';
 import { setupConnection, handleClose, handleError, executeHeartbeat } from './connection-handler.js';
+
+// Core managers
 import { BacklogManager } from './backlog-manager.js';
 import { PendingSubscriptionsManager } from './pending-subscriptions.js';
 import { SubscriptionManager } from './subscription-manager.js';
-import { normalizeLegacyMessage } from './message-normalizer.js';
 import { SocketRateLimiter } from './rate-limiter.js';
 import { WebSocketMessageRouter } from './message-router.js';
+
+// Pass 2: Extracted services
+import { BacklogDrainerService } from './backlog-drainer.service.js';
+import { SubscriptionActivatorService } from './subscription-activator.service.js';
+import { PublisherService } from './publisher.service.js';
+
+// Utilities
+import { normalizeLegacyMessage } from './message-normalizer.js';
 import type {
   WebSocketManagerConfig,
-  SubscriptionKey,
-  WebSocketContext,
   PublishSummary,
   WebSocketStats
 } from './websocket.types.js';
-import { hashSessionId } from './websocket.types.js';
 
 // Re-export for backward compatibility
 export type { WebSocketManagerConfig };
@@ -41,12 +47,17 @@ export class WebSocketManager {
   private config: WebSocketManagerConfig;
   private redis: Redis.Redis | null = null;
 
-  // Extracted module instances
+  // Core managers
   private backlogManager: BacklogManager;
   private pendingSubscriptionsManager: PendingSubscriptionsManager;
   private subscriptionManager: SubscriptionManager;
   private rateLimiter: SocketRateLimiter;
   private messageRouter: WebSocketMessageRouter;
+
+  // Pass 2: Extracted services
+  private backlogDrainer!: BacklogDrainerService;
+  private subscriptionActivator!: SubscriptionActivatorService;
+  private publisher!: PublisherService;
 
   constructor(server: HTTPServer, config?: Partial<WebSocketManagerConfig>) {
     // 1. Resolve and validate configuration
@@ -88,7 +99,7 @@ export class WebSocketManager {
       }
     );
 
-    // 5. Init WebSocket server with Security Limits
+    // 6. Init WebSocket server with Security Limits
     this.wss = new WebSocketServer({
       server,
       path: this.config.path,
@@ -160,29 +171,7 @@ export class WebSocketManager {
 
     // Check if message was rejected due to legacy protocol enforcement
     if (message === null) {
-      // Legacy protocol rejected - send NACK and close connection
-      const nackMessage = {
-        type: 'sub_nack',
-        reason: 'LEGACY_PROTOCOL_REJECTED',
-        message: 'Legacy WebSocket protocol is no longer supported. Please upgrade your client to use canonical protocol v1. See: docs/ws-legacy-sunset.md',
-        migrationDoc: 'docs/ws-legacy-sunset.md'
-      };
-
-      logger.warn({
-        clientId,
-        event: 'ws_legacy_rejected',
-        reason: 'LEGACY_PROTOCOL_REJECTED',
-        message: 'Connection rejected due to legacy protocol usage'
-      }, '[WS] Rejecting connection: legacy protocol not allowed');
-
-      try {
-        ws.send(JSON.stringify(nackMessage));
-      } catch (sendErr) {
-        logger.error({ clientId, error: String(sendErr) }, '[WS] Failed to send legacy rejection NACK');
-      }
-
-      // Close connection with clear reason
-      ws.close(1008, 'Legacy protocol not supported'); // 1008 = Policy Violation
+      this.handleLegacyRejection(ws, clientId);
       return;
     }
 
@@ -261,6 +250,35 @@ export class WebSocketManager {
     handleError(ws, err, clientId, this.cleanup.bind(this));
   }
 
+  /**
+   * Handle legacy protocol rejection
+   * Sends NACK message and closes connection with clear reason
+   */
+  private handleLegacyRejection(ws: WebSocket, clientId: string): void {
+    const nackMessage = {
+      type: 'sub_nack',
+      reason: 'LEGACY_PROTOCOL_REJECTED',
+      message: 'Legacy WebSocket protocol is no longer supported. Please upgrade your client to use canonical protocol v1. See: docs/ws-legacy-sunset.md',
+      migrationDoc: 'docs/ws-legacy-sunset.md'
+    };
+
+    logger.warn({
+      clientId,
+      event: 'ws_legacy_rejected',
+      reason: 'LEGACY_PROTOCOL_REJECTED',
+      message: 'Connection rejected due to legacy protocol usage'
+    }, '[WS] Rejecting connection: legacy protocol not allowed');
+
+    try {
+      ws.send(JSON.stringify(nackMessage));
+    } catch (sendErr) {
+      logger.error({ clientId, error: String(sendErr) }, '[WS] Failed to send legacy rejection NACK');
+    }
+
+    // Close connection with clear reason
+    ws.close(1008, 'Legacy protocol not supported'); // 1008 = Policy Violation
+  }
+
   private cleanup(ws: WebSocket): void {
     this.subscriptionManager.cleanup(ws);
   }
@@ -312,7 +330,7 @@ export class WebSocketManager {
           result.requestId!,
           ws,
           clientId,
-          this.sendTo.bind(this)
+          (ws, msg) => this.publisher.sendTo(ws, msg, this.cleanup.bind(this))
         );
       }
     }
@@ -364,18 +382,15 @@ export class WebSocketManager {
 
   /**
    * Activate pending subscriptions for a requestId when job is created
+   * Delegated to SubscriptionActivatorService
    */
   activatePendingSubscriptions(requestId: string, ownerSessionId: string): void {
-    this.pendingSubscriptionsManager.activate(
+    this.subscriptionActivator.activatePendingSubscriptions(
       requestId,
       ownerSessionId,
-      this.subscriptionManager.subscribe.bind(this.subscriptionManager),
       this.sendSubAck.bind(this),
       this.sendSubNack.bind(this),
-      (key: SubscriptionKey, ws: WebSocket, channel: WSChannel, reqId: string) => {
-        this.backlogManager.drain(key, ws, channel, reqId, this.cleanup.bind(this));
-      },
-      this.subscriptionManager.buildSubscriptionKey.bind(this.subscriptionManager)
+      this.cleanup.bind(this)
     );
   }
 
@@ -389,6 +404,7 @@ export class WebSocketManager {
 
   /**
    * Publish to a specific channel
+   * Delegated to PublisherService
    */
   publishToChannel(
     channel: WSChannel,
@@ -396,92 +412,13 @@ export class WebSocketManager {
     sessionId: string | undefined,
     message: WSServerMessage
   ): PublishSummary {
-    const startTime = performance.now();
-    const key = this.subscriptionManager.buildSubscriptionKey(channel, requestId, sessionId);
-
-    // SESSIONHASH FIX: Use shared utility for consistent hashing
-    const sessionHash = hashSessionId(sessionId);
-
-    // Cleanup expired backlogs
-    this.backlogManager.cleanupExpired();
-
-    const clients = this.subscriptionManager.getSubscribers(key);
-
-    const data = JSON.stringify(message);
-    const payloadBytes = Buffer.byteLength(data, 'utf8');
-
-    // If no subscribers, enqueue to backlog
-    if (!clients || clients.size === 0) {
-      this.backlogManager.enqueue(key, message, channel, requestId);
-
-      logger.debug({
-        channel,
-        requestId,
-        sessionHash,
-        subscriptionKey: key,
-        clientCount: 0,
-        payloadBytes,
-        payloadType: message.type,
-        enqueued: true,
-        event: 'websocket_published'
-      }, 'websocket_published');
-
-      return { attempted: 0, sent: 0, failed: 0 };
-    }
-
-    // Send to active subscribers
-    let attempted = 0;
-    let sent = 0;
-    let failed = 0;
-
-    for (const client of clients) {
-      if (client.readyState === WebSocket.OPEN) {
-        attempted++;
-        try {
-          client.send(data);
-          sent++;
-          this.backlogManager.incrementSent();
-        } catch (err) {
-          failed++;
-          this.backlogManager.incrementFailed();
-          logger.warn({
-            clientId: (client as any).clientId,
-            requestId,
-            channel,
-            error: err instanceof Error ? err.message : 'unknown'
-          }, 'WebSocket send failed in publishToChannel');
-          this.cleanup(client);
-        }
-      }
-    }
-
-    const durationMs = Math.round(performance.now() - startTime);
-
-    const errorDetails = message.type === 'error' && 'code' in message
-      ? {
-        errorType: (message as any).code,
-        errorMessage: (message as any).message?.substring(0, 100),
-        errorStage: (message as any).stage,
-        errorKind: (message as any).errorKind
-      }
-      : {};
-
-    // Log at INFO for errors, DEBUG for status/progress/ready
-    const level = message.type === 'error' ? 'info' : 'debug';
-    logger[level]({
+    return this.publisher.publishToChannel(
       channel,
       requestId,
-      sessionHash,
-      subscriptionKey: key,
-      clientCount: sent,
-      ...(failed > 0 && { failedCount: failed }),
-      payloadBytes,
-      payloadType: message.type,
-      durationMs,
-      ...errorDetails
-    }, 'websocket_published');
-
-    return { attempted, sent, failed };
+      sessionId,
+      message,
+      this.cleanup.bind(this)
+    );
   }
 
   /**
@@ -491,50 +428,12 @@ export class WebSocketManager {
     return this.publishToChannel('search', requestId, undefined, message);
   }
 
-
-  private sendTo(ws: WebSocket, message: WSServerMessage): boolean {
-    if (ws.readyState === WebSocket.OPEN) {
-      try {
-        ws.send(JSON.stringify(message));
-        this.backlogManager.incrementSent();
-        return true;
-      } catch (err) {
-        this.backlogManager.incrementFailed();
-        logger.warn({
-          error: err instanceof Error ? err.message : 'unknown',
-          messageType: message.type,
-          clientId: (ws as any).clientId
-        }, 'WebSocket send failed in sendTo');
-        this.cleanup(ws);
-        return false;
-      }
-    }
-    return false;
-  }
-
   private sendError(ws: WebSocket, error: string, message: string): void {
-    this.sendTo(ws, {
-      type: 'error',
-      requestId: 'unknown',
-      error,
-      message
-    });
+    this.publisher.sendError(ws, error, message, this.cleanup.bind(this));
   }
 
   private sendValidationError(ws: WebSocket, errorPayload: any): void {
-    if (ws.readyState === WebSocket.OPEN) {
-      try {
-        ws.send(JSON.stringify(errorPayload));
-        this.backlogManager.incrementSent();
-      } catch (err) {
-        this.backlogManager.incrementFailed();
-        logger.warn({
-          error: err instanceof Error ? err.message : 'unknown',
-          clientId: (ws as any).clientId
-        }, 'WebSocket send failed in sendValidationError');
-        this.cleanup(ws);
-      }
-    }
+    this.publisher.sendValidationError(ws, errorPayload, this.cleanup.bind(this));
   }
 
   private startHeartbeat(): void {
