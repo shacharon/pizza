@@ -148,8 +148,8 @@ export async function executeIntentStage(
     // Validate regionCandidate against ISO-3166-1 allowlist
     // If invalid (e.g., "TQ", "IS"), set to null to trigger device/default fallback
     // This prevents noise in logs and downstream sanitization events
-    const validatedRegionCandidate = isValidRegionCode(llmResult.regionCandidate) 
-      ? llmResult.regionCandidate 
+    const validatedRegionCandidate = isValidRegionCode(llmResult.regionCandidate)
+      ? llmResult.regionCandidate
       : null; // Invalid codes trigger fallback to device region or default
 
     if (llmResult.regionCandidate !== validatedRegionCandidate) {

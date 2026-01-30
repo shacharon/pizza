@@ -5,11 +5,11 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { 
-  sanitizeRegionCode, 
-  isValidRegionCode, 
+import {
+  sanitizeRegionCode,
+  isValidRegionCode,
   isKnownUnsupportedRegion,
-  isInsideIsrael 
+  isInsideIsrael
 } from './region-code-validator.js';
 
 describe('Region Code Validator', () => {
@@ -21,7 +21,7 @@ describe('Region Code Validator', () => {
 
     it('should pass through valid region codes unchanged', () => {
       const validCodes = ['IL', 'US', 'GB', 'FR', 'DE'];
-      
+
       validCodes.forEach(code => {
         const result = sanitizeRegionCode(code);
         assert.strictEqual(result, code, `Valid code ${code} should pass through`);
@@ -30,7 +30,7 @@ describe('Region Code Validator', () => {
 
     it('should return null for invalid region codes', () => {
       const invalidCodes = ['TQ', 'XX', 'ZZ', 'ISR', '12'];
-      
+
       invalidCodes.forEach(code => {
         const result = sanitizeRegionCode(code);
         assert.strictEqual(result, null, `Invalid code ${code} should return null`);
@@ -59,11 +59,11 @@ describe('Region Code Validator', () => {
   describe('isValidRegionCode', () => {
     it('should validate common region codes', () => {
       const validCodes = ['IL', 'US', 'GB', 'FR', 'DE', 'JP', 'CN'];
-      
+
       validCodes.forEach(code => {
         assert.strictEqual(
-          isValidRegionCode(code), 
-          true, 
+          isValidRegionCode(code),
+          true,
           `${code} should be valid`
         );
       });
@@ -71,11 +71,11 @@ describe('Region Code Validator', () => {
 
     it('should reject invalid format codes', () => {
       const invalidCodes = ['ISR', '12', 'il', 'I', ''];
-      
+
       invalidCodes.forEach(code => {
         assert.strictEqual(
-          isValidRegionCode(code), 
-          false, 
+          isValidRegionCode(code),
+          false,
           `${code} should be invalid`
         );
       });
@@ -96,11 +96,11 @@ describe('Region Code Validator', () => {
 
     it('should return false for other codes', () => {
       const otherCodes = ['IL', 'US', 'TQ', 'XX'];
-      
+
       otherCodes.forEach(code => {
         assert.strictEqual(
-          isKnownUnsupportedRegion(code), 
-          false, 
+          isKnownUnsupportedRegion(code),
+          false,
           `${code} should not be known unsupported`
         );
       });
@@ -111,10 +111,10 @@ describe('Region Code Validator', () => {
     it('should detect coordinates inside Israel', () => {
       // Tel Aviv
       assert.strictEqual(isInsideIsrael(32.0853, 34.7818), true);
-      
+
       // Jerusalem
       assert.strictEqual(isInsideIsrael(31.7683, 35.2137), true);
-      
+
       // Haifa
       assert.strictEqual(isInsideIsrael(32.7940, 34.9896), true);
     });
@@ -122,10 +122,10 @@ describe('Region Code Validator', () => {
     it('should detect coordinates outside Israel', () => {
       // New York
       assert.strictEqual(isInsideIsrael(40.7128, -74.0060), false);
-      
+
       // Paris
       assert.strictEqual(isInsideIsrael(48.8566, 2.3522), false);
-      
+
       // Cairo (nearby but outside)
       assert.strictEqual(isInsideIsrael(30.0444, 31.2357), false);
     });
@@ -133,7 +133,7 @@ describe('Region Code Validator', () => {
     it('should handle edge cases at borders', () => {
       // Just outside southern border
       assert.strictEqual(isInsideIsrael(29.0, 34.5), false);
-      
+
       // Just outside northern border
       assert.strictEqual(isInsideIsrael(34.0, 35.5), false);
     });

@@ -219,7 +219,7 @@ describe('Google Parallel Optimization', () => {
 
     it('should document critical path components', () => {
       // This test documents what runs on critical path vs parallel
-      
+
       // CRITICAL PATH (sequential):
       const criticalPath = [
         'gate2',           // ~1.5s
@@ -241,7 +241,7 @@ describe('Google Parallel Optimization', () => {
 
       assert.ok(criticalPath.includes('google_maps'), 'Google should be on critical path');
       assert.ok(parallelPath.includes('base_filters'), 'Base filters should run in parallel');
-      
+
       // Document expected time savings
       const expectedSavingsMs = 1400; // Approximate base_filters duration
       assert.ok(

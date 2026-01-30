@@ -52,14 +52,14 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
 
   // Detect query language (deterministic, for assistant messages)
   ctx.queryLanguage = detectQueryLanguage(request.query);
-  
+
   logger.info(
-    { 
-      requestId, 
-      pipelineVersion: 'route2', 
+    {
+      requestId,
+      pipelineVersion: 'route2',
       event: 'query_language_detected',
       queryLanguage: ctx.queryLanguage,
-      queryLen 
+      queryLen
     },
     '[ROUTE2] Query language detected (deterministic)'
   );
@@ -260,7 +260,7 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
 
     // Await base_filters to get full filter context (includes openState)
     const baseFilters = await baseFiltersPromise;
-    
+
     // Resolve final filters (for logging and post_filter)
     const finalFilters = await resolveAndStoreFilters(baseFilters, intentDecision, ctx);
 
@@ -296,7 +296,7 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
     const postConstraints = await postConstraintsPromise;
     const postFilterResult = applyPostFiltersToResults(googleResult.results, postConstraints, finalFilters, ctx);
     const finalResults = postFilterResult.resultsFiltered;
-    
+
     // Get merged filters for response building
     const filtersForPostFilter = {
       ...finalFilters,
@@ -330,7 +330,7 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
  */
 export async function searchRoute2(request: SearchRequest, ctx: Route2Context): Promise<SearchResponse> {
   const PIPELINE_TIMEOUT_MS = 45_000; // 45 seconds global timeout
-  
+
   try {
     return await withTimeout(
       searchRoute2Internal(request, ctx),
