@@ -22,13 +22,15 @@ export interface SearchJob {
   // Phase 1 Security: Ownership tracking for WebSocket authorization
   ownerUserId?: string | null;
   ownerSessionId?: string | null;
+  // Idempotency: Key for deduplication (sessionId + normalizedQuery + mode + locationHash)
+  idempotencyKey?: string;
 }
 
 export interface ISearchJobStore {
   /**
    * Create a new job
    */
-  createJob(requestId: string, params: { sessionId: string; query: string; ownerUserId?: string | null; ownerSessionId?: string | null }): Promise<void> | void;
+  createJob(requestId: string, params: { sessionId: string; query: string; ownerUserId?: string | null; ownerSessionId?: string | null; idempotencyKey?: string }): Promise<void> | void;
 
   /**
    * Set job status and progress
@@ -64,4 +66,10 @@ export interface ISearchJobStore {
    * Delete a job
    */
   deleteJob(requestId: string): Promise<void> | void;
+
+  /**
+   * Find existing job by idempotency key
+   * Returns job if found with status RUNNING or DONE_SUCCESS (within fresh window)
+   */
+  findByIdempotencyKey(idempotencyKey: string, freshWindowMs?: number): Promise<SearchJob | null> | SearchJob | null;
 }

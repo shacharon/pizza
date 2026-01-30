@@ -8,6 +8,7 @@ import { logger } from '../../../lib/logger/structured-logger.js';
 import type { ISearchJobStore, SearchJob, JobStatus } from './job-store.interface.js';
 
 const KEY_PREFIX = 'search:job:';
+const IDEMPOTENCY_PREFIX = 'search:idempotency:';
 const DEFAULT_TTL_SECONDS = 24 * 60 * 60; // 24 hours
 
 export class RedisSearchJobStore implements ISearchJobStore {
@@ -28,7 +29,11 @@ export class RedisSearchJobStore implements ISearchJobStore {
     return `${KEY_PREFIX}${requestId}`;
   }
 
-  async createJob(requestId: string, params: { sessionId: string; query: string; ownerUserId?: string | null; ownerSessionId?: string | null }): Promise<void> {
+  private getIdempotencyKey(idempotencyKey: string): string {
+    return `${IDEMPOTENCY_PREFIX}${idempotencyKey}`;
+  }
+
+  async createJob(requestId: string, params: { sessionId: string; query: string; ownerUserId?: string | null; ownerSessionId?: string | null; idempotencyKey?: string }): Promise<void> {
     const now = Date.now();
     const job: SearchJob = {
       requestId,
@@ -38,11 +43,18 @@ export class RedisSearchJobStore implements ISearchJobStore {
       createdAt: now,
       updatedAt: now,
       ownerUserId: params.ownerUserId ?? null,
-      ownerSessionId: params.ownerSessionId ?? null
+      ownerSessionId: params.ownerSessionId ?? null,
+      idempotencyKey: params.idempotencyKey
     };
 
     const key = this.getKey(requestId);
     await this.redis.setex(key, this.ttlSeconds, JSON.stringify(job));
+
+    // Index by idempotency key if provided
+    if (params.idempotencyKey) {
+      const idempotencyKey = this.getIdempotencyKey(params.idempotencyKey);
+      await this.redis.setex(idempotencyKey, this.ttlSeconds, requestId);
+    }
 
     logger.info({
       requestId,
@@ -50,6 +62,7 @@ export class RedisSearchJobStore implements ISearchJobStore {
       query: params.query,
       status: 'PENDING',
       hasOwner: !!(params.ownerUserId || params.ownerSessionId),
+      hasIdempotencyKey: !!params.idempotencyKey,
       msg: '[RedisJobStore] Job created'
     });
   }
@@ -161,9 +174,54 @@ export class RedisSearchJobStore implements ISearchJobStore {
   }
 
   async deleteJob(requestId: string): Promise<void> {
+    const job = await this.getJob(requestId);
+    
+    // Clean up idempotency index if key exists
+    if (job?.idempotencyKey) {
+      const idempotencyKey = this.getIdempotencyKey(job.idempotencyKey);
+      await this.redis.del(idempotencyKey);
+    }
+    
     const key = this.getKey(requestId);
     await this.redis.del(key);
     logger.info({ requestId, msg: '[RedisJobStore] Job deleted' });
+  }
+
+  /**
+   * Find existing job by idempotency key
+   * Returns job if found with status RUNNING or DONE_SUCCESS (within fresh window)
+   * @param idempotencyKey - The idempotency key to search for
+   * @param freshWindowMs - Time window (ms) for DONE_SUCCESS jobs to be considered fresh (default: 5000ms)
+   */
+  async findByIdempotencyKey(idempotencyKey: string, freshWindowMs: number = 5000): Promise<SearchJob | null> {
+    const key = this.getIdempotencyKey(idempotencyKey);
+    const requestId = await this.redis.get(key);
+    
+    if (!requestId) {
+      return null;
+    }
+
+    const job = await this.getJob(requestId);
+    if (!job) {
+      // Cleanup stale index entry
+      await this.redis.del(key);
+      return null;
+    }
+
+    const now = Date.now();
+    const validStatuses: JobStatus[] = ['RUNNING', 'DONE_SUCCESS'];
+    
+    // For RUNNING jobs, return immediately
+    if (job.status === 'RUNNING') {
+      return job;
+    }
+
+    // For DONE_SUCCESS, check if within fresh window
+    if (job.status === 'DONE_SUCCESS' && (now - job.updatedAt) <= freshWindowMs) {
+      return job;
+    }
+
+    return null;
   }
 
   /**

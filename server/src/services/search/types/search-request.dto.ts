@@ -39,6 +39,12 @@ export const searchRequestSchema = z.object({
   
   // Optional: enable debug mode (include diagnostics in response)
   debug: z.boolean().optional(),
+  
+  // Optional: pagination (for "load more" UX)
+  pagination: z.object({
+    limit: z.number().int().min(1).max(100).optional().default(10),  // Results per page
+    offset: z.number().int().min(0).optional().default(0),           // Skip first N results
+  }).optional(),
 });
 
 // ============================================================================

@@ -228,7 +228,8 @@ export class WebSocketManager {
           ),
           this.cleanup.bind(this)
         ),
-        sendError: this.sendError.bind(this)
+        sendError: this.sendError.bind(this),
+        onLoadMore: this.handleLoadMore.bind(this)
       }
     );
 
@@ -244,6 +245,27 @@ export class WebSocketManager {
 
   private handleErrorEvent(ws: WebSocket, err: Error, clientId: string): void {
     handleError(ws, err, clientId, this.cleanup.bind(this));
+  }
+
+  /**
+   * Handle load_more event from client
+   * Delegates to global load_more registry
+   */
+  private async handleLoadMore(ws: WebSocket, message: WSClientMessage): Promise<void> {
+    const loadMoreMessage = message as any;
+    const sessionId = (ws as any).sessionId as string | undefined;
+    const userId = (ws as any).userId as string | undefined;
+
+    // Dynamic import to avoid circular dependency
+    const { loadMoreRegistry } = await import('../../services/search/route2/assistant/load-more-registry.js');
+
+    await loadMoreRegistry.handle(
+      loadMoreMessage.requestId,
+      sessionId,
+      loadMoreMessage.newOffset,
+      loadMoreMessage.totalShown,
+      userId
+    );
   }
 
   private cleanup(ws: WebSocket): void {

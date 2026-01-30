@@ -122,6 +122,11 @@ export class SearchFacade {
   private readonly _cardState = signal<SearchCardState>('RUNNING');
   readonly cardState = this._cardState.asReadonly();
 
+  // Deduplication: Track in-flight search to prevent duplicates
+  private inFlightQuery: string | null = null;
+  private lastSubmitTime: number = 0;
+  private readonly DEBOUNCE_MS = 400;
+
   // Derived state queries (for backward compatibility)
   readonly isWaitingForClarification = computed(() => this.cardState() === 'CLARIFY');
   readonly isTerminalState = computed(() => this.cardState() === 'STOP');
@@ -152,13 +157,49 @@ export class SearchFacade {
   }
 
   /**
+   * Normalize query for deduplication (lowercase, trim, collapse whitespace)
+   */
+  private normalizeQuery(query: string): string {
+    return query.toLowerCase().trim().replace(/\s+/g, ' ');
+  }
+
+  /**
    * Execute search with proper async 202 handling
    * Supports both WebSocket (fast path) and polling (fallback)
    * 
    * P0 Scale Safety: Generates idempotency key for retry protection during ECS autoscaling.
    * Key is reused for retries within same user action (via retry() method).
+   * 
+   * Deduplication: Prevents duplicate searches for the same query via debounce + in-flight check.
    */
   async search(query: string, filters?: SearchFilters): Promise<void> {
+    const normalizedQuery = this.normalizeQuery(query);
+    const now = Date.now();
+
+    // Block duplicate submission if same query is already in-flight
+    if (this.inFlightQuery === normalizedQuery) {
+      safeLog('SearchFacade', 'Blocked duplicate search - already in-flight', {
+        query: normalizedQuery,
+        inFlightQuery: this.inFlightQuery
+      });
+      return;
+    }
+
+    // Debounce: Block rapid repeated submissions (< 400ms since last submit)
+    const timeSinceLastSubmit = now - this.lastSubmitTime;
+    if (timeSinceLastSubmit < this.DEBOUNCE_MS) {
+      safeLog('SearchFacade', 'Blocked rapid duplicate submission (debounce)', {
+        query: normalizedQuery,
+        timeSinceLastMs: timeSinceLastSubmit,
+        debounceMs: this.DEBOUNCE_MS
+      });
+      return;
+    }
+
+    // Mark query as in-flight and update submit time
+    this.inFlightQuery = normalizedQuery;
+    this.lastSubmitTime = now;
+
     try {
       // Cancel any previous polling
       this.apiHandler.cancelPolling();
@@ -272,6 +313,9 @@ export class SearchFacade {
       this.inputStateMachine.searchFailed();
       // CARD STATE: All errors are terminal
       this._cardState.set('STOP');
+    } finally {
+      // Clear in-flight marker when search completes (success or error)
+      this.inFlightQuery = null;
     }
   }
 
@@ -298,6 +342,9 @@ export class SearchFacade {
     // Update store with full response
     this.searchStore.setResponse(response);
     this.searchStore.setLoading(false);
+
+    // Clear in-flight marker when results arrive
+    this.inFlightQuery = null;
 
     // CARD STATE: Successful results = terminal STOP state
     if (this.cardState() !== 'CLARIFY') {

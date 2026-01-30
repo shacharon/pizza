@@ -28,6 +28,7 @@ const DEFAULT_TIMEOUTS: Record<LLMPurpose, number> = {
   intent: 2500,        // Route decision, medium priority
   baseFilters: 2000,   // Simple extraction, fast
   routeMapper: 3500,   // Query mapping, more complex
+  ranking_profile: 2500, // Ranking profile selection, similar to intent
   assistant: 3000      // Assistant messages (GATE_FAIL, CLARIFY, SUMMARY, SEARCH_FAILED)
 };
 
@@ -59,6 +60,9 @@ export function loadLLMConfig(): LLMConfig {
   }
   if (process.env.ASSISTANT_MODEL && process.env.ASSISTANT_MODEL.trim()) {
     perPurposeModel.assistant = process.env.ASSISTANT_MODEL.trim();
+  }
+  if (process.env.RANKING_PROFILE_MODEL && process.env.RANKING_PROFILE_MODEL.trim()) {
+    perPurposeModel.ranking_profile = process.env.RANKING_PROFILE_MODEL.trim();
   }
 
   // Default timeout (fallback for all purposes)
@@ -92,6 +96,10 @@ export function loadLLMConfig(): LLMConfig {
   if (process.env.ASSISTANT_TIMEOUT_MS) {
     const parsed = parseInt(process.env.ASSISTANT_TIMEOUT_MS, 10);
     if (!isNaN(parsed)) perPurposeTimeoutMs.assistant = parsed;
+  }
+  if (process.env.RANKING_PROFILE_TIMEOUT_MS) {
+    const parsed = parseInt(process.env.RANKING_PROFILE_TIMEOUT_MS, 10);
+    if (!isNaN(parsed)) perPurposeTimeoutMs.ranking_profile = parsed;
   }
 
   return {

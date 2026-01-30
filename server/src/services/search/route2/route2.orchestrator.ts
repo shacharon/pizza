@@ -25,8 +25,9 @@ import { withTimeout } from '../../../lib/reliability/timeout-guard.js';
 // Extracted modules
 import { fireParallelTasks } from './orchestrator.parallel-tasks.js';
 import { handleNearMeLocationCheck, applyNearMeRouteOverride } from './orchestrator.nearme.js';
-import { handleGateStop, handleGateClarify, handleNearbyLocationGuard, checkGenericFoodQuery } from './orchestrator.guards.js';
+import { handleGateStop, handleGateClarify, handleNearbyLocationGuard, handleGenericQueryGuard, checkGenericFoodQuery } from './orchestrator.guards.js';
 import { resolveAndStoreFilters, applyPostFiltersToResults, mergePostConstraints } from './orchestrator.filters.js';
+import { applyRankingIfEnabled } from './orchestrator.ranking.js';
 import { buildFinalResponse } from './orchestrator.response.js';
 import { handlePipelineError } from './orchestrator.error.js';
 import { deriveEarlyRoutingContext } from './orchestrator.early-context.js';
@@ -143,11 +144,6 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
     const clarifyResponse = await handleGateClarify(request, gateResult, ctx, wsManager);
     if (clarifyResponse) return clarifyResponse;
 
-    // Fire parallel tasks after Gate2
-    const parallelTasks = fireParallelTasks(request, ctx);
-    baseFiltersPromise = parallelTasks.baseFiltersPromise;
-    postConstraintsPromise = parallelTasks.postConstraintsPromise;
-
     // STAGE 2: INTENT
     let intentDecision = await executeIntentStage(request, ctx);
 
@@ -188,6 +184,17 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
 
     // Check for generic food query (e.g., "what to eat") - sets flag for later
     checkGenericFoodQuery(gateResult, intentDecision, ctx);
+
+    // Guard: Block generic TEXTSEARCH queries without location anchor
+    // CRITICAL: Run BEFORE parallel tasks to avoid wasted LLM work
+    const genericQueryResponse = await handleGenericQueryGuard(request, gateResult, intentDecision, ctx, wsManager);
+    if (genericQueryResponse) return genericQueryResponse;
+
+    // Fire parallel tasks AFTER guard checks pass
+    // If we reach here, query has location anchor or is not generic
+    const parallelTasks = fireParallelTasks(request, ctx);
+    baseFiltersPromise = parallelTasks.baseFiltersPromise;
+    postConstraintsPromise = parallelTasks.postConstraintsPromise;
 
     // Near-me location check (early stop if no location)
     const nearMeResponse = await handleNearMeLocationCheck(request, intentDecision, ctx, wsManager);
@@ -295,10 +302,23 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
     // STAGE 6: POST_FILTERS (await post constraints, apply filters)
     const postConstraints = await postConstraintsPromise;
     const postFilterResult = applyPostFiltersToResults(googleResult.results, postConstraints, finalFilters, ctx);
-    const finalResults = postFilterResult.resultsFiltered;
 
     // Get merged filters for response building (using shared utility)
     const filtersForPostFilter = mergePostConstraints(finalFilters, postConstraints);
+
+    // STAGE 6.5: LLM RANKING (if enabled) + RANKING SIGNALS
+    // Apply LLM-driven ranking to post-filtered results and build ranking signals
+    const rankingResult = await applyRankingIfEnabled(
+      postFilterResult.resultsFiltered,
+      intentDecision,
+      finalFilters,
+      postFilterResult.stats.before,
+      postFilterResult.relaxed || {},
+      ctx
+    );
+
+    const finalResults = rankingResult.rankedResults;
+    const rankingSignals = rankingResult.signals;
 
     // STAGE 7: BUILD RESPONSE
     return await buildFinalResponse(
@@ -308,6 +328,7 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
       mapping,
       finalResults,
       filtersForPostFilter,
+      rankingSignals,
       ctx,
       wsManager
     );

@@ -10,11 +10,12 @@ export type LLMPurpose =
   | 'intent'         // Intent stage - route decision (TEXTSEARCH/NEARBY/LANDMARK)
   | 'baseFilters'    // Base filters extraction (language, openState, etc.)
   | 'routeMapper'    // Route-specific query mapping (textSearch/nearbySearch/landmark)
+  | 'ranking_profile' // Ranking profile selection - LLM-driven scoring weights
   | 'assistant';     // Assistant messages - UX-facing guidance (LLM-generated)
 
 /**
  * Validate purpose at runtime
  */
 export function isValidLLMPurpose(purpose: string): purpose is LLMPurpose {
-  return ['gate', 'intent', 'baseFilters', 'routeMapper', 'assistant'].includes(purpose);
+  return ['gate', 'intent', 'baseFilters', 'routeMapper', 'ranking_profile', 'assistant'].includes(purpose);
 }

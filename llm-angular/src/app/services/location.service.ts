@@ -1,6 +1,15 @@
 /**
  * Location Service
  * Manages browser geolocation API and user location state
+ * 
+ * PERSISTENCE:
+ * - Location is stored in sessionStorage and persists across searches
+ * - Location is automatically loaded on service initialization
+ * - Location is ONLY cleared when:
+ *   1. User explicitly calls disableLocation()
+ *   2. Permission is denied/revoked (PERMISSION_DENIED error)
+ *   3. Location fetch fails (TIMEOUT, POSITION_UNAVAILABLE)
+ * - Location is preserved across component re-renders and new searches
  */
 
 import { Injectable, signal } from '@angular/core';

@@ -46,6 +46,7 @@ export class WebSocketMessageRouter {
     callbacks: {
       onSubscribe: (ws: WebSocket, message: WSClientMessage) => Promise<void>;
       sendError: (ws: WebSocket, error: string, message: string) => void;
+      onLoadMore?: (ws: WebSocket, message: WSClientMessage) => Promise<void>;
     }
   ): Promise<RouteResult> {
     const wsSessionId = (ws as any).sessionId as string | undefined;
@@ -132,6 +133,26 @@ export class WebSocketMessageRouter {
           'websocket_ui_state_changed'
         );
         return { success: true };
+
+      case 'load_more': {
+        const loadMoreMessage = message as any;
+        logger.info(
+          {
+            clientId,
+            requestIdHash: this.config.isProduction ? this.hashRequestId(loadMoreMessage.requestId) : loadMoreMessage.requestId,
+            newOffset: loadMoreMessage.newOffset,
+            totalShown: loadMoreMessage.totalShown
+          },
+          'websocket_load_more_event'
+        );
+
+        // Delegate to load more handler if provided
+        if (callbacks.onLoadMore) {
+          await callbacks.onLoadMore(ws, message);
+        }
+
+        return { success: true };
+      }
 
       default:
         return { success: false };

@@ -25,3 +25,28 @@ export function getRankingPoolConfig(): RankingPoolConfig {
   };
 }
 
+/**
+ * LLM-Driven Ranking Configuration
+ * Phase 2: LLM-driven ranking profile selection with deterministic scoring
+ * 
+ * Feature flags:
+ * - RANKING_LLM_ENABLED: Enable LLM-driven ranking (default: false)
+ * - RANKING_DEFAULT_MODE: Default ranking mode when enabled (GOOGLE|LLM_SCORE, default: GOOGLE)
+ */
+export type RankingMode = 'GOOGLE' | 'LLM_SCORE';
+
+export interface RankingLLMConfig {
+  enabled: boolean;
+  defaultMode: RankingMode;
+}
+
+export function getRankingLLMConfig(): RankingLLMConfig {
+  const enabled = process.env.RANKING_LLM_ENABLED === 'true';
+  const defaultMode = (process.env.RANKING_DEFAULT_MODE || 'GOOGLE') as RankingMode;
+
+  return {
+    enabled,
+    defaultMode
+  };
+}
+

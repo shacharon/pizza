@@ -215,6 +215,35 @@ export async function handleNearbyLocationGuard(
 }
 
 /**
+ * Deterministic list of generic food query patterns
+ * These are queries that ask "what to eat" without specificity
+ */
+const GENERIC_FOOD_PATTERNS = [
+  // Hebrew patterns
+  /^מה\s+(יש\s+)?לאכול(\s+היום)?$/i,
+  /^מה\s+אוכלים(\s+היום)?$/i,
+  /^אוכל$/i,
+  /^מה\s+בא\s+לי(\s+לאכול)?$/i,
+  /^רעב$/i,
+  /^מה\s+יש$/i,
+  /^מה\s+תמליצ?ו?$/i,
+  // English patterns
+  /^what\s+to\s+eat(\s+today)?$/i,
+  /^food$/i,
+  /^hungry$/i,
+  /^what(\s+do\s+you)?\s+recommend$/i,
+  /^where\s+to\s+eat$/i
+];
+
+/**
+ * Check if query matches generic food patterns (deterministic)
+ */
+function matchesGenericFoodPattern(query: string): boolean {
+  const normalized = query.trim();
+  return GENERIC_FOOD_PATTERNS.some(pattern => pattern.test(normalized));
+}
+
+/**
  * Check if query is generic (e.g., "what to eat")
  * Generic query: foodSignal=YES but no specific location in query (no cityText)
  */
@@ -227,6 +256,91 @@ function isGenericFoodQuery(
     !intentDecision.cityText &&
     intentDecision.route === 'NEARBY' // Generic queries typically route to NEARBY
   );
+}
+
+/**
+ * Guard: Block overly-generic TEXTSEARCH queries without location anchors
+ * Prevents sending "what to eat" without any location context to Google
+ * 
+ * Conditions:
+ * - foodSignal=YES
+ * - Query matches generic patterns (deterministic)
+ * - No location anchor (no userLocation, no cityText)
+ * 
+ * Returns CLARIFY asking for location OR specificity
+ */
+export async function handleGenericQueryGuard(
+  request: SearchRequest,
+  gateResult: Gate2StageOutput,
+  intentDecision: IntentResult,
+  ctx: Route2Context,
+  wsManager: WebSocketManager
+): Promise<SearchResponse | null> {
+  // Only check for TEXTSEARCH route (after intent stage)
+  if (intentDecision.route !== 'TEXTSEARCH') {
+    return null; // Continue
+  }
+
+  // Check conditions
+  const isFoodQuery = gateResult.gate.foodSignal === 'YES';
+  const isGeneric = matchesGenericFoodPattern(request.query);
+  const hasLocationAnchor = !!ctx.userLocation || !!intentDecision.cityText;
+
+  // If not generic or has location anchor, continue
+  if (!isFoodQuery || !isGeneric || hasLocationAnchor) {
+    return null; // Continue
+  }
+
+  const { requestId, startTime } = ctx;
+  const sessionId = resolveSessionId(request, ctx);
+
+  logger.info(
+    {
+      requestId,
+      pipelineVersion: 'route2',
+      event: 'generic_query_blocked',
+      reason: 'no_location_anchor',
+      query: request.query,
+      hasUserLocation: false,
+      hasCityText: false
+    },
+    '[ROUTE2] Blocking generic food query without location anchor'
+  );
+
+  // Determine which question to ask based on language
+  const language = resolveAssistantLanguage(ctx, request, gateResult.gate.language);
+  const fallbackHttpMessage = language === 'he'
+    ? "כדי לעזור לך למצוא מסעדה טובה, אני צריך לדעת: באיזה אזור אתה מחפש? (למשל: 'פיצה בתל אביב')"
+    : "To help you find a good restaurant, I need to know: which area are you searching in? (e.g., 'pizza in Tel Aviv')";
+
+  const assistantContext: AssistantClarifyContext = {
+    type: 'CLARIFY',
+    reason: 'MISSING_LOCATION',
+    query: request.query,
+    language
+  };
+
+  const assistMessage = await generateAndPublishAssistant(
+    ctx,
+    requestId,
+    sessionId,
+    assistantContext,
+    fallbackHttpMessage,
+    wsManager
+  );
+
+  return buildEarlyExitResponse({
+    requestId,
+    sessionId,
+    query: request.query,
+    language: gateResult.gate.language,
+    confidence: gateResult.gate.confidence,
+    assistType: 'clarify',
+    assistMessage,
+    source: 'route2_generic_query_guard',
+    failureReason: 'LOW_CONFIDENCE',
+    startTime
+  });
 }
 
 /**

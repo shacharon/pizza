@@ -226,6 +226,10 @@ function buildDeterministicMapping(
     ...(intent.cityText && { cityText: intent.cityText })
   };
 
+  // CRITICAL: Apply location bias in fallback path too
+  const biasResult = applyLocationBias(mapping, intent, request, requestId);
+  mapping.bias = biasResult.bias;
+
   return mapping;
 }
 
@@ -233,16 +237,71 @@ function buildUserPrompt(query: string, finalFilters: FinalSharedFilters): strin
   return `Query: "${query}"\nRegion: ${finalFilters.regionCode}\nLanguage: ${finalFilters.providerLanguage}`;
 }
 
+/**
+ * Apply location bias based on available anchors
+ * Priority:
+ * 1. userLocation (if present)
+ * 2. cityText (will be geocoded later in text-search.handler.ts)
+ * 3. No bias
+ */
 function applyLocationBias(
   mapping: TextSearchMapping,
   intent: IntentResult,
   request: SearchRequest,
   requestId?: string
 ): { bias: any, source: string | null, nullReason?: string } {
-  // Logic remains the same, assuming TEXTSEARCH usually handles location via textQuery
+  // Priority 1: userLocation (immediate bias)
+  if (request.userLocation) {
+    const bias = {
+      type: 'locationBias' as const,
+      center: { lat: request.userLocation.lat, lng: request.userLocation.lng },
+      radiusMeters: 20000 // Default 20km for user location bias
+    };
+    
+    logger.info({
+      requestId,
+      stage: 'textsearch_mapper',
+      event: 'bias_applied',
+      source: 'userLocation',
+      lat: bias.center.lat,
+      lng: bias.center.lng,
+      radiusMeters: bias.radiusMeters
+    }, '[TEXTSEARCH] Location bias applied from userLocation (default anchor)');
+    
+    return { bias, source: 'userLocation' };
+  }
+
+  // Priority 2: cityText exists (will be geocoded later in pipeline)
+  // Don't set bias here, but signal that bias is planned
+  if (mapping.cityText) {
+    logger.info({
+      requestId,
+      stage: 'textsearch_mapper',
+      event: 'bias_planned',
+      source: 'cityText_pending_geocode',
+      cityText: mapping.cityText
+    }, '[TEXTSEARCH] Location bias planned from cityText (will be geocoded in handler)');
+    
+    // Return undefined bias but indicate it's planned (handler will geocode)
+    return { 
+      bias: undefined, 
+      source: 'cityText_pending_geocode'
+    };
+  }
+
+  // Priority 3: No location anchor available
+  logger.debug({
+    requestId,
+    stage: 'textsearch_mapper',
+    event: 'bias_not_available',
+    hasUserLocation: !!request.userLocation,
+    hasCityText: !!mapping.cityText,
+    reason: 'no_location_anchor'
+  }, '[TEXTSEARCH] No location bias available');
+
   return {
     bias: undefined,
     source: null,
-    nullReason: 'textsearch_no_automatic_bias'
+    nullReason: 'no_location_anchor'
   };
 }

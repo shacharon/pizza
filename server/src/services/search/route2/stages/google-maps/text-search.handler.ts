@@ -32,7 +32,11 @@ export async function executeTextSearch(
   const { requestId } = ctx;
   const startTime = Date.now();
 
-  // hasBiasPlanned = will attempt to apply bias (either from LLM or city geocode)
+  // hasBiasPlanned = will attempt to apply bias (from LLM, userLocation, or city geocode)
+  const biasSource = mapping.bias
+    ? 'userLocation_or_llm'
+    : (mapping.cityText ? 'cityText_pending_geocode' : null);
+  
   logger.info({
     requestId,
     provider: 'google_places_new',
@@ -41,8 +45,13 @@ export async function executeTextSearch(
     region: mapping.region,
     language: mapping.language,
     hasBiasPlanned: !!mapping.bias || !!mapping.cityText,
-    biasSource: mapping.bias ? 'llm_locationBias' : (mapping.cityText ? 'cityText_pending_geocode' : null),
-    ...(mapping.cityText && { cityText: mapping.cityText })
+    biasSource,
+    ...(mapping.cityText && { cityText: mapping.cityText }),
+    ...(mapping.bias && {
+      biasLat: mapping.bias.center.lat,
+      biasLng: mapping.bias.center.lng,
+      biasRadiusMeters: mapping.bias.radiusMeters
+    })
   }, '[GOOGLE] Calling Text Search API (New)');
 
   const apiKey = process.env.GOOGLE_API_KEY;
@@ -258,6 +267,17 @@ async function executeTextSearchAttempt(
     .substring(0, 12);
 
   // hasBiasApplied = final request body includes locationBias
+  // Determine bias source for logging
+  let finalBiasSource = null;
+  if (requestBody.locationBias) {
+    if (enrichedMapping.cityText && enrichedMapping.bias && !mapping.bias) {
+      finalBiasSource = 'cityText_geocoded';
+    } else if (mapping.bias) {
+      // Bias came from mapper (either LLM or userLocation)
+      finalBiasSource = 'userLocation_or_llm';
+    }
+  }
+  
   logger.info({
     requestId,
     event: 'textsearch_request_payload',
@@ -267,7 +287,12 @@ async function executeTextSearchAttempt(
     regionCode: requestBody.regionCode || null,
     regionCodeSent: !!requestBody.regionCode,
     hasBiasApplied: !!requestBody.locationBias,
-    biasSource: enrichedMapping.cityText && enrichedMapping.bias ? 'cityText_geocoded' : (mapping.bias ? 'llm_locationBias' : null),
+    biasSource: finalBiasSource,
+    ...(requestBody.locationBias && {
+      biasLat: requestBody.locationBias.circle.center.latitude,
+      biasLng: requestBody.locationBias.circle.center.longitude,
+      biasRadiusMeters: requestBody.locationBias.circle.radius
+    }),
     maxResultCount: maxResults
   }, '[GOOGLE] Text Search request payload');
 

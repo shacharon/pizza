@@ -101,6 +101,19 @@ export const wsManager = new WebSocketManager(server, {
   jobStore: searchJobStore // Phase 1: Enable ownership verification
 });
 
+// Phase 4: Register "load_more" handler for ranking suggestions
+// This allows WebSocket manager to trigger ranking suggestions when user clicks "load more"
+import { loadMoreRegistry } from './services/search/route2/assistant/load-more-registry.js';
+import { createLLMProvider } from './llm/factory.js';
+
+const llmProvider = createLLMProvider();
+if (llmProvider) {
+  loadMoreRegistry.register(llmProvider, wsManager);
+  logger.info('[BOOT] Load more handler registered');
+} else {
+  logger.warn('[BOOT] LLM provider not available, load more handler not registered');
+}
+
 /**
  * Graceful shutdown handler for ECS autoscaling
  * ONLY called by SIGTERM/SIGINT signals (process termination)

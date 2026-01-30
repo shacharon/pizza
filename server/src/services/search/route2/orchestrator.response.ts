@@ -8,6 +8,7 @@ import type { SearchResponse } from '../types/search-response.dto.js';
 import type { FailureReason } from '../types/domain.types.js';
 import type { Route2Context, Gate2StageOutput, IntentResult } from './types.js';
 import type { RouteLLMMapping } from './stages/route-llm/schemas.js';
+import type { RankingSignals } from './ranking/ranking-signals.js';
 import { logger } from '../../../lib/logger/structured-logger.js';
 import { startStage, endStage } from '../../../lib/telemetry/stage-timer.js';
 import { generateAndPublishAssistant, generateAndPublishAssistantDeferred } from './assistant/assistant-integration.js';
@@ -15,6 +16,8 @@ import type { AssistantSummaryContext, AssistantGenericQueryNarrationContext } f
 import { resolveAssistantLanguage, resolveSessionId } from './orchestrator.helpers.js';
 import type { WebSocketManager } from '../../../infra/websocket/websocket-manager.js';
 import { buildAppliedFiltersArray } from './orchestrator.filters.js';
+import { publishRankingSuggestionDeferred } from './assistant/ranking-suggestion-publisher.js';
+import { rankingSignalsCache } from './ranking/ranking-signals-cache.redis.js';
 
 /**
  * Build early exit response (gate stop, clarify, location required, etc.)
@@ -74,6 +77,7 @@ export async function buildFinalResponse(
   mapping: RouteLLMMapping,
   finalResults: any[],
   filtersForPostFilter: any,
+  rankingSignals: RankingSignals | null,
   ctx: Route2Context,
   wsManager: WebSocketManager
 ): Promise<SearchResponse> {
@@ -172,6 +176,12 @@ export async function buildFinalResponse(
   }
 
   // Build final response
+  // Pagination metadata: Return ALL results in first response
+  // Frontend will handle local pagination (no new search on "load more")
+  const totalPool = finalResults.length;
+  const shownNow = totalPool;  // All results returned initially
+  const hasMore = false;  // No server-side pagination
+
   const response: SearchResponse = {
     requestId,
     sessionId,
@@ -191,7 +201,7 @@ export async function buildFinalResponse(
       },
       language: detectedLanguage
     },
-    results: finalResults,
+    results: finalResults,  // Return ALL results (frontend handles pagination)
     chips: [],
     assist: { type: 'guide', message: assistMessage },
     meta: {
@@ -200,7 +210,18 @@ export async function buildFinalResponse(
       appliedFilters,
       confidence: intentDecision.confidence,
       source: 'route2',
-      failureReason: 'NONE'
+      failureReason: 'NONE',
+      // Pagination metadata (for frontend to know pool size)
+      ...(totalPool > 0 && {
+        pagination: {
+          shownNow,      // ALL results returned
+          totalPool,     // Total pool size
+          offset: 0,     // Always 0 (no server-side pagination)
+          hasMore        // Always false (frontend paginates)
+        }
+      }),
+      // Ranking signals (when available)
+      ...(rankingSignals && { rankingSignals })
     }
   };
 
@@ -215,6 +236,28 @@ export async function buildFinalResponse(
 
   // DIETARY NOTE: Merged into SUMMARY (no separate message)
   // Dietary hint is now included in the SUMMARY message via assistantContext.dietaryNote
+
+  // RANKING SIGNALS CACHE: Store for "load more" events (Redis with IDOR protection)
+  // Ranking suggestion will fire when user clicks "load more", not on initial search
+  if (rankingSignals) {
+    // Store in Redis with session ownership for IDOR protection
+    await rankingSignalsCache.set(
+      requestId,
+      rankingSignals,
+      request.query,
+      uiLanguage,
+      sessionId,
+      undefined // userId not currently tracked
+    );
+    
+    logger.debug({
+      requestId,
+      profile: rankingSignals.profile,
+      hasTriggers: Object.values(rankingSignals.triggers).some(Boolean),
+      hasSessionId: !!sessionId,
+      event: 'ranking_signals_stored_redis'
+    }, '[RANKING] Stored signals in Redis for load_more events');
+  }
 
   return response;
 }

@@ -15,6 +15,7 @@ import { CONTRACTS_VERSION } from '../../contracts/search.contracts.js';
 import { searchJobStore } from '../../services/search/job-store/index.js';
 import { hashSessionId, sanitizePhotoUrls } from '../../utils/security.utils.js';
 import { wsManager } from '../../server.js';
+import crypto from 'crypto';
 
 // Extracted modules
 import { executeBackgroundSearch } from './search.async-execution.js';
@@ -22,6 +23,31 @@ import { validateJobOwnership, getAuthenticatedSession } from './search.security
 import { validateSearchRequest, validateRequestIdParam } from './search.validation.js';
 
 const router = Router();
+
+/**
+ * Generate idempotency key for deduplication
+ * Key = hash(sessionId + normalizedQuery + mode + locationHash)
+ */
+function generateIdempotencyKey(params: {
+  sessionId: string;
+  query: string;
+  mode: 'sync' | 'async';
+  userLocation?: { lat: number; lng: number } | null;
+}): string {
+  // Normalize query: lowercase, trim, collapse whitespace
+  const normalizedQuery = params.query.toLowerCase().trim().replace(/\s+/g, ' ');
+  
+  // Hash location if present (to handle float precision issues)
+  const locationHash = params.userLocation
+    ? `${params.userLocation.lat.toFixed(4)},${params.userLocation.lng.toFixed(4)}`
+    : 'no-location';
+  
+  // Combine components
+  const rawKey = `${params.sessionId}:${normalizedQuery}:${params.mode}:${locationHash}`;
+  
+  // Hash for consistent length and privacy
+  return crypto.createHash('sha256').update(rawKey).digest('hex');
+}
 
 /**
  * POST /search
@@ -82,6 +108,56 @@ router.post('/', async (req: Request, res: Response) => {
         return;
       }
 
+      // Generate idempotency key for deduplication
+      const idempotencyKey = generateIdempotencyKey({
+        sessionId: ownerSessionId || 'anonymous',
+        query: queryData.query,
+        mode,
+        userLocation: queryData.userLocation
+      });
+
+      // Check for existing job with same idempotency key (3-5s fresh window)
+      const FRESH_WINDOW_MS = 5000; // 5 seconds
+      let existingJob = null;
+      try {
+        existingJob = await searchJobStore.findByIdempotencyKey(idempotencyKey, FRESH_WINDOW_MS);
+      } catch (err) {
+        // Non-fatal: if lookup fails, continue with new job creation
+        logger.warn({
+          requestId,
+          error: err instanceof Error ? err.message : 'unknown',
+          operation: 'findByIdempotencyKey'
+        }, '[Deduplication] Failed to check for existing job (non-fatal) - creating new job');
+      }
+
+      if (existingJob) {
+        // Duplicate detected - reuse existing requestId
+        logger.info({
+          requestId: existingJob.requestId,
+          originalRequestId: requestId,
+          event: 'duplicate_search_deduped',
+          status: existingJob.status,
+          ageMs: Date.now() - existingJob.updatedAt,
+          sessionHash: hashSessionId(ownerSessionId || 'anonymous')
+        }, '[Deduplication] Reusing existing requestId for duplicate search');
+
+        // Re-activate subscriptions for the existing requestId
+        try {
+          wsManager.activatePendingSubscriptions(existingJob.requestId, ownerSessionId || 'anonymous');
+        } catch (wsErr) {
+          logger.error({
+            requestId: existingJob.requestId,
+            error: wsErr instanceof Error ? wsErr.message : 'unknown',
+            operation: 'activatePendingSubscriptions'
+          }, '[P1 Reliability] WebSocket activation failed (non-fatal) - search continues');
+        }
+
+        const resultUrl = `/api/v1/search/${existingJob.requestId}/result`;
+        res.status(202).json({ requestId: existingJob.requestId, resultUrl, contractsVersion: CONTRACTS_VERSION });
+        return;
+      }
+
+      // No duplicate found - create new job
       // P0 Fix: Non-fatal Redis write - if job creation fails, return 202 anyway
       // Background execution will still proceed, just without Redis tracking
       try {
@@ -89,7 +165,8 @@ router.post('/', async (req: Request, res: Response) => {
           sessionId: ownerSessionId || 'anonymous', // Use JWT session, not client-provided
           query: queryData.query,
           ownerUserId,
-          ownerSessionId: ownerSessionId || null // Convert undefined to null for type safety
+          ownerSessionId: ownerSessionId || null, // Convert undefined to null for type safety
+          idempotencyKey
         });
 
         logger.info({
@@ -97,8 +174,9 @@ router.post('/', async (req: Request, res: Response) => {
           sessionHash: hashSessionId(ownerSessionId || 'anonymous'),
           hasUserId: Boolean(ownerUserId),
           operation: 'createJob',
-          decision: 'ACCEPTED'
-        }, '[P0 Security] Job created with JWT session binding');
+          decision: 'ACCEPTED',
+          hasIdempotencyKey: true
+        }, '[P0 Security] Job created with JWT session binding and idempotency key');
 
         // CTO-grade: Activate pending subscriptions for this request
         // GUARDRAIL: WS activation failures are non-fatal

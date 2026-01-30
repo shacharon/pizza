@@ -9,6 +9,8 @@ import type { ISearchJobStore, SearchJob, JobStatus } from './job-store.interfac
 export class InMemorySearchJobStore implements ISearchJobStore {
   private jobs = new Map<string, SearchJob>();
   private readonly ttlMs = 10 * 60 * 1000; // 10 minutes
+  // Idempotency index: idempotencyKey -> requestId
+  private idempotencyIndex = new Map<string, string>();
 
   constructor() {
     // Auto-cleanup every minute
@@ -19,7 +21,7 @@ export class InMemorySearchJobStore implements ISearchJobStore {
   /**
    * Create a new search job with explicit requestId
    */
-  createJob(requestId: string, params: { sessionId: string; query: string; ownerUserId?: string | null; ownerSessionId?: string | null }): void {
+  createJob(requestId: string, params: { sessionId: string; query: string; ownerUserId?: string | null; ownerSessionId?: string | null; idempotencyKey?: string }): void {
     const now = Date.now();
 
     this.jobs.set(requestId, {
@@ -30,8 +32,14 @@ export class InMemorySearchJobStore implements ISearchJobStore {
       createdAt: now,
       updatedAt: now,
       ownerUserId: params.ownerUserId ?? null,
-      ownerSessionId: params.ownerSessionId ?? null
+      ownerSessionId: params.ownerSessionId ?? null,
+      idempotencyKey: params.idempotencyKey
     });
+
+    // Index by idempotency key if provided
+    if (params.idempotencyKey) {
+      this.idempotencyIndex.set(params.idempotencyKey, requestId);
+    }
 
     logger.info({
       requestId,
@@ -39,6 +47,7 @@ export class InMemorySearchJobStore implements ISearchJobStore {
       query: params.query,
       status: 'PENDING',
       hasOwner: !!(params.ownerUserId || params.ownerSessionId),
+      hasIdempotencyKey: !!params.idempotencyKey,
       msg: '[InMemoryJobStore] Job created'
     });
   }
@@ -141,6 +150,13 @@ export class InMemorySearchJobStore implements ISearchJobStore {
    * Delete a job
    */
   deleteJob(requestId: string): void {
+    const job = this.jobs.get(requestId);
+    
+    // Clean up idempotency index if key exists
+    if (job?.idempotencyKey) {
+      this.idempotencyIndex.delete(job.idempotencyKey);
+    }
+    
     this.jobs.delete(requestId);
     logger.info({ requestId, msg: '[JobStore] Job deleted' });
   }
@@ -187,6 +203,48 @@ export class InMemorySearchJobStore implements ISearchJobStore {
 
 
   /**
+   * Find existing job by idempotency key
+   * Returns job if found with status RUNNING or DONE_SUCCESS (within fresh window)
+   * @param idempotencyKey - The idempotency key to search for
+   * @param freshWindowMs - Time window (ms) for DONE_SUCCESS jobs to be considered fresh (default: 5000ms)
+   */
+  findByIdempotencyKey(idempotencyKey: string, freshWindowMs: number = 5000): SearchJob | null {
+    const requestId = this.idempotencyIndex.get(idempotencyKey);
+    if (!requestId) {
+      return null;
+    }
+
+    const job = this.jobs.get(requestId);
+    if (!job) {
+      // Cleanup stale index entry
+      this.idempotencyIndex.delete(idempotencyKey);
+      return null;
+    }
+
+    // Check TTL
+    if (Date.now() - job.createdAt > this.ttlMs) {
+      this.jobs.delete(requestId);
+      this.idempotencyIndex.delete(idempotencyKey);
+      return null;
+    }
+
+    const now = Date.now();
+    const validStatuses: JobStatus[] = ['RUNNING', 'DONE_SUCCESS'];
+    
+    // For RUNNING jobs, return immediately
+    if (job.status === 'RUNNING') {
+      return job;
+    }
+
+    // For DONE_SUCCESS, check if within fresh window
+    if (job.status === 'DONE_SUCCESS' && (now - job.updatedAt) <= freshWindowMs) {
+      return job;
+    }
+
+    return null;
+  }
+
+  /**
    * Auto-cleanup expired jobs
    */
   private sweep(): void {
@@ -195,6 +253,10 @@ export class InMemorySearchJobStore implements ISearchJobStore {
 
     for (const [requestId, job] of this.jobs.entries()) {
       if (now - job.createdAt > this.ttlMs) {
+        // Clean up both job and idempotency index
+        if (job.idempotencyKey) {
+          this.idempotencyIndex.delete(job.idempotencyKey);
+        }
         this.jobs.delete(requestId);
         cleaned++;
       }

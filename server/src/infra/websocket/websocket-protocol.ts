@@ -46,11 +46,20 @@ export interface WSClientUIStateChanged {
   };
 }
 
+export interface WSClientLoadMore {
+  type: 'load_more';
+  requestId: string;
+  sessionId?: string;
+  newOffset: number;  // New offset after appending (e.g., 10 → 15)
+  totalShown: number; // Total results shown after append (e.g., 15)
+}
+
 export type WSClientMessage =
   | WSClientEnvelope
   | WSClientSubscribeLegacy
   | WSClientActionClicked
-  | WSClientUIStateChanged;
+  | WSClientUIStateChanged
+  | WSClientLoadMore;
 
 // ============================================================================
 // Server → Client Messages
@@ -142,6 +151,19 @@ export interface WSServerAssistantError {
 }
 
 /**
+ * Ranking suggestion message (triggered on "load more")
+ */
+export interface WSServerRankingSuggestion {
+  type: 'ranking_suggestion';
+  requestId: string;
+  payload: {
+    message: string;
+    suggestion: string | null;
+    suggestedAction: 'REFINE_LOCATION' | 'ADD_MIN_RATING' | 'REMOVE_OPEN_NOW' | 'REMOVE_PRICE' | 'NONE';
+  };
+}
+
+/**
  * Subscribe acknowledgment (CTO-grade protocol)
  */
 export interface WSServerSubAck {
@@ -171,6 +193,7 @@ export type WSServerMessage =
   | WSServerAssistantSuggestion
   | WSServerAssistant
   | WSServerAssistantError
+  | WSServerRankingSuggestion
   | WSServerSubAck
   | WSServerSubNack
   | WSServerConnectionStatus;
@@ -218,6 +241,13 @@ export function isWSClientMessage(msg: any): msg is WSClientMessage {
 
     case 'ui_state_changed':
       return typeof msg.requestId === 'string' && typeof msg.state === 'object';
+
+    case 'load_more':
+      return (
+        typeof msg.requestId === 'string' &&
+        typeof msg.newOffset === 'number' &&
+        typeof msg.totalShown === 'number'
+      );
 
     default:
       return false;

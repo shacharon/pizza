@@ -36,6 +36,15 @@ export interface SearchResponseMeta {
   originalQuery?: string;
   failureReason: import('./search.types.js').FailureReason;  // REQUIRED: Always computed
   liveData?: import('./search.types.js').LiveDataVerification;
+  // Pagination metadata (for "load more" UX)
+  pagination?: {
+    shownNow: number;     // Results returned in this response
+    totalPool: number;    // Total results available (stable pool)
+    offset: number;       // Current offset (0-based)
+    hasMore: boolean;     // Whether more results are available
+  };
+  // Ranking signals (when ranking is enabled or triggers active)
+  rankingSignals?: import('../route2/ranking/ranking-signals.js').RankingSignals;
   // PHASE 1: Transparency metadata (deterministic resolution)
   transparency?: {
     searchMode: 'FULL' | 'ASSISTED' | 'CLARIFY';  // Resolved search mode

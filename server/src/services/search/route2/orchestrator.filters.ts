@@ -95,6 +95,10 @@ function executePostFiltering(
 ): {
   resultsFiltered: any[];
   stats: any;
+  relaxed?: {
+    priceIntent?: boolean;
+    minRating?: boolean;
+  };
 } {
   return applyPostFilters({
     results: googleResults,
@@ -116,6 +120,10 @@ export function applyPostFiltersToResults(
 ): {
   resultsFiltered: any[];
   stats: any;
+  relaxed?: {
+    priceIntent?: boolean;
+    minRating?: boolean;
+  };
 } {
   const { requestId } = ctx;
 
