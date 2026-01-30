@@ -1,31 +1,47 @@
 /**
- * Assistant Line Component Tests
+ * Assistant Line Component Tests (REFACTORED)
+ * Tests presentational component with mocked dependencies
  */
 
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { signal } from '@angular/core';
 import { AssistantLineComponent } from './assistant-line.component';
 import { WsClientService } from '../../../../core/services/ws-client.service';
-import { Subject } from 'rxjs';
+import { WsStatusFsmService } from '../../../../core/services/ws-status-fsm.service';
+import { SearchFacade } from '../../../../facades/search.facade';
 
 describe('AssistantLineComponent', () => {
   let component: AssistantLineComponent;
   let fixture: ComponentFixture<AssistantLineComponent>;
-  let mockWsService: Partial<WsClientService>;
-  let messagesSubject: Subject<any>;
+  let mockWsClient: Partial<WsClientService>;
+  let mockWsStatusFsm: Partial<WsStatusFsmService>;
+  let mockSearchFacade: Partial<SearchFacade>;
 
   beforeEach(async () => {
-    messagesSubject = new Subject();
-    
-    mockWsService = {
-      messages$: messagesSubject.asObservable(),
-      connect: jest.fn(),
-      connectionStatus: jest.fn() as any
+    // Mock WsClientService
+    mockWsClient = {
+      connectionStatus: signal('disconnected' as any)
+    };
+
+    // Mock WsStatusFsmService
+    mockWsStatusFsm = {
+      wsStatusMessage: signal(null),
+      processStatusChange: jest.fn(),
+      clearMessage: jest.fn()
+    };
+
+    // Mock SearchFacade
+    mockSearchFacade = {
+      assistantLineMessages: signal([]),
+      requestId: signal(undefined)
     };
 
     await TestBed.configureTestingModule({
       imports: [AssistantLineComponent],
       providers: [
-        { provide: WsClientService, useValue: mockWsService }
+        { provide: WsClientService, useValue: mockWsClient },
+        { provide: WsStatusFsmService, useValue: mockWsStatusFsm },
+        { provide: SearchFacade, useValue: mockSearchFacade }
       ]
     }).compileComponents();
 
@@ -39,86 +55,86 @@ describe('AssistantLineComponent', () => {
   });
 
   it('should start with no message', () => {
-    expect(component.displayMessage()).toBeNull();
+    expect(component.finalMessage()).toBeNull();
   });
 
-  it('should display assistant_progress message', (done) => {
-    const msg = {
-      type: 'assistant_progress',
-      requestId: 'req-123',
-      seq: 1,
-      message: 'Analyzing query...'
-    };
+  it('should display line message from facade', () => {
+    // Update mock facade to return a line message
+    (mockSearchFacade.assistantLineMessages as any).set([
+      {
+        id: 'msg-1',
+        type: 'PROGRESS',
+        message: 'Analyzing query...',
+        requestId: 'req-123',
+        timestamp: Date.now()
+      }
+    ]);
+    (mockSearchFacade.requestId as any).set('req-123');
 
-    messagesSubject.next(msg);
-    
-    // Wait for async queue processing
-    setTimeout(() => {
-      fixture.detectChanges();
-      expect(component.displayMessage()).toBe('Analyzing query...');
-      done();
-    }, 100);
-  });
-
-  it('should replace message on new requestId', (done) => {
-    const msg1 = {
-      type: 'assistant_progress',
-      requestId: 'req-123',
-      seq: 1,
-      message: 'First search'
-    };
-
-    const msg2 = {
-      type: 'assistant_progress',
-      requestId: 'req-456',
-      seq: 1,
-      message: 'New search'
-    };
-
-    messagesSubject.next(msg1);
-    
-    setTimeout(() => {
-      messagesSubject.next(msg2);
-      
-      setTimeout(() => {
-        fixture.detectChanges();
-        expect(component.displayMessage()).toBe('New search');
-        done();
-      }, 100);
-    }, 100);
-  });
-
-  it('should clear message when clearMessage is called', (done) => {
-    const msg = {
-      type: 'assistant_progress',
-      requestId: 'req-123',
-      seq: 1,
-      message: 'Test message'
-    };
-
-    messagesSubject.next(msg);
-    
-    setTimeout(() => {
-      fixture.detectChanges();
-      expect(component.displayMessage()).toBe('Test message');
-      
-      component.clearMessage();
-      fixture.detectChanges();
-      expect(component.displayMessage()).toBeNull();
-      done();
-    }, 100);
-  });
-
-  it('should ignore non-assistant messages', () => {
-    const msg = {
-      type: 'status',
-      requestId: 'req-123',
-      status: 'idle'
-    };
-
-    messagesSubject.next(msg);
     fixture.detectChanges();
+    expect(component.finalMessage()).toBe('Analyzing query...');
+  });
 
-    expect(component.displayMessage()).toBeNull();
+  it('should filter messages by active requestId', () => {
+    // Add message for req-123
+    (mockSearchFacade.assistantLineMessages as any).set([
+      {
+        id: 'msg-1',
+        type: 'PROGRESS',
+        message: 'Old search',
+        requestId: 'req-123',
+        timestamp: Date.now()
+      },
+      {
+        id: 'msg-2',
+        type: 'PROGRESS',
+        message: 'New search',
+        requestId: 'req-456',
+        timestamp: Date.now() + 1
+      }
+    ]);
+    (mockSearchFacade.requestId as any).set('req-456');
+
+    fixture.detectChanges();
+    expect(component.finalMessage()).toBe('New search');
+  });
+
+  it('should delegate clearMessage to FSM service', () => {
+    component.clearMessage();
+    expect(mockWsStatusFsm.clearMessage).toHaveBeenCalled();
+  });
+
+  it('should prioritize line message over WS status', () => {
+    // Set both line message and WS status
+    (mockSearchFacade.assistantLineMessages as any).set([
+      {
+        id: 'msg-1',
+        type: 'PROGRESS',
+        message: 'Line message',
+        requestId: 'req-123',
+        timestamp: Date.now()
+      }
+    ]);
+    (mockWsStatusFsm.wsStatusMessage as any).set({
+      type: 'ws_status',
+      message: 'WS status message',
+      status: 'connecting'
+    });
+
+    fixture.detectChanges();
+    // Line message should take priority
+    expect(component.finalMessage()).toBe('Line message');
+  });
+
+  it('should show WS status when no line messages', () => {
+    // Only WS status, no line messages
+    (mockWsStatusFsm.wsStatusMessage as any).set({
+      type: 'ws_status',
+      message: 'Connecting...',
+      status: 'connecting'
+    });
+
+    fixture.detectChanges();
+    expect(component.finalMessage()).toBe('Connecting...');
   });
 });
