@@ -15,21 +15,21 @@ describe('Cache Logging Thresholds', () => {
   test('cache operation under 200ms should be fast', () => {
     const durationMs = 150;
     const isSlow = durationMs > SLOW_THRESHOLDS.CACHE;
-    
+
     assert.equal(isSlow, false, 'Operation under 200ms should not be slow');
   });
 
   test('cache operation over 200ms should be slow', () => {
     const durationMs = 250;
     const isSlow = durationMs > SLOW_THRESHOLDS.CACHE;
-    
+
     assert.equal(isSlow, true, 'Operation over 200ms should be slow');
   });
 
   test('cache operation exactly 200ms should not be slow', () => {
     const durationMs = 200;
     const isSlow = durationMs > SLOW_THRESHOLDS.CACHE;
-    
+
     assert.equal(isSlow, false, 'Exactly 200ms should not be slow (threshold is >200, not >=200)');
   });
 });
@@ -51,20 +51,20 @@ describe('Cache Sampling Rate', () => {
     process.env.LOG_CACHE_SAMPLE_RATE = '0.1';
     const rate = getCacheSamplingRate();
     assert.equal(rate, 0.1, 'Should use env var value');
-    
+
     // Cleanup
     process.env.LOG_CACHE_SAMPLE_RATE = originalEnv;
   });
 
   test('getCacheSamplingRate() should clamp invalid values to default', () => {
     const invalidValues = ['-0.5', '1.5', 'abc', '', 'NaN'];
-    
+
     invalidValues.forEach(val => {
       process.env.LOG_CACHE_SAMPLE_RATE = val;
       const rate = getCacheSamplingRate();
       assert.equal(rate, 0.05, `Invalid value "${val}" should fallback to default 0.05`);
     });
-    
+
     // Cleanup
     process.env.LOG_CACHE_SAMPLE_RATE = originalEnv;
   });
@@ -73,7 +73,7 @@ describe('Cache Sampling Rate', () => {
     process.env.LOG_CACHE_SAMPLE_RATE = '0';
     const rate = getCacheSamplingRate();
     assert.equal(rate, 0, 'Should accept 0 for no sampling');
-    
+
     // Cleanup
     process.env.LOG_CACHE_SAMPLE_RATE = originalEnv;
   });
@@ -82,7 +82,7 @@ describe('Cache Sampling Rate', () => {
     process.env.LOG_CACHE_SAMPLE_RATE = '1';
     const rate = getCacheSamplingRate();
     assert.equal(rate, 1, 'Should accept 1 for always sampling');
-    
+
     // Cleanup
     process.env.LOG_CACHE_SAMPLE_RATE = originalEnv;
   });
@@ -93,9 +93,9 @@ describe('Cache Log Level Decision', () => {
     const durationMs = 50; // fast
     const isSlow = durationMs > SLOW_THRESHOLDS.CACHE;
     const shouldSample = false; // assume not sampled
-    
+
     const shouldLog = isSlow || shouldSample;
-    
+
     assert.equal(shouldLog, false, 'Fast operation without sampling should not log');
   });
 
@@ -103,10 +103,10 @@ describe('Cache Log Level Decision', () => {
     const durationMs = 50; // fast
     const isSlow = durationMs > SLOW_THRESHOLDS.CACHE;
     const shouldSample = true; // sampled
-    
+
     const shouldLog = isSlow || shouldSample;
     const logLevel = isSlow ? 'info' : 'debug';
-    
+
     assert.equal(shouldLog, true, 'Sampled operation should log');
     assert.equal(logLevel, 'debug', 'Fast sampled operation should log at DEBUG');
   });
@@ -115,10 +115,10 @@ describe('Cache Log Level Decision', () => {
     const durationMs = 300; // slow
     const isSlow = durationMs > SLOW_THRESHOLDS.CACHE;
     const shouldSample = false; // not sampled (doesn't matter)
-    
+
     const shouldLog = isSlow || shouldSample;
     const logLevel = isSlow ? 'info' : 'debug';
-    
+
     assert.equal(shouldLog, true, 'Slow operation should always log');
     assert.equal(logLevel, 'info', 'Slow operation should log at INFO');
   });
@@ -127,10 +127,10 @@ describe('Cache Log Level Decision', () => {
     const durationMs = 300; // slow
     const isSlow = durationMs > SLOW_THRESHOLDS.CACHE;
     const shouldSample = true; // sampled
-    
+
     const shouldLog = isSlow || shouldSample;
     const logLevel = isSlow ? 'info' : 'debug';
-    
+
     assert.equal(shouldLog, true, 'Should log');
     assert.equal(logLevel, 'info', 'Slow operation should take precedence over sampling');
   });
@@ -144,14 +144,14 @@ describe('Photo Proxy Thresholds', () => {
   test('photo under 800ms should be fast', () => {
     const durationMs = 600;
     const isSlow = durationMs > SLOW_THRESHOLDS.PHOTO;
-    
+
     assert.equal(isSlow, false, 'Photo under 800ms should not be slow');
   });
 
   test('photo over 800ms should be slow', () => {
     const durationMs = 1000;
     const isSlow = durationMs > SLOW_THRESHOLDS.PHOTO;
-    
+
     assert.equal(isSlow, true, 'Photo over 800ms should be slow');
   });
 });

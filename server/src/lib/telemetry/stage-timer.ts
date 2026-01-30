@@ -44,7 +44,7 @@ export function startStage(
   extra?: StageTimerExtra
 ): number {
   const startTime = performance.now();
-  
+
   // Initialize durations map if not exists
   if (!ctx.timings) {
     ctx.timings = {};
@@ -76,12 +76,12 @@ export function endStage(
   extra?: StageTimerExtra
 ): number {
   const durationMs = Math.round(performance.now() - startTime);
-  
+
   // Store in context for pipeline decomposition
   if (!ctx.timings) {
     ctx.timings = {};
   }
-  
+
   // Store with consistent naming: stageNameMs
   const key = `${stage.replace(/_/g, '')}Ms` as keyof typeof ctx.timings;
   (ctx.timings as any)[key] = durationMs;

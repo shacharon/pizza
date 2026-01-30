@@ -177,7 +177,7 @@ export async function executeTextSearchMapper(
     // CRITICAL: Override LLM's region/language with filters_resolved values (single source of truth)
     mapping.region = finalFilters.regionCode;
     mapping.language = finalFilters.providerLanguage;
-    
+
     // CRITICAL: Manually inject 'bias' property as undefined.
     // This ensures that 'applyLocationBias' function doesn't crash 
     // and downstream types remain compatible.

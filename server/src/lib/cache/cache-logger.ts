@@ -60,7 +60,7 @@ export function redactRedisUrl(url: string): { urlRedacted: string; host: string
  * Cache events are high-frequency and provide little value at INFO in production
  */
 export class CacheLogger {
-  constructor(private logger: Logger) {}
+  constructor(private logger: Logger) { }
 
   /**
    * Log cache wrap entry

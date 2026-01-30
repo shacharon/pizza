@@ -26,7 +26,7 @@ export function httpLoggingMiddleware(
 ): void {
   const startTime = Date.now();
   const isOptions = req.method === 'OPTIONS';
-  
+
   // Log request
   // OPTIONS: skip unless sampled (1%)
   // Regular: DEBUG level
@@ -39,14 +39,14 @@ export function httpLoggingMiddleware(
       ...(isOptions && { sampled: true })
     }, 'HTTP request');
   }
-  
+
   // Capture response finish
   res.on('finish', () => {
     const duration = Date.now() - startTime;
     const isError = res.statusCode >= 500;
     const isWarn = res.statusCode >= 400 && res.statusCode < 500;
     const isSlow = duration > SLOW_THRESHOLDS.HTTP;
-    
+
     // Determine log level
     let level: 'error' | 'warn' | 'info' | 'debug' = 'debug';
     if (isError) {
@@ -57,11 +57,11 @@ export function httpLoggingMiddleware(
       // Slow requests always INFO (even if 2xx)
       level = 'info';
     }
-    
+
     // OPTIONS: only log errors or 1% sample
     const shouldLogOptions = isOptions && (isError || isWarn || shouldSampleRandom(SAMPLING_RATES.LOW));
     const shouldLogRegular = !isOptions;
-    
+
     if (shouldLogOptions || shouldLogRegular) {
       req.log[level]({
         method: req.method,
@@ -73,7 +73,7 @@ export function httpLoggingMiddleware(
       }, 'HTTP response');
     }
   });
-  
+
   next();
 }
 

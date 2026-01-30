@@ -12,9 +12,9 @@ describe('PhotoProxy Logging', () => {
     const sizeBytes = 50_000; // normal size
     const isSlow = durationMs > 800;
     const isLarge = sizeBytes > 250_000;
-    
+
     const expectedLevel = isSlow || isLarge ? 'info' : 'debug';
-    
+
     assert.equal(expectedLevel, 'debug', 'Fast + normal size should use DEBUG level');
   });
 
@@ -23,9 +23,9 @@ describe('PhotoProxy Logging', () => {
     const sizeBytes = 50_000; // normal size
     const isSlow = durationMs > 800;
     const isLarge = sizeBytes > 250_000;
-    
+
     const expectedLevel = isSlow || isLarge ? 'info' : 'debug';
-    
+
     assert.equal(expectedLevel, 'info', 'Slow response should use INFO level');
     assert.equal(isSlow, true, 'Should be marked as slow');
   });
@@ -35,9 +35,9 @@ describe('PhotoProxy Logging', () => {
     const sizeBytes = 300_000; // large
     const isSlow = durationMs > 800;
     const isLarge = sizeBytes > 250_000;
-    
+
     const expectedLevel = isSlow || isLarge ? 'info' : 'debug';
-    
+
     assert.equal(expectedLevel, 'info', 'Large payload should use INFO level');
     assert.equal(isLarge, true, 'Should be marked as large');
   });
@@ -47,9 +47,9 @@ describe('PhotoProxy Logging', () => {
     const sizeBytes = 400_000; // large
     const isSlow = durationMs > 800;
     const isLarge = sizeBytes > 250_000;
-    
+
     const expectedLevel = isSlow || isLarge ? 'info' : 'debug';
-    
+
     assert.equal(expectedLevel, 'info', 'Slow AND large should use INFO level');
     assert.equal(isSlow, true, 'Should be marked as slow');
     assert.equal(isLarge, true, 'Should be marked as large');
@@ -60,9 +60,9 @@ describe('PhotoProxy Logging', () => {
     const sizeBytes = 50_000;
     const isSlow = durationMs > 800;
     const isLarge = sizeBytes > 250_000;
-    
+
     const expectedLevel = isSlow || isLarge ? 'info' : 'debug';
-    
+
     assert.equal(expectedLevel, 'debug', 'Exactly 800ms should use DEBUG (not slow)');
     assert.equal(isSlow, false);
   });
@@ -72,9 +72,9 @@ describe('PhotoProxy Logging', () => {
     const sizeBytes = 250_000;
     const isSlow = durationMs > 800;
     const isLarge = sizeBytes > 250_000;
-    
+
     const expectedLevel = isSlow || isLarge ? 'info' : 'debug';
-    
+
     assert.equal(expectedLevel, 'debug', 'Exactly 250KB should use DEBUG (not large)');
     assert.equal(isLarge, false);
   });

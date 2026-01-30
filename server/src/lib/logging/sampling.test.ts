@@ -27,11 +27,11 @@ describe('Sampling Utility', () => {
     test('should be deterministic for same key', () => {
       const key = 'test-key-consistent';
       const rate = 0.5;
-      
+
       const result1 = shouldSample(key, rate);
       const result2 = shouldSample(key, rate);
       const result3 = shouldSample(key, rate);
-      
+
       assert.equal(result1, result2);
       assert.equal(result2, result3);
     });
@@ -40,25 +40,25 @@ describe('Sampling Utility', () => {
       const key = 'test-key';
       const rate = 0.5;
       const seed = 12345;
-      
+
       const result1 = shouldSample(key, rate, seed);
       const result2 = shouldSample(key, rate, seed);
-      
+
       assert.equal(result1, result2);
     });
 
     test('should produce different results for different keys', () => {
       const rate = 0.5;
-      
+
       const results = [];
       for (let i = 0; i < 100; i++) {
         results.push(shouldSample(`request-${i}`, rate));
       }
-      
+
       // With 100 samples at 50% rate, we should see some variety
       // (Not requiring perfect 50/50 distribution, just that it's not all true or all false)
       const trueCount = results.filter(r => r).length;
-      assert.ok(trueCount > 0 && trueCount < 100, 
+      assert.ok(trueCount > 0 && trueCount < 100,
         `Should have mix of true/false, got ${trueCount} true out of 100`);
     });
 
@@ -66,14 +66,14 @@ describe('Sampling Utility', () => {
       const rate = 0.1; // 10%
       const numKeys = 1000;
       const seed = 42;
-      
+
       let sampledCount = 0;
       for (let i = 0; i < numKeys; i++) {
         if (shouldSample(`key-${i}`, rate, seed)) {
           sampledCount++;
         }
       }
-      
+
       const actualRate = sampledCount / numKeys;
       // Should be within 5% of target rate (relaxed tolerance for simple hash)
       assert.ok(actualRate > 0.05, `Rate ${actualRate} should be > 0.05`);
@@ -103,14 +103,14 @@ describe('Sampling Utility', () => {
     test('should approximate sampling rate over many attempts', () => {
       const rate = 0.1; // 10%
       const numAttempts = 1000;
-      
+
       let sampledCount = 0;
       for (let i = 0; i < numAttempts; i++) {
         if (shouldSampleRandom(rate)) {
           sampledCount++;
         }
       }
-      
+
       const actualRate = sampledCount / numAttempts;
       // Should be within 5% of target rate (more tolerance for random)
       assert.ok(actualRate > 0.05);
@@ -131,12 +131,12 @@ describe('Sampling Utility', () => {
       assert.equal(isSlowOperation(1499, SLOW_THRESHOLDS.LLM), false);
       assert.equal(isSlowOperation(1500, SLOW_THRESHOLDS.LLM), false);
       assert.equal(isSlowOperation(1501, SLOW_THRESHOLDS.LLM), true);
-      
+
       // Google API threshold: 2000ms
       assert.equal(isSlowOperation(1999, SLOW_THRESHOLDS.GOOGLE_API), false);
       assert.equal(isSlowOperation(2000, SLOW_THRESHOLDS.GOOGLE_API), false);
       assert.equal(isSlowOperation(2001, SLOW_THRESHOLDS.GOOGLE_API), true);
-      
+
       // Stage threshold: 2000ms
       assert.equal(isSlowOperation(1999, SLOW_THRESHOLDS.STAGE), false);
       assert.equal(isSlowOperation(2001, SLOW_THRESHOLDS.STAGE), true);
