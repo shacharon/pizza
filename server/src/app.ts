@@ -82,7 +82,7 @@ export function createApp() {
   // /health - Liveness (process alive?)
   // /ready - Readiness (can serve traffic? Redis ready?)
   // /healthz - Legacy (deprecated, use /ready)
-  
+
   app.get('/health', livenessHandler);
   app.get('/ready', (req, res) => {
     Promise.resolve(readinessHandler(req, res)).catch((err) => {
@@ -90,7 +90,7 @@ export function createApp() {
       res.status(503).json({ status: 'ERROR', ready: false });
     });
   });
-  
+
   // Legacy endpoint (backward compatibility)
   app.get('/healthz', (req, res) => {
     Promise.resolve(legacyHealthCheckHandler(req, res)).catch((err) => {
@@ -147,16 +147,16 @@ export function createApp() {
         env: 'production',
         frontendOriginsCount: 0
       }, '[CORS] ⚠️  FRONTEND_ORIGINS missing in production - allowing health checks but rejecting browser CORS');
-      
+
       // Allow requests without Origin (curl, health checks) but reject browser CORS
       const corsFailSafe = cors((req, cb) => {
         const origin = req.headers.origin as string | undefined;
-        
+
         if (!origin) {
           // Allow health checks, curl, server-to-server
           return cb(null, { ...corsCommon, origin: true });
         }
-        
+
         // Reject all browser requests with Origin header
         logger.warn({ origin }, '[CORS] Origin rejected - FRONTEND_ORIGINS not configured');
         return cb(null, { ...corsCommon, origin: false });
@@ -231,7 +231,7 @@ export function createApp() {
   // This makes OPTIONS return 204 early whenever CORS middleware is active.
   // Using regex pattern instead of '*' for modern Express Router compatibility
   if (activeCorsMiddleware) {
-    app.options(/.*/,  activeCorsMiddleware);
+    app.options(/.*/, activeCorsMiddleware);
   }
 
   // 5. Debug & Diagnostics

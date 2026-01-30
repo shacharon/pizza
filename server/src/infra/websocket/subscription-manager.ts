@@ -148,55 +148,68 @@ export class SubscriptionManager {
     requestId?: string;
     sessionId?: string;
   }> {
-    // Extract requestId for ownership check
-    const envelope = message as any;
-    const requestId = envelope.requestId as string | undefined;
-    const ctx = (ws as any).ctx as any;
-    const connSessionId = ctx?.sessionId || 'anonymous';
-    const connUserId = ctx?.userId;
+    // GUARDRAIL: Wrap all WS operations to prevent crashes
+    try {
+      // Extract requestId for ownership check
+      const envelope = message as any;
+      const requestId = envelope.requestId as string | undefined;
+      const ctx = (ws as any).ctx as any;
+      const connSessionId = ctx?.sessionId || 'anonymous';
+      const connUserId = ctx?.userId;
 
-    // Verify ownership (orchestration)
-    const ownershipDecision = await this.ownershipVerifier.verifyOwnership(
-      requestId || 'unknown',
-      connSessionId,
-      connUserId,
-      clientId,
-      envelope.channel || 'search'
-    );
+      // Verify ownership (orchestration)
+      const ownershipDecision = await this.ownershipVerifier.verifyOwnership(
+        requestId || 'unknown',
+        connSessionId,
+        connUserId,
+        clientId,
+        envelope.channel || 'search'
+      );
 
-    // Route the request (delegated to router)
-    const route = this.router.routeSubscribeRequest(
-      ws,
-      message,
-      clientId,
-      requireAuth,
-      ownershipDecision
-    );
+      // Route the request (delegated to router)
+      const route = this.router.routeSubscribeRequest(
+        ws,
+        message,
+        clientId,
+        requireAuth,
+        ownershipDecision
+      );
 
-    // Execute action based on routing decision
-    if (route.action === 'REJECT') {
-      return { success: false };
-    }
+      // Execute action based on routing decision
+      if (route.action === 'REJECT') {
+        return { success: false };
+      }
 
-    if (route.action === 'PENDING') {
+      if (route.action === 'PENDING') {
+        return {
+          success: true,
+          pending: true,
+          channel: route.channel!,
+          requestId: route.requestId!,
+          sessionId: route.sessionId!
+        };
+      }
+
+      // SUBSCRIBE - accept subscription
+      this.subscribe(route.channel!, route.requestId!, route.sessionId, ws);
       return {
         success: true,
-        pending: true,
+        pending: false,
         channel: route.channel!,
         requestId: route.requestId!,
         sessionId: route.sessionId!
       };
+    } catch (error) {
+      // CRITICAL: Never throw from WS handlers - log and return safe response
+      logger.error({
+        clientId,
+        error: error instanceof Error ? error.message : 'unknown',
+        stack: error instanceof Error ? error.stack : undefined,
+        event: 'ws_subscribe_error'
+      }, '[WS] Subscribe handler failed (non-fatal) - returning failure');
+      
+      return { success: false };
     }
-
-    // SUBSCRIBE - accept subscription
-    this.subscribe(route.channel!, route.requestId!, route.sessionId, ws);
-    return {
-      success: true,
-      pending: false,
-      channel: route.channel!,
-      requestId: route.requestId!,
-      sessionId: route.sessionId!
-    };
   }
 
   /**

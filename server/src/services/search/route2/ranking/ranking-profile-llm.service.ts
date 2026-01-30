@@ -11,9 +11,9 @@ import type { LLMProvider } from '../../../../llm/types.js';
 import type { MappingRoute } from '../types.js';
 import type { OpenState, PriceIntent, MinRatingBucket } from '../shared/shared-filters.types.js';
 import { completeJSONWithPurpose } from '../../../../lib/llm/llm-client.js';
-import { 
-  RankingSelectionSchema, 
-  normalizeWeights, 
+import {
+  RankingSelectionSchema,
+  normalizeWeights,
   type RankingSelection,
   RANKING_SELECTION_JSON_SCHEMA,
   RANKING_SELECTION_SCHEMA_HASH
@@ -64,12 +64,12 @@ export function selectDeterministicProfile(
   ctx: DeterministicProfileContext
 ): RankingSelection | null {
   const { hasUserLocation, route, biasRadiusMeters, query } = ctx;
-  
+
   // If no user location, can't use distance-based profiles
   if (!hasUserLocation) {
     return null; // Let LLM decide
   }
-  
+
   // INVARIANT ENFORCEMENT: If route is NEARBY, use NEARBY profile
   if (route === 'NEARBY') {
     return {
@@ -82,13 +82,13 @@ export function selectDeterministicProfile(
       }
     };
   }
-  
+
   // INVARIANT ENFORCEMENT: If route is TEXTSEARCH, do NOT use NEARBY profile
   // Instead, use BALANCED with distance bias if near keywords or small radius detected
   if (route === 'TEXTSEARCH') {
     const hasNearKeywords = containsNearKeywords(query);
     const hasSmallRadius = biasRadiusMeters !== undefined && biasRadiusMeters <= 20000;
-    
+
     if (hasNearKeywords || hasSmallRadius) {
       // TEXTSEARCH with proximity signals → use BALANCED with distance bias
       return {
@@ -102,7 +102,7 @@ export function selectDeterministicProfile(
       };
     }
   }
-  
+
   // No deterministic decision - let LLM decide
   return null;
 }
@@ -147,15 +147,15 @@ export async function selectRankingProfile(
     biasRadiusMeters,
     query: ctx.query
   });
-  
+
   if (deterministicSelection) {
     // Build detailed reason for profile decision
     const hasNearKeywords = containsNearKeywords(ctx.query);
     const hasSmallRadius = biasRadiusMeters !== undefined && biasRadiusMeters <= 20000;
-    
+
     let reason: string;
     let explanation: string;
-    
+
     if (ctx.route === 'NEARBY') {
       reason = 'nearby_route';
       explanation = 'Route is NEARBY - using NEARBY profile';
@@ -166,7 +166,7 @@ export async function selectRankingProfile(
       reason = 'unknown';
       explanation = 'Deterministic selection applied';
     }
-    
+
     logger.info({
       requestId,
       event: 'ranking_profile_deterministic',
@@ -178,7 +178,7 @@ export async function selectRankingProfile(
       hasSmallRadius: hasSmallRadius || false,
       durationMs: Date.now() - startTime
     }, `[RANKING] ${explanation}`);
-    
+
     return deterministicSelection;
   }
 

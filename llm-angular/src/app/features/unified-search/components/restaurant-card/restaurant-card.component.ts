@@ -213,22 +213,22 @@ export class RestaurantCardComponent implements AfterViewInit {
    */
   getShortAddress(address: string): string {
     if (!address) return '';
-    
+
     // Remove ", Israel" or ", ישראל" suffix
     let short = address.replace(/, (Israel|ישראל)$/i, '');
-    
+
     // MOBILE NOISE REDUCTION: Even more aggressive - max 50 chars
     if (short.length > 50) {
       const parts = short.split(',');
       // Take first 1-2 parts only (street + city)
       short = parts.slice(0, 2).join(',');
     }
-    
+
     // Final truncation if still too long
     if (short.length > 50) {
       short = short.substring(0, 47) + '...';
     }
-    
+
     return short.trim();
   }
 
@@ -241,7 +241,7 @@ export class RestaurantCardComponent implements AfterViewInit {
    */
   getDisplayTags(): string[] {
     const tags = this.restaurant().tags || [];
-    
+
     // MOBILE NOISE REDUCTION: Expanded list of low-signal tags to hide
     const lowSignalTags = [
       // Technical
@@ -263,17 +263,17 @@ export class RestaurantCardComponent implements AfterViewInit {
       'general',
       'other'
     ];
-    
+
     // Filter out low-signal tags
-    const filtered = tags.filter(tag => 
+    const filtered = tags.filter(tag =>
       !lowSignalTags.some(low => tag.toLowerCase().includes(low.toLowerCase()))
     );
-    
+
     // MOBILE NOISE REDUCTION: Max 2 high-signal tags only
     // Prioritize cuisine/dietary tags over generic descriptors
-    const cuisineKeywords = ['italian', 'sushi', 'pizza', 'burger', 'chinese', 'indian', 
-                             'איטלקי', 'סושי', 'פיצה', 'המבורגר', 'סיני', 'הודי'];
-    
+    const cuisineKeywords = ['italian', 'sushi', 'pizza', 'burger', 'chinese', 'indian',
+      'איטלקי', 'סושי', 'פיצה', 'המבורגר', 'סיני', 'הודי'];
+
     const sorted = filtered.sort((a, b) => {
       const aIsCuisine = cuisineKeywords.some(kw => a.toLowerCase().includes(kw));
       const bIsCuisine = cuisineKeywords.some(kw => b.toLowerCase().includes(kw));
@@ -281,7 +281,7 @@ export class RestaurantCardComponent implements AfterViewInit {
       if (!aIsCuisine && bIsCuisine) return 1;
       return 0;
     });
-    
+
     return sorted.slice(0, 2);
   }
 

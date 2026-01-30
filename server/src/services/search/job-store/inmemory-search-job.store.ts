@@ -297,6 +297,27 @@ export class InMemorySearchJobStore implements ISearchJobStore {
   }
 
   /**
+   * Get all running jobs (for shutdown cleanup)
+   */
+  getRunningJobs(): SearchJob[] {
+    const runningJobs: SearchJob[] = [];
+    const now = Date.now();
+
+    for (const [_, job] of this.jobs.entries()) {
+      // Skip expired jobs
+      if (now - job.createdAt > this.ttlMs) {
+        continue;
+      }
+
+      if (job.status === 'RUNNING') {
+        runningJobs.push(job);
+      }
+    }
+
+    return runningJobs;
+  }
+
+  /**
    * Auto-cleanup expired jobs
    */
   private sweep(): void {

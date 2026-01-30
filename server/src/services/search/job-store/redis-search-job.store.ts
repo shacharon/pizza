@@ -274,6 +274,57 @@ export class RedisSearchJobStore implements ISearchJobStore {
   }
 
   /**
+   * Get all running jobs (for shutdown cleanup)
+   * Note: Redis doesn't support scanning by status efficiently, so this scans all job keys
+   */
+  async getRunningJobs(): Promise<SearchJob[]> {
+    const runningJobs: SearchJob[] = [];
+    
+    try {
+      // Scan for all job keys
+      let cursor = '0';
+      do {
+        const [nextCursor, keys] = await this.redis.scan(
+          cursor,
+          'MATCH',
+          `${KEY_PREFIX}*`,
+          'COUNT',
+          100
+        );
+        cursor = nextCursor;
+
+        // Fetch jobs in parallel
+        const jobs = await Promise.all(
+          keys.map(async (key) => {
+            const data = await this.redis.get(key);
+            if (!data) return null;
+            try {
+              return JSON.parse(data) as SearchJob;
+            } catch {
+              return null;
+            }
+          })
+        );
+
+        // Filter for running jobs
+        for (const job of jobs) {
+          if (job && job.status === 'RUNNING') {
+            runningJobs.push(job);
+          }
+        }
+      } while (cursor !== '0');
+
+      return runningJobs;
+    } catch (err) {
+      logger.error({
+        error: (err as Error).message,
+        msg: '[RedisJobStore] Failed to get running jobs'
+      });
+      return [];
+    }
+  }
+
+  /**
    * Close Redis connection (for graceful shutdown)
    */
   async close(): Promise<void> {

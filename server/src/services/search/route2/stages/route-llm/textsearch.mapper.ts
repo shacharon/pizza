@@ -206,8 +206,8 @@ export async function executeTextSearchMapper(
         intent.cityText || null,
         {
           requestId,
-          traceId,
-          sessionId,
+          ...(traceId && { traceId }),
+          ...(sessionId && { sessionId }),
           llmProvider,
           uiLanguage: finalFilters.uiLanguage as 'he' | 'en',
           regionCode: finalFilters.regionCode
@@ -292,8 +292,8 @@ async function buildDeterministicMapping(
       intent.cityText || null,
       {
         requestId,
-        traceId,
-        sessionId,
+        ...(traceId && { traceId }),
+        ...(sessionId && { sessionId }),
         llmProvider,
         uiLanguage: finalFilters.uiLanguage as 'he' | 'en',
         regionCode: finalFilters.regionCode
@@ -338,9 +338,14 @@ function buildUserPrompt(query: string, finalFilters: FinalSharedFilters): strin
 
 /**
  * Apply location bias based on available anchors
+ * 
+ * P0 FIX: When explicit city is mentioned (intent.reason = explicit_city_mentioned OR cityText exists),
+ * PREFER city-center bias (geocoded in handler) over userLocation default anchor.
+ * This ensures explicit city searches focus on the city center, not user's current location.
+ * 
  * Priority:
- * 1. userLocation (if present)
- * 2. cityText (will be geocoded later in text-search.handler.ts)
+ * 1. cityText (explicit_city_mentioned) - will be geocoded in handler with smaller radius
+ * 2. userLocation (fallback when no explicit city)
  * 3. No bias
  */
 function applyLocationBias(
@@ -349,7 +354,29 @@ function applyLocationBias(
   request: SearchRequest,
   requestId?: string
 ): { bias: any, source: string | null, nullReason?: string } {
-  // Priority 1: userLocation (immediate bias)
+  // P0 FIX: Priority 1 - Check for EXPLICIT city first (before userLocation)
+  // When user explicitly mentions a city, prefer city-center bias over their current location
+  const hasExplicitCity = !!(mapping.cityText || intent.reason === 'explicit_city_mentioned');
+  
+  if (hasExplicitCity && mapping.cityText) {
+    logger.info({
+      requestId,
+      stage: 'textsearch_mapper',
+      event: 'bias_planned',
+      source: 'cityCenter_pending_geocode',
+      cityText: mapping.cityText,
+      intentReason: intent.reason,
+      note: 'explicit_city_preferred_over_userLocation'
+    }, '[TEXTSEARCH] City-center bias planned (explicit city takes priority over userLocation)');
+
+    // Return undefined bias but indicate it's planned (handler will geocode with smaller radius)
+    return {
+      bias: undefined,
+      source: 'cityCenter_pending_geocode'
+    };
+  }
+
+  // Priority 2: userLocation (fallback when no explicit city mentioned)
   if (request.userLocation) {
     const bias = {
       type: 'locationBias' as const,
@@ -364,28 +391,11 @@ function applyLocationBias(
       source: 'userLocation',
       lat: bias.center.lat,
       lng: bias.center.lng,
-      radiusMeters: bias.radiusMeters
-    }, '[TEXTSEARCH] Location bias applied from userLocation (default anchor)');
+      radiusMeters: bias.radiusMeters,
+      note: 'no_explicit_city_using_userLocation'
+    }, '[TEXTSEARCH] Location bias applied from userLocation (fallback, no explicit city)');
 
     return { bias, source: 'userLocation' };
-  }
-
-  // Priority 2: cityText exists (will be geocoded later in pipeline)
-  // Don't set bias here, but signal that bias is planned
-  if (mapping.cityText) {
-    logger.info({
-      requestId,
-      stage: 'textsearch_mapper',
-      event: 'bias_planned',
-      source: 'cityText_pending_geocode',
-      cityText: mapping.cityText
-    }, '[TEXTSEARCH] Location bias planned from cityText (will be geocoded in handler)');
-
-    // Return undefined bias but indicate it's planned (handler will geocode)
-    return {
-      bias: undefined,
-      source: 'cityText_pending_geocode'
-    };
   }
 
   // Priority 3: No location anchor available

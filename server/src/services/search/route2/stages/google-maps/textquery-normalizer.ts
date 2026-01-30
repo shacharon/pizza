@@ -81,22 +81,53 @@ function extractCuisineKeyword(query: string): string | null {
 }
 
 /**
+ * Extract city name from query
+ * Looks for common Hebrew city patterns and prepositions
+ */
+function extractCityFromQuery(query: string): string | null {
+  const lowerQuery = query.toLowerCase().trim();
+
+  // Hebrew prepositions for location: ב (in), ליד (near), בקרבת (near)
+  const cityPatterns = [
+    /ב([א-ת]{2,}(?:\s+[א-ת]{2,})?)\s*$/,  // "בגדרה", "בתל אביב" at end
+    /ב([א-ת]{2,}(?:\s+[א-ת]{2,})?)\s+/,   // "בגדרה " in middle
+    /ליד\s+([א-ת]{2,}(?:\s+[א-ת]{2,})?)/,  // "ליד גדרה"
+    /בקרבת\s+([א-ת]{2,}(?:\s+[א-ת]{2,})?)/, // "בקרבת גדרה"
+  ];
+
+  for (const pattern of cityPatterns) {
+    const match = lowerQuery.match(pattern);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+  }
+
+  return null;
+}
+
+/**
  * Normalize textQuery for Google Places Text Search
+ * 
+ * P0 FIX: When explicit city is mentioned (cityText exists OR detected in query),
+ * ALWAYS preserve the city in the normalized query. Never reduce to cuisine-only.
  * 
  * Rules:
  * 1. If query is generic Hebrew "מה יש לאכול היום/עכשיו/משהו לאכול" => "מסעדות"
  * 2. If query mentions "מסעדות" already => keep it
- * 3. If query mentions a cuisine/food word (pizza/sushi/etc) => prefer that term
- * 4. Otherwise => return original query
+ * 3. If query has explicit city + cuisine => keep both (e.g., "איטלקי בגדרה")
+ * 4. If query mentions a cuisine/food word (pizza/sushi/etc) WITHOUT city => extract cuisine only
+ * 5. Otherwise => return original query
  * 
  * @param textQuery Original text query from mapper
+ * @param cityText Explicit city from intent (explicit_city_mentioned)
  * @param requestId For logging
  * @returns Canonical text query
  */
 export function normalizeTextQuery(
   textQuery: string,
+  cityText?: string | null,
   requestId?: string
-): { canonicalTextQuery: string; wasNormalized: boolean; reason: string } {
+): { canonicalTextQuery: string; wasNormalized: boolean; reason: string; keptCity?: boolean } {
   const trimmed = textQuery.trim();
   const lowerQuery = trimmed.toLowerCase();
 
@@ -105,13 +136,44 @@ export function normalizeTextQuery(
     return {
       canonicalTextQuery: trimmed,
       wasNormalized: false,
-      reason: 'already_has_category'
+      reason: 'already_has_category',
+      keptCity: !!cityText
     };
   }
+
+  // P0 FIX: Check if explicit city exists (from intent OR detected in query)
+  const detectedCity = extractCityFromQuery(trimmed);
+  const hasExplicitCity = !!(cityText || detectedCity);
+  const cityToKeep = cityText || detectedCity;
 
   // Extract cuisine keyword if present (e.g., "pizza", "sushi")
   const cuisineKeyword = extractCuisineKeyword(trimmed);
   if (cuisineKeyword) {
+    // P0 FIX: If explicit city exists, preserve it with cuisine
+    if (hasExplicitCity && cityToKeep) {
+      const canonical = `${cuisineKeyword} ב${cityToKeep}`;
+      const rawHash = createHash('sha256').update(trimmed).digest('hex').slice(0, 8);
+
+      logger.info({
+        requestId,
+        event: 'textquery_normalized',
+        rawHash,
+        originalTextQuery: trimmed,
+        canonicalTextQuery: canonical,
+        reason: 'extracted_cuisine_with_city',
+        keptCity: true,
+        cityText: cityToKeep
+      }, '[TEXTSEARCH] Normalized to cuisine + city (explicit city preserved)');
+
+      return {
+        canonicalTextQuery: canonical,
+        wasNormalized: true,
+        reason: 'extracted_cuisine_with_city',
+        keptCity: true
+      };
+    }
+
+    // No explicit city - extract cuisine only (original behavior)
     const canonical = cuisineKeyword;
     const rawHash = createHash('sha256').update(trimmed).digest('hex').slice(0, 8);
 
@@ -119,14 +181,17 @@ export function normalizeTextQuery(
       requestId,
       event: 'textquery_normalized',
       rawHash,
+      originalTextQuery: trimmed,
       canonicalTextQuery: canonical,
-      reason: 'extracted_cuisine'
-    }, '[TEXTSEARCH] Normalized to cuisine keyword');
+      reason: 'extracted_cuisine',
+      keptCity: false
+    }, '[TEXTSEARCH] Normalized to cuisine keyword (no explicit city)');
 
     return {
       canonicalTextQuery: canonical,
       wasNormalized: true,
-      reason: 'extracted_cuisine'
+      reason: 'extracted_cuisine',
+      keptCity: false
     };
   }
 
@@ -139,14 +204,17 @@ export function normalizeTextQuery(
       requestId,
       event: 'textquery_normalized',
       rawHash,
+      originalTextQuery: trimmed,
       canonicalTextQuery: canonical,
-      reason: 'generic_chatty_query'
+      reason: 'generic_chatty_query',
+      keptCity: false
     }, '[TEXTSEARCH] Normalized generic chatty query');
 
     return {
       canonicalTextQuery: canonical,
       wasNormalized: true,
-      reason: 'generic_chatty_query'
+      reason: 'generic_chatty_query',
+      keptCity: false
     };
   }
 
@@ -154,6 +222,7 @@ export function normalizeTextQuery(
   return {
     canonicalTextQuery: trimmed,
     wasNormalized: false,
-    reason: 'no_normalization_needed'
+    reason: 'no_normalization_needed',
+    keptCity: !!cityText
   };
 }

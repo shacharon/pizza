@@ -28,7 +28,7 @@ interface RetryConfig {
  * Handles retry logic with exponential backoff
  */
 export class RetryHandler {
-  constructor(private config: RetryConfig) {}
+  constructor(private config: RetryConfig) { }
 
   /**
    * Execute function with retry logic
@@ -79,7 +79,7 @@ export class RetryHandler {
             traceId: opts?.traceId,
             errorType: category.type
           }, '[LLM] Timeout, will retry with backoff');
-          
+
           // Continue to retry (last attempt check below)
         }
 

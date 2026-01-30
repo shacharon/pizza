@@ -35,26 +35,44 @@ export async function executeBackgroundSearch(params: BackgroundParams): Promise
     // P0 Fix: Non-fatal Redis write (job tracking is optional)
     try {
       await searchJobStore.setStatus(requestId, 'RUNNING', 10);
+      
+      // OBSERVABILITY: Log status transition
+      logger.info({
+        requestId,
+        status: 'RUNNING',
+        progress: 10,
+        event: 'status_running'
+      }, '[Observability] Job status set to RUNNING');
     } catch (redisErr) {
       logger.error({
         requestId,
         error: redisErr instanceof Error ? redisErr.message : 'unknown',
         operation: 'setStatus',
-        stage: 'accepted'
+        stage: 'accepted',
+        event: 'ws_error'
       }, 'Redis JobStore write failed (non-fatal) - continuing pipeline');
     }
 
-    publishSearchEvent(requestId, {
-      channel: 'search',
-      contractsVersion: CONTRACTS_VERSION,
-      type: 'progress',
-      requestId,
-      ts: new Date().toISOString(),
-      stage: 'accepted',
-      status: 'running',
-      progress: 10,
-      message: 'Search started'
-    });
+    // GUARDRAIL: WS publish is optional - never blocks search execution
+    try {
+      publishSearchEvent(requestId, {
+        channel: 'search',
+        contractsVersion: CONTRACTS_VERSION,
+        type: 'progress',
+        requestId,
+        ts: new Date().toISOString(),
+        stage: 'accepted',
+        status: 'running',
+        progress: 10,
+        message: 'Search started'
+      });
+    } catch (wsErr) {
+      logger.warn({
+        requestId,
+        error: wsErr instanceof Error ? wsErr.message : 'unknown',
+        event: 'ws_publish_error'
+      }, '[WS] Failed to publish progress event (non-fatal)');
+    }
 
     // Step 2: Processing (route_llm)
     // P0 Fix: Non-fatal Redis write
@@ -65,21 +83,31 @@ export async function executeBackgroundSearch(params: BackgroundParams): Promise
         requestId,
         error: redisErr instanceof Error ? redisErr.message : 'unknown',
         operation: 'setStatus',
-        stage: 'route_llm'
+        stage: 'route_llm',
+        event: 'ws_error'
       }, 'Redis JobStore write failed (non-fatal) - continuing pipeline');
     }
 
-    publishSearchEvent(requestId, {
-      channel: 'search',
-      contractsVersion: CONTRACTS_VERSION,
-      type: 'progress',
-      requestId,
-      ts: new Date().toISOString(),
-      stage: 'route_llm',
-      status: 'running',
-      progress: 50,
-      message: 'Processing search'
-    });
+    // GUARDRAIL: WS publish is optional - never blocks search execution
+    try {
+      publishSearchEvent(requestId, {
+        channel: 'search',
+        contractsVersion: CONTRACTS_VERSION,
+        type: 'progress',
+        requestId,
+        ts: new Date().toISOString(),
+        stage: 'route_llm',
+        status: 'running',
+        progress: 50,
+        message: 'Processing search'
+      });
+    } catch (wsErr) {
+      logger.warn({
+        requestId,
+        error: wsErr instanceof Error ? wsErr.message : 'unknown',
+        event: 'ws_publish_error'
+      }, '[WS] Failed to publish progress event (non-fatal)');
+    }
 
     const response = await searchRoute2(queryData, ctxWithAbort);
 
@@ -107,63 +135,90 @@ export async function executeBackgroundSearch(params: BackgroundParams): Promise
     // P0 Fix: Non-fatal Redis writes
     try {
       await searchJobStore.setResult(requestId, response);
+      
+      // OBSERVABILITY: Log result storage success
+      logger.info({
+        requestId,
+        resultCount: response.results?.length || 0,
+        hasAssist: Boolean(response.assist),
+        event: 'result_stored'
+      }, '[Observability] Search result stored successfully');
     } catch (redisErr) {
       logger.error({
         requestId,
         error: redisErr instanceof Error ? redisErr.message : 'unknown',
-        operation: 'setResult'
+        operation: 'setResult',
+        event: 'ws_error'
       }, 'Redis JobStore write failed (non-fatal) - result not persisted');
     }
 
     try {
       await searchJobStore.setStatus(requestId, terminalStatus, 100);
+      
+      // OBSERVABILITY: Log terminal status
+      logger.info({
+        requestId,
+        status: terminalStatus,
+        progress: 100,
+        event: 'status_done'
+      }, '[Observability] Job reached terminal status');
     } catch (redisErr) {
       logger.error({
         requestId,
         error: redisErr instanceof Error ? redisErr.message : 'unknown',
         operation: 'setStatus',
-        stage: 'done'
+        stage: 'done',
+        event: 'ws_error'
       }, 'Redis JobStore write failed (non-fatal) - status not persisted');
     }
 
-    // Final WS Notification
-    if (wsEventType === 'clarify') {
-      publishSearchEvent(requestId, {
-        channel: 'search',
-        contractsVersion: CONTRACTS_VERSION,
-        type: 'clarify',
+    // Final WS Notification - GUARDRAIL: Never blocks, even if WS fails
+    try {
+      if (wsEventType === 'clarify') {
+        publishSearchEvent(requestId, {
+          channel: 'search',
+          contractsVersion: CONTRACTS_VERSION,
+          type: 'clarify',
+          requestId,
+          ts: new Date().toISOString(),
+          stage: 'done',
+          message: response.assist?.message || 'Please clarify'
+        });
+      } else if (wsEventType === 'stopped') {
+        // GATE STOP - pipeline stopped, no results by design
+        publishSearchEvent(requestId, {
+          channel: 'search',
+          contractsVersion: CONTRACTS_VERSION,
+          type: 'ready',
+          requestId,
+          ts: new Date().toISOString(),
+          stage: 'done',
+          ready: 'stop',
+          decision: 'STOP',
+          resultCount: 0,
+          finalStatus: 'DONE_STOPPED'
+        } as any);
+      } else {
+        publishSearchEvent(requestId, {
+          channel: 'search',
+          contractsVersion: CONTRACTS_VERSION,
+          type: 'ready',
+          requestId,
+          ts: new Date().toISOString(),
+          stage: 'done',
+          ready: 'results',
+          decision: 'CONTINUE',
+          resultCount: response.results.length,
+          resultUrl // Optional based on contract
+        });
+      }
+    } catch (wsErr) {
+      logger.warn({
         requestId,
-        ts: new Date().toISOString(),
-        stage: 'done',
-        message: response.assist?.message || 'Please clarify'
-      });
-    } else if (wsEventType === 'stopped') {
-      // GATE STOP - pipeline stopped, no results by design
-      publishSearchEvent(requestId, {
-        channel: 'search',
-        contractsVersion: CONTRACTS_VERSION,
-        type: 'ready',
-        requestId,
-        ts: new Date().toISOString(),
-        stage: 'done',
-        ready: 'stop',
-        decision: 'STOP',
-        resultCount: 0,
-        finalStatus: 'DONE_STOPPED'
-      } as any);
-    } else {
-      publishSearchEvent(requestId, {
-        channel: 'search',
-        contractsVersion: CONTRACTS_VERSION,
-        type: 'ready',
-        requestId,
-        ts: new Date().toISOString(),
-        stage: 'done',
-        ready: 'results',
-        decision: 'CONTINUE',
-        resultCount: response.results.length,
-        resultUrl // Optional based on contract
-      });
+        error: wsErr instanceof Error ? wsErr.message : 'unknown',
+        wsEventType,
+        event: 'ws_publish_error'
+      }, '[WS] Failed to publish final event (non-fatal) - result still stored');
     }
 
   } catch (err) {
@@ -189,20 +244,30 @@ export async function executeBackgroundSearch(params: BackgroundParams): Promise
         requestId,
         error: redisErr instanceof Error ? redisErr.message : 'unknown',
         operation: 'setStatus',
-        stage: 'error'
+        stage: 'error',
+        event: 'ws_error'
       }, 'Redis JobStore write failed (non-fatal) - status not persisted');
     }
 
-    publishSearchEvent(requestId, {
-      channel: 'search',
-      contractsVersion: CONTRACTS_VERSION,
-      type: 'error',
-      requestId,
-      ts: new Date().toISOString(),
-      stage: 'done',
-      code: errorCode as any,
-      message
-    });
+    // GUARDRAIL: WS publish is optional - never blocks error handling
+    try {
+      publishSearchEvent(requestId, {
+        channel: 'search',
+        contractsVersion: CONTRACTS_VERSION,
+        type: 'error',
+        requestId,
+        ts: new Date().toISOString(),
+        stage: 'done',
+        code: errorCode as any,
+        message
+      });
+    } catch (wsErr) {
+      logger.warn({
+        requestId,
+        error: wsErr instanceof Error ? wsErr.message : 'unknown',
+        event: 'ws_publish_error'
+      }, '[WS] Failed to publish error event (non-fatal)');
+    }
   } finally {
     clearTimeout(timeoutId);
   }

@@ -76,10 +76,10 @@ export function buildNavigationUrl(destination: NavigationDestination): string {
 export function isMobileDevice(): boolean {
   // Check for mobile user agent
   const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera;
-  
+
   // Mobile device patterns
   const mobilePatterns = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i;
-  
+
   return mobilePatterns.test(userAgent.toLowerCase());
 }
 
@@ -174,7 +174,7 @@ export function openNavigation(
 
   // Handle success
   if (newWindow) {
-    console.log('[Navigation] Successfully opened', { 
+    console.log('[Navigation] Successfully opened', {
       isMobile,
       method: 'window.open',
       target: '_blank'
@@ -204,7 +204,7 @@ export function openNavigation(
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    
+
     // If still failed, warn user
     setTimeout(() => {
       console.error('[Navigation] All methods failed. Please check popup blocker settings.');

@@ -315,7 +315,7 @@ export class WebSocketManager {
 
     // Verify ownership using SubscriptionManager's internal verifier
     const ownershipVerifier = (this.subscriptionManager as any).ownershipVerifier;
-    
+
     if (!ownershipVerifier) {
       logger.error({
         requestId,
@@ -561,7 +561,7 @@ export class WebSocketManager {
       // This prevents infinite "connecting" spam from heartbeat pings
 
       // Cleanup expired pending subscriptions
-      this.pendingSubscriptionsManager.cleanupExpired((ws, channel, requestId, reason) => 
+      this.pendingSubscriptionsManager.cleanupExpired((ws, channel, requestId, reason) =>
         this.subscriptionAck.sendSubNack(ws, channel, requestId, reason)
       );
 

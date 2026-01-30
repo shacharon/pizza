@@ -33,7 +33,7 @@ export async function fetchAllPages(
   // Fetch first page
   const firstResponse = await callGooglePlacesSearchText(requestBody, apiKey, requestId);
   pagesFetched++;
-  
+
   if (firstResponse.places) {
     totalFetched += firstResponse.places.length;
     for (const place of firstResponse.places) {
@@ -56,17 +56,17 @@ export async function fetchAllPages(
     if (pageResponse.places) {
       totalFetched += pageResponse.places.length;
       const remaining = maxResults - results.length;
-      
+
       for (const place of pageResponse.places) {
         if (results.length >= maxResults) break;
-        
+
         const mapped = mapGooglePlaceToResult(place);
         if (!seenPlaceIds.has(mapped.placeId)) {
           seenPlaceIds.add(mapped.placeId);
           results.push(mapped);
         }
       }
-      
+
       nextPageToken = pageResponse.nextPageToken;
     } else {
       break;

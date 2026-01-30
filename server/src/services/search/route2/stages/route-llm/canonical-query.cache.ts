@@ -40,7 +40,7 @@ export async function getCachedCanonicalQuery(
   requestId: string | undefined
 ): Promise<CanonicalQueryOutput> {
   const cache = getCacheService();
-  
+
   // If no cache available, call generator directly
   if (!cache) {
     logger.debug({
@@ -48,7 +48,7 @@ export async function getCachedCanonicalQuery(
       event: 'canonical_query_cache_bypass',
       reason: 'cache_service_not_available'
     }, '[CANONICAL] Cache not available, calling generator');
-    
+
     return await generatorFn();
   }
 

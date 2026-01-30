@@ -2,11 +2,11 @@
  * Navigation Utilities - Unit Tests
  */
 
-import { 
-  buildNavigationUrl, 
-  isMobileDevice, 
-  buildDirectionsUrl, 
-  buildPlaceUrl, 
+import {
+  buildNavigationUrl,
+  isMobileDevice,
+  buildDirectionsUrl,
+  buildPlaceUrl,
   buildPhoneUrl,
   type NavigationDestination
 } from './navigation.util';
@@ -30,10 +30,10 @@ describe('Navigation Utilities', () => {
     });
 
     it('should prioritize placeId when both provided', () => {
-      const url = buildNavigationUrl({ 
-        placeId: testPlaceId, 
-        lat: testLat, 
-        lng: testLng 
+      const url = buildNavigationUrl({
+        placeId: testPlaceId,
+        lat: testLat,
+        lng: testLng
       });
 
       expect(url).toBe(`https://maps.google.com/?q=place_id:${testPlaceId}`);

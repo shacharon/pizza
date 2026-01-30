@@ -134,7 +134,7 @@ describe('/ws-ticket Redis Readiness', () => {
         .set('Authorization', validToken);
 
       // Should log once per request, not cumulative spam
-      const errorLogs = logSpy.mock.calls.filter(call => 
+      const errorLogs = logSpy.mock.calls.filter(call =>
         call.some(arg => typeof arg === 'string' && arg.includes('ws_ticket_redis_not_ready'))
       );
 

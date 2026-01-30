@@ -16,6 +16,7 @@ import { searchJobStore } from '../../services/search/job-store/index.js';
 import { hashSessionId, sanitizePhotoUrls } from '../../utils/security.utils.js';
 import { wsManager } from '../../server.js';
 import crypto from 'crypto';
+import { DEDUP_RUNNING_MAX_AGE_MS, DEDUP_SUCCESS_FRESH_WINDOW_MS } from '../../config/deduplication.config.js';
 
 // Extracted modules
 import { executeBackgroundSearch } from './search.async-execution.js';
@@ -116,11 +117,10 @@ router.post('/', async (req: Request, res: Response) => {
         userLocation: queryData.userLocation
       });
 
-      // Check for existing job with same idempotency key (3-5s fresh window)
-      const FRESH_WINDOW_MS = 5000; // 5 seconds
-      let existingJob = null;
+      // Check for existing job with same idempotency key
+      let candidateJob = null;
       try {
-        existingJob = await searchJobStore.findByIdempotencyKey(idempotencyKey, FRESH_WINDOW_MS);
+        candidateJob = await searchJobStore.findByIdempotencyKey(idempotencyKey, DEDUP_SUCCESS_FRESH_WINDOW_MS);
       } catch (err) {
         // Non-fatal: if lookup fails, continue with new job creation
         logger.warn({
@@ -130,26 +130,133 @@ router.post('/', async (req: Request, res: Response) => {
         }, '[Deduplication] Failed to check for existing job (non-fatal) - creating new job');
       }
 
-      if (existingJob) {
+      // Deduplication Decision Logic
+      let shouldReuse = false;
+      let reuseReason = '';
+      let existingJob = null;
+
+      if (candidateJob) {
+        const now = Date.now();
+        const ageMs = now - candidateJob.createdAt;
+        const updatedAgeMs = now - candidateJob.updatedAt;
+
+        // Log candidate found for observability
+        logger.info({
+          requestId,
+          candidateRequestId: candidateJob.requestId,
+          event: 'dedup_candidate_found',
+          status: candidateJob.status,
+          ageMs,
+          updatedAgeMs,
+          progress: candidateJob.progress,
+          sessionHash: hashSessionId(ownerSessionId || 'anonymous')
+        }, '[Deduplication] Found candidate job for deduplication');
+
+        // Decision Matrix:
+        // 1. DONE_SUCCESS -> REUSE (cached result)
+        // 2. DONE_FAIL -> NEW_JOB (failed, don't reuse)
+        // 3. RUNNING -> Check staleness:
+        //    - Fresh (updatedAt recent) -> REUSE
+        //    - Stale (updatedAt old) -> NEW_JOB + mark old as failed
+
+        if (candidateJob.status === 'DONE_SUCCESS') {
+          // Cached result available - reuse immediately
+          shouldReuse = true;
+          reuseReason = 'CACHED_RESULT_AVAILABLE';
+          existingJob = candidateJob;
+        } else if (candidateJob.status === 'DONE_FAILED') {
+          // Previous job failed - create new job
+          shouldReuse = false;
+          reuseReason = 'PREVIOUS_JOB_FAILED';
+        } else if (candidateJob.status === 'RUNNING') {
+          // Check if RUNNING job is stale
+          const isStaleByUpdatedAt = updatedAgeMs > DEDUP_RUNNING_MAX_AGE_MS;
+          const isStaleByAge = ageMs > DEDUP_RUNNING_MAX_AGE_MS;
+
+          if (isStaleByUpdatedAt || isStaleByAge) {
+            // Stale RUNNING job - do not reuse
+            shouldReuse = false;
+            reuseReason = isStaleByUpdatedAt
+              ? `STALE_RUNNING_NO_HEARTBEAT (updatedAgeMs: ${updatedAgeMs}ms > ${DEDUP_RUNNING_MAX_AGE_MS}ms)`
+              : `STALE_RUNNING_TOO_OLD (ageMs: ${ageMs}ms > ${DEDUP_RUNNING_MAX_AGE_MS}ms)`;
+
+            // Fail-safe: Mark stale RUNNING job as failed
+            try {
+              await searchJobStore.setError(
+                candidateJob.requestId,
+                'STALE_RUNNING',
+                `Job marked as stale during deduplication check (updatedAgeMs: ${updatedAgeMs}ms)`,
+                'SEARCH_FAILED'
+              );
+
+              logger.warn({
+                requestId: candidateJob.requestId,
+                event: 'stale_running_marked_failed',
+                ageMs,
+                updatedAgeMs,
+                maxAgeMs: DEDUP_RUNNING_MAX_AGE_MS,
+                reason: 'STALE_RUNNING_DEDUP_RESET'
+              }, '[Deduplication] Marked stale RUNNING job as DONE_FAILED');
+            } catch (markErr) {
+              // Non-fatal: if marking fails, still create new job
+              logger.error({
+                requestId: candidateJob.requestId,
+                error: markErr instanceof Error ? markErr.message : 'unknown',
+                operation: 'setError'
+              }, '[Deduplication] Failed to mark stale RUNNING job as failed (non-fatal)');
+            }
+          } else {
+            // Fresh RUNNING job - reuse it
+            shouldReuse = true;
+            reuseReason = `RUNNING_FRESH (updatedAgeMs: ${updatedAgeMs}ms < ${DEDUP_RUNNING_MAX_AGE_MS}ms)`;
+            existingJob = candidateJob;
+          }
+        } else {
+          // Other statuses (PENDING, DONE_CLARIFY, DONE_STOPPED) - reuse
+          shouldReuse = true;
+          reuseReason = `STATUS_${candidateJob.status}`;
+          existingJob = candidateJob;
+        }
+
+        // Log decision for observability
+        logger.info({
+          requestId,
+          originalRequestId: requestId,
+          candidateRequestId: candidateJob.requestId,
+          event: 'dedup_decision',
+          decision: shouldReuse ? 'REUSE' : 'NEW_JOB',
+          reason: reuseReason,
+          status: candidateJob.status,
+          ageMs,
+          updatedAgeMs,
+          maxAgeMs: DEDUP_RUNNING_MAX_AGE_MS
+        }, `[Deduplication] Decision: ${shouldReuse ? 'REUSE' : 'NEW_JOB'} - ${reuseReason}`);
+      }
+
+      if (shouldReuse && existingJob) {
         // Duplicate detected - reuse existing requestId
         logger.info({
           requestId: existingJob.requestId,
           originalRequestId: requestId,
           event: 'duplicate_search_deduped',
           status: existingJob.status,
-          ageMs: Date.now() - existingJob.updatedAt,
+          ageMs: Date.now() - existingJob.createdAt,
+          updatedAgeMs: Date.now() - existingJob.updatedAt,
           sessionHash: hashSessionId(ownerSessionId || 'anonymous')
         }, '[Deduplication] Reusing existing requestId for duplicate search');
 
         // Re-activate subscriptions for the existing requestId
+        // GUARDRAIL: WS activation failures are non-fatal - wrapped in defensive try/catch
         try {
           wsManager.activatePendingSubscriptions(existingJob.requestId, ownerSessionId || 'anonymous');
         } catch (wsErr) {
           logger.error({
             requestId: existingJob.requestId,
             error: wsErr instanceof Error ? wsErr.message : 'unknown',
-            operation: 'activatePendingSubscriptions'
-          }, '[P1 Reliability] WebSocket activation failed (non-fatal) - search continues');
+            stack: wsErr instanceof Error ? wsErr.stack : undefined,
+            operation: 'activatePendingSubscriptions',
+            event: 'ws_subscribe_error'
+          }, '[WS] WebSocket activation failed for duplicate job (non-fatal) - search continues via HTTP polling');
         }
 
         const resultUrl = `/api/v1/search/${existingJob.requestId}/result`;
@@ -169,25 +276,29 @@ router.post('/', async (req: Request, res: Response) => {
           idempotencyKey
         });
 
+        // OBSERVABILITY: Log job creation (once per requestId)
         logger.info({
           requestId,
           sessionHash: hashSessionId(ownerSessionId || 'anonymous'),
           hasUserId: Boolean(ownerUserId),
           operation: 'createJob',
           decision: 'ACCEPTED',
-          hasIdempotencyKey: true
-        }, '[P0 Security] Job created with JWT session binding and idempotency key');
+          hasIdempotencyKey: true,
+          event: 'job_created'
+        }, '[Observability] Job created with JWT session binding and idempotency key');
 
         // CTO-grade: Activate pending subscriptions for this request
-        // GUARDRAIL: WS activation failures are non-fatal
+        // GUARDRAIL: WS activation failures are non-fatal - wrapped in defensive try/catch
         try {
           wsManager.activatePendingSubscriptions(requestId, ownerSessionId || 'anonymous');
         } catch (wsErr) {
           logger.error({
             requestId,
             error: wsErr instanceof Error ? wsErr.message : 'unknown',
-            operation: 'activatePendingSubscriptions'
-          }, '[P1 Reliability] WebSocket activation failed (non-fatal) - search continues');
+            stack: wsErr instanceof Error ? wsErr.stack : undefined,
+            operation: 'activatePendingSubscriptions',
+            event: 'ws_subscribe_error'
+          }, '[WS] WebSocket activation failed (non-fatal) - search continues via HTTP polling');
         }
       } catch (redisErr) {
         logger.error({
@@ -256,8 +367,14 @@ router.get('/:requestId/result', async (req: Request, res: Response) => {
   }
 
   // Authorization passed - retrieve job
+  // GUARDRAIL: HTTP result delivery is independent of WS state
+  // Job store is the source of truth, not WS subscriptions
   const job = await searchJobStore.getJob(requestId);
   if (!job) {
+    logger.warn({
+      requestId,
+      event: 'getResult_not_found'
+    }, '[HTTP] Job not found in store - may have expired or never created');
     return res.status(404).json({ code: 'NOT_FOUND', requestId });
   }
 
@@ -288,6 +405,34 @@ router.get('/:requestId/result', async (req: Request, res: Response) => {
   }
 
   if (job.status === 'PENDING' || job.status === 'RUNNING') {
+    // Check if RUNNING job is stale
+    const isStale = job.status === 'RUNNING' && updatedAgeMs > DEDUP_RUNNING_MAX_AGE_MS;
+
+    if (isStale) {
+      logger.warn({
+        requestId,
+        event: 'getResult_stale_running',
+        ageMs,
+        updatedAgeMs,
+        maxAgeMs: DEDUP_RUNNING_MAX_AGE_MS,
+        progress: job.progress
+      }, '[HTTP] Stale RUNNING job detected - client should consider retrying');
+
+      // Return 202 but with metadata indicating staleness
+      return res.status(202).json({
+        requestId,
+        status: job.status,
+        progress: job.progress,
+        contractsVersion: CONTRACTS_VERSION,
+        meta: {
+          isStale: true,
+          ageMs,
+          updatedAgeMs,
+          message: 'Search may be stuck. Consider restarting search if no progress after retry.'
+        }
+      });
+    }
+
     return res.status(202).json({
       requestId,
       status: job.status,
@@ -325,14 +470,26 @@ router.get('/:requestId/result', async (req: Request, res: Response) => {
       results: sanitizePhotoUrls((result as any).results || [])
     };
 
+    // OBSERVABILITY: Log successful result retrieval
     logger.info({
       requestId,
       photoUrlsSanitized: true,
-      resultCount: (result as any).results?.length || 0
-    }, '[P0 Security] Photo URLs sanitized');
+      resultCount: (result as any).results?.length || 0,
+      hasResult: true,
+      status: job.status,
+      event: 'getResult_returned'
+    }, '[Observability] GET /result returned successfully with results');
 
     return res.json(sanitized);
   }
+
+  // OBSERVABILITY: Log successful result retrieval (non-search format)
+  logger.info({
+    requestId,
+    hasResult: true,
+    status: job.status,
+    event: 'getResult_returned'
+  }, '[Observability] GET /result returned successfully');
 
   return res.json(result);
 });

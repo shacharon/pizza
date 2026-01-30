@@ -86,7 +86,7 @@ export class WSConnection {
         this.ticketRequestInFlight = true;
         ticketResponse = await this.ticketProvider.requestTicket();
         this.ticketRequestInFlight = false;
-        
+
         // Reset 503 counter on successful ticket fetch
         this.redis503Attempts = 0;
         this.pollingFallbackTriggered = false;
@@ -214,9 +214,9 @@ export class WSConnection {
         // Special handling for 503: Redis unavailable
         // Use slower backoff (2s, 4s, 8s, max 30s) and switch to polling mode
         this.redis503Attempts++;
-        
+
         const retryAfter = error?.error?.retryAfter || 2;
-        
+
         console.warn('[WS] ws-ticket unavailable (503) - Redis not ready', {
           attempt: this.redis503Attempts,
           maxAttempts: MAX_503_RETRY_ATTEMPTS,
@@ -381,7 +381,7 @@ export class WSConnection {
     const delay = Math.round(exponentialDelay + jitter);
 
     // Log retry attempt (quieter than normal reconnects - polling is active)
-    console.log(`[WS] ws-ticket retry in ${Math.round(delay/1000)}s (attempt ${this.redis503Attempts}/${MAX_503_RETRY_ATTEMPTS}, polling active)`);
+    console.log(`[WS] ws-ticket retry in ${Math.round(delay / 1000)}s (attempt ${this.redis503Attempts}/${MAX_503_RETRY_ATTEMPTS}, polling active)`);
 
     this.callbacks.onStatusChange('reconnecting');
 

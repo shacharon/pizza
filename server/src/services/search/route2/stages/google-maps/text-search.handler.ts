@@ -161,12 +161,17 @@ export async function executeTextSearch(
       }
     } else {
       // No cache: direct fetch
-      logger.info({
-        requestId,
-        event: 'CACHE_BYPASS',
-        providerMethod: 'textSearch',
-        reason: 'cache_service_not_available'
-      });
+      // Only log if this is unexpected (should have been initialized at startup)
+      const enableCache = process.env.ENABLE_GOOGLE_CACHE !== 'false';
+      if (enableCache) {
+        logger.warn({
+          requestId,
+          event: 'CACHE_BYPASS',
+          providerMethod: 'textSearch',
+          reason: 'cache_not_initialized',
+          note: 'Cache should have been initialized at startup'
+        });
+      }
       results = await fetchFn();
     }
 
@@ -210,41 +215,54 @@ async function executeTextSearchAttempt(
 ): Promise<any[]> {
   const maxResults = 40; // Fetch up to 40 results across pages (2 pages × 20)
 
-  // Normalize textQuery (fix chatty queries like "מה יש לאכול")
-  const { canonicalTextQuery, wasNormalized, reason } = normalizeTextQuery(mapping.textQuery, requestId);
+  // P0 FIX: Normalize textQuery but PRESERVE city when explicit city exists
+  // Pass cityText to normalizer so it can keep city in the query
+  const { canonicalTextQuery, wasNormalized, reason, keptCity } = normalizeTextQuery(
+    mapping.textQuery,
+    mapping.cityText,
+    requestId
+  );
 
-  // If cityText exists and no bias is set, geocode the city to create location bias
+  // P0 FIX: When explicit city exists, prefer city-center bias over userLocation
+  // Use smaller radius (10km) for city-center bias instead of 20km default
   let enrichedMapping = {
     ...mapping,
     textQuery: canonicalTextQuery // Use canonical query
   };
-  if (mapping.cityText && !mapping.bias) {
+
+  const hasExplicitCity = !!mapping.cityText;
+  const shouldPreferCityBias = hasExplicitCity && !mapping.bias;
+
+  if (shouldPreferCityBias) {
     try {
       const cityCoords = await callGoogleGeocodingAPI(
-        mapping.cityText,
+        mapping.cityText!,
         mapping.region,
         apiKey,
         requestId
       );
 
       if (cityCoords) {
+        // P0 FIX: Use smaller radius for explicit city searches (10km instead of 20km)
+        const radiusMeters = 10000; // 10km for city-center focus
+
         logger.info({
           requestId,
           cityText: mapping.cityText,
           coords: cityCoords,
+          radiusMeters,
           hadOriginalBias: !!mapping.bias,
+          biasSource: 'cityCenter',
           event: 'city_geocoded_for_bias'
-        }, '[GOOGLE] City geocoded successfully, applying location bias');
+        }, '[GOOGLE] City geocoded successfully, applying city-center bias (explicit city preferred)');
 
-        // CORRECTNESS FIX: Preserve original locationBias if it exists (from LLM)
-        // Only use geocoded bias as fallback when no bias provided
-        // This ensures LLM-generated bias is not dropped when cityText exists
         enrichedMapping = {
           ...mapping,
-          bias: mapping.bias || {
+          textQuery: canonicalTextQuery,
+          bias: {
             type: 'locationBias' as const,
             center: cityCoords,
-            radiusMeters: 20000 // 20km radius for city-level bias
+            radiusMeters // Smaller radius for city-specific searches
           }
         };
       } else {
@@ -278,18 +296,22 @@ async function executeTextSearchAttempt(
   let finalBiasSource = null;
   if (requestBody.locationBias) {
     if (enrichedMapping.cityText && enrichedMapping.bias && !mapping.bias) {
-      finalBiasSource = 'cityText_geocoded';
+      finalBiasSource = 'cityCenter';  // P0 FIX: Better label
     } else if (mapping.bias) {
       // Bias came from mapper (either LLM or userLocation)
-      finalBiasSource = 'userLocation_or_llm';
+      finalBiasSource = 'userLocation';
     }
   }
 
+  // P0 FIX: Enhanced logging with final text query and city preservation status
   logger.info({
     requestId,
     event: 'textsearch_request_payload',
+    finalTextQuery: requestBody.textQuery,  // P0 FIX: Show actual query sent to Google
     textQueryLen: requestBody.textQuery?.length || 0,
     textQueryHash,
+    keptCity: keptCity || false,  // P0 FIX: Show if city was preserved
+    hasExplicitCity: hasExplicitCity,  // P0 FIX: Show if explicit city was detected
     languageCode: requestBody.languageCode,
     regionCode: requestBody.regionCode || null,
     regionCodeSent: !!requestBody.regionCode,

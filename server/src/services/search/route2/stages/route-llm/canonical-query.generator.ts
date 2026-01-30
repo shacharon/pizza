@@ -121,7 +121,7 @@ export async function generateCanonicalQuery(
 
   // Build user prompt with context
   const userPrompt = buildUserPrompt(originalQuery, cityText, uiLanguage, regionCode);
-  
+
   const messages: Message[] = [
     { role: 'system', content: CANONICAL_QUERY_PROMPT },
     { role: 'user', content: userPrompt }
@@ -129,7 +129,7 @@ export async function generateCanonicalQuery(
 
   // Resolve model and timeout (use fast model for this task)
   const { model, timeoutMs } = resolveLLM('routeMapper');
-  
+
   try {
     const response = await llmProvider.completeJSON(
       messages,
@@ -249,13 +249,13 @@ export function validateCanonicalPhrase(
   uiLanguage: 'he' | 'en'
 ): boolean {
   const allowedPhrases = ALLOWED_PHRASES[uiLanguage];
-  
+
   // Check if query starts with any allowed phrase
   for (const phrase of allowedPhrases) {
     if (googleQuery.toLowerCase().startsWith(phrase.toLowerCase())) {
       return true;
     }
   }
-  
+
   return false;
 }

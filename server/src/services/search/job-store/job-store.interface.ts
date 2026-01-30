@@ -91,4 +91,9 @@ export interface ISearchJobStore {
    * Returns null if not found or if requestor is not the owner
    */
   getCandidatePool(requestId: string, sessionId: string): Promise<SearchJob['candidatePool'] | null> | SearchJob['candidatePool'] | null;
+
+  /**
+   * Get all running jobs (for shutdown cleanup)
+   */
+  getRunningJobs(): Promise<SearchJob[]> | SearchJob[];
 }

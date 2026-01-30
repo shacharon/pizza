@@ -30,8 +30,7 @@
 
     <div class="restaurant-meta">
       @if (restaurant().rating) {
-      <span class="rating" 
-        [attr.data-low-reviews]="isLowReviewCount() ? 'true' : 'false'"
+      <span class="rating" [attr.data-low-reviews]="isLowReviewCount() ? 'true' : 'false'"
         [attr.aria-label]="'Rating: ' + restaurant().rating">
         ⭐ {{ restaurant().rating }}
         @if (restaurant().userRatingsTotal) {
@@ -51,9 +50,7 @@
 
     <!-- UX SIGNALS: Canonical card signal (priority-based) -->
     @if (cardSignal()) {
-    <p class="card-signal-text" 
-      [class.emphasized]="isCardSignalEmphasized()"
-      [style.color]="getCardSignalColor()"
+    <p class="card-signal-text" [class.emphasized]="isCardSignalEmphasized()" [style.color]="getCardSignalColor()"
       [attr.aria-label]="'Signal: ' + getCardSignalLabel()">
       {{ getCardSignalLabel() }}
     </p>

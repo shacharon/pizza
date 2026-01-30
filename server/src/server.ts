@@ -121,6 +121,11 @@ try {
   }
 }
 
+// Phase 1.5: Initialize Google Maps Cache Service (AFTER Redis is ready)
+// This ensures cache service doesn't race with Redis initialization
+import { initializeCacheService } from './services/search/route2/stages/google-maps/cache-manager.js';
+await initializeCacheService();
+
 const app = createApp();
 const server = app.listen(port, () => {
   logger.info(`Server listening on http://localhost:${port}`);
@@ -204,7 +209,45 @@ async function shutdown(signal: NodeJS.Signals) {
     });
   }
 
-  // Phase 3.5: Close Redis connection
+  // Phase 3.5: Mark all RUNNING jobs as DONE_FAILED before closing Redis
+  // This prevents orphaned jobs that never complete
+  try {
+    const runningJobs = await searchJobStore.getRunningJobs();
+    
+    logger.info({
+      event: 'shutdown_inflight_counts',
+      runningJobsCount: runningJobs.length,
+      requestIds: runningJobs.map(j => j.requestId),
+      msg: '[Shutdown] Marking running jobs as failed'
+    });
+
+    // Mark all running jobs as failed in parallel
+    await Promise.all(
+      runningJobs.map(job =>
+        searchJobStore.setError(
+          job.requestId,
+          'SERVER_SHUTDOWN',
+          'Server shutting down, request terminated',
+          'SEARCH_FAILED'
+        )
+      )
+    );
+
+    if (runningJobs.length > 0) {
+      logger.info({
+        event: 'jobs_marked_failed',
+        count: runningJobs.length,
+        msg: '[Shutdown] All running jobs marked as DONE_FAILED'
+      });
+    }
+  } catch (err) {
+    logger.error({
+      error: err instanceof Error ? err.message : 'unknown',
+      msg: '[Shutdown] Failed to mark running jobs as failed (non-fatal)'
+    });
+  }
+
+  // Phase 3.6: Close Redis connection
   try {
     await RedisService.close();
     logger.info({
@@ -218,23 +261,26 @@ async function shutdown(signal: NodeJS.Signals) {
     });
   }
 
-  // Phase 4: Wait for in-flight requests to drain (max 30s)
-  // ECS stopTimeout=60s allows: 30s drain + 30s cleanup buffer
+  // Phase 4: Wait for in-flight HTTP requests to drain
+  // Development: 60s timeout (allows graceful debugging)
+  // Production: 30s timeout (ECS stopTimeout=60s allows: 30s drain + 30s cleanup buffer)
+  const drainTimeoutMs = isDev ? 60_000 : 30_000;
   const drainTimeout = setTimeout(() => {
     logger.warn({
       event: 'drain_timeout',
+      drainTimeoutMs,
       msg: '[Shutdown] Drain timeout reached, forcing exit'
     });
     process.exit(0);
-  }, 30_000);
+  }, drainTimeoutMs);
 
   // Unref allows process to exit naturally if drain completes early
   drainTimeout.unref();
 
   logger.info({
     event: 'drain_started',
-    maxWaitMs: 30000,
-    msg: '[Shutdown] Waiting for in-flight requests to complete (max 30s)'
+    maxWaitMs: drainTimeoutMs,
+    msg: `[Shutdown] Waiting for in-flight HTTP requests to complete (max ${drainTimeoutMs / 1000}s)`
   });
 }
 

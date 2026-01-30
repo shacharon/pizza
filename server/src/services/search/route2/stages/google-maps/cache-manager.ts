@@ -55,6 +55,7 @@ export async function raceWithCleanup<T>(
 
 /**
  * Initialize cache service (singleton)
+ * MUST be called after Redis is ready (called from server.ts boot sequence)
  */
 export async function initializeCacheService(): Promise<void> {
   if (cacheInitialized) return;
@@ -64,21 +65,14 @@ export async function initializeCacheService(): Promise<void> {
   const enableCache = process.env.ENABLE_GOOGLE_CACHE !== 'false'; // Enabled by default
   if (!enableCache) {
     logger.info({
-      event: 'CACHE_SERVICE_READY',
-      hasRedis: false,
+      event: 'CACHE_STARTUP',
       cacheEnabled: false,
-      msg: '[GoogleMapsCache] Caching disabled via ENABLE_GOOGLE_CACHE=false'
+      hasRedis: false,
+      reason: 'explicitly_disabled',
+      msg: '[GoogleMapsCache] ✗ Cache DISABLED via ENABLE_GOOGLE_CACHE=false'
     });
     return;
   }
-
-  // Get Redis URL from env or use default localhost
-  const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
-  logger.info({
-    event: 'CACHE_INIT_ATTEMPT',
-    redisUrl: redisUrl.replace(/:[^:@]+@/, ':****@'),
-    msg: '[GoogleMapsCache] Attempting Redis connection'
-  });
 
   try {
     // Use shared Redis client (initialized by server.ts)
@@ -87,19 +81,24 @@ export async function initializeCacheService(): Promise<void> {
     if (redis) {
       cacheService = new GoogleCacheService(redis, logger);
       logger.info({
-        event: 'CACHE_SERVICE_READY',
+        event: 'CACHE_STARTUP',
+        cacheEnabled: true,
         hasRedis: true,
-        msg: '[GoogleMapsCache] ✓ Cache service active with shared Redis client'
+        reason: 'redis_available',
+        msg: '[GoogleMapsCache] ✓ Cache ENABLED with shared Redis client'
       });
     } else {
-      throw new Error('Shared Redis client not available (may still be initializing)');
+      throw new Error('Shared Redis client not available');
     }
   } catch (err) {
     // Non-fatal: just disable caching
     logger.warn({
-      event: 'CACHE_SERVICE_DISABLED',
+      event: 'CACHE_STARTUP',
+      cacheEnabled: false,
+      hasRedis: false,
+      reason: 'redis_unavailable',
       error: (err as Error).message,
-      msg: '[GoogleMapsCache] Redis unavailable, caching disabled (non-fatal, will use direct Google API)'
+      msg: '[GoogleMapsCache] ✗ Cache DISABLED - Redis unavailable (non-fatal, will use direct Google API)'
     });
     cacheService = null;
   }
@@ -107,68 +106,11 @@ export async function initializeCacheService(): Promise<void> {
 
 /**
  * Get cache service instance (null if disabled)
- * 
- * HARDENING: If cache service is null but not explicitly disabled,
- * attempt synchronous initialization (may be race condition on startup)
+ * Returns null if cache is not initialized yet or explicitly disabled
  */
 export function getCacheService(): GoogleCacheService | null {
-  // Fast path: Already initialized (success or explicitly disabled)
-  if (cacheService !== null || cacheInitialized) {
-    return cacheService;
-  }
-
-  // Slow path: Not initialized yet (race condition on startup)
-  // Check if caching is explicitly disabled
-  const enableCache = process.env.ENABLE_GOOGLE_CACHE !== 'false';
-  if (!enableCache) {
-    cacheInitialized = true; // Mark as initialized (disabled)
-    logger.debug({
-      event: 'cache_service_check',
-      reason: 'explicitly_disabled'
-    }, '[GoogleMapsCache] Cache disabled via env flag');
-    return null;
-  }
-
-  // Attempt synchronous initialization (last resort)
-  try {
-    const redis = RedisService.getClientOrNull();
-    if (redis) {
-      cacheService = new GoogleCacheService(redis, logger);
-      cacheInitialized = true;
-      logger.info({
-        event: 'CACHE_SERVICE_READY',
-        hasRedis: true,
-        initTrigger: 'lazy_sync',
-        msg: '[GoogleMapsCache] ✓ Cache service initialized synchronously'
-      });
-      return cacheService;
-    } else {
-      // Redis not available - fail closed (disabled)
-      cacheInitialized = true;
-      logger.warn({
-        event: 'cache_service_not_available',
-        reason: 'redis_client_null',
-        msg: '[GoogleMapsCache] Redis client not available, caching disabled'
-      });
-      return null;
-    }
-  } catch (err) {
-    // Initialization failed - fail closed (disabled)
-    cacheInitialized = true;
-    logger.warn({
-      event: 'cache_service_not_available',
-      reason: 'init_error',
-      error: (err as Error).message,
-      msg: '[GoogleMapsCache] Cache init failed, caching disabled'
-    });
-    return null;
-  }
+  return cacheService;
 }
 
-// Initialize cache on module load (non-blocking)
-initializeCacheService().catch((err) => {
-  logger.warn({
-    error: err.message,
-    msg: '[GoogleMapsCache] Cache initialization failed (non-fatal)'
-  });
-});
+// DO NOT auto-initialize on module load - causes race condition with Redis startup
+// Cache must be initialized explicitly in server.ts AFTER Redis is ready

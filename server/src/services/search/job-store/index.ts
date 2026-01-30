@@ -117,7 +117,7 @@ let cachedStorePromise: Promise<ISearchJobStore> | null = null;
 export const searchJobStore = new Proxy({} as ISearchJobStore, {
   get(_, prop) {
     // Return a function that resolves the store first
-    return async function(...args: any[]) {
+    return async function (...args: any[]) {
       // Ensure only one initialization promise is created (prevents race conditions)
       if (!cachedStorePromise) {
         logger.info({ msg: '[JobStore] Creating singleton initialization promise' });

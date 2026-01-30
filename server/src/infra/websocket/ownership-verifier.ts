@@ -13,7 +13,7 @@ import { logger } from '../../lib/logger/structured-logger.js';
 import type { ISearchJobStore } from '../../services/search/job-store/job-store.interface.js';
 import type { RequestOwner } from './websocket.types.js';
 
-export type OwnershipDecision = 
+export type OwnershipDecision =
   | { result: 'ALLOW' }
   | { result: 'DENY'; reason: string }
   | { result: 'PENDING' };
@@ -24,7 +24,7 @@ export type OwnershipDecision =
 export class OwnershipVerifier {
   constructor(
     private jobStore: ISearchJobStore | undefined
-  ) {}
+  ) { }
 
   /**
    * Get request owner from JobStore
