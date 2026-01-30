@@ -102,30 +102,76 @@ export const wsManager = new WebSocketManager(server, {
 });
 
 /**
- * Graceful shutdown handler
+ * Graceful shutdown handler for ECS autoscaling
  * ONLY called by SIGTERM/SIGINT signals (process termination)
  * NEVER called by request-level errors
+ * 
+ * P0 Scale Safety: Drain in-flight requests before termination to prevent job loss.
+ * ECS stopTimeout should be set to 60s to allow full drain cycle.
  */
 function shutdown(signal: NodeJS.Signals) {
-  logger.info(`Received ${signal}. Shutting down gracefully...`);
-
-  // Phase 2: Shutdown state store (clear intervals)
-  requestStateStore.shutdown();
-
-  // Phase 3: Shutdown WebSocket manager
-  wsManager.shutdown();
-
-  server.close(() => {
-    logger.info('Server closed');
-    process.exit(0);
+  logger.info({
+    signal,
+    event: 'shutdown_initiated',
+    msg: '[Shutdown] Graceful shutdown started'
   });
 
-  // Force exit after 10 seconds if graceful shutdown hangs
-  // This is ONLY for process termination scenarios (SIGTERM/SIGINT)
-  setTimeout(() => {
-    logger.error('Forced shutdown after timeout during process termination');
-    process.exit(1);
-  }, 10_000).unref(); // unref() allows process to exit naturally if all work is done
+  // Phase 1: Stop accepting new connections (close server listener)
+  // This makes ALB health checks fail immediately, routing traffic away
+  server.close(() => {
+    logger.info({
+      event: 'http_server_closed',
+      msg: '[Shutdown] HTTP server stopped accepting new connections'
+    });
+  });
+
+  // Phase 2: Close WebSocket connections gracefully
+  // Sends close frames to clients with shutdown reason
+  try {
+    wsManager.shutdown();
+    logger.info({
+      event: 'websocket_closed',
+      msg: '[Shutdown] WebSocket connections closed'
+    });
+  } catch (err) {
+    logger.error({
+      error: err instanceof Error ? err.message : 'unknown',
+      msg: '[Shutdown] WebSocket shutdown error (non-fatal)'
+    });
+  }
+
+  // Phase 3: Shutdown state store (clear intervals)
+  try {
+    requestStateStore.shutdown();
+    logger.info({
+      event: 'state_store_shutdown',
+      msg: '[Shutdown] Request state store cleanup completed'
+    });
+  } catch (err) {
+    logger.error({
+      error: err instanceof Error ? err.message : 'unknown',
+      msg: '[Shutdown] State store shutdown error (non-fatal)'
+    });
+  }
+
+  // Phase 4: Wait for in-flight requests to drain (max 30s)
+  // ECS stopTimeout=60s allows: 30s drain + 30s cleanup buffer
+  const drainTimeout = setTimeout(() => {
+    logger.warn({
+      event: 'drain_timeout',
+      msg: '[Shutdown] Drain timeout reached, forcing exit'
+    });
+    process.exit(0);
+  }, 30_000);
+
+  // Unref allows process to exit naturally if drain completes early
+  drainTimeout.unref();
+
+  logger.info({
+    event: 'drain_started',
+    maxWaitMs: 30000,
+    msg: '[Shutdown] Waiting for in-flight requests to complete (max 30s)'
+  });
 }
 
 process.on('SIGINT', shutdown);

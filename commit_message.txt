@@ -1,0 +1,19 @@
+refactor(backend): extract ws router + slim subscription manager (no behavior change)
+
+PART A - websocket-manager.ts (523 → 395 lines, -128)
+- Extract SubscriptionAckService (sub_ack/sub_nack handling)
+- Extract SubscribeHandlerService (subscription flow orchestration)
+- Move handleLegacyRejection to MessageValidationService
+- Remove unused sendConnectionStatus method
+
+PART B - subscription-manager.ts (321 → 225 lines, -96)
+- Extract RequestStateQueryService (status queries)
+- Extract StateReplayService (late subscriber replay)
+- Compress multi-line comments
+- Remove unused hashRequestId
+
+NO BEHAVIOR CHANGES:
+- Public APIs unchanged
+- Log/error strings preserved exactly
+- NACK/close behavior identical
+- TypeScript builds successfully

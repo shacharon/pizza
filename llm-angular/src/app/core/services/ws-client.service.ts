@@ -153,12 +153,16 @@ export class WsClientService {
 
   /**
    * Handle connection open event
-   * Auto-resubscribe to last requestId if present
+   * P0 Scale Safety: Auto-resubscribe to lastRequestId on reconnect (ECS task failover)
+   * Ensures polling fallback continues if WS was primary delivery method
    */
   private handleConnectionOpen(): void {
     const lastRequestId = this.subscriptionManager.getLastRequestId();
     if (lastRequestId) {
-      this.subscribe(lastRequestId);
+      console.log('[WS] Reconnected - auto-resubscribing to last request', { requestId: lastRequestId });
+      // Resubscribe to both search and assistant channels
+      this.subscribe(lastRequestId, 'search');
+      this.subscribe(lastRequestId, 'assistant');
     }
   }
 }

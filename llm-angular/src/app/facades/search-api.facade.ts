@@ -32,6 +32,10 @@ export class SearchApiHandler {
    * - Network errors (status=0): User-friendly error message
    * - HTTP errors: Propagated as ApiErrorView
    * - EmptyError: Should never happen, but handled as network error
+   * 
+   * P0 Scale Safety: Supports idempotency key for retry protection during ECS autoscaling.
+   * 
+   * @param params - Search parameters including optional idempotencyKey
    */
   async executeSearch(params: {
     query: string;
@@ -40,9 +44,10 @@ export class SearchApiHandler {
     userLocation?: { lat: number; lng: number };
     clearContext?: boolean;
     locale: string;
+    idempotencyKey?: string;
   }): Promise<{ requestId: string; resultUrl: string } | SearchResponse> {
     try {
-      return await firstValueFrom(this.searchApiClient.searchAsync(params));
+      return await firstValueFrom(this.searchApiClient.searchAsync(params, params.idempotencyKey));
     } catch (error: any) {
       // Handle EmptyError (should never happen, but defensive)
       if (error instanceof EmptyError) {

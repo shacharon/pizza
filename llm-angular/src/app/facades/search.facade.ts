@@ -114,6 +114,10 @@ export class SearchFacade {
   private readonly currentRequestId = signal<string | undefined>(undefined);
   readonly requestId = this.currentRequestId.asReadonly();
 
+  // P0 Scale Safety: Idempotency key for retry protection during ECS autoscaling
+  // Generated once per user search action, reused for retries within same action
+  private currentIdempotencyKey?: string;
+
   // CARD STATE: Explicit state machine for search lifecycle
   private readonly _cardState = signal<SearchCardState>('RUNNING');
   readonly cardState = this._cardState.asReadonly();
@@ -150,6 +154,9 @@ export class SearchFacade {
   /**
    * Execute search with proper async 202 handling
    * Supports both WebSocket (fast path) and polling (fallback)
+   * 
+   * P0 Scale Safety: Generates idempotency key for retry protection during ECS autoscaling.
+   * Key is reused for retries within same user action (via retry() method).
    */
   async search(query: string, filters?: SearchFilters): Promise<void> {
     try {
@@ -165,6 +172,26 @@ export class SearchFacade {
 
       // NEW: Clear requestId before search (will be set when response arrives)
       this.currentRequestId.set(undefined);
+
+      // P0 Scale Safety: Idempotency key management
+      // - Fresh search (query changed): Generate NEW key, clear old one
+      // - Retry (same query): Reuse EXISTING key to prevent duplicates during ECS autoscaling
+      const isRetry = this.searchStore.query() === query && !!this.currentIdempotencyKey;
+      
+      if (!isRetry) {
+        // Fresh search: Generate new key
+        this.currentIdempotencyKey = this.generateIdempotencyKey();
+        safeLog('SearchFacade', 'Generated new idempotency key for fresh search', {
+          query,
+          idempotencyKey: this.currentIdempotencyKey
+        });
+      } else {
+        // Retry: Reuse existing key
+        safeLog('SearchFacade', 'Reusing idempotency key for retry', {
+          query,
+          idempotencyKey: this.currentIdempotencyKey
+        });
+      }
 
       // Update input state machine
       this.recentSearchesService.add(query);
@@ -184,7 +211,8 @@ export class SearchFacade {
         sessionId: this.conversationId(),
         userLocation: this.locationService.location() ?? undefined,
         clearContext: shouldClearContext,
-        locale: this.locale()
+        locale: this.locale(),
+        idempotencyKey: this.currentIdempotencyKey
       });
 
       // Check if it's a 202 Accepted (async) or 200 (sync fallback)
@@ -414,9 +442,20 @@ export class SearchFacade {
     );
   }
 
+  /**
+   * Retry last search
+   * P0 Scale Safety: Reuses idempotency key from original search for retry protection.
+   * This ensures retries within same user action don't create duplicate jobs during ECS autoscaling.
+   */
   retry(): void {
     const lastQuery = this.searchStore.query();
     if (lastQuery) {
+      safeLog('SearchFacade', 'Retrying search with same idempotency key', {
+        query: lastQuery,
+        idempotencyKey: this.currentIdempotencyKey
+      });
+      // Reuse current idempotency key for retry (no new key generation)
+      // search() will use this.currentIdempotencyKey if already set
       this.search(lastQuery);
     }
   }
@@ -481,6 +520,19 @@ export class SearchFacade {
 
   setLocale(locale: string): void {
     this.sessionStore.setLocale(locale);
+  }
+
+  /**
+   * Generate idempotency key (UUID v4 format)
+   * P0 Scale Safety: Ensures uniqueness across browser sessions
+   */
+  private generateIdempotencyKey(): string {
+    // Simple UUID v4 implementation (browser-safe)
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      const v = c === 'x' ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
   }
 
   setRegion(region: string): void {

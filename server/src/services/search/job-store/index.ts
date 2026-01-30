@@ -19,6 +19,9 @@ let searchJobStoreInstance: ISearchJobStore | null = null;
  * 
  * IMPORTANT: This is a singleton - the store is initialized ONCE per process,
  * not per request. Subsequent calls return the cached instance immediately.
+ * 
+ * PRODUCTION SAFETY: In production, Redis JobStore is REQUIRED for multi-instance scale.
+ * Deployment will fail if ENABLE_REDIS_JOBSTORE=true but Redis unavailable.
  */
 export async function getSearchJobStore(): Promise<ISearchJobStore> {
   if (searchJobStoreInstance) {
@@ -31,6 +34,22 @@ export async function getSearchJobStore(): Promise<ISearchJobStore> {
   }
 
   const config = getConfig();
+  const isProduction = config.env === 'production';
+
+  // P0 Scale Safety: Enforce Redis in production for multi-instance deployments
+  if (isProduction && !config.enableRedisJobStore) {
+    throw new Error(
+      '[P0 Scale] ENABLE_REDIS_JOBSTORE must be true in production for multi-instance ECS scale. ' +
+      'In-memory JobStore does not support horizontal scaling. Set ENABLE_REDIS_JOBSTORE=true'
+    );
+  }
+
+  if (isProduction && !config.redisUrl) {
+    throw new Error(
+      '[P0 Scale] REDIS_URL must be set in production when ENABLE_REDIS_JOBSTORE=true. ' +
+      'Cannot deploy without Redis backend for job persistence across ECS tasks.'
+    );
+  }
 
   if (config.enableRedisJobStore && config.redisUrl) {
     logger.info({
@@ -63,16 +82,31 @@ export async function getSearchJobStore(): Promise<ISearchJobStore> {
     } catch (err) {
       logger.error({
         error: (err as Error).message,
-        msg: '[JobStore] Failed to initialize Redis, falling back to InMemory'
+        msg: '[JobStore] Failed to initialize Redis'
+      });
+
+      // P0 Scale Safety: Fail-closed in production (no in-memory fallback)
+      if (isProduction) {
+        throw new Error(
+          `[P0 Scale] Redis JobStore initialization failed in production: ${(err as Error).message}. ` +
+          'Deployment blocked to prevent data loss in multi-instance ECS. Fix Redis connection.'
+        );
+      }
+
+      logger.warn({
+        env: config.env,
+        msg: '[JobStore] Falling back to InMemory (development only)'
       });
       searchJobStoreInstance = new InMemorySearchJobStore();
     }
   } else {
+    // Should never reach here in production due to guard above
     logger.info({
       store: 'inmemory',
+      env: config.env,
       enableRedisJobStore: config.enableRedisJobStore,
       hasRedisUrl: !!config.redisUrl,
-      msg: '[JobStore] Initializing InMemory store'
+      msg: '[JobStore] Initializing InMemory store (development only)'
     });
     searchJobStoreInstance = new InMemorySearchJobStore();
   }

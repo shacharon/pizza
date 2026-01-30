@@ -221,7 +221,7 @@ router.get('/:requestId/result', async (req: Request, res: Response) => {
   // Handle DONE_SUCCESS, DONE_CLARIFY, DONE_STOPPED
   // P0 Security: Sanitize photo URLs before returning result
   const result = job.result;
-  
+
   // GUARDRAIL: If result is missing for a completed job, return stable error
   if (!result) {
     logger.warn({

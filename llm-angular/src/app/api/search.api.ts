@@ -31,12 +31,23 @@ export class SearchApiClient {
   /**
    * Execute async search request
    * Returns 202 with requestId + resultUrl, or 200 with full results (sync fallback)
+   * 
+   * P0 Scale Safety: Supports X-Idempotency-Key header for retry protection during ECS autoscaling.
+   * Idempotency key ensures retries within same user action don't create duplicate jobs.
+   * 
+   * @param request - Search request body
+   * @param idempotencyKey - Optional idempotency key (UUID v4 recommended)
    */
-  searchAsync(request: SearchRequest): Observable<AsyncSearchResponse> {
+  searchAsync(request: SearchRequest, idempotencyKey?: string): Observable<AsyncSearchResponse> {
+    const headers: any = {};
+    if (idempotencyKey) {
+      headers['X-Idempotency-Key'] = idempotencyKey;
+    }
+
     return this.http.post<AsyncSearchAccepted | SearchResponse>(
       `${ENDPOINTS.SEARCH}?mode=async`,
       request,
-      { observe: 'response' }
+      { observe: 'response', headers }
     ).pipe(
       map((response: HttpResponse<AsyncSearchAccepted | SearchResponse>) => {
         const body = response.body!;

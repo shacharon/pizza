@@ -146,11 +146,23 @@ class RedisRateLimiter {
 // Initialize Redis rate limiter if Redis is available
 let redisLimiter: RedisRateLimiter | null = null;
 const redisClient = getExistingRedisClient();
+const isProduction = process.env.NODE_ENV === 'production';
+
 if (redisClient) {
   redisLimiter = new RedisRateLimiter(redisClient);
   logger.info({ rateLimitStore: 'redis' }, '[RateLimit] Using Redis-backed rate limiting');
 } else {
-  logger.warn({ rateLimitStore: 'memory' }, '[RateLimit] Using in-memory rate limiting (not distributed)');
+  if (isProduction) {
+    logger.error(
+      { 
+        rateLimitStore: 'none',
+        env: 'production',
+        msg: '[RateLimit] Redis unavailable in production - rate limiting will FAIL-CLOSED for scale safety'
+      }
+    );
+  } else {
+    logger.warn({ rateLimitStore: 'memory' }, '[RateLimit] Using in-memory rate limiting (not distributed, dev only)');
+  }
 }
 
 /**
@@ -188,12 +200,32 @@ export function createRateLimiter(config: RateLimitConfig) {
     const key = `${keyPrefix}:${ip}`;
     const requestId = req.traceId || 'unknown';
 
-    // Increment counter (use Redis if available, otherwise in-memory)
+    // P0 Scale Safety: Fail-closed in production if Redis unavailable (no in-memory fallback)
+    if (isProduction && !redisLimiter) {
+      logger.error({
+        requestId,
+        ip,
+        path: req.path,
+        reason: 'redis_unavailable_in_production',
+        msg: '[RateLimit] Request blocked - Redis required for distributed rate limiting in production'
+      });
+
+      res.status(503).json({
+        error: 'Service temporarily unavailable',
+        code: 'RATE_LIMIT_UNAVAILABLE',
+        message: 'Rate limiting service unavailable. Try again in a moment.',
+        traceId: requestId
+      });
+      return;
+    }
+
+    // Increment counter (use Redis if available, otherwise in-memory for dev)
     let result: Awaited<ReturnType<typeof memoryStore.increment>>;
     
     if (redisLimiter) {
       result = await redisLimiter.increment(key, windowMs, maxRequests);
     } else {
+      // Only reach here in development (production blocked above)
       result = memoryStore.increment(key, windowMs);
       result.maxRequests = maxRequests;
     }

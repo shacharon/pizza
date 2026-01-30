@@ -101,7 +101,7 @@ export function createApp() {
 
   const corsCommon: CorsOptions = {
     credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-Id'] as string[],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-Id', 'X-Idempotency-Key'] as string[],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'] as string[],
     preflightContinue: false,
     optionsSuccessStatus: 204
