@@ -21,6 +21,8 @@ import { BacklogManager } from './backlog-manager.js';
 import { PendingSubscriptionsManager } from './pending-subscriptions.js';
 import { SubscriptionManager } from './subscription-manager.js';
 import { normalizeLegacyMessage } from './message-normalizer.js';
+import { SocketRateLimiter } from './rate-limiter.js';
+import { WebSocketMessageRouter } from './message-router.js';
 import type {
   WebSocketManagerConfig,
   SubscriptionKey,
@@ -33,12 +35,6 @@ import { hashSessionId } from './websocket.types.js';
 // Re-export for backward compatibility
 export type { WebSocketManagerConfig };
 
-// PROD Hardening: Per-socket subscribe rate limit (token bucket)
-interface SocketRateLimit {
-  tokens: number;
-  lastRefill: number;
-}
-
 export class WebSocketManager {
   private wss: WebSocketServer;
   private heartbeatInterval: NodeJS.Timeout | undefined;
@@ -49,14 +45,8 @@ export class WebSocketManager {
   private backlogManager: BacklogManager;
   private pendingSubscriptionsManager: PendingSubscriptionsManager;
   private subscriptionManager: SubscriptionManager;
-  
-  // PROD Hardening: Per-socket rate limiting
-  private socketRateLimits = new WeakMap<WebSocket, SocketRateLimit>();
-  private readonly SUBSCRIBE_RATE_LIMIT = {
-    maxTokens: 10, // 10 subscribes
-    refillRate: 10 / 60, // per second (10/min)
-    refillInterval: 1000 // Check every second
-  };
+  private rateLimiter: SocketRateLimiter;
+  private messageRouter: WebSocketMessageRouter;
 
   constructor(server: HTTPServer, config?: Partial<WebSocketManagerConfig>) {
     // 1. Resolve and validate configuration
@@ -83,6 +73,19 @@ export class WebSocketManager {
     this.subscriptionManager = new SubscriptionManager(
       this.config.requestStateStore,
       this.config.jobStore
+    );
+    this.rateLimiter = new SocketRateLimiter({
+      maxTokens: 10,
+      refillRate: 10 / 60,
+      refillInterval: 1000
+    });
+    this.messageRouter = new WebSocketMessageRouter(
+      this.subscriptionManager,
+      this.rateLimiter,
+      {
+        requireAuth: process.env.WS_REQUIRE_AUTH !== 'false',
+        isProduction: process.env.NODE_ENV === 'production'
+      }
     );
 
     // 5. Init WebSocket server with Security Limits
@@ -220,38 +223,7 @@ export class WebSocketManager {
       ...('channel' in message && { channel: message.channel })
     }, 'WebSocket message received');
 
-    this.handleClientMessage(ws, message, clientId);
-  }
-
-  /**
-   * PROD Hardening: Check and consume rate limit token
-   */
-  private checkRateLimit(ws: WebSocket): boolean {
-    let limit = this.socketRateLimits.get(ws);
-    const now = Date.now();
-
-    if (!limit) {
-      limit = {
-        tokens: this.SUBSCRIBE_RATE_LIMIT.maxTokens,
-        lastRefill: now
-      };
-      this.socketRateLimits.set(ws, limit);
-    }
-
-    // Refill tokens based on elapsed time
-    const elapsed = now - limit.lastRefill;
-    const tokensToAdd = (elapsed / this.SUBSCRIBE_RATE_LIMIT.refillInterval) * this.SUBSCRIBE_RATE_LIMIT.refillRate;
-    limit.tokens = Math.min(this.SUBSCRIBE_RATE_LIMIT.maxTokens, limit.tokens + tokensToAdd);
-    limit.lastRefill = now;
-
-    // Check if we have tokens available
-    if (limit.tokens < 1) {
-      return false; // Rate limited
-    }
-
-    // Consume one token
-    limit.tokens -= 1;
-    return true; // Allowed
+    void this.handleClientMessage(ws, message, clientId);
   }
 
   private async handleClientMessage(
@@ -261,85 +233,21 @@ export class WebSocketManager {
   ): Promise<void> {
     const isProduction = process.env.NODE_ENV === 'production';
     const requireAuth = process.env.WS_REQUIRE_AUTH !== 'false';
-    const wsSessionId = (ws as any).sessionId as string | undefined;
 
-    switch (message.type) {
-      case 'subscribe': {
-        // PROD Hardening: Per-socket rate limit for subscribe messages
-        if (!this.checkRateLimit(ws)) {
-          logger.warn({
-            clientId,
-            sessionId: wsSessionId || 'none',
-            event: 'subscribe_rate_limited'
-          }, 'WebSocket subscribe rate limit exceeded');
-          
-          this.sendError(ws, 'rate_limit_exceeded', 'Too many subscribe requests');
-          return;
-        }
-        
-        await this.handleSubscribeRequest(ws, message, clientId, requireAuth, isProduction);
-        break;
+    // Route message to appropriate handler
+    const result = await this.messageRouter.routeMessage(
+      ws,
+      message,
+      clientId,
+      {
+        onSubscribe: (ws, msg) => this.handleSubscribeRequest(ws, msg, clientId, requireAuth, isProduction),
+        sendError: this.sendError.bind(this)
       }
+    );
 
-      case 'unsubscribe': {
-        const envelope = message as any;
-        const channel: WSChannel = envelope.channel;
-        const requestId = envelope.requestId as string | undefined;
-        const effectiveSessionId = wsSessionId;
-
-        if (requireAuth && !effectiveSessionId) {
-          this.sendError(ws, 'unauthorized', 'Authentication required');
-          ws.close(1008, HARD_CLOSE_REASONS.NOT_AUTHORIZED);
-          return;
-        }
-
-        this.subscriptionManager.unsubscribe(channel, requestId || 'unknown', effectiveSessionId, ws);
-
-        logger.info(
-          {
-            clientId,
-            channel,
-            requestIdHash: isProduction ? this.hashRequestId(requestId) : requestId,
-            ...(isProduction ? {} : { sessionId: effectiveSessionId || 'none' })
-          },
-          'websocket_unsubscribed'
-        );
-        break;
-      }
-
-      case 'event': {
-        const envelope = message as any;
-        logger.debug(
-          {
-            clientId,
-            channel: envelope.channel,
-            requestIdHash: isProduction ? this.hashRequestId(envelope.requestId) : envelope.requestId
-          },
-          'websocket_event_received'
-        );
-        break;
-      }
-
-      case 'action_clicked':
-        logger.info(
-          {
-            clientId,
-            requestIdHash: isProduction ? this.hashRequestId((message as any).requestId) : (message as any).requestId,
-            actionId: (message as any).actionId
-          },
-          'websocket_action_clicked'
-        );
-        break;
-
-      case 'ui_state_changed':
-        logger.debug(
-          {
-            clientId,
-            requestIdHash: isProduction ? this.hashRequestId((message as any).requestId) : (message as any).requestId
-          },
-          'websocket_ui_state_changed'
-        );
-        break;
+    // Handle close if requested
+    if (result.shouldClose && result.closeCode && result.closeReason) {
+      ws.close(result.closeCode, result.closeReason);
     }
   }
 
