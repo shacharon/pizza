@@ -3,13 +3,6 @@
  * Shared types for search facade modules
  */
 
-import type { SearchFilters } from '../domain/types/search.types';
-
-/**
- * Sort key enum for search results
- */
-export type SortKey = 'BEST_MATCH' | 'CLOSEST' | 'RATING_DESC' | 'PRICE_ASC';
-
 /**
  * View mode for search results
  */
@@ -39,23 +32,5 @@ export const DEFAULT_POLLING_CONFIG: PollingConfig = {
   maxDuration: 45000
 };
 
-/**
- * Helper: Map chip ID to sort key
- */
-export function mapChipToSortKey(chipId: string): SortKey {
-  switch (chipId) {
-    case 'sort_best_match':
-    case 'best_match':
-      return 'BEST_MATCH';
-    case 'sort_closest':
-    case 'closest':
-      return 'CLOSEST';
-    case 'sort_rating':
-    case 'toprated':
-      return 'RATING_DESC';
-    case 'sort_price':
-      return 'PRICE_ASC';
-    default:
-      return 'BEST_MATCH';
-  }
-}
+// Note: SortKey type moved to domain/mappers/chip.mapper.ts
+// Note: mapChipToSortKey function moved to domain/mappers/chip.mapper.ts

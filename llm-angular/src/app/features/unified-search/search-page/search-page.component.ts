@@ -20,6 +20,7 @@ import { AssistantSummaryComponent } from '../components/assistant-summary/assis
 import { LocationService } from '../../../services/location.service';
 import type { Restaurant, ClarificationChoice, Coordinates } from '../../../domain/types/search.types';
 import type { ActionType, ActionLevel } from '../../../domain/types/action.types';
+import { mapChipToSortKey } from '../../../domain/mappers/chip.mapper';
 // DEV: Import dev tools for testing (auto-loaded)
 import '../../../facades/assistant-dev-tools';
 
@@ -478,34 +479,13 @@ export class SearchPageComponent implements OnInit, OnDestroy {
    */
   isChipActive(chip: any): boolean {
     if (chip.action === 'sort') {
-      return this.facade.currentSort() === this.mapChipToSortKey(chip.id);
+      return this.facade.currentSort() === mapChipToSortKey(chip.id);
     } else if (chip.action === 'filter') {
       return this.facade.activeFilters().includes(chip.id);
     } else if (chip.action === 'map') {
       return this.facade.currentView() === 'MAP';
     }
     return false;
-  }
-
-  /**
-   * Map chip ID to sort key (matches facade logic)
-   */
-  private mapChipToSortKey(chipId: string): 'BEST_MATCH' | 'CLOSEST' | 'RATING_DESC' | 'PRICE_ASC' {
-    switch (chipId) {
-      case 'sort_best_match':
-      case 'best_match':
-        return 'BEST_MATCH';
-      case 'sort_closest':
-      case 'closest':
-        return 'CLOSEST';
-      case 'sort_rating':
-      case 'toprated':
-        return 'RATING_DESC';
-      case 'sort_price':
-        return 'PRICE_ASC';
-      default:
-        return 'BEST_MATCH';
-    }
   }
 
   trackByAction(_index: number, action: any): string {

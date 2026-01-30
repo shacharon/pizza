@@ -5,8 +5,8 @@
 
 import { Injectable, signal, computed } from '@angular/core';
 import type { SearchFilters, RefinementChip } from '../domain/types/search.types';
-import type { SortKey, ViewMode } from './search.facade.types';
-import { mapChipToSortKey } from './search.facade.types';
+import type { ViewMode } from './search.facade.types';
+import { mapChipToSortKey, buildSearchFilters, type SortKey } from '../domain/mappers/chip.mapper';
 
 @Injectable()
 export class SearchStateHandler {
@@ -59,8 +59,8 @@ export class SearchStateHandler {
 
         this.filterState.set(filters);
 
-        // Build search filters
-        const searchFilters = this.buildSearchFilters(filters, allChips);
+        // Build search filters using pure mapper
+        const searchFilters = buildSearchFilters(filters, allChips);
         console.log('[SearchStateHandler] Re-searching with filters:', searchFilters);
 
         return { shouldSearch: true, filters: searchFilters };
@@ -74,43 +74,5 @@ export class SearchStateHandler {
       default:
         return { shouldSearch: false };
     }
-  }
-
-  /**
-   * Build SearchFilters from active filter chip IDs
-   * Parses chip.filter strings like "price<=2", "opennow", "delivery"
-   */
-  private buildSearchFilters(activeFilterIds: Set<string>, allChips: RefinementChip[]): SearchFilters {
-    const filters: SearchFilters = {};
-
-    for (const chipId of activeFilterIds) {
-      const chip = allChips.find(c => c.id === chipId);
-      if (!chip || chip.action !== 'filter') continue;
-
-      const filterStr = chip.filter || '';
-
-      // Parse filter string
-      if (filterStr === 'opennow') {
-        filters.openNow = true;
-      } else if (filterStr === 'closednow') {
-        filters.openNow = false;
-      } else if (filterStr.startsWith('price<=')) {
-        // Parse "price<=2" → priceLevel: 2
-        const maxPrice = parseInt(filterStr.replace('price<=', ''), 10);
-        if (!isNaN(maxPrice) && maxPrice >= 1 && maxPrice <= 4) {
-          filters.priceLevel = maxPrice;
-        }
-      } else if (filterStr === 'delivery') {
-        // Delivery is a mustHave constraint
-        filters.mustHave = filters.mustHave || [];
-        filters.mustHave.push('delivery');
-      } else if (filterStr === 'kosher' || filterStr === 'vegan' || filterStr === 'glutenfree') {
-        // Dietary constraints
-        filters.dietary = filters.dietary || [];
-        filters.dietary.push(filterStr);
-      }
-    }
-
-    return filters;
   }
 }
