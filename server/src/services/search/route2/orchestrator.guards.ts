@@ -12,6 +12,7 @@ import { generateAndPublishAssistant } from './assistant/assistant-integration.j
 import type { AssistantGateContext, AssistantClarifyContext, AssistantGenericQueryNarrationContext } from './assistant/assistant-llm.service.js';
 import { resolveAssistantLanguage, resolveSessionId } from './orchestrator.helpers.js';
 import type { WebSocketManager } from '../../../infra/websocket/websocket-manager.js';
+import { buildEarlyExitResponse } from './orchestrator.response.js';
 
 /**
  * Handle GATE2 STOP (not food related)
@@ -137,36 +138,18 @@ export async function handleGateClarify(
     wsManager
   );
 
-  return {
+  return buildEarlyExitResponse({
     requestId,
     sessionId,
-    query: {
-      original: request.query,
-      parsed: {
-        query: request.query,
-        searchMode: 'textsearch' as const,
-        filters: {},
-        languageContext: {
-          uiLanguage: 'he' as const,
-          requestLanguage: 'he' as const,
-          googleLanguage: 'he' as const
-        },
-        originalQuery: request.query
-      },
-      language: gateResult.gate.language
-    },
-    results: [],
-    chips: [],
-    assist: { type: 'clarify' as const, message: assistMessage },
-    meta: {
-      tookMs: Date.now() - startTime,
-      mode: 'textsearch' as const,
-      appliedFilters: [],
-      confidence: gateResult.gate.confidence,
-      source: 'route2_gate_clarify',
-      failureReason: 'LOW_CONFIDENCE'
-    }
-  };
+    query: request.query,
+    language: gateResult.gate.language,
+    confidence: gateResult.gate.confidence,
+    assistType: 'clarify',
+    assistMessage,
+    source: 'route2_gate_clarify',
+    failureReason: 'LOW_CONFIDENCE',
+    startTime
+  });
 }
 
 /**
@@ -217,36 +200,18 @@ export async function handleNearbyLocationGuard(
     wsManager
   );
 
-  return {
+  return buildEarlyExitResponse({
     requestId,
     sessionId,
-    query: {
-      original: request.query,
-      parsed: {
-        query: request.query,
-        searchMode: 'textsearch' as const,
-        filters: {},
-        languageContext: {
-          uiLanguage: 'he' as const,
-          requestLanguage: 'he' as const,
-          googleLanguage: 'he' as const
-        },
-        originalQuery: request.query
-      },
-      language: gateResult.gate.language
-    },
-    results: [],
-    chips: [],
-    assist: { type: 'clarify' as const, message: assistMessage },
-    meta: {
-      tookMs: Date.now() - startTime,
-      mode: 'textsearch' as const,
-      appliedFilters: [],
-      confidence: intentDecision.confidence,
-      source: 'route2_guard_clarify',
-      failureReason: 'LOW_CONFIDENCE'
-    }
-  };
+    query: request.query,
+    language: gateResult.gate.language,
+    confidence: intentDecision.confidence,
+    assistType: 'clarify',
+    assistMessage,
+    source: 'route2_guard_clarify',
+    failureReason: 'LOW_CONFIDENCE',
+    startTime
+  });
 }
 
 /**

@@ -10,11 +10,12 @@ import { createHash } from 'node:crypto';
  * Uses SHA-256 and returns first 12 characters for readability
  * 
  * @param sessionId - Session ID to hash
- * @returns Hashed session ID (12 chars) or 'none' if no session
+ * @returns Hashed session ID (12 chars), 'anonymous', or 'none'
  */
 export function hashSessionId(sessionId: string | undefined | null): string {
   if (!sessionId) return 'none';
-  
+  if (sessionId === 'anonymous') return 'anonymous';
+
   return createHash('sha256')
     .update(sessionId)
     .digest('hex')
@@ -30,16 +31,16 @@ export function hashSessionId(sessionId: string | undefined | null): string {
  */
 export function sanitizePhotoUrl(url: string | undefined): string | undefined {
   if (!url) return undefined;
-  
+
   try {
     const urlObj = new URL(url);
-    
+
     // Remove key parameter if present
     if (urlObj.searchParams.has('key')) {
       urlObj.searchParams.delete('key');
       return urlObj.toString();
     }
-    
+
     return url;
   } catch {
     // If URL parsing fails, return undefined (invalid URL)

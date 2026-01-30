@@ -101,7 +101,16 @@ router.post('/', async (req: Request, res: Response) => {
         }, '[P0 Security] Job created with JWT session binding');
 
         // CTO-grade: Activate pending subscriptions for this request
-        wsManager.activatePendingSubscriptions(requestId, ownerSessionId || 'anonymous');
+        // GUARDRAIL: WS activation failures are non-fatal
+        try {
+          wsManager.activatePendingSubscriptions(requestId, ownerSessionId || 'anonymous');
+        } catch (wsErr) {
+          logger.error({
+            requestId,
+            error: wsErr instanceof Error ? wsErr.message : 'unknown',
+            operation: 'activatePendingSubscriptions'
+          }, '[P1 Reliability] WebSocket activation failed (non-fatal) - search continues');
+        }
       } catch (redisErr) {
         logger.error({
           requestId,
@@ -176,7 +185,28 @@ router.get('/:requestId/result', async (req: Request, res: Response) => {
 
   // Check job status
   if (job.status === 'DONE_FAILED') {
-    return res.status(500).json({ requestId, status: 'FAILED', error: job.error });
+    // GUARDRAIL: Return stable error response (200) - async operation completed with failure
+    // Ensure all fields have safe defaults if job.error is missing
+    const errorCode = job.error?.code || 'SEARCH_FAILED';
+    const errorMessage = job.error?.message || 'Search failed. Please retry.';
+    const errorType = job.error?.errorType || 'SEARCH_FAILED';
+
+    logger.info({
+      requestId,
+      status: 'DONE_FAILED',
+      errorCode,
+      hasJobError: !!job.error
+    }, '[Result] Returning stable error response for failed job');
+
+    return res.status(200).json({
+      requestId,
+      status: 'DONE_FAILED',
+      code: errorCode,
+      message: errorMessage,
+      errorType,
+      terminal: true, // Signal to clients to stop polling
+      contractsVersion: CONTRACTS_VERSION
+    });
   }
 
   if (job.status === 'PENDING' || job.status === 'RUNNING') {
@@ -188,9 +218,30 @@ router.get('/:requestId/result', async (req: Request, res: Response) => {
     });
   }
 
+  // Handle DONE_SUCCESS, DONE_CLARIFY, DONE_STOPPED
   // P0 Security: Sanitize photo URLs before returning result
   const result = job.result;
-  if (result && typeof result === 'object' && 'results' in result) {
+  
+  // GUARDRAIL: If result is missing for a completed job, return stable error
+  if (!result) {
+    logger.warn({
+      requestId,
+      status: job.status,
+      hasResult: false
+    }, '[Result] Job completed but result missing - non-fatal write likely failed');
+
+    return res.status(200).json({
+      requestId,
+      status: 'DONE_FAILED',
+      code: 'RESULT_MISSING',
+      message: 'Search completed but result unavailable. Please retry.',
+      errorType: 'SEARCH_FAILED',
+      terminal: true,
+      contractsVersion: CONTRACTS_VERSION
+    });
+  }
+
+  if (typeof result === 'object' && 'results' in result) {
     const sanitized = {
       ...result,
       results: sanitizePhotoUrls((result as any).results || [])
@@ -205,7 +256,7 @@ router.get('/:requestId/result', async (req: Request, res: Response) => {
     return res.json(sanitized);
   }
 
-  return result ? res.json(result) : res.status(500).json({ code: 'RESULT_MISSING' });
+  return res.json(result);
 });
 
 /**

@@ -64,36 +64,18 @@ export async function handleNearMeLocationCheck(
       wsManager
     );
 
-    return {
+    return buildEarlyExitResponse({
       requestId,
       sessionId,
-      query: {
-        original: request.query,
-        parsed: {
-          query: request.query,
-          searchMode: 'textsearch' as const,
-          filters: {},
-          languageContext: {
-            uiLanguage: 'he' as const,
-            requestLanguage: 'he' as const,
-            googleLanguage: 'he' as const
-          },
-          originalQuery: request.query
-        },
-        language: intentDecision.language
-      },
-      results: [],
-      chips: [],
-      assist: { type: 'clarify' as const, message: assistMessage },
-      meta: {
-        tookMs: Date.now() - startTime,
-        mode: 'textsearch' as const,
-        appliedFilters: [],
-        confidence: intentDecision.confidence,
-        source: 'route2_near_me_clarify',
-        failureReason: 'LOCATION_REQUIRED'
-      }
-    };
+      query: request.query,
+      language: intentDecision.language,
+      confidence: intentDecision.confidence,
+      assistType: 'clarify',
+      assistMessage,
+      source: 'route2_near_me_clarify',
+      failureReason: 'LOCATION_REQUIRED',
+      startTime
+    });
   }
 
   // Near-me with location - continue

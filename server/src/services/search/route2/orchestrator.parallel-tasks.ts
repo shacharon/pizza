@@ -69,23 +69,3 @@ export function fireParallelTasks(
 
   return { baseFiltersPromise, postConstraintsPromise };
 }
-
-/**
- * Drain parallel promises to prevent unhandled rejections
- * Should be called in finally block
- */
-export async function drainParallelPromises(
-  baseFiltersPromise: Promise<PreGoogleBaseFilters> | null,
-  postConstraintsPromise: Promise<PostConstraints> | null
-): Promise<void> {
-  if (baseFiltersPromise) {
-    await baseFiltersPromise.catch(() => {
-      // Already logged in the promise's own catch handler
-    });
-  }
-  if (postConstraintsPromise) {
-    await postConstraintsPromise.catch(() => {
-      // Already logged in the promise's own catch handler
-    });
-  }
-}

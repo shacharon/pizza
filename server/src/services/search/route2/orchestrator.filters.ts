@@ -40,36 +40,14 @@ export async function resolveAndStoreFilters(
 }
 
 /**
- * Apply post-filters to Google results
- * Merges post-constraints with final filters and applies filtering
+ * Merge post-constraints with final filters
+ * Shared utility to ensure consistent merging across the codebase
  */
-export function applyPostFiltersToResults(
-  googleResults: any[],
-  postConstraints: PostConstraints,
+export function mergePostConstraints(
   finalFilters: FinalSharedFilters,
-  ctx: Route2Context
-): {
-  resultsFiltered: any[];
-  stats: any;
-} {
-  const { requestId } = ctx;
-
-  // Log awaiting post constraints
-  logger.info(
-    { requestId, pipelineVersion: 'route2', event: 'await_post_constraints' },
-    '[ROUTE2] Awaiting post constraints (late)'
-  );
-
-  // Start post_filter stage
-  const postFilterStart = startStage(ctx, 'post_filter', {
-    openState: postConstraints.openState,
-    priceLevel: postConstraints.priceLevel,
-    isKosher: postConstraints.isKosher,
-    isGlutenFree: postConstraints.isGlutenFree
-  });
-
-  // Merge post-constraints with final filters
-  const filtersForPostFilter = {
+  postConstraints: PostConstraints
+): any {
+  return {
     ...finalFilters,
     openState: postConstraints.openState ?? finalFilters.openState,
     openAt: postConstraints.openAt
@@ -88,27 +66,81 @@ export function applyPostFiltersToResults(
     isGlutenFree: postConstraints.isGlutenFree ?? (finalFilters as any).isGlutenFree,
     requirements: postConstraints.requirements ?? (finalFilters as any).requirements
   };
+}
 
-  // Apply post-filters
-  const postFilterResult = applyPostFilters({
+/**
+ * Check if post-constraints were actually used (any non-null value)
+ */
+function hasUsedPostConstraints(postConstraints: PostConstraints): boolean {
+  return (
+    postConstraints.openState !== null ||
+    postConstraints.openAt !== null ||
+    postConstraints.openBetween !== null ||
+    postConstraints.priceLevel !== null ||
+    postConstraints.isKosher !== null ||
+    postConstraints.isGlutenFree !== null ||
+    postConstraints.requirements?.accessible !== null ||
+    postConstraints.requirements?.parking !== null
+  );
+}
+
+/**
+ * Apply post-filters to Google results (core logic)
+ * Pure filtering operation without telemetry concerns
+ */
+function executePostFiltering(
+  googleResults: any[],
+  mergedFilters: any,
+  requestId: string
+): {
+  resultsFiltered: any[];
+  stats: any;
+} {
+  return applyPostFilters({
     results: googleResults,
-    sharedFilters: filtersForPostFilter as any,
-    requestId: ctx.requestId,
+    sharedFilters: mergedFilters,
+    requestId,
     pipelineVersion: 'route2'
   });
+}
 
-  // End post_filter stage
+/**
+ * Apply post-filters to Google results
+ * Orchestrates filtering with telemetry and logging
+ */
+export function applyPostFiltersToResults(
+  googleResults: any[],
+  postConstraints: PostConstraints,
+  finalFilters: FinalSharedFilters,
+  ctx: Route2Context
+): {
+  resultsFiltered: any[];
+  stats: any;
+} {
+  const { requestId } = ctx;
+
+  // Log awaiting post constraints
+  logger.info(
+    { requestId, pipelineVersion: 'route2', event: 'await_post_constraints' },
+    '[ROUTE2] Awaiting post constraints (late)'
+  );
+
+  // Start post_filter stage (telemetry)
+  const postFilterStart = startStage(ctx, 'post_filter', {
+    openState: postConstraints.openState,
+    priceLevel: postConstraints.priceLevel,
+    isKosher: postConstraints.isKosher,
+    isGlutenFree: postConstraints.isGlutenFree
+  });
+
+  // Merge and apply filters (core logic)
+  const mergedFilters = mergePostConstraints(finalFilters, postConstraints);
+  const postFilterResult = executePostFiltering(googleResults, mergedFilters, ctx.requestId);
+
+  // End post_filter stage (telemetry)
   endStage(ctx, 'post_filter', postFilterStart, {
     stats: postFilterResult.stats,
-    usedPostConstraints:
-      postConstraints.openState !== null ||
-      postConstraints.openAt !== null ||
-      postConstraints.openBetween !== null ||
-      postConstraints.priceLevel !== null ||
-      postConstraints.isKosher !== null ||
-      postConstraints.isGlutenFree !== null ||
-      postConstraints.requirements?.accessible !== null ||
-      postConstraints.requirements?.parking !== null
+    usedPostConstraints: hasUsedPostConstraints(postConstraints)
   });
 
   return postFilterResult;

@@ -56,7 +56,7 @@ export class FavoriteExecutor implements ActionExecutor {
   execute(restaurant: Restaurant): Observable<ActionExecutionResult> {
     try {
       this.sessionStore.addToFavorites(restaurant.id);
-      
+
       // Also save to localStorage as backup
       const favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
       if (!favorites.includes(restaurant.id)) {

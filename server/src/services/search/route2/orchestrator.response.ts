@@ -5,6 +5,7 @@
 
 import type { SearchRequest } from '../types/search-request.dto.js';
 import type { SearchResponse } from '../types/search-response.dto.js';
+import type { FailureReason } from '../types/domain.types.js';
 import type { Route2Context, Gate2StageOutput, IntentResult } from './types.js';
 import type { RouteLLMMapping } from './stages/route-llm/schemas.js';
 import { logger } from '../../../lib/logger/structured-logger.js';
@@ -14,6 +15,54 @@ import type { AssistantSummaryContext, AssistantGenericQueryNarrationContext } f
 import { resolveAssistantLanguage, resolveSessionId } from './orchestrator.helpers.js';
 import type { WebSocketManager } from '../../../infra/websocket/websocket-manager.js';
 import { buildAppliedFiltersArray } from './orchestrator.filters.js';
+
+/**
+ * Build early exit response (gate stop, clarify, location required, etc.)
+ * Shared builder to reduce duplication across guard clauses
+ */
+export function buildEarlyExitResponse(params: {
+  requestId: string;
+  sessionId: string;
+  query: string;
+  language: 'he' | 'en';
+  confidence: number;
+  assistType: 'guide' | 'clarify';
+  assistMessage: string;
+  source: string;
+  failureReason: FailureReason;
+  startTime: number;
+}): SearchResponse {
+  return {
+    requestId: params.requestId,
+    sessionId: params.sessionId,
+    query: {
+      original: params.query,
+      parsed: {
+        query: params.query,
+        searchMode: 'textsearch' as const,
+        filters: {},
+        languageContext: {
+          uiLanguage: 'he' as const,
+          requestLanguage: 'he' as const,
+          googleLanguage: 'he' as const
+        },
+        originalQuery: params.query
+      },
+      language: params.language
+    },
+    results: [],
+    chips: [],
+    assist: { type: params.assistType, message: params.assistMessage },
+    meta: {
+      tookMs: Date.now() - params.startTime,
+      mode: 'textsearch' as const,
+      appliedFilters: [],
+      confidence: params.confidence,
+      source: params.source,
+      failureReason: params.failureReason
+    }
+  };
+}
 
 /**
  * Build final search response with assistant summary

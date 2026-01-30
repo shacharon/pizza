@@ -17,11 +17,11 @@ import { tap, catchError, delay, map } from 'rxjs/operators';
 import { ActionsStore } from '../state/actions.store';
 import { AnalyticsService } from './analytics.service';
 import { ExecutorRegistry } from './action-executors/executor.registry';
-import type { 
-  ActionType, 
-  ActionLevel, 
-  ActionProposal, 
-  ActionExecutionResult 
+import type {
+  ActionType,
+  ActionLevel,
+  ActionProposal,
+  ActionExecutionResult
 } from '../domain/types/action.types';
 import type { Restaurant } from '../domain/types/search.types';
 
@@ -62,7 +62,7 @@ export class ActionService {
         actionId: proposal.id,
         type
       });
-      
+
       // Execute and return the updated proposal
       return this.executeAction(proposal).pipe(
         tap(() => {
@@ -193,10 +193,10 @@ export class ActionService {
 
     if (!executor) {
       // Unknown action type - return error
-      return of({ 
-        success: false, 
-        message: 'Unknown action', 
-        error: `No executor registered for action type: ${action.type}` 
+      return of({
+        success: false,
+        message: 'Unknown action',
+        error: `No executor registered for action type: ${action.type}`
       });
     }
 

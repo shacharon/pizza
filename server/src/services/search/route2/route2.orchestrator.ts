@@ -23,13 +23,13 @@ import { sanitizeQuery } from '../../../lib/telemetry/query-sanitizer.js';
 import { withTimeout } from '../../../lib/reliability/timeout-guard.js';
 
 // Extracted modules
-import { fireParallelTasks, drainParallelPromises } from './orchestrator.parallel-tasks.js';
+import { fireParallelTasks } from './orchestrator.parallel-tasks.js';
 import { handleNearMeLocationCheck, applyNearMeRouteOverride } from './orchestrator.nearme.js';
 import { handleGateStop, handleGateClarify, handleNearbyLocationGuard, checkGenericFoodQuery } from './orchestrator.guards.js';
-import { resolveAndStoreFilters, applyPostFiltersToResults } from './orchestrator.filters.js';
+import { resolveAndStoreFilters, applyPostFiltersToResults, mergePostConstraints } from './orchestrator.filters.js';
 import { buildFinalResponse } from './orchestrator.response.js';
 import { handlePipelineError } from './orchestrator.error.js';
-import { deriveEarlyRoutingContext, upgradeToFinalFilters } from './orchestrator.early-context.js';
+import { deriveEarlyRoutingContext } from './orchestrator.early-context.js';
 
 // Extracted helpers
 import { shouldDebugStop, resolveSessionId } from './orchestrator.helpers.js';
@@ -297,14 +297,8 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
     const postFilterResult = applyPostFiltersToResults(googleResult.results, postConstraints, finalFilters, ctx);
     const finalResults = postFilterResult.resultsFiltered;
 
-    // Get merged filters for response building
-    const filtersForPostFilter = {
-      ...finalFilters,
-      openState: postConstraints.openState ?? finalFilters.openState,
-      priceLevel: postConstraints.priceLevel ?? (finalFilters as any).priceLevel,
-      isKosher: postConstraints.isKosher ?? (finalFilters as any).isKosher,
-      isGlutenFree: postConstraints.isGlutenFree ?? (finalFilters as any).isGlutenFree
-    };
+    // Get merged filters for response building (using shared utility)
+    const filtersForPostFilter = mergePostConstraints(finalFilters, postConstraints);
 
     // STAGE 7: BUILD RESPONSE
     return await buildFinalResponse(
@@ -320,7 +314,17 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
   } catch (error) {
     return await handlePipelineError(error, ctx, wsManager);
   } finally {
-    await drainParallelPromises(baseFiltersPromise, postConstraintsPromise);
+    // Drain parallel promises to prevent unhandled rejections
+    if (baseFiltersPromise) {
+      await baseFiltersPromise.catch(() => {
+        // Already logged in the promise's own catch handler
+      });
+    }
+    if (postConstraintsPromise) {
+      await postConstraintsPromise.catch(() => {
+        // Already logged in the promise's own catch handler
+      });
+    }
   }
 }
 

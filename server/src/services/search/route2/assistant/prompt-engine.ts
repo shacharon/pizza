@@ -72,8 +72,8 @@ export class AssistantPromptEngine {
 
   private buildGateFailPrompt(context: AssistantGateContext): string {
     const languageInstruction = context.language === 'he' ? 'Hebrew' : 'English';
-    const languageEmphasis = context.language === 'he' 
-      ? 'MUST write in Hebrew (עברית)' 
+    const languageEmphasis = context.language === 'he'
+      ? 'MUST write in Hebrew (עברית)'
       : 'MUST write in English';
     const reason = context.reason === 'NO_FOOD' ? 'not food-related' : 'uncertain if food-related';
 
@@ -89,8 +89,8 @@ Generate friendly message. Help user understand and guide them. Decide blocksSea
 
   private buildClarifyPrompt(context: AssistantClarifyContext): string {
     const languageInstruction = context.language === 'he' ? 'Hebrew' : 'English';
-    const languageEmphasis = context.language === 'he' 
-      ? 'MUST write in Hebrew (עברית)' 
+    const languageEmphasis = context.language === 'he'
+      ? 'MUST write in Hebrew (עברית)'
       : 'MUST write in English';
     const missing = context.reason === 'MISSING_LOCATION' ? 'location' : 'food type';
 
@@ -106,8 +106,8 @@ Ask a question to get the missing info. Decide blocksSearch and suggestedAction.
 
   private buildSearchFailedPrompt(context: AssistantSearchFailedContext): string {
     const languageInstruction = context.language === 'he' ? 'Hebrew' : 'English';
-    const languageEmphasis = context.language === 'he' 
-      ? 'MUST write in Hebrew (עברית)' 
+    const languageEmphasis = context.language === 'he'
+      ? 'MUST write in Hebrew (עברית)'
       : 'MUST write in English';
     const reason = context.reason === 'GOOGLE_TIMEOUT' ? 'Google API timeout' : 'provider error';
 
@@ -123,8 +123,8 @@ Tell user search failed. Decide what to suggest and whether to block. Be helpful
 
   private buildGenericNarrationPrompt(context: AssistantGenericQueryNarrationContext): string {
     const languageInstruction = context.language === 'he' ? 'Hebrew' : 'English';
-    const languageEmphasis = context.language === 'he' 
-      ? 'MUST write in Hebrew (עברית)' 
+    const languageEmphasis = context.language === 'he'
+      ? 'MUST write in Hebrew (עברית)'
       : 'MUST write in English';
     const locationSource = context.usedCurrentLocation ? 'current location' : 'default area';
 
@@ -153,8 +153,8 @@ Examples:
 
   private buildSummaryPrompt(context: AssistantSummaryContext): string {
     const languageInstruction = context.language === 'he' ? 'Hebrew' : 'English';
-    const languageEmphasis = context.language === 'he' 
-      ? 'MUST write in Hebrew (עברית)' 
+    const languageEmphasis = context.language === 'he'
+      ? 'MUST write in Hebrew (עברית)'
       : 'MUST write in English';
 
     const metadata = context.metadata || {};

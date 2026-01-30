@@ -7,7 +7,7 @@ import { WebSocket } from 'ws';
 import { logger } from '../../lib/logger/structured-logger.js';
 import { SOFT_CLOSE_REASONS } from './ws-close-reasons.js';
 import type { WebSocketContext } from './websocket.types.js';
-import { hashSessionId } from './websocket.types.js';
+import { hashSessionId } from '../../utils/security.utils.js';
 
 /**
  * Setup new WebSocket connection with context and event handlers

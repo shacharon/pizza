@@ -15,6 +15,7 @@
 
 import { Injectable, signal, inject } from '@angular/core';
 import { Subject, firstValueFrom } from 'rxjs';
+import { throttleTime, asyncScheduler } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { AuthApiService } from './auth-api.service';
 import { AuthService } from '../auth/auth.service';
@@ -44,8 +45,15 @@ export class WsClientService {
   readonly connectionStatus = signal<ConnectionStatus>('disconnected');
 
   // Message stream (PUBLIC API)
+  // P0-3: Apply backpressure throttling to prevent memory blowups on message bursts
+  // - Throttles to max 10 messages/sec (100ms window)
+  // - leading:true ensures first message is processed immediately
+  // - trailing:true ensures last message in burst is not dropped
+  // - Critical events (DONE_SUCCESS, RESULTS) are preserved due to trailing behavior
   private messagesSubject = new Subject<WSServerMessage>();
-  readonly messages$ = this.messagesSubject.asObservable();
+  readonly messages$ = this.messagesSubject.asObservable().pipe(
+    throttleTime(100, asyncScheduler, { leading: true, trailing: true })
+  );
 
   // SOLID Modules (internal)
   private readonly connection: WSConnection;

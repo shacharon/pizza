@@ -32,7 +32,7 @@ export class ExecutorRegistry {
     ['CALL_RESTAURANT', this.callExecutor],
     ['VIEW_MENU', this.websiteExecutor],
     ['VIEW_DETAILS', this.websiteExecutor],
-    
+
     // Social executors
     ['SHARE', this.shareExecutor],
     ['SAVE_FAVORITE', this.favoriteExecutor]

@@ -6,7 +6,7 @@
 import type { WebSocketManager } from '../../../../infra/websocket/websocket-manager.js';
 import { logger } from '../../../../lib/logger/structured-logger.js';
 import type { AssistantOutput } from './assistant-llm.service.js';
-import { hashSessionId } from '../../../../infra/websocket/websocket.types.js';
+import { hashSessionId } from '../../../../utils/security.utils.js';
 
 const ASSISTANT_WS_CHANNEL = 'assistant';
 

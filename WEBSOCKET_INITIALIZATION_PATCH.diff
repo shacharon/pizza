@@ -1,0 +1,143 @@
+## WebSocket Initialization Fix - Patch Diffs
+
+### 1. websocket-manager.ts - Add Service Initialization
+
+```diff
+@@ -100,6 +100,14 @@ export class WebSocketManager {
+     );
+ 
++    // 5. Initialize extracted services (Pass 2)
++    this.backlogDrainer = new BacklogDrainerService(this.backlogManager);
++    this.publisher = new PublisherService(this.subscriptionManager, this.backlogManager);
++    this.subscriptionActivator = new SubscriptionActivatorService(
++      this.pendingSubscriptionsManager,
++      this.subscriptionManager,
++      this.backlogDrainer
++    );
++
+     // 6. Init WebSocket server with Security Limits
+     this.wss = new WebSocketServer({
+```
+
+---
+
+### 2. websocket-manager.ts - Add Defensive Guard to publishToChannel
+
+```diff
+@@ -414,11 +414,24 @@ export class WebSocketManager {
+   /**
+    * Publish to a specific channel
+    * Delegated to PublisherService
++   * GUARDRAIL: Never throws - returns failure summary if publisher not ready
+    */
+   publishToChannel(
+     channel: WSChannel,
+     requestId: string,
+     sessionId: string | undefined,
+     message: WSServerMessage
+   ): PublishSummary {
++    // GUARDRAIL: Defensive check - publisher should always be initialized
++    if (!this.publisher) {
++      logger.error({
++        channel,
++        requestId,
++        messageType: message.type,
++        publisherState: 'undefined'
++      }, '[P0 Critical] WebSocketManager.publisher is undefined - initialization failure');
++      return { attempted: 0, sent: 0, failed: 0 };
++    }
++
+     return this.publisher.publishToChannel(
+```
+
+---
+
+### 3. websocket-manager.ts - Add Defensive Guard to activatePendingSubscriptions
+
+```diff
+@@ -392,9 +392,20 @@ export class WebSocketManager {
+   /**
+    * Activate pending subscriptions for a requestId when job is created
+    * Delegated to SubscriptionActivatorService
++   * GUARDRAIL: Never throws - logs error if activator not ready
+    */
+   activatePendingSubscriptions(requestId: string, ownerSessionId: string): void {
++    // GUARDRAIL: Defensive check - activator should always be initialized
++    if (!this.subscriptionActivator) {
++      logger.error({
++        requestId,
++        ownerSessionId,
++        activatorState: 'undefined'
++      }, '[P0 Critical] WebSocketManager.subscriptionActivator is undefined - initialization failure');
++      return;
++    }
++
+     this.subscriptionActivator.activatePendingSubscriptions(
+```
+
+---
+
+### 4. search-ws.publisher.ts - Make publishSearchEvent Non-Throwing
+
+```diff
+@@ -1,7 +1,20 @@
+ import type { WsSearchEvent } from '../../contracts/search.contracts.js';
+ import { wsManager } from '../../server.js';
++import { logger } from '../../lib/logger/structured-logger.js';
+ 
+-export function publishSearchEvent(requestId: string, event: WsSearchEvent) {
++/**
++ * Publish a search event via WebSocket
++ * GUARDRAIL: Never throws - WS publish failures are non-fatal for background search
++ */
++export function publishSearchEvent(requestId: string, event: WsSearchEvent): void {
++  try {
+     // Publish to search channel using the existing publishToChannel method
+     wsManager.publishToChannel('search', requestId, undefined, event as any);
++  } catch (err) {
++    // GUARDRAIL: WS publish failures must not crash background search
++    logger.warn({
++      requestId,
++      eventType: event.type,
++      error: err instanceof Error ? err.message : 'unknown',
++      operation: 'publishSearchEvent'
++    }, '[P1 Reliability] WebSocket publish failed (non-fatal) - search continues');
++  }
+ }
+```
+
+---
+
+### 5. search.controller.ts - Isolate WS Activation Failures
+
+```diff
+@@ -102,7 +102,16 @@ export async function searchHandler(req: Request, res: Response): Promise<void>
+         }, '[P0 Security] Job created with JWT session binding');
+ 
+         // CTO-grade: Activate pending subscriptions for this request
+-        wsManager.activatePendingSubscriptions(requestId, ownerSessionId || 'anonymous');
++        // GUARDRAIL: WS activation failures are non-fatal
++        try {
++          wsManager.activatePendingSubscriptions(requestId, ownerSessionId || 'anonymous');
++        } catch (wsErr) {
++          logger.error({
++            requestId,
++            error: wsErr instanceof Error ? wsErr.message : 'unknown',
++            operation: 'activatePendingSubscriptions'
++          }, '[P1 Reliability] WebSocket activation failed (non-fatal) - search continues');
++        }
+       } catch (redisErr) {
+```
+
+---
+
+### Summary Statistics
+
+**Lines Added**: ~60  
+**Lines Modified**: ~15  
+**Files Changed**: 4  
+**Test Files Added**: 1  
+
+**Complexity**: Low (initialization + defensive checks)  
+**Risk**: Very Low (fail-safe additions, no logic changes)  
+**Business Impact**: High (fixes complete system failure)

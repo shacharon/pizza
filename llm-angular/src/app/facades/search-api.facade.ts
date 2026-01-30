@@ -20,6 +20,10 @@ export class SearchApiHandler {
   private pollingStartTimeoutId?: any;
   private pollingIntervalId?: any;
   private pollingTimeoutId?: any;
+  
+  // P0-4: AbortController for hard-stop of active polling
+  // Ensures only one poll runs per search (no overlap on rapid searches)
+  private pollingAbortController?: AbortController;
 
   /**
    * Execute search API call (returns 202 or 200)
@@ -78,8 +82,19 @@ export class SearchApiHandler {
   ): void {
     safeLog('SearchApiHandler', 'Scheduling polling start', { delay: config.delayMs, requestId });
 
+    // P0-4: Create new AbortController for this polling session
+    // Previous controller (if any) will be aborted in cancelPolling
+    this.pollingAbortController = new AbortController();
+    const abortSignal = this.pollingAbortController.signal;
+
     // Defer polling start (if WS delivers first, this is canceled)
     this.pollingStartTimeoutId = setTimeout(() => {
+      // P0-4: Check if already aborted before starting poll loop
+      if (abortSignal.aborted) {
+        safeLog('SearchApiHandler', 'Polling aborted before start', { requestId });
+        return;
+      }
+
       const resultUrl = buildApiUrl(`/search/${requestId}/result`);
       const startTime = Date.now();
 
@@ -100,6 +115,12 @@ export class SearchApiHandler {
           : config.fastIntervalBase + (Math.random() * config.fastJitter * 2 - config.fastJitter);
 
         this.pollingIntervalId = setTimeout(async () => {
+          // P0-4: Check abort signal before each poll attempt
+          if (abortSignal.aborted) {
+            safeLog('SearchApiHandler', 'Polling aborted during loop', { requestId });
+            return;
+          }
+
           try {
             const pollResponse = await firstValueFrom(this.searchApiClient.pollResult(resultUrl));
 
@@ -165,8 +186,15 @@ export class SearchApiHandler {
 
   /**
    * Cancel all polling timers
+   * P0-4: Now also aborts active HTTP requests via AbortController
    */
   cancelPolling(): void {
+    // P0-4: Abort any active polling HTTP requests
+    if (this.pollingAbortController) {
+      this.pollingAbortController.abort();
+      this.pollingAbortController = undefined;
+    }
+
     if (this.pollingStartTimeoutId) {
       clearTimeout(this.pollingStartTimeoutId);
       this.pollingStartTimeoutId = undefined;

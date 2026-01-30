@@ -22,7 +22,7 @@ export class PublisherService {
   constructor(
     private subscriptionManager: SubscriptionManager,
     private backlogManager: BacklogManager
-  ) {}
+  ) { }
 
   /**
    * Publish to a specific channel

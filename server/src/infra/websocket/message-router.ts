@@ -34,7 +34,7 @@ export class WebSocketMessageRouter {
       requireAuth: boolean;
       isProduction: boolean;
     }
-  ) {}
+  ) { }
 
   /**
    * Route client message to appropriate handler
@@ -59,11 +59,11 @@ export class WebSocketMessageRouter {
             sessionId: wsSessionId || 'none',
             event: 'subscribe_rate_limited'
           }, 'WebSocket subscribe rate limit exceeded');
-          
+
           callbacks.sendError(ws, 'rate_limit_exceeded', 'Too many subscribe requests');
           return { success: false };
         }
-        
+
         // Delegate to subscribe handler
         await callbacks.onSubscribe(ws, message);
         return { success: true };
@@ -77,11 +77,11 @@ export class WebSocketMessageRouter {
 
         if (this.config.requireAuth && !effectiveSessionId) {
           callbacks.sendError(ws, 'unauthorized', 'Authentication required');
-          return { 
-            success: false, 
-            shouldClose: true, 
-            closeCode: 1008, 
-            closeReason: HARD_CLOSE_REASONS.NOT_AUTHORIZED 
+          return {
+            success: false,
+            shouldClose: true,
+            closeCode: 1008,
+            closeReason: HARD_CLOSE_REASONS.NOT_AUTHORIZED
           };
         }
 

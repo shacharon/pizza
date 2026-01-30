@@ -17,3 +17,24 @@ frontend:
   cache:
     paths:
       - llm-angular/node_modules/**/*
+  customHeaders:
+    - pattern: "/index.html"
+      headers:
+        - key: Cache-Control
+          value: no-cache, no-store, must-revalidate
+        - key: X-Frame-Options
+          value: DENY
+        - key: X-Content-Type-Options
+          value: nosniff
+    - pattern: "**/*.js"
+      headers:
+        - key: Cache-Control
+          value: public, max-age=31536000, immutable
+    - pattern: "**/*.css"
+      headers:
+        - key: Cache-Control
+          value: public, max-age=31536000, immutable
+    - pattern: "/assets/*"
+      headers:
+        - key: Cache-Control
+          value: public, max-age=86400
