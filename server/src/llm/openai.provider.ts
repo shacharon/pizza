@@ -1,7 +1,4 @@
 import { z } from "zod";
-import { zodToJsonSchema } from "zod-to-json-schema";
-import { createHash } from "crypto";
-import { performance } from "node:perf_hooks";
 import type { LLMProvider, LLMCompletionResult, Message } from "./types.js";
 import OpenAI from "openai";
 import {
@@ -13,6 +10,9 @@ import {
 } from "../config/index.js";
 import { traceProviderCall, calculateOpenAICost } from "../lib/telemetry/providerTrace.js";
 import { logger } from "../lib/logger/structured-logger.js";
+import { SchemaConverter } from "./schema-converter.js";
+import { RetryHandler } from "./retry-handler.js";
+import { TimingTracker } from "./timing-tracker.js";
 
 // Lazy-initialized OpenAI client
 let openaiClient: OpenAI | null = null;
@@ -32,27 +32,17 @@ function getOpenAIClient(): OpenAI {
     return openaiClient;
 }
 
-/**
- * Schema version for Structured Outputs - increment when schema generation changes
- */
-const SCHEMA_VERSION = "v1";
-
-function sleep(ms: number) { return new Promise(res => setTimeout(res, ms)); }
-
 function toInput(messages: Message[]) {
     return messages.map(m => ({ role: m.role, content: m.content }));
 }
 
-/**
- * Generate a stable hash of a JSON schema for correlation/debugging
- * Used to track which schema version caused issues
- */
-function generateSchemaHash(schema: any): string {
-    const schemaString = JSON.stringify(schema, Object.keys(schema).sort());
-    return createHash('sha256').update(schemaString).digest('hex').substring(0, 12);
-}
-
 export class OpenAiProvider implements LLMProvider {
+    private schemaConverter = new SchemaConverter();
+    private retryHandler = new RetryHandler({
+        maxAttempts: LLM_RETRY_ATTEMPTS,
+        backoffMs: LLM_RETRY_BACKOFF_MS
+    });
+
     /**
      * Complete with strict JSON Schema validation using OpenAI Structured Outputs
      * 
@@ -86,347 +76,203 @@ export class OpenAiProvider implements LLMProvider {
     ): Promise<LLMCompletionResult<z.infer<T>>> {
         const temperature = opts?.temperature ?? 0;
         const timeoutMs = opts?.timeout ?? LLM_JSON_TIMEOUT_MS;
-        const maxAttempts = LLM_RETRY_ATTEMPTS;
-        const backoffs = LLM_RETRY_BACKOFF_MS;
         const tStart = Date.now();
-        let lastErr: any;
 
-        // Timing instrumentation: t0 = start (before prompt construction)
-        const t0 = performance.now();
+        // Initialize timing tracker
+        const timing = new TimingTracker();
+        timing.mark('t0');
 
-        // Use static JSON Schema if provided, otherwise convert from Zod
-        let jsonSchema: any;
+        // Convert schema
+        const conversionResult = staticJsonSchema
+            ? this.schemaConverter.convertStatic(staticJsonSchema, opts)
+            : this.schemaConverter.convert(schema, opts);
 
-        if (staticJsonSchema) {
-            // Use provided static schema (preferred for critical paths)
-            jsonSchema = staticJsonSchema;
-        } else {
-            // Convert Zod schema to JSON Schema for OpenAI Structured Outputs
-            jsonSchema = zodToJsonSchema(schema as any, {
-                target: 'openApi3',
-                $refStrategy: 'none'
-            }) as any;
-        }
+        const { jsonSchema, schemaHash, schemaVersion } = conversionResult;
+        timing.mark('t1');
 
-        // Validate schema BEFORE calling OpenAI
-        if (!jsonSchema || typeof jsonSchema !== 'object') {
-            logger.error({
-                traceId: opts?.traceId,
-                schemaType: typeof jsonSchema,
-                schemaValue: jsonSchema,
-                promptVersion: opts?.promptVersion
-            }, '[LLM] Invalid JSON Schema: schema is null or not an object');
-            throw new Error('Invalid JSON Schema generated from Zod schema');
-        }
+        // Calculate prompt size
+        const promptChars = messages.reduce((sum, m) => sum + (m.content?.length || 0), 0);
+        const model = (opts as any)?.model || DEFAULT_LLM_MODEL;
 
-        if (jsonSchema.type !== 'object') {
-            logger.error({
-                traceId: opts?.traceId,
-                schemaType: jsonSchema.type,
-                hasProperties: !!jsonSchema.properties,
-                promptVersion: opts?.promptVersion
-            }, '[LLM] Invalid JSON Schema: root type must be "object"');
-            throw new Error(`Invalid JSON Schema: root type is "${jsonSchema.type}", expected "object"`);
-        }
+        // Execute with retry
+        return await this.retryHandler.executeWithRetry<LLMCompletionResult<z.infer<T>>>(
+            async (attempt) => {
+                const controller = new AbortController();
+                const t = setTimeout(() => controller.abort(), timeoutMs);
 
-        // Ensure additionalProperties is false for strict mode
-        if (jsonSchema.additionalProperties !== false) {
-            jsonSchema.additionalProperties = false;
-        }
+                timing.mark('t2');
 
-        const schemaHash = generateSchemaHash(jsonSchema);
+                try {
 
-        // Timing instrumentation: t1 = after schema prepared
-        const t1 = performance.now();
+                    // Use OpenAI Structured Outputs with strict JSON Schema enforcement
+                    const resp = await traceProviderCall(
+                        {
+                            ...(opts?.traceId !== undefined && { traceId: opts.traceId }),
+                            ...(opts?.sessionId !== undefined && { sessionId: opts.sessionId }),
+                            provider: 'openai',
+                            operation: 'completeJSON',
+                            ...(attempt !== undefined && { retryCount: attempt }),
+                        },
+                        async () => {
+                            const client = getOpenAIClient();
+                            return await client.chat.completions.create({
+                                model,
+                                messages: toInput(messages) as any,
+                                temperature,
+                                response_format: {
+                                    type: "json_schema",
+                                    json_schema: {
+                                        name: "response",
+                                        schema: jsonSchema,
+                                        strict: true
+                                    }
+                                } as any
+                            }, { signal: controller.signal });
+                        },
+                        (event, result) => {
+                            // Extract token usage
+                            const usage = (result as any)?.usage;
+                            const tokensIn = usage?.prompt_tokens ?? usage?.input_tokens ?? 0;
+                            const tokensOut = usage?.completion_tokens ?? usage?.output_tokens ?? 0;
+                            const totalTokens = usage?.total_tokens ?? (tokensIn + tokensOut);
 
-        for (let attempt = 0; attempt < maxAttempts; attempt++) {
-            if ((backoffs[attempt] ?? 0) > 0) await sleep(backoffs[attempt] ?? 0);
-            const controller = new AbortController();
-            const t = setTimeout(() => controller.abort(), timeoutMs);
+                            event.model = model;
+                            event.tokensIn = tokensIn;
+                            event.tokensOut = tokensOut;
+                            event.totalTokens = totalTokens;
 
-            // Calculate prompt size
-            const promptChars = messages.reduce((sum, m) => sum + (m.content?.length || 0), 0);
+                            // Add Structured Outputs metadata for debugging
+                            (event as any).schemaName = "response";
+                            (event as any).schemaStrict = true;
+                            (event as any).schemaHash = schemaHash;
+                            (event as any).schemaVersion = schemaVersion;
 
-            // Timing instrumentation: t2 = immediately before OpenAI call (declare outside try for error access)
-            let t2 = performance.now();
+                            // Add prompt metadata for observability (if provided)
+                            if (opts?.promptVersion) {
+                                (event as any).promptVersion = opts.promptVersion;
+                            }
+                            if (opts?.promptHash) {
+                                (event as any).promptHash = opts.promptHash;
+                            }
+                            if (opts?.promptLength) {
+                                (event as any).promptLength = opts.promptLength;
+                            }
 
-            try {
-                const model = (opts as any)?.model || DEFAULT_LLM_MODEL;
-
-                // Update t2 right before OpenAI call
-                t2 = performance.now();
-
-                // Use OpenAI Structured Outputs with strict JSON Schema enforcement
-                const resp = await traceProviderCall(
-                    {
-                        ...(opts?.traceId !== undefined && { traceId: opts.traceId }),
-                        ...(opts?.sessionId !== undefined && { sessionId: opts.sessionId }),
-                        provider: 'openai',
-                        operation: 'completeJSON',
-                        ...(attempt !== undefined && { retryCount: attempt }),
-                    },
-                    async () => {
-                        const client = getOpenAIClient();
-                        return await client.chat.completions.create({
-                            model,
-                            messages: toInput(messages) as any,
-                            temperature,
-                            response_format: {
-                                type: "json_schema",
-                                json_schema: {
-                                    name: "response",
-                                    schema: jsonSchema,
-                                    strict: true  // Guarantees schema conformance
+                            // Calculate cost
+                            if (tokensIn > 0 || tokensOut > 0) {
+                                const cost = calculateOpenAICost(model, tokensIn, tokensOut);
+                                if (cost !== null) {
+                                    event.estimatedCostUsd = cost;
+                                    event.costUnknown = false;
+                                } else {
+                                    event.costUnknown = true;
                                 }
-                            } as any  // Type cast for OpenAI SDK compatibility
-                        }, { signal: controller.signal });
-                    },
-                    (event, result) => {
-                        // Extract token usage
-                        const usage = (result as any)?.usage;
-                        const tokensIn = usage?.prompt_tokens ?? usage?.input_tokens ?? 0;
-                        const tokensOut = usage?.completion_tokens ?? usage?.output_tokens ?? 0;
-                        const totalTokens = usage?.total_tokens ?? (tokensIn + tokensOut);
-
-                        event.model = model;
-                        event.tokensIn = tokensIn;
-                        event.tokensOut = tokensOut;
-                        event.totalTokens = totalTokens;
-
-                        // Add Structured Outputs metadata for debugging
-                        (event as any).schemaName = "response";
-                        (event as any).schemaStrict = true;
-                        (event as any).schemaHash = schemaHash;
-                        (event as any).schemaVersion = SCHEMA_VERSION;
-
-                        // Add prompt metadata for observability (if provided)
-                        if (opts?.promptVersion) {
-                            (event as any).promptVersion = opts.promptVersion;
-                        }
-                        if (opts?.promptHash) {
-                            (event as any).promptHash = opts.promptHash;
-                        }
-                        if (opts?.promptLength) {
-                            (event as any).promptLength = opts.promptLength;
-                        }
-
-                        // Calculate cost
-                        if (tokensIn > 0 || tokensOut > 0) {
-                            const cost = calculateOpenAICost(model, tokensIn, tokensOut);
-                            if (cost !== null) {
-                                event.estimatedCostUsd = cost;
-                                event.costUnknown = false;
                             } else {
                                 event.costUnknown = true;
                             }
-                        } else {
-                            event.costUnknown = true;
                         }
+                    );
+
+                    clearTimeout(t);
+                    timing.mark('t3');
+
+                    // Extract JSON content from OpenAI's response
+                    const content = resp.choices[0]?.message?.content;
+
+                    if (!content) {
+                        logger.error({
+                            traceId: opts?.traceId,
+                            refusal: (resp.choices[0]?.message as any)?.refusal,
+                            finishReason: resp.choices[0]?.finish_reason
+                        }, '[LLM] Structured Outputs returned no content');
+                        throw new Error('OpenAI Structured Outputs returned no content');
                     }
-                );
 
-                clearTimeout(t);
+                    // Parse JSON and validate with Zod
+                    let parsed: any;
+                    try {
+                        parsed = JSON.parse(content);
+                    } catch (parseErr: any) {
+                        logger.error({
+                            traceId: opts?.traceId,
+                            schemaHash,
+                            error: parseErr?.message
+                        }, '[LLM] Failed to parse JSON from Structured Outputs response');
+                        throw new Error(`JSON parse failed despite Structured Outputs: ${parseErr?.message}`);
+                    }
 
-                // Timing instrumentation: t3 = immediately after OpenAI returns
-                const t3 = performance.now();
+                    const validated = schema.parse(parsed);
+                    timing.mark('t4');
 
-                // Extract JSON content from OpenAI's response
-                const content = resp.choices[0]?.message?.content;
+                    // Extract token usage
+                    const usage = (resp as any)?.usage;
+                    const inputTokens = usage?.prompt_tokens ?? usage?.input_tokens ?? null;
+                    const outputTokens = usage?.completion_tokens ?? usage?.output_tokens ?? null;
 
-                if (!content) {
-                    // This should be extremely rare with Structured Outputs
-                    logger.error({
-                        traceId: opts?.traceId,
-                        refusal: (resp.choices[0]?.message as any)?.refusal,
-                        finishReason: resp.choices[0]?.finish_reason
-                    }, '[LLM] Structured Outputs returned no content');
-                    throw new Error('OpenAI Structured Outputs returned no content');
-                }
-
-                // Parse JSON and validate with Zod (should always pass with strict schema)
-                let parsed: any;
-                try {
-                    parsed = JSON.parse(content);
-                } catch (parseErr: any) {
-                    logger.error({
-                        traceId: opts?.traceId,
-                        schemaHash,
-                        error: parseErr?.message
-                    }, '[LLM] Failed to parse JSON from Structured Outputs response');
-                    throw new Error(`JSON parse failed despite Structured Outputs: ${parseErr?.message}`);
-                }
-
-                const validated = schema.parse(parsed);
-
-                // Timing instrumentation: t4 = after parse/validate complete
-                const t4 = performance.now();
-
-                // Extract token usage for detailed logging
-                const usage = (resp as any)?.usage;
-                const inputTokens = usage?.prompt_tokens ?? usage?.input_tokens ?? null;
-                const outputTokens = usage?.completion_tokens ?? usage?.output_tokens ?? null;
-
-                // Compute timing metrics
-                const buildPromptMs = Math.round((t1 - t0) * 100) / 100;
-                const networkMs = Math.round((t3 - t2) * 100) / 100;
-                const parseMs = Math.round((t4 - t3) * 100) / 100;
-                const totalMs = Math.round((t4 - t0) * 100) / 100;
-
-                // Threshold-based logging: INFO if slow, DEBUG otherwise
-                const isSlow = networkMs > 1500 || totalMs > 1500;
-                const logLevel = isSlow ? 'info' : 'debug';
-
-                // Log detailed timing once per attempt
-                logger[logLevel]({
-                    msg: 'llm_gate_timing',
-                    stage: opts?.stage || 'unknown',
-                    promptVersion: opts?.promptVersion || 'unknown',
-                    schemaHash: opts?.schemaHash || schemaHash,
-                    requestId: opts?.requestId,
-                    traceId: opts?.traceId,
-                    sessionId: opts?.sessionId,
-                    attempt: attempt + 1,
-                    model,
-                    timeoutMs,
-                    timeoutHit: false,
-                    buildPromptMs,
-                    networkMs,
-                    parseMs,
-                    totalMs,
-                    promptChars,
-                    inputTokens,
-                    outputTokens,
-                    retriesCount: attempt,
-                    success: true,
-                    ...(isSlow && { slow: true })
-                }, 'llm_gate_timing');
-
-                logger.debug({
-                    attempts: attempt + 1,
-                    durationMs: Date.now() - tStart,
-                    schemaHash
-                }, '[LLM] Structured Outputs completion successful');
-
-                return {
-                    data: validated,
-                    usage: {
-                        prompt_tokens: inputTokens ?? undefined,
-                        completion_tokens: outputTokens ?? undefined,
-                        total_tokens: (inputTokens && outputTokens) ? inputTokens + outputTokens : undefined
-                    },
-                    model
-                };
-            } catch (e: any) {
-                clearTimeout(t);
-                lastErr = e;
-                const status = e?.status ?? e?.code ?? e?.name;
-
-                // Timing instrumentation: t3_error = when error occurred
-                const t3Error = performance.now();
-
-                // Categorize errors
-                const isAbortError = e?.name === 'AbortError' ||
-                    e?.message?.includes('aborted') ||
-                    e?.message?.includes('timeout');
-                const isTransportError = status === 429 ||
-                    (typeof status === 'number' && status >= 500);
-                const isParseError = e?.name === 'ZodError' ||
-                    e?.name === 'SyntaxError' ||
-                    e?.message?.includes('JSON') ||
-                    e?.message?.includes('parsed content');
-
-                // Determine error type/reason
-                let errorType = 'unknown';
-                let errorReason = e?.message || 'unknown';
-                if (isAbortError) {
-                    errorType = 'abort_timeout';
-                    errorReason = 'Request aborted or timeout';
-                } else if (isTransportError) {
-                    errorType = 'transport_error';
-                    errorReason = `HTTP ${status}`;
-                } else if (isParseError) {
-                    errorType = 'parse_error';
-                    errorReason = e?.message || 'Parse failed';
-                }
-
-                // Compute timing metrics for failed attempt
-                const buildPromptMs = Math.round((t1 - t0) * 100) / 100;
-                const networkMs = Math.round((t3Error - t2) * 100) / 100;
-                const totalMs = Math.round((t3Error - t0) * 100) / 100;
-
-                // Log detailed timing for failed attempt
-                logger.warn({
-                    msg: 'llm_gate_timing',
-                    stage: opts?.stage || 'unknown',
-                    promptVersion: opts?.promptVersion || 'unknown',
-                    requestId: opts?.requestId,
-                    traceId: opts?.traceId,
-                    sessionId: opts?.sessionId,
-                    attempt: attempt + 1,
-                    model: (opts as any)?.model || DEFAULT_LLM_MODEL,
-                    timeoutMs,
-                    timeoutHit: isAbortError,
-                    buildPromptMs,
-                    networkMs,
-                    parseMs: 0,
-                    totalMs,
-                    promptChars,
-                    inputTokens: null,
-                    outputTokens: null,
-                    retriesCount: attempt,
-                    success: false,
-                    errorType,
-                    errorReason,
-                    statusCode: typeof status === 'number' ? status : null
-                }, 'llm_gate_timing');
-
-                // Abort/Timeout errors: fail fast, let caller handle (gate can fallback)
-                if (isAbortError) {
-                    logger.warn({
-                        traceId: opts?.traceId,
-                        durationMs: Date.now() - tStart,
+                    // Log timing
+                    timing.logSuccess({
+                        stage: opts?.stage ?? undefined,
+                        promptVersion: opts?.promptVersion ?? undefined,
+                        schemaHash: opts?.schemaHash ?? schemaHash,
+                        requestId: opts?.requestId ?? undefined,
+                        traceId: opts?.traceId ?? undefined,
+                        sessionId: opts?.sessionId ?? undefined,
+                        attempt: attempt + 1,
+                        model,
                         timeoutMs,
-                        promptVersion: opts?.promptVersion
-                    }, '[LLM] Request aborted/timeout - failing fast for caller to handle');
-                    throw e;
-                }
+                        promptChars,
+                        inputTokens: inputTokens ?? undefined,
+                        outputTokens: outputTokens ?? undefined
+                    });
 
-                // Parse errors with Structured Outputs = fail fast (shouldn't happen)
-                if (isParseError) {
-                    logger.error({
-                        status,
-                        traceId: opts?.traceId,
-                        schemaHash,
-                        errorType: e?.name
-                    }, '[LLM] Structured Outputs parse error - failing fast (schema mismatch should not occur)');
-                    throw e;
-                }
-
-                // Non-retriable errors: fail fast
-                if (!isTransportError) {
-                    logger.error({ status, traceId: opts?.traceId }, '[LLM] Non-retriable error, failing fast');
-                    throw e;
-                }
-
-                // Transport errors (429, 5xx): retry if attempts remaining
-                logger.warn({
-                    attempt: attempt + 1,
-                    maxAttempts,
-                    status,
-                    traceId: opts?.traceId
-                }, '[LLM] Retriable transport error');
-
-                if (attempt === maxAttempts - 1) {
-                    logger.error({
+                    logger.debug({
                         attempts: attempt + 1,
                         durationMs: Date.now() - tStart,
-                        traceId: opts?.traceId
-                    }, '[LLM] All retry attempts exhausted');
+                        schemaHash
+                    }, '[LLM] Structured Outputs completion successful');
+
+                    return {
+                        data: validated,
+                        usage: {
+                            prompt_tokens: inputTokens ?? undefined,
+                            completion_tokens: outputTokens ?? undefined,
+                            total_tokens: (inputTokens && outputTokens) ? inputTokens + outputTokens : undefined
+                        },
+                        model
+                    };
+                } catch (e: any) {
+                    clearTimeout(t);
+                    timing.mark('t3');
+
+                    // Categorize error and log timing
+                    const category = this.retryHandler.categorizeError(e);
+                    timing.logFailure(
+                        {
+                            stage: opts?.stage ?? undefined,
+                            promptVersion: opts?.promptVersion ?? undefined,
+                            requestId: opts?.requestId ?? undefined,
+                            traceId: opts?.traceId ?? undefined,
+                            sessionId: opts?.sessionId ?? undefined,
+                            attempt: attempt + 1,
+                            model,
+                            timeoutMs,
+                            promptChars
+                        },
+                        {
+                            type: category.type,
+                            reason: category.reason,
+                            statusCode: category.statusCode
+                        }
+                    );
+
+                    // Re-throw for retry handler to decide
                     throw e;
                 }
+            },
+            {
+                traceId: opts?.traceId ?? undefined
             }
-        }
-        throw lastErr ?? new Error('LLM failed after all attempts');
+        );
     }
 
     async complete(
