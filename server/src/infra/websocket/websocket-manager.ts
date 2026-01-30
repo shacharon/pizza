@@ -29,9 +29,11 @@ import { WebSocketMessageRouter } from './message-router.js';
 import { BacklogDrainerService } from './backlog-drainer.service.js';
 import { SubscriptionActivatorService } from './subscription-activator.service.js';
 import { PublisherService } from './publisher.service.js';
+import { MessageValidationService } from './message-validation.service.js';
+import { SubscriptionAckService } from './subscription-ack.service.js';
+import { SubscribeHandlerService } from './subscribe-handler.service.js';
 
 // Utilities
-import { normalizeLegacyMessage } from './message-normalizer.js';
 import type {
   WebSocketManagerConfig,
   PublishSummary,
@@ -58,6 +60,9 @@ export class WebSocketManager {
   private backlogDrainer!: BacklogDrainerService;
   private subscriptionActivator!: SubscriptionActivatorService;
   private publisher!: PublisherService;
+  private messageValidator!: MessageValidationService;
+  private subscriptionAck!: SubscriptionAckService;
+  private subscribeHandler!: SubscribeHandlerService;
 
   constructor(server: HTTPServer, config?: Partial<WebSocketManagerConfig>) {
     // 1. Resolve and validate configuration
@@ -99,6 +104,26 @@ export class WebSocketManager {
       }
     );
 
+    // 5. Initialize extracted services (Pass 2)
+    this.backlogDrainer = new BacklogDrainerService(this.backlogManager);
+    this.publisher = new PublisherService(this.subscriptionManager, this.backlogManager);
+    this.subscriptionActivator = new SubscriptionActivatorService(
+      this.pendingSubscriptionsManager,
+      this.subscriptionManager,
+      this.backlogDrainer
+    );
+    this.messageValidator = new MessageValidationService({
+      allowLegacy: process.env.WS_ALLOW_LEGACY !== 'false',
+      isProduction: process.env.NODE_ENV === 'production'
+    });
+    this.subscriptionAck = new SubscriptionAckService();
+    this.subscribeHandler = new SubscribeHandlerService(
+      this.subscriptionManager,
+      this.pendingSubscriptionsManager,
+      this.backlogManager,
+      this.subscriptionAck
+    );
+
     // 6. Init WebSocket server with Security Limits
     this.wss = new WebSocketServer({
       server,
@@ -135,84 +160,44 @@ export class WebSocketManager {
 
 
   private handleMessage(ws: WebSocket, data: any, clientId: string): void {
-    let message: any;
+    // Validate message using extracted service
+    const validation = this.messageValidator.validate(data, clientId);
 
-    try {
-      const raw = data.toString();
-      message = JSON.parse(raw);
-    } catch (err) {
-      logger.error({
-        clientId,
-        error: err instanceof Error ? err.message : 'unknown'
-      }, 'WebSocket JSON parse error');
-
-      this.sendError(ws, 'parse_error', 'Failed to parse JSON');
-      return;
-    }
-
-    // DEV: Log message structure (keys only, no values)
-    if (process.env.NODE_ENV !== 'production') {
-      const msgKeys = message ? Object.keys(message) : [];
-      const payloadKeys = message?.payload ? Object.keys(message.payload) : null;
-      const dataKeys = message?.data ? Object.keys(message.data) : null;
-      logger.debug({
-        clientId,
-        msgKeys,
-        payloadKeys,
-        dataKeys,
-        hasPayload: !!message?.payload,
-        hasData: !!message?.data
-      }, '[DEV] WS message keys');
-    }
-
-    // Normalize requestId from various legacy locations
-    // Returns null if legacy message is rejected (WS_ALLOW_LEGACY=false)
-    message = normalizeLegacyMessage(message, clientId);
-
-    // Check if message was rejected due to legacy protocol enforcement
-    if (message === null) {
-      this.handleLegacyRejection(ws, clientId);
-      return;
-    }
-
-    // Validate message structure
-    if (!isWSClientMessage(message)) {
-      const isSubscribe = message?.type === 'subscribe';
-      const hasRequestId = 'requestId' in (message || {});
-
-      logger.warn({
-        clientId,
-        messageType: message?.type || 'undefined',
-        hasChannel: 'channel' in (message || {}),
-        hasRequestId,
-        reasonCode: isSubscribe && !hasRequestId ? 'MISSING_REQUEST_ID' : 'INVALID_FORMAT'
-      }, 'Invalid WebSocket message format');
-
-      if (isSubscribe && !hasRequestId) {
-        this.sendValidationError(ws, {
-          v: 1,
-          type: 'publish',
-          channel: 'system',
-          payload: {
-            code: 'MISSING_REQUEST_ID',
-            message: 'Subscribe requires requestId. Send subscribe after /search returns requestId.'
-          }
-        });
-      } else {
-        this.sendError(ws, 'invalid_message', 'Invalid message format');
+    if (!validation.valid) {
+      // Handle different validation failure reasons
+      if (validation.reason === 'parse_error') {
+        this.sendError(ws, 'parse_error', 'Failed to parse JSON');
+        return;
       }
-      return;
+
+      if (validation.reason === 'legacy_rejected') {
+        const rejection = this.messageValidator.handleLegacyRejection(ws, clientId);
+        if (rejection.shouldClose) {
+          ws.close(rejection.closeCode, rejection.closeReason);
+        }
+        return;
+      }
+
+      if (validation.reason === 'invalid_format') {
+        if (validation.isSubscribe && !validation.hasRequestId) {
+          this.sendValidationError(ws, {
+            v: 1,
+            type: 'publish',
+            channel: 'system',
+            payload: {
+              code: 'MISSING_REQUEST_ID',
+              message: 'Subscribe requires requestId. Send subscribe after /search returns requestId.'
+            }
+          });
+        } else {
+          this.sendError(ws, 'invalid_message', 'Invalid message format');
+        }
+        return;
+      }
     }
 
-    logger.debug({
-      clientId,
-      type: message.type,
-      hasRequestId: 'requestId' in message,
-      hasSessionId: 'sessionId' in message,
-      ...('channel' in message && { channel: message.channel })
-    }, 'WebSocket message received');
-
-    void this.handleClientMessage(ws, message, clientId);
+    // Message is valid, proceed with routing
+    void this.handleClientMessage(ws, validation.message, clientId);
   }
 
   private async handleClientMessage(
@@ -229,7 +214,20 @@ export class WebSocketManager {
       message,
       clientId,
       {
-        onSubscribe: (ws, msg) => this.handleSubscribeRequest(ws, msg, clientId, requireAuth, isProduction),
+        onSubscribe: (ws, msg) => this.subscribeHandler.handleSubscribeRequest(
+          ws,
+          msg,
+          clientId,
+          requireAuth,
+          isProduction,
+          (ws: WebSocket, requestId: string, clientId: string) => this.subscriptionManager.replayStateIfAvailable(
+            requestId,
+            ws,
+            clientId,
+            (ws, msg) => this.publisher.sendTo(ws, msg, this.cleanup.bind(this))
+          ),
+          this.cleanup.bind(this)
+        ),
         sendError: this.sendError.bind(this)
       }
     );
@@ -240,8 +238,6 @@ export class WebSocketManager {
     }
   }
 
-
-
   private handleCloseEvent(ws: WebSocket, clientId: string, code: number, reasonBuffer: Buffer): void {
     handleClose(ws, clientId, code, reasonBuffer, this.cleanup.bind(this));
   }
@@ -250,146 +246,31 @@ export class WebSocketManager {
     handleError(ws, err, clientId, this.cleanup.bind(this));
   }
 
-  /**
-   * Handle legacy protocol rejection
-   * Sends NACK message and closes connection with clear reason
-   */
-  private handleLegacyRejection(ws: WebSocket, clientId: string): void {
-    const nackMessage = {
-      type: 'sub_nack',
-      reason: 'LEGACY_PROTOCOL_REJECTED',
-      message: 'Legacy WebSocket protocol is no longer supported. Please upgrade your client to use canonical protocol v1. See: docs/ws-legacy-sunset.md',
-      migrationDoc: 'docs/ws-legacy-sunset.md'
-    };
-
-    logger.warn({
-      clientId,
-      event: 'ws_legacy_rejected',
-      reason: 'LEGACY_PROTOCOL_REJECTED',
-      message: 'Connection rejected due to legacy protocol usage'
-    }, '[WS] Rejecting connection: legacy protocol not allowed');
-
-    try {
-      ws.send(JSON.stringify(nackMessage));
-    } catch (sendErr) {
-      logger.error({ clientId, error: String(sendErr) }, '[WS] Failed to send legacy rejection NACK');
-    }
-
-    // Close connection with clear reason
-    ws.close(1008, 'Legacy protocol not supported'); // 1008 = Policy Violation
-  }
-
   private cleanup(ws: WebSocket): void {
     this.subscriptionManager.cleanup(ws);
-  }
-
-  private async handleSubscribeRequest(
-    ws: WebSocket,
-    message: WSClientMessage,
-    clientId: string,
-    requireAuth: boolean,
-    isProduction: boolean
-  ): Promise<void> {
-    const result = await this.subscriptionManager.handleSubscribeRequest(
-      ws,
-      message,
-      clientId,
-      requireAuth,
-      isProduction
-    );
-
-    if (!result.success) {
-      this.sendSubNack(ws, result.channel || 'search', result.requestId || '', 'invalid_request');
-      return;
-    }
-
-    if (result.pending) {
-      // Register pending subscription
-      this.pendingSubscriptionsManager.register(
-        result.channel!,
-        result.requestId!,
-        result.sessionId!,
-        ws
-      );
-      this.sendSubAck(ws, result.channel!, result.requestId!, true);
-    } else {
-      // Active subscription established
-      this.sendSubAck(ws, result.channel!, result.requestId!, false);
-
-      // Drain backlog if exists
-      const key = this.subscriptionManager.buildSubscriptionKey(
-        result.channel!,
-        result.requestId!,
-        result.sessionId
-      );
-      this.backlogManager.drain(key, ws, result.channel!, result.requestId!, this.cleanup.bind(this));
-
-      // Late-subscriber replay for search channel
-      if (result.channel === 'search') {
-        await this.subscriptionManager.replayStateIfAvailable(
-          result.requestId!,
-          ws,
-          clientId,
-          (ws, msg) => this.publisher.sendTo(ws, msg, this.cleanup.bind(this))
-        );
-      }
-    }
-  }
-
-  private sendSubAck(ws: WebSocket, channel: WSChannel, requestId: string, pending: boolean): void {
-    const ack: any = {
-      type: 'sub_ack',
-      channel,
-      requestId,
-      pending
-    };
-
-    if (ws.readyState === WebSocket.OPEN) {
-      try {
-        ws.send(JSON.stringify(ack));
-      } catch (err) {
-        logger.warn({
-          clientId: (ws as any).clientId,
-          channel,
-          requestIdHash: this.hashRequestId(requestId),
-          error: err instanceof Error ? err.message : 'unknown'
-        }, 'Failed to send sub_ack');
-      }
-    }
-  }
-
-  private sendSubNack(ws: WebSocket, channel: WSChannel, requestId: string, reason: string): void {
-    const nack: any = {
-      type: 'sub_nack',
-      channel,
-      requestId,
-      reason
-    };
-
-    if (ws.readyState === WebSocket.OPEN) {
-      try {
-        ws.send(JSON.stringify(nack));
-      } catch (err) {
-        logger.warn({
-          clientId: (ws as any).clientId,
-          channel,
-          requestIdHash: this.hashRequestId(requestId),
-          error: err instanceof Error ? err.message : 'unknown'
-        }, 'Failed to send sub_nack');
-      }
-    }
   }
 
   /**
    * Activate pending subscriptions for a requestId when job is created
    * Delegated to SubscriptionActivatorService
+   * GUARDRAIL: Never throws - logs error if activator not ready
    */
   activatePendingSubscriptions(requestId: string, ownerSessionId: string): void {
+    // GUARDRAIL: Defensive check - activator should always be initialized
+    if (!this.subscriptionActivator) {
+      logger.error({
+        requestId,
+        ownerSessionId,
+        activatorState: 'undefined'
+      }, '[P0 Critical] WebSocketManager.subscriptionActivator is undefined - initialization failure');
+      return;
+    }
+
     this.subscriptionActivator.activatePendingSubscriptions(
       requestId,
       ownerSessionId,
-      this.sendSubAck.bind(this),
-      this.sendSubNack.bind(this),
+      (ws, channel, requestId, pending) => this.subscriptionAck.sendSubAck(ws, channel, requestId, pending),
+      (ws, channel, requestId, reason) => this.subscriptionAck.sendSubNack(ws, channel, requestId, reason),
       this.cleanup.bind(this)
     );
   }
@@ -405,6 +286,7 @@ export class WebSocketManager {
   /**
    * Publish to a specific channel
    * Delegated to PublisherService
+   * GUARDRAIL: Never throws - returns failure summary if publisher not ready
    */
   publishToChannel(
     channel: WSChannel,
@@ -412,6 +294,17 @@ export class WebSocketManager {
     sessionId: string | undefined,
     message: WSServerMessage
   ): PublishSummary {
+    // GUARDRAIL: Defensive check - publisher should always be initialized
+    if (!this.publisher) {
+      logger.error({
+        channel,
+        requestId,
+        messageType: message.type,
+        publisherState: 'undefined'
+      }, '[P0 Critical] WebSocketManager.publisher is undefined - initialization failure');
+      return { attempted: 0, sent: 0, failed: 0 };
+    }
+
     return this.publisher.publishToChannel(
       channel,
       requestId,
@@ -439,47 +332,20 @@ export class WebSocketManager {
   private startHeartbeat(): void {
     this.heartbeatInterval = setInterval(() => {
       executeHeartbeat(this.wss.clients, this.cleanup.bind(this));
-      
+
       // NO ws_status broadcast on heartbeat - only send on lifecycle events
       // This prevents infinite "connecting" spam from heartbeat pings
-      
+
       // Cleanup expired pending subscriptions
-      this.pendingSubscriptionsManager.cleanupExpired(this.sendSubNack.bind(this));
+      this.pendingSubscriptionsManager.cleanupExpired((ws, channel, requestId, reason) => 
+        this.subscriptionAck.sendSubNack(ws, channel, requestId, reason)
+      );
 
       // Cleanup expired backlogs
       this.backlogManager.cleanupExpired();
     }, this.config.heartbeatIntervalMs);
 
     this.heartbeatInterval.unref();
-  }
-
-  /**
-   * Send connection status to a specific client (lifecycle events only)
-   * Used by app-assistant-line to show stable WS status
-   */
-  private sendConnectionStatus(ws: WebSocket, state: 'connected' | 'reconnecting' | 'offline'): void {
-    if (ws.readyState !== WebSocket.OPEN) {
-      return;
-    }
-
-    const statusEvent: WSServerMessage = {
-      type: 'ws_status',
-      state,
-      ts: new Date().toISOString()
-    };
-
-    try {
-      ws.send(JSON.stringify(statusEvent));
-      logger.debug({
-        state,
-        clientId: (ws as any).clientId
-      }, '[WS] Sent connection status (lifecycle event)');
-    } catch (err) {
-      logger.warn({
-        error: err instanceof Error ? err.message : 'unknown',
-        clientId: (ws as any).clientId
-      }, '[WS] Failed to send ws_status event');
-    }
   }
 
   /**

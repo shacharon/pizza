@@ -2,18 +2,20 @@
  * Subscription Manager (ORCHESTRATION)
  * Handles subscribe, unsubscribe, and message routing logic
  * Delegates ownership verification to OwnershipVerifier
+ * Delegates routing decisions to SubscriptionRouterService
  */
 
 import { WebSocket } from 'ws';
 import crypto from 'crypto';
 import { logger } from '../../lib/logger/structured-logger.js';
-import { normalizeToCanonical } from './websocket-protocol.js';
 import type { WSClientMessage, WSServerMessage, WSChannel } from './websocket-protocol.js';
-import type { WebSocketContext, SubscriptionKey } from './websocket.types.js';
-import { hashSessionId } from './websocket.types.js';
+import type { SubscriptionKey } from './websocket.types.js';
 import type { IRequestStateStore } from '../state/request-state.store.js';
 import type { ISearchJobStore } from '../../services/search/job-store/job-store.interface.js';
 import { OwnershipVerifier } from './ownership-verifier.js';
+import { SubscriptionRouterService } from './subscription-router.service.js';
+import { RequestStateQueryService } from './request-state-query.service.js';
+import { StateReplayService } from './state-replay.service.js';
 
 /**
  * Subscription Manager Class
@@ -23,24 +25,26 @@ export class SubscriptionManager {
   private subscriptions = new Map<SubscriptionKey, Set<WebSocket>>();
   private socketToSubscriptions = new WeakMap<WebSocket, Set<SubscriptionKey>>();
   private readonly ownershipVerifier: OwnershipVerifier;
+  private readonly router: SubscriptionRouterService;
+  private readonly stateQuery: RequestStateQueryService;
+  private readonly stateReplay: StateReplayService;
 
   constructor(
     private requestStateStore: IRequestStateStore | undefined,
     jobStore: ISearchJobStore | undefined
   ) {
     this.ownershipVerifier = new OwnershipVerifier(jobStore);
+    this.router = new SubscriptionRouterService();
+    this.stateQuery = new RequestStateQueryService(requestStateStore);
+    this.stateReplay = new StateReplayService(requestStateStore);
   }
 
-  /**
-   * Build subscription key (requestId-based for both channels)
-   */
+  /** Build subscription key (requestId-based for both channels) */
   buildSubscriptionKey(channel: WSChannel, requestId: string, sessionId?: string): SubscriptionKey {
     return `${channel}:${requestId}`;
   }
 
-  /**
-   * Subscribe to a channel
-   */
+  /** Subscribe to a channel */
   subscribe(
     channel: WSChannel,
     requestId: string,
@@ -69,9 +73,7 @@ export class SubscriptionManager {
     }, 'WebSocket subscribed to channel');
   }
 
-  /**
-   * Unsubscribe from a channel
-   */
+  /** Unsubscribe from a channel */
   unsubscribe(
     channel: WSChannel,
     requestId: string,
@@ -100,16 +102,12 @@ export class SubscriptionManager {
     }, 'WebSocket unsubscribed from channel');
   }
 
-  /**
-   * Get subscribers for a subscription key
-   */
+  /** Get subscribers for a subscription key */
   getSubscribers(key: SubscriptionKey): Set<WebSocket> | undefined {
     return this.subscriptions.get(key);
   }
 
-  /**
-   * Cleanup WebSocket from all subscriptions
-   */
+  /** Cleanup WebSocket from all subscriptions */
   cleanup(ws: WebSocket): void {
     const subscriptionKeys = this.socketToSubscriptions.get(ws);
 
@@ -127,9 +125,7 @@ export class SubscriptionManager {
     }
   }
 
-  /**
-   * Handle subscribe request with ownership verification
-   */
+  /** Handle subscribe request with ownership verification */
   async handleSubscribeRequest(
     ws: WebSocket,
     message: WSClientMessage,
@@ -143,108 +139,68 @@ export class SubscriptionManager {
     requestId?: string;
     sessionId?: string;
   }> {
-    // Normalize legacy to canonical
-    const canonical = normalizeToCanonical(message);
-    const envelope = canonical as any;
-
-    const channel: WSChannel = envelope.channel || 'search';
+    // Extract requestId for ownership check
+    const envelope = message as any;
     const requestId = envelope.requestId as string | undefined;
-
-    // Get context from WebSocket
-    const ctx = (ws as any).ctx as WebSocketContext | undefined;
+    const ctx = (ws as any).ctx as any;
     const connSessionId = ctx?.sessionId || 'anonymous';
     const connUserId = ctx?.userId;
 
-    const requestIdHash = this.hashRequestId(requestId || 'unknown');
-    const sessionHash = hashSessionId(connSessionId);
-
-    logger.info({
-      clientId,
-      channel,
-      requestIdHash,
-      sessionHash,
-      event: 'ws_subscribe_attempt'
-    }, 'WebSocket subscribe attempt');
-
-    // Step 1: Strict payload validation
-    if (!requestId) {
-      logger.warn({ clientId, channel, reason: 'missing_requestId' }, 'Subscribe validation failed');
-      return { success: false };
-    }
-
-    if (channel !== 'search' && channel !== 'assistant') {
-      logger.warn({ clientId, channel, requestId: requestIdHash, reason: 'invalid_channel' }, 'Subscribe validation failed');
-      return { success: false };
-    }
-
-    // Step 2: Auth check (if enabled)
-    if (requireAuth && connSessionId === 'anonymous') {
-      logger.warn({ clientId, channel, requestIdHash, reason: 'not_authenticated' }, 'Subscribe rejected - no auth');
-      return { success: false };
-    }
-
-    // Step 3: Verify ownership (delegated to OwnershipVerifier)
+    // Verify ownership (orchestration)
     const ownershipDecision = await this.ownershipVerifier.verifyOwnership(
-      requestId,
+      requestId || 'unknown',
       connSessionId,
       connUserId,
       clientId,
-      channel
+      envelope.channel || 'search'
     );
 
-    // Handle ownership decision
-    if (ownershipDecision.result === 'DENY') {
+    // Route the request (delegated to router)
+    const route = this.router.routeSubscribeRequest(
+      ws,
+      message,
+      clientId,
+      requireAuth,
+      ownershipDecision
+    );
+
+    // Execute action based on routing decision
+    if (route.action === 'REJECT') {
       return { success: false };
     }
 
-    if (ownershipDecision.result === 'PENDING') {
-      // Owner not yet set - register pending subscription
-      return { success: true, pending: true, channel, requestId, sessionId: connSessionId };
+    if (route.action === 'PENDING') {
+      return {
+        success: true,
+        pending: true,
+        channel: route.channel!,
+        requestId: route.requestId!,
+        sessionId: route.sessionId!
+      };
     }
 
-    // ALLOW - owner matches, accept subscription
-    this.subscribe(channel, requestId, connSessionId, ws);
-
-    const resolvedKey = this.buildSubscriptionKey(channel, requestId, connSessionId);
-    
-    return { success: true, pending: false, channel, requestId, sessionId: connSessionId };
+    // SUBSCRIBE - accept subscription
+    this.subscribe(route.channel!, route.requestId!, route.sessionId, ws);
+    return {
+      success: true,
+      pending: false,
+      channel: route.channel!,
+      requestId: route.requestId!,
+      sessionId: route.sessionId!
+    };
   }
 
   /**
    * Get request status for logging
+   * Delegated to RequestStateQueryService
    */
   async getRequestStatus(requestId: string): Promise<string> {
-    if (!this.requestStateStore) {
-      return 'unknown';
-    }
-
-    try {
-      const state = await this.requestStateStore.get(requestId);
-
-      if (!state) {
-        return 'not_found';
-      }
-
-      switch (state.assistantStatus) {
-        case 'pending':
-          return 'pending';
-        case 'streaming':
-          return 'streaming';
-        case 'completed':
-          return 'completed';
-        case 'failed':
-          return 'failed';
-        default:
-          return 'unknown';
-      }
-    } catch (error) {
-      logger.debug({ requestId, error }, 'Failed to get request status');
-      return 'error';
-    }
+    return this.stateQuery.getRequestStatus(requestId);
   }
 
   /**
    * Replay state for late subscribers
+   * Delegated to StateReplayService
    */
   async replayStateIfAvailable(
     requestId: string,
@@ -252,66 +208,10 @@ export class SubscriptionManager {
     clientId: string,
     sendTo: (ws: WebSocket, message: WSServerMessage) => boolean
   ): Promise<void> {
-    if (!this.requestStateStore) {
-      return;
-    }
-
-    try {
-      const state = await this.requestStateStore.get(requestId);
-
-      if (!state) {
-        logger.debug({ requestId, clientId }, 'No state to replay');
-        return;
-      }
-
-      // Send current status
-      const statusSent = sendTo(ws, {
-        type: 'status',
-        requestId,
-        status: state.assistantStatus
-      });
-
-      // If assistant output exists, send it
-      if (state.assistantOutput) {
-        sendTo(ws, {
-          type: 'stream.done',
-          requestId,
-          fullText: state.assistantOutput
-        });
-      }
-
-      // If recommendations exist, send them
-      if (state.recommendations && state.recommendations.length > 0) {
-        sendTo(ws, {
-          type: 'recommendation',
-          requestId,
-          actions: state.recommendations
-        });
-      }
-
-      if (!statusSent) {
-        return;
-      }
-
-      logger.info({
-        requestId,
-        clientId,
-        hasOutput: !!state.assistantOutput,
-        hasRecommendations: !!(state.recommendations && state.recommendations.length > 0)
-      }, 'websocket_replay_sent');
-
-    } catch (error) {
-      logger.error({
-        requestId,
-        clientId,
-        error
-      }, 'Failed to replay state');
-    }
+    return this.stateReplay.replayStateIfAvailable(requestId, ws, clientId, sendTo);
   }
 
-  /**
-   * Get subscription stats
-   */
+  /** Get subscription stats */
   getStats(): {
     subscriptions: number;
     requestIdsTracked: number;
@@ -322,13 +222,4 @@ export class SubscriptionManager {
       requestIdsTracked: this.subscriptions.size
     };
   }
-
-  /**
-   * Hash requestId for logging
-   */
-  private hashRequestId(requestId: string): string {
-    if (!requestId) return 'none';
-    return crypto.createHash('sha256').update(requestId).digest('hex').substring(0, 12);
-  }
-
 }
