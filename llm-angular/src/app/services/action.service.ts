@@ -1,14 +1,22 @@
 /**
- * Action Service
+ * Action Service (REFACTORED with Strategy Pattern)
  * Manages Human-in-the-Loop action lifecycle (L0, L1, L2)
+ * 
+ * Architecture:
+ * - Orchestration: propose/approve/reject/cleanup (in this service)
+ * - Execution: Delegated to ExecutorRegistry + strategy executors
+ * 
+ * Executors organized by domain:
+ * - Navigation: DirectionsExecutor, CallExecutor, WebsiteExecutor
+ * - Social: ShareExecutor, FavoriteExecutor
  */
 
 import { Injectable, inject } from '@angular/core';
 import { Observable, of, throwError } from 'rxjs';
 import { tap, catchError, delay, map } from 'rxjs/operators';
 import { ActionsStore } from '../state/actions.store';
-import { SessionStore } from '../state/session.store';
 import { AnalyticsService } from './analytics.service';
+import { ExecutorRegistry } from './action-executors/executor.registry';
 import type { 
   ActionType, 
   ActionLevel, 
@@ -20,8 +28,8 @@ import type { Restaurant } from '../domain/types/search.types';
 @Injectable({ providedIn: 'root' })
 export class ActionService {
   private readonly actionsStore = inject(ActionsStore);
-  private readonly sessionStore = inject(SessionStore);
   private readonly analyticsService = inject(AnalyticsService);
+  private readonly executorRegistry = inject(ExecutorRegistry);
 
   proposeAction(
     type: ActionType,
@@ -172,104 +180,28 @@ export class ActionService {
     );
   }
 
+  /**
+   * Perform action execution via strategy pattern
+   * Delegates to ExecutorRegistry to get appropriate executor
+   * 
+   * @param action - Action proposal to execute
+   * @returns Observable with execution result
+   */
   private performExecution(action: ActionProposal): Observable<ActionExecutionResult> {
-    switch (action.type) {
-      case 'GET_DIRECTIONS':
-        return this.openMaps(action.restaurant);
-      case 'CALL_RESTAURANT':
-        return this.openDialer(action.restaurant);
-      case 'SAVE_FAVORITE':
-        return this.saveFavorite(action.restaurant);
-      case 'SHARE':
-        return this.share(action.restaurant);
-      case 'VIEW_MENU':
-      case 'VIEW_DETAILS':
-        return this.openWebsite(action.restaurant);
-      default:
-        return of({ 
-          success: false, 
-          message: 'Unknown action', 
-          error: `Invalid action type: ${action.type}` 
-        });
+    // Get executor from registry
+    const executor = this.executorRegistry.get(action.type);
+
+    if (!executor) {
+      // Unknown action type - return error
+      return of({ 
+        success: false, 
+        message: 'Unknown action', 
+        error: `No executor registered for action type: ${action.type}` 
+      });
     }
-  }
 
-  private openMaps(restaurant: Restaurant): Observable<ActionExecutionResult> {
-    try {
-      const url = `https://www.google.com/maps/search/?api=1&query=${restaurant.location.lat},${restaurant.location.lng}&query_place_id=${restaurant.placeId}`;
-      window.open(url, '_blank');
-      return of({ success: true, message: 'Opened Google Maps' });
-    } catch (error: any) {
-      return of({ success: false, message: 'Failed to open maps', error: error.message });
-    }
-  }
-
-  private openDialer(restaurant: Restaurant): Observable<ActionExecutionResult> {
-    try {
-      if (restaurant.phoneNumber) {
-        window.location.href = `tel:${restaurant.phoneNumber}`;
-        return of({ success: true, message: 'Opened phone dialer' });
-      }
-      return of({ success: false, message: 'No phone number', error: 'Phone number not available' });
-    } catch (error: any) {
-      return of({ success: false, message: 'Failed to open dialer', error: error.message });
-    }
-  }
-
-  private saveFavorite(restaurant: Restaurant): Observable<ActionExecutionResult> {
-    try {
-      this.sessionStore.addToFavorites(restaurant.id);
-      
-      // Also save to localStorage as backup
-      const favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
-      if (!favorites.includes(restaurant.id)) {
-        favorites.push(restaurant.id);
-        localStorage.setItem('favorites', JSON.stringify(favorites));
-      }
-
-      return of({ success: true, message: 'Saved to favorites' });
-    } catch (error: any) {
-      return of({ success: false, message: 'Failed to save favorite', error: error.message });
-    }
-  }
-
-  private share(restaurant: Restaurant): Observable<ActionExecutionResult> {
-    try {
-      const shareData = {
-        title: restaurant.name,
-        text: `Check out ${restaurant.name} at ${restaurant.address}`,
-        url: restaurant.website || window.location.href
-      };
-
-      if (navigator.share) {
-        navigator.share(shareData).catch((error) => {
-          console.warn('Share failed:', error);
-        });
-        return of({ success: true, message: 'Shared successfully' });
-      } else {
-        // Fallback: copy to clipboard
-        const text = `${shareData.title} - ${shareData.text}`;
-        navigator.clipboard?.writeText(text);
-        return of({ success: true, message: 'Copied to clipboard' });
-      }
-    } catch (error: any) {
-      return of({ success: false, message: 'Failed to share', error: error.message });
-    }
-  }
-
-  private openWebsite(restaurant: Restaurant): Observable<ActionExecutionResult> {
-    try {
-      if (restaurant.website) {
-        window.open(restaurant.website, '_blank');
-        return of({ success: true, message: 'Opened website' });
-      }
-      // Fallback: Google search
-      const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(restaurant.name)}`;
-      window.open(searchUrl, '_blank');
-      return of({ success: true, message: 'Opened search results' });
-    } catch (error: any) {
-      return of({ success: false, message: 'Failed to open website', error: error.message });
-    }
+    // Delegate execution to strategy
+    return executor.execute(action.restaurant);
   }
 
   private generateId(): string {
