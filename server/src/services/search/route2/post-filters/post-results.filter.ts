@@ -2,13 +2,15 @@
  * Post-Results Filter - Route2 Pipeline
  * 
  * Deterministic filtering applied after Google API results are received
- * Filters: openState (OPEN_NOW, CLOSED_NOW, null)
+ * Filters: openState (OPEN_NOW, CLOSED_NOW, null), priceIntent (CHEAP, MID, EXPENSIVE, null), minRatingBucket (R35, R40, R45, null)
  * Hints: dietary preferences (SOFT hints, no removal)
  */
 
 import { logger } from '../../../../lib/logger/structured-logger.js';
-import type { FinalSharedFilters, OpenState } from '../shared/shared-filters.types.js';
+import type { FinalSharedFilters, OpenState, PriceIntent, MinRatingBucket } from '../shared/shared-filters.types.js';
 import { attachDietaryHints } from './dietary-hints.js';
+import { matchesPriceIntent } from './price/price-matrix.js';
+import { meetsMinRating } from './rating/rating-matrix.js';
 
 export interface PostFilterInput {
   results: any[]; // PlaceResult[] from Google Maps stage
@@ -21,6 +23,8 @@ export interface PostFilterOutput {
   resultsFiltered: any[];
   applied: {
     openState: OpenState;
+    priceIntent: PriceIntent;
+    minRatingBucket: MinRatingBucket;
   };
   stats: {
     before: number;
@@ -28,6 +32,10 @@ export interface PostFilterOutput {
     removed: number;
     unknownKept: number;
     unknownRemoved: number;
+  };
+  relaxed?: {
+    priceIntent?: boolean;
+    minRating?: boolean;
   };
 }
 
@@ -38,33 +46,90 @@ export function applyPostFilters(input: PostFilterInput): PostFilterOutput {
   const { results, sharedFilters, requestId, pipelineVersion } = input;
 
   const beforeCount = results.length;
+  let relaxed: { priceIntent?: boolean; minRating?: boolean } = {};
 
-  // Apply open/closed filter ONLY if explicitly requested
-  const { filtered, unknownKept, unknownRemoved } = filterByOpenState(
+  // Step 1: Apply open/closed filter ONLY if explicitly requested
+  const { filtered: openFiltered, unknownKept, unknownRemoved } = filterByOpenState(
     results,
     sharedFilters.openState,
     sharedFilters.openAt,
     sharedFilters.openBetween
   );
-  const filteredResults = filtered;
 
-  // Attach dietary hints (SOFT hints - no removal)
+  // Step 2: Apply price filter ONLY if explicitly requested
+  let currentFiltered = openFiltered;
+  let priceIntentApplied = sharedFilters.priceIntent;
+
+  if (sharedFilters.priceIntent !== null) {
+    const priceFiltered = filterByPrice(currentFiltered, sharedFilters.priceIntent);
+    
+    // Auto-relax if filtering yields 0 results
+    if (priceFiltered.length === 0 && currentFiltered.length > 0) {
+      // Relax: return results without price filter
+      relaxed.priceIntent = true;
+      priceIntentApplied = null; // Mark as not applied due to relaxation
+      
+      logger.info({
+        requestId,
+        pipelineVersion,
+        event: 'price_filter_relaxed',
+        reason: 'zero_results',
+        originalIntent: sharedFilters.priceIntent,
+        beforeRelax: priceFiltered.length,
+        afterRelax: currentFiltered.length
+      }, '[ROUTE2] Price filter relaxed (0 results)');
+    } else {
+      currentFiltered = priceFiltered;
+    }
+  }
+
+  // Step 3: Apply rating filter ONLY if explicitly requested
+  let finalFiltered = currentFiltered;
+  let minRatingBucketApplied = sharedFilters.minRatingBucket;
+
+  if (sharedFilters.minRatingBucket !== null) {
+    const ratingFiltered = filterByRating(currentFiltered, sharedFilters.minRatingBucket);
+    
+    // Auto-relax if filtering yields 0 results
+    if (ratingFiltered.length === 0 && currentFiltered.length > 0) {
+      // Relax: return results without rating filter
+      finalFiltered = currentFiltered;
+      relaxed.minRating = true;
+      minRatingBucketApplied = null; // Mark as not applied due to relaxation
+      
+      logger.info({
+        requestId,
+        pipelineVersion,
+        event: 'rating_filter_relaxed',
+        reason: 'zero_results',
+        originalBucket: sharedFilters.minRatingBucket,
+        beforeRelax: ratingFiltered.length,
+        afterRelax: currentFiltered.length
+      }, '[ROUTE2] Rating filter relaxed (0 results)');
+    } else {
+      finalFiltered = ratingFiltered;
+    }
+  }
+
+  // Step 4: Attach dietary hints (SOFT hints - no removal)
   const isGlutenFree = (sharedFilters as any).isGlutenFree ?? null;
   if (isGlutenFree === true) {
-    for (const result of filteredResults) {
+    for (const result of finalFiltered) {
       attachDietaryHints(result, isGlutenFree);
     }
   }
 
-  const afterCount = filteredResults.length;
+  const afterCount = finalFiltered.length;
 
   // Note: Timing/logging owned by orchestrator (startStage/endStage)
   // This function only returns data for orchestrator to log
 
-  return {
-    resultsFiltered: filteredResults,
+  const output: PostFilterOutput = {
+    resultsFiltered: finalFiltered,
     applied: {
-      openState: sharedFilters.openState
+      openState: sharedFilters.openState,
+      priceIntent: priceIntentApplied,
+      minRatingBucket: minRatingBucketApplied
     },
     stats: {
       before: beforeCount,
@@ -74,6 +139,13 @@ export function applyPostFilters(input: PostFilterInput): PostFilterOutput {
       unknownRemoved
     }
   };
+
+  // Only include relaxed field if we actually relaxed
+  if (relaxed.priceIntent || relaxed.minRating) {
+    output.relaxed = relaxed;
+  }
+
+  return output;
 }
 
 /**
@@ -314,4 +386,36 @@ function checkTimeInPeriods(periods: any[], day: number, minutes: number): boole
   }
 
   return false;
+}
+
+/**
+ * Filter results by price intent
+ * 
+ * Rules:
+ * - CHEAP: keep priceLevel=1 + unknowns
+ * - MID: keep priceLevel=2 + unknowns
+ * - EXPENSIVE: keep priceLevel=3,4 + unknowns
+ * - Unknown policy: KEEP by default (better UX)
+ */
+function filterByPrice(results: any[], priceIntent: 'CHEAP' | 'MID' | 'EXPENSIVE'): any[] {
+  return results.filter(place => {
+    const priceLevel = place.priceLevel ?? place.price?.level;
+    return matchesPriceIntent(priceLevel, priceIntent);
+  });
+}
+
+/**
+ * Filter results by minimum rating
+ * 
+ * Rules:
+ * - R35: keep rating >= 3.5 + unknowns
+ * - R40: keep rating >= 4.0 + unknowns
+ * - R45: keep rating >= 4.5 + unknowns
+ * - Unknown policy: KEEP by default (better UX)
+ */
+function filterByRating(results: any[], minRatingBucket: 'R35' | 'R40' | 'R45'): any[] {
+  return results.filter(place => {
+    const rating = place.rating;
+    return meetsMinRating(rating, minRatingBucket);
+  });
 }

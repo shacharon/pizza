@@ -50,7 +50,7 @@ export async function buildFinalResponse(
   // INSIGHT METADATA: Calculate metadata for intelligent narration
   const openNowCount = finalResults.filter((r: any) => r.openNow === true).length;
   const closedCount = finalResults.filter((r: any) => r.openNow === false).length;
-  const openNowUnknownCount = finalResults.filter((r: any) => 
+  const openNowUnknownCount = finalResults.filter((r: any) =>
     r.openNow === 'UNKNOWN' || r.openNow === null || r.openNow === undefined
   ).length;
   const currentHour = new Date().getHours();

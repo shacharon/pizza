@@ -20,17 +20,17 @@ const MAX_RETRIES = 1;
  */
 export function httpTimeoutRetryInterceptor(req: HttpRequest<unknown>, next: HttpHandlerFn): Observable<HttpEvent<unknown>> {
     let attemptCount = 0;
-    
+
     return next(req).pipe(
         timeout(REQUEST_TIMEOUT_MS),
         retryWhen(errors => errors.pipe(
             mergeMap((error: HttpErrorResponse) => {
                 attemptCount++;
-                
+
                 // Determine if we should retry
                 const isRetryable = error.status === 0 || error.status >= 500;
                 const hasRetriesLeft = attemptCount <= MAX_RETRIES;
-                
+
                 if (isRetryable && hasRetriesLeft) {
                     // Retry after delay
                     return timer(300);

@@ -170,12 +170,12 @@ export class WSConnection {
           attempts: this.reconnectAttempts,
           maxAttempts: MAX_RECONNECT_ATTEMPTS
         });
-        
+
         if (!this.hardFailureLogged) {
           console.error('[WS] Hard failure - server unreachable after', MAX_RECONNECT_ATTEMPTS, 'attempts');
           this.hardFailureLogged = true;
         }
-        
+
         this.shouldReconnect = false;
         this.callbacks.onStatusChange('disconnected');
         return;

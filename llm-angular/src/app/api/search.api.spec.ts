@@ -112,10 +112,10 @@ describe('SearchApiClient', () => {
 
       const req = httpMock.expectOne((r) => r.url.includes('/api/v1/search'));
       expect(req.request.method).toBe('POST');
-      
+
       // Simulate network error (ERR_CONNECTION_REFUSED)
       req.error(new ProgressEvent('error'), { status: 0, statusText: 'Unknown Error' });
-      
+
       // Handle retry attempt (interceptor retries once)
       setTimeout(() => {
         try {
@@ -147,7 +147,7 @@ describe('SearchApiClient', () => {
 
       const req = httpMock.expectOne((r) => r.url.includes('/api/v1/search'));
       req.error(new ProgressEvent('error'), { status: 0, statusText: 'Unknown Error' });
-      
+
       // Handle retry
       setTimeout(() => {
         try {
@@ -173,7 +173,7 @@ describe('SearchApiClient', () => {
 
       const req = httpMock.expectOne(resultUrl);
       expect(req.request.method).toBe('GET');
-      
+
       // Simulate network error
       req.error(new ProgressEvent('error'), { status: 0, statusText: 'Unknown Error' });
     });

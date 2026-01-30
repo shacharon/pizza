@@ -30,5 +30,8 @@ export const DEFAULT_BASE_FILTERS: PreGoogleBaseFilters = {
   openState: null,
   openAt: null,
   openBetween: null,
-  regionHint: null
+  regionHint: null,
+  priceIntent: null,
+  minRatingBucket: null,
+  minReviewCountBucket: null
 };

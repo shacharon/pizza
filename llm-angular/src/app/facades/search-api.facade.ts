@@ -49,7 +49,7 @@ export class SearchApiHandler {
           status: 0
         };
       }
-      
+
       // Handle network connection errors (status=0)
       if (error?.status === 0 || error?.code === 'NETWORK_ERROR') {
         safeError('SearchApiHandler', 'Network connection error', { code: error.code, status: error.status });
@@ -59,7 +59,7 @@ export class SearchApiHandler {
           status: 0
         };
       }
-      
+
       // Propagate other errors as-is
       throw error;
     }
@@ -134,7 +134,7 @@ export class SearchApiHandler {
               onError('Unable to connect to server. Please check your internet connection.');
               return;
             }
-            
+
             // Handle network errors (status=0) - stop retrying
             if (error?.status === 0 || error?.code === 'NETWORK_ERROR') {
               safeError('SearchApiHandler', 'Network connection error during polling', { code: error.code, status: error.status });
@@ -213,7 +213,7 @@ export class SearchApiHandler {
           status: 0
         };
       }
-      
+
       safeError('SearchApiHandler', 'Fetch result failed', { status: error?.status, code: error?.code });
       throw error;
     }

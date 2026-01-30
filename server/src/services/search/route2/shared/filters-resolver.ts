@@ -65,10 +65,13 @@ export async function resolveFilters(params: ResolveFiltersParams): Promise<Fina
         }
     }
 
-    // 6. Pass through openState + time filters (NO MODIFICATION)
+    // 6. Pass through openState + time filters + priceIntent + minRatingBucket + minReviewCountBucket (NO MODIFICATION)
     const openState = base.openState;
     const openAt = base.openAt;
     const openBetween = base.openBetween;
+    const priceIntent = base.priceIntent;
+    const minRatingBucket = base.minRatingBucket;
+    const minReviewCountBucket = base.minReviewCountBucket;
 
     const finalFilters: FinalSharedFilters = {
         uiLanguage,
@@ -76,6 +79,9 @@ export async function resolveFilters(params: ResolveFiltersParams): Promise<Fina
         openState,
         openAt,
         openBetween,
+        priceIntent,
+        minRatingBucket,
+        minReviewCountBucket,
         regionCode: sanitizedRegionCode || 'IL', // Fallback to IL if null
         disclaimers: {
             hours: true,
@@ -92,6 +98,8 @@ export async function resolveFilters(params: ResolveFiltersParams): Promise<Fina
             openState: base.openState,
             openAt: base.openAt,
             openBetween: base.openBetween,
+            priceIntent: base.priceIntent,
+            minRatingBucket: base.minRatingBucket,
             regionHint: base.regionHint
         },
         final: {
@@ -100,6 +108,8 @@ export async function resolveFilters(params: ResolveFiltersParams): Promise<Fina
             openState: finalFilters.openState,
             openAt: finalFilters.openAt,
             openBetween: finalFilters.openBetween,
+            priceIntent: finalFilters.priceIntent,
+            minRatingBucket: finalFilters.minRatingBucket,
             regionCode: finalFilters.regionCode
         },
         sanitized: sanitizedRegionCode !== rawRegionCode

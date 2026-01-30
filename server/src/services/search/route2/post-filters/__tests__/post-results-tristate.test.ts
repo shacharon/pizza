@@ -30,6 +30,10 @@ function createMockFilters(openState: 'OPEN_NOW' | 'CLOSED_NOW' | null): FinalSh
     uiLanguage: 'he',
     providerLanguage: 'he',
     openState,
+    openAt: null,
+    openBetween: null,
+    priceIntent: null,
+    minRatingBucket: null,
     regionCode: 'IL',
     disclaimers: {
       hours: true,
@@ -73,9 +77,9 @@ let allPass = true;
   allPass = allPass && pass;
 }
 
-// Test 2: openState=OPEN_NOW -> removes closed + unknown
+// Test 2: openState=OPEN_NOW -> removes closed, keeps unknown (conservative)
 {
-  console.log('Test 2: openState=OPEN_NOW -> removes closed + unknown');
+  console.log('Test 2: openState=OPEN_NOW -> removes closed, keeps unknown (conservative)');
   
   const results = [
     createMockPlace('open1', true),
@@ -94,26 +98,27 @@ let allPass = true;
     pipelineVersion: 'route2'
   });
   
-  const allResultsAreOpen = output.resultsFiltered.every(r => r.openNow === true);
-  const correctCount = output.resultsFiltered.length === 2;
+  const openOrUnknown = output.resultsFiltered.every(r => r.openNow === true || r.openNow === 'UNKNOWN');
+  const correctCount = output.resultsFiltered.length === 3; // 2 open + 1 unknown
   
   const pass = correctCount &&
-               allResultsAreOpen &&
+               openOrUnknown &&
                output.applied.openState === 'OPEN_NOW' &&
                output.stats.before === 5 &&
-               output.stats.after === 2;
+               output.stats.after === 3 &&
+               output.stats.unknownKept === 1;
   
   console.log(`   ${pass ? '✅' : '❌'} Results: ${output.stats.before} -> ${output.stats.after}`);
   console.log(`   ${pass ? '✅' : '❌'} Filter applied: openState=${output.applied.openState}`);
-  console.log(`   ${pass ? '✅' : '❌'} All remaining are open: ${allResultsAreOpen}`);
-  console.log(`   ${pass ? '✅' : '❌'} Expected: 5 results -> 2 open only\n`);
+  console.log(`   ${pass ? '✅' : '❌'} Open or unknown kept: ${openOrUnknown}`);
+  console.log(`   ${pass ? '✅' : '❌'} Expected: 5 results -> 3 (2 open + 1 unknown kept)\n`);
   
   allPass = allPass && pass;
 }
 
-// Test 3: openState=CLOSED_NOW -> removes open + unknown
+// Test 3: openState=CLOSED_NOW -> removes open, keeps unknown (conservative)
 {
-  console.log('Test 3: openState=CLOSED_NOW -> removes open + unknown (NEW)');
+  console.log('Test 3: openState=CLOSED_NOW -> removes open, keeps unknown (conservative)');
   
   const results = [
     createMockPlace('open1', true),
@@ -132,19 +137,20 @@ let allPass = true;
     pipelineVersion: 'route2'
   });
   
-  const allResultsAreClosed = output.resultsFiltered.every(r => r.openNow === false);
-  const correctCount = output.resultsFiltered.length === 2;
+  const closedOrUnknown = output.resultsFiltered.every(r => r.openNow === false || r.openNow === 'UNKNOWN');
+  const correctCount = output.resultsFiltered.length === 3; // 2 closed + 1 unknown
   
   const pass = correctCount &&
-               allResultsAreClosed &&
+               closedOrUnknown &&
                output.applied.openState === 'CLOSED_NOW' &&
                output.stats.before === 5 &&
-               output.stats.after === 2;
+               output.stats.after === 3 &&
+               output.stats.unknownKept === 1;
   
   console.log(`   ${pass ? '✅' : '❌'} Results: ${output.stats.before} -> ${output.stats.after}`);
   console.log(`   ${pass ? '✅' : '❌'} Filter applied: openState=${output.applied.openState}`);
-  console.log(`   ${pass ? '✅' : '❌'} All remaining are closed: ${allResultsAreClosed}`);
-  console.log(`   ${pass ? '✅' : '❌'} Expected: 5 results -> 2 closed only\n`);
+  console.log(`   ${pass ? '✅' : '❌'} Closed or unknown kept: ${closedOrUnknown}`);
+  console.log(`   ${pass ? '✅' : '❌'} Expected: 5 results -> 3 (2 closed + 1 unknown kept)\n`);
   
   allPass = allPass && pass;
 }
@@ -175,9 +181,9 @@ let allPass = true;
   allPass = allPass && pass;
 }
 
-// Test 5: openState=CLOSED_NOW with only open/unknown -> returns empty
+// Test 5: openState=CLOSED_NOW with only open/unknown -> keeps unknown
 {
-  console.log('Test 5: openState=CLOSED_NOW with only open/unknown -> returns empty');
+  console.log('Test 5: openState=CLOSED_NOW with only open/unknown -> keeps unknown');
   
   const results = [
     createMockPlace('open1', true),
@@ -195,21 +201,22 @@ let allPass = true;
     pipelineVersion: 'route2'
   });
   
-  const pass = output.resultsFiltered.length === 0 &&
+  const pass = output.resultsFiltered.length === 2 && // 2 unknowns kept
                output.applied.openState === 'CLOSED_NOW' &&
                output.stats.before === 4 &&
-               output.stats.after === 0;
+               output.stats.after === 2 &&
+               output.stats.unknownKept === 2;
   
   console.log(`   ${pass ? '✅' : '❌'} Results: ${output.stats.before} -> ${output.stats.after}`);
   console.log(`   ${pass ? '✅' : '❌'} Filter applied: openState=${output.applied.openState}`);
-  console.log(`   ${pass ? '✅' : '❌'} Expected: 4 results -> 0 (all filtered out)\n`);
+  console.log(`   ${pass ? '✅' : '❌'} Expected: 4 results -> 2 (unknowns kept)\n`);
   
   allPass = allPass && pass;
 }
 
-// Test 6: openState=OPEN_NOW with missing openNow field
+// Test 6: openState=OPEN_NOW with missing openNow field -> kept (conservative)
 {
-  console.log('Test 6: openState=OPEN_NOW with missing openNow field -> filtered out');
+  console.log('Test 6: openState=OPEN_NOW with missing openNow field -> kept (conservative)');
   
   const results = [
     createMockPlace('open1', true),
@@ -226,13 +233,14 @@ let allPass = true;
     pipelineVersion: 'route2'
   });
   
-  const pass = output.resultsFiltered.length === 2 &&
+  const pass = output.resultsFiltered.length === 3 && // All kept (unknown treated as keep)
                output.applied.openState === 'OPEN_NOW' &&
-               !output.resultsFiltered.some(r => r.id === 'missing');
+               output.resultsFiltered.some(r => r.id === 'missing') && // Missing is kept
+               output.stats.unknownKept === 1;
   
   console.log(`   ${pass ? '✅' : '❌'} Results: ${output.stats.before} -> ${output.stats.after}`);
   console.log(`   ${pass ? '✅' : '❌'} Filter applied: openState=${output.applied.openState}`);
-  console.log(`   ${pass ? '✅' : '❌'} Missing openNow filtered out: ${!output.resultsFiltered.some(r => r.id === 'missing')}\n`);
+  console.log(`   ${pass ? '✅' : '❌'} Missing openNow kept (conservative): ${output.resultsFiltered.some(r => r.id === 'missing')}\n`);
   
   allPass = allPass && pass;
 }

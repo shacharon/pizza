@@ -16,13 +16,16 @@ const BASE_FILTERS_LLM_VERSION = 'base_filters_v1';
 
 const BASE_FILTERS_PROMPT = `You are a filter extractor for restaurant search queries.
 
-Output ONLY JSON with ALL 5 fields (NEVER omit any field):
+Output ONLY JSON with ALL 8 fields (NEVER omit any field):
 {
   "language": "he|en|auto",
   "openState": "OPEN_NOW"|"CLOSED_NOW"|"OPEN_AT"|"OPEN_BETWEEN"|null,
   "openAt": {"day": number|null, "timeHHmm": "HH:mm"|null, "timezone": string|null} or null,
   "openBetween": {"day": number|null, "startHHmm": "HH:mm"|null, "endHHmm": "HH:mm"|null, "timezone": string|null} or null,
-  "regionHint": "XX"|null
+  "regionHint": "XX"|null,
+  "priceIntent": "CHEAP"|"MID"|"EXPENSIVE"|null,
+  "minRatingBucket": "R35"|"R40"|"R45"|null,
+  "minReviewCountBucket": "C25"|"C100"|"C500"|null
 }
 
 CRITICAL: When openAt or openBetween is an object, ALL 3-4 keys MUST be present (use null for missing values).
@@ -57,11 +60,35 @@ RULES:
 
 - regionHint: 2 uppercase letters OR null (country only, not cities)
 
+- priceIntent (default: null):
+  * "CHEAP" if: "זול", "זולות", "לא יקר", "בתקציב", "מחירים נמוכים", "cheap", "not expensive", "budget", "affordable", "inexpensive"
+  * "MID" if: "בינוני", "בינונית", "אמצע", "mid", "moderate", "medium price", "reasonable"
+  * "EXPENSIVE" if: "יקר", "יקרות", "יוקרתי", "יוקרה", "expensive", "luxury", "upscale", "fine dining", "high-end"
+  * null otherwise (no explicit price preference)
+
+- minRatingBucket (default: null):
+  * "R35" if: "לפחות 3.5", "סביר", "decent", "3.5+", "3.5 stars", "above 3.5"
+  * "R40" if: "דירוג גבוה", "מעל 4", "4 כוכבים", "high rated", "4+ stars", "4 stars", "above 4"
+  * "R45" if: "מעל 4.5", "הכי טובים", "מצוין", "top rated", "4.5+", "4.5 stars", "best rated", "excellent"
+  * null if no explicit rating preference OR user says "not important" / "לא חשוב" / "בלי דירוג"
+
+- minReviewCountBucket (default: null):
+  * "C25" if: "קצת ביקורות", "לא חדש", "כמה ביקורות", "some reviews", "not brand new", "a few reviews", "at least some reviews"
+  * "C100" if: "הרבה ביקורות", "מקום מוכר", "מקומות מוכרים", "popular", "well known", "established", "many reviews", "lots of reviews"
+  * "C500" if: "מאוד מוכר", "כולם מכירים", "מאות ביקורות", "very popular", "very well known", "hundreds of reviews", "extremely popular", "everyone knows"
+  * null if no explicit review count preference OR no mention of popularity/reviews
+
 Examples:
-- "מסעדות פתוחות עכשיו" → {"language":"he","openState":"OPEN_NOW","openAt":null,"openBetween":null,"regionHint":null}
-- "מסעדות סגורות לידי" → {"language":"he","openState":"CLOSED_NOW","openAt":null,"openBetween":null,"regionHint":null}
-- "פתוח ב-21:30 בגדרה" → {"language":"he","openState":"OPEN_AT","openAt":{"day":null,"timeHHmm":"21:30","timezone":null},"openBetween":null,"regionHint":null}
-- "פיצה בתל אביב" → {"language":"he","openState":null,"openAt":null,"openBetween":null,"regionHint":null}
+- "מסעדות פתוחות עכשיו" → {"language":"he","openState":"OPEN_NOW","openAt":null,"openBetween":null,"regionHint":null,"priceIntent":null,"minRatingBucket":null,"minReviewCountBucket":null}
+- "מסעדות סגורות לידי" → {"language":"he","openState":"CLOSED_NOW","openAt":null,"openBetween":null,"regionHint":null,"priceIntent":null,"minRatingBucket":null,"minReviewCountBucket":null}
+- "פתוח ב-21:30 בגדרה" → {"language":"he","openState":"OPEN_AT","openAt":{"day":null,"timeHHmm":"21:30","timezone":null},"openBetween":null,"regionHint":null,"priceIntent":null,"minRatingBucket":null,"minReviewCountBucket":null}
+- "פיצה בתל אביב" → {"language":"he","openState":null,"openAt":null,"openBetween":null,"regionHint":null,"priceIntent":null,"minRatingBucket":null,"minReviewCountBucket":null}
+- "מסעדות זולות בגדרה" → {"language":"he","openState":null,"openAt":null,"openBetween":null,"regionHint":null,"priceIntent":"CHEAP","minRatingBucket":null,"minReviewCountBucket":null}
+- "מסעדה יוקרתית פתוחה עכשיו" → {"language":"he","openState":"OPEN_NOW","openAt":null,"openBetween":null,"regionHint":null,"priceIntent":"EXPENSIVE","minRatingBucket":null,"minReviewCountBucket":null}
+- "מסעדות עם דירוג גבוה" → {"language":"he","openState":null,"openAt":null,"openBetween":null,"regionHint":null,"priceIntent":null,"minRatingBucket":"R40","minReviewCountBucket":null}
+- "המסעדות הכי טובות בתל אביב" → {"language":"he","openState":null,"openAt":null,"openBetween":null,"regionHint":null,"priceIntent":null,"minRatingBucket":"R45","minReviewCountBucket":null}
+- "מקומות מוכרים עם הרבה ביקורות" → {"language":"he","openState":null,"openAt":null,"openBetween":null,"regionHint":null,"priceIntent":null,"minRatingBucket":null,"minReviewCountBucket":"C100"}
+- "מסעדות שכולם מכירים" → {"language":"he","openState":null,"openAt":null,"openBetween":null,"regionHint":null,"priceIntent":null,"minRatingBucket":null,"minReviewCountBucket":"C500"}
 `;
 
 const BASE_FILTERS_PROMPT_HASH = createHash('sha256')
@@ -119,9 +146,27 @@ const BASE_FILTERS_JSON_SCHEMA_MANUAL = {
                 { type: 'null' },
                 { type: 'string', minLength: 2, maxLength: 2 }
             ]
+        },
+        priceIntent: {
+            anyOf: [
+                { type: 'null' },
+                { type: 'string', enum: ['CHEAP', 'MID', 'EXPENSIVE'] }
+            ]
+        },
+        minRatingBucket: {
+            anyOf: [
+                { type: 'null' },
+                { type: 'string', enum: ['R35', 'R40', 'R45'] }
+            ]
+        },
+        minReviewCountBucket: {
+            anyOf: [
+                { type: 'null' },
+                { type: 'string', enum: ['C25', 'C100', 'C500'] }
+            ]
         }
     },
-    required: ['language', 'openState', 'openAt', 'openBetween', 'regionHint'],
+    required: ['language', 'openState', 'openAt', 'openBetween', 'regionHint', 'priceIntent', 'minRatingBucket', 'minReviewCountBucket'],
     additionalProperties: false
 };
 
@@ -139,7 +184,10 @@ function createFallbackFilters(): PreGoogleBaseFilters {
         openState: null,
         openAt: null,
         openBetween: null,
-        regionHint: null
+        regionHint: null,
+        priceIntent: null,
+        minRatingBucket: null,
+        minReviewCountBucket: null
     };
 }
 
@@ -233,7 +281,10 @@ export async function resolveBaseFiltersLLM(params: {
             openState: result.openState,
             openAt: result.openAt,
             openBetween: result.openBetween,
-            regionHint: validatedRegionHint
+            regionHint: validatedRegionHint,
+            priceIntent: result.priceIntent,
+            minRatingBucket: result.minRatingBucket,
+            minReviewCountBucket: result.minReviewCountBucket
         };
 
         const durationMs = Date.now() - startTime;
@@ -248,6 +299,9 @@ export async function resolveBaseFiltersLLM(params: {
                 openState: validatedResult.openState,
                 openAt: validatedResult.openAt,
                 openBetween: validatedResult.openBetween,
+                priceIntent: validatedResult.priceIntent,
+                minRatingBucket: validatedResult.minRatingBucket,
+                minReviewCountBucket: validatedResult.minReviewCountBucket,
                 regionHint: validatedResult.regionHint ?? null,
                 ...(result.regionHint !== validatedResult.regionHint && {
                     regionHintSanitized: true,

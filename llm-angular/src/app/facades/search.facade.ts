@@ -162,7 +162,7 @@ export class SearchFacade {
 
       // CARD STATE: Reset to RUNNING for fresh search
       this._cardState.set('RUNNING');
-      
+
       // NEW: Clear requestId before search (will be set when response arrives)
       this.currentRequestId.set(undefined);
 
@@ -233,7 +233,7 @@ export class SearchFacade {
         this._cardState.set('STOP');
         return;
       }
-      
+
       // Handle other errors
       safeError('SearchFacade', 'Search error', { status: error?.status, code: error?.code, message: error?.message });
       const userMessage = error?.message || 'Search failed. Please try again.';
@@ -304,7 +304,7 @@ export class SearchFacade {
         onAssistantMessage: (msg) => {
           const narratorMsg = msg as any;
           const narrator = narratorMsg.payload;
-          
+
           // DEDUP FIX: Strict type validation - only LLM assistant messages
           // System notifications MUST NOT render as assistant messages
           const validTypes = ['CLARIFY', 'SUMMARY', 'GATE_FAIL'];
@@ -330,16 +330,16 @@ export class SearchFacade {
           // CARD STATE: Map assistant message type to card state
           if (narrator.type === 'CLARIFY' && narrator.blocksSearch === true) {
             safeLog('SearchFacade', 'DONE_CLARIFY - stopping search, waiting for user input');
-            
+
             // Stop loading immediately
             this.searchStore.setLoading(false);
-            
+
             // CARD STATE: Set to CLARIFY (non-terminal, card stays active)
             this._cardState.set('CLARIFY');
-            
+
             // Cancel any pending polling
             this.apiHandler.cancelPolling();
-            
+
             // Set status for CLARIFY
             this.assistantHandler.setStatus('completed');
           } else if (narrator.type === 'GATE_FAIL') {
@@ -353,7 +353,7 @@ export class SearchFacade {
             // CARD STATE: SUMMARY, DIETARY_HINT, or other non-blocking types
             // Do NOT change card state - search continues normally
             this.assistantHandler.setStatus('completed');
-            
+
             // DEDUPE FIX: Clear any legacy error/status messages when SUMMARY arrives
             // SUMMARY from WS is the only result announcement - no duplicate banners
             if (narrator.type === 'SUMMARY') {

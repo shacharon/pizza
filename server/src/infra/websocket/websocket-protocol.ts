@@ -123,10 +123,21 @@ export interface WSServerAssistant {
   type: 'assistant';
   requestId: string;
   payload: {
-    type: 'GATE_FAIL' | 'CLARIFY' | 'SUMMARY';
+    type: 'GATE_FAIL' | 'CLARIFY' | 'SUMMARY' | 'SEARCH_FAILED' | 'GENERIC_QUERY_NARRATION';
     message: string;
     question: string | null;
     blocksSearch: boolean;
+  };
+}
+
+/**
+ * Assistant error event (no user-facing message, just error code)
+ */
+export interface WSServerAssistantError {
+  type: 'assistant_error';
+  requestId: string;
+  payload: {
+    errorCode: 'LLM_TIMEOUT' | 'LLM_FAILED' | 'SCHEMA_INVALID';
   };
 }
 
@@ -159,6 +170,7 @@ export type WSServerMessage =
   | WSServerAssistantProgress
   | WSServerAssistantSuggestion
   | WSServerAssistant
+  | WSServerAssistantError
   | WSServerSubAck
   | WSServerSubNack
   | WSServerConnectionStatus;

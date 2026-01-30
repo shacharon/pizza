@@ -58,36 +58,30 @@ const mapToProviderLanguage = (lang: Gate2Language): ProviderLanguage | null => 
 };
 
 /**
- * Extract location text from mapping for geocoding
- */
-function extractLocationTextFromMapping(mapping: RouteLLMMapping): string | null {
-    switch (mapping.providerMethod) {
-        case 'textSearch':
-            return null; // TODO: Implement text parsing if needed
-        case 'landmarkPlan':
-            return mapping.geocodeQuery;
-        case 'nearbySearch':
-            return null;
-        default:
-            return null;
-    }
-}
-
-/**
- * Geocode location text to country code
- * Placeholder for actual geocoding implementation
- */
-async function geocodeToCountry(locationText: string): Promise<string | null> {
-    // TODO: Implement actual geocoding
-    return null;
-}
-
-/**
  * Reverse geocode coordinates to country code
- * Placeholder for actual reverse geocoding implementation
+ * 
+ * NOTE: Full reverse geocoding not implemented (would require external API call).
+ * Returns null and logs a warning. Fallback chain will use device/base/default region.
+ * 
+ * Future enhancement: Integrate with geocoding service (Google Geocoding API, etc.)
  */
-async function reverseGeocodeToCountry(lat: number, lng: number): Promise<string | null> {
-    // TODO: Implement actual reverse geocoding
+async function reverseGeocodeToCountry(
+    lat: number,
+    lng: number,
+    requestId?: string
+): Promise<string | null> {
+    // Log warning once per request (not per coordinate)
+    logger.warn(
+        {
+            requestId,
+            pipelineVersion: 'route2',
+            event: 'reverse_geocode_not_implemented',
+            coordinates: { lat, lng },
+            fallback: 'Will use device region, base LLM hint, or default region'
+        },
+        '[ROUTE2] Reverse geocoding not implemented - user location ignored'
+    );
+    
     return null;
 }
 
@@ -222,6 +216,9 @@ export async function tightenSharedFilters(params: {
         openState: base.openState,
         openAt: base.openAt,
         openBetween: base.openBetween,
+        priceIntent: base.priceIntent,
+        minRatingBucket: base.minRatingBucket,
+        minReviewCountBucket: base.minReviewCountBucket,
         regionCode: resolvedRegion,
         disclaimers: {
             hours: true,
@@ -283,7 +280,7 @@ async function resolveRegionFallback(
     // Priority 2: Reverse geocode user location
     if (userLocation) {
         const reverseGeocodedRegion = normalizeRegion2(
-            await reverseGeocodeToCountry(userLocation.lat, userLocation.lng)
+            await reverseGeocodeToCountry(userLocation.lat, userLocation.lng, requestId)
         );
         if (reverseGeocodedRegion) {
             logger.info(

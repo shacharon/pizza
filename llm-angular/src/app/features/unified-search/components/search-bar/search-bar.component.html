@@ -3,7 +3,7 @@
     <input
       type="text"
       class="search-input"
-      [ngModel]="query()"
+      [ngModel]="value()"
       (ngModelChange)="onInput($event)"
       (keydown)="onKeydown($event)"
       [disabled]="disabled()"
@@ -13,7 +13,7 @@
     @if (loading()) {
       <span class="loading-indicator" aria-label="Loading"></span>
     }
-    @if (query() && !loading()) {
+    @if (value() && !loading()) {
       <button
         type="button"
         class="clear-button"

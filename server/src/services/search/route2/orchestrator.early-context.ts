@@ -67,6 +67,9 @@ export function upgradeToFinalFilters(
     openState: baseFilters.openState,
     openAt: baseFilters.openAt,
     openBetween: baseFilters.openBetween,
+    priceIntent: baseFilters.priceIntent,
+    minRatingBucket: baseFilters.minRatingBucket,
+    minReviewCountBucket: baseFilters.minReviewCountBucket,
     disclaimers: {
       hours: true,
       dietary: true

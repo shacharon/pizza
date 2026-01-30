@@ -24,7 +24,7 @@
     <!-- Search Card: Input + Assistant Line + Contextual Assistant -->
     <div class="search-card">
       <app-search-bar 
-        [value]="facade.query()"
+        [value]="facade.currentQuery()"
         [loading]="facade.loading()" 
         [placeholder]="'What are you hungry for?'"
         (search)="onSearch($event)" 

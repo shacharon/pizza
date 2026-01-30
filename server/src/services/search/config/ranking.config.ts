@@ -13,22 +13,15 @@ export interface RankingPoolConfig {
   // Confidence computation
   combineIntentConfidence: boolean;  // Use intent + results confidence
   minCandidatesForHighConf: number;  // Need 10+ for "high" confidence
-  
-  // Debug
-  debugIncludeScore: boolean;     // Include score in DEV responses
 }
 
 export function getRankingPoolConfig(): RankingPoolConfig {
-  const isDev = process.env.NODE_ENV !== 'production';
-  
   return {
     candidatePoolSize: Number(process.env.CANDIDATE_POOL_SIZE || 30),
     displayResultsSize: Number(process.env.DISPLAY_RESULTS_SIZE || 10),
     
     combineIntentConfidence: true,
     minCandidatesForHighConf: 10,
-    
-    debugIncludeScore: process.env.DEBUG_INCLUDE_SCORE === 'true' || isDev,
   };
 }
 

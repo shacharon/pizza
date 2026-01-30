@@ -26,7 +26,7 @@ export type AsyncPollResponse = AsyncSearchPending | AsyncSearchFailed | SearchR
 
 @Injectable({ providedIn: 'root' })
 export class SearchApiClient {
-  constructor(private http: HttpClient) {}
+  constructor(private http: HttpClient) { }
 
   /**
    * Execute async search request
@@ -40,7 +40,7 @@ export class SearchApiClient {
     ).pipe(
       map((response: HttpResponse<AsyncSearchAccepted | SearchResponse>) => {
         const body = response.body!;
-        
+
         // Check if it's a 202 Accepted (async) or 200 (sync fallback)
         if (response.status === 202) {
           safeLog('SearchAPI', 'Async 202 accepted', body);
@@ -77,11 +77,11 @@ export class SearchApiClient {
         );
       }
     }
-    
+
     return this.http.get<AsyncSearchPending | SearchResponse>(resultUrl, { observe: 'response' }).pipe(
       map((response: HttpResponse<AsyncSearchPending | SearchResponse>) => {
         const body = response.body!;
-        
+
         if (response.status === 202) {
           safeLog('SearchAPI', 'Poll PENDING', body);
           return body as AsyncSearchPending;

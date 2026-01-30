@@ -22,30 +22,30 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 describe('Route2 Orchestrator - OpenNow Field Fix', () => {
-  
+
   it('should use r.openNow (not r.isOpenNow) to compute openNowCount', async () => {
     // Verify the fix uses the correct field name that matches the Google Places mapper
     const fs = await import('node:fs/promises');
     const path = await import('node:path');
     const { fileURLToPath } = await import('node:url');
-    
+
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
     const responsePath = path.join(__dirname, 'orchestrator.response.ts');
-    
+
     const content = await fs.readFile(responsePath, 'utf-8');
-    
+
     // Verify openNowCount uses r.openNow === true
     const openNowCountRegex = /openNowCount\s*=\s*finalResults\.filter\(\([^)]*\)\s*=>\s*[^.]*\.openNow\s*===\s*true\)/;
-    
+
     assert.ok(
       openNowCountRegex.test(content),
       'openNowCount should use r.openNow (not r.isOpenNow) to match mapper field name'
     );
-    
+
     // Verify the WRONG pattern is NOT present
     const wrongFieldRegex = /\.isOpenNow\s*===\s*true/;
-    
+
     assert.ok(
       !wrongFieldRegex.test(content),
       'should NOT use r.isOpenNow (wrong field name)'
@@ -57,19 +57,19 @@ describe('Route2 Orchestrator - OpenNow Field Fix', () => {
     const fs = await import('node:fs/promises');
     const path = await import('node:path');
     const { fileURLToPath } = await import('node:url');
-    
+
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
     const responsePath = path.join(__dirname, 'orchestrator.response.ts');
-    
+
     const content = await fs.readFile(responsePath, 'utf-8');
-    
+
     // Verify openNowUnknownCount exists and checks for UNKNOWN, null, or undefined
     const hasUnknownCount = content.includes('openNowUnknownCount');
-    const hasUnknownCheck = content.includes("'UNKNOWN'") && 
-                             content.includes('null') && 
-                             content.includes('undefined');
-    
+    const hasUnknownCheck = content.includes("'UNKNOWN'") &&
+      content.includes('null') &&
+      content.includes('undefined');
+
     assert.ok(
       hasUnknownCount && hasUnknownCheck,
       'should compute openNowUnknownCount for results with unknown status (UNKNOWN, null, undefined)'
@@ -81,18 +81,18 @@ describe('Route2 Orchestrator - OpenNow Field Fix', () => {
     const fs = await import('node:fs/promises');
     const path = await import('node:path');
     const { fileURLToPath } = await import('node:url');
-    
+
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
     const responsePath = path.join(__dirname, 'orchestrator.response.ts');
-    
+
     const content = await fs.readFile(responsePath, 'utf-8');
-    
+
     // Verify conditional spread: openNowCount and currentHour only if openNowUnknownCount === 0
     const hasConditionalSpread = content.includes('openNowUnknownCount === 0') &&
-                                  content.includes('openNowCount') &&
-                                  content.includes('currentHour');
-    
+      content.includes('openNowCount') &&
+      content.includes('currentHour');
+
     assert.ok(
       hasConditionalSpread,
       'metadata should conditionally include openNowCount and currentHour only when openNowUnknownCount === 0'
@@ -104,22 +104,22 @@ describe('Route2 Orchestrator - OpenNow Field Fix', () => {
     const fs = await import('node:fs/promises');
     const path = await import('node:path');
     const { fileURLToPath } = await import('node:url');
-    
+
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
     const assistantServicePath = path.join(__dirname, 'assistant', 'assistant-llm.service.ts');
-    
+
     const content = await fs.readFile(assistantServicePath, 'utf-8');
-    
+
     // Verify type has openNowCount and currentHour (both optional)
     const hasOpenNowCount = /openNowCount\?:\s*number/.test(content);
     const hasCurrentHour = /currentHour\?:\s*number/.test(content);
-    
+
     // Verify documentation mentions conditional inclusion
-    const hasConditionalNote = content.includes('only if') || 
-                                content.includes('ONLY included if') ||
-                                content.includes('no unknowns');
-    
+    const hasConditionalNote = content.includes('only if') ||
+      content.includes('ONLY included if') ||
+      content.includes('no unknowns');
+
     assert.ok(
       hasOpenNowCount && hasCurrentHour && hasConditionalNote,
       'AssistantSummaryContext type should have openNowCount/currentHour with conditional documentation'
@@ -185,13 +185,13 @@ describe('Route2 Orchestrator - OpenNow Field Fix', () => {
     // - Add stronger typing for result objects (not `any`)
     // - Consider shared type definitions between mapper and consumers
     // - Unit tests with actual result objects (not just type checks)
-    
+
     assert.ok(true, 'Regression documented and fix verified');
   });
 });
 
 describe('Route2 - Mixed OpenNow Status Handling', () => {
-  
+
   it('should correctly count results with mixed true/false/unknown openNow values', () => {
     // Simulate the filtering logic
     const mockResults = [
@@ -206,26 +206,26 @@ describe('Route2 - Mixed OpenNow Status Handling', () => {
       { name: 'Place I', openNow: null },
       { name: 'Place J', openNow: undefined }
     ];
-    
+
     // Replicate the actual logic from orchestrator.response.ts
     const openNowCount = mockResults.filter((r: any) => r.openNow === true).length;
     const closedCount = mockResults.filter((r: any) => r.openNow === false).length;
-    const openNowUnknownCount = mockResults.filter((r: any) => 
+    const openNowUnknownCount = mockResults.filter((r: any) =>
       r.openNow === 'UNKNOWN' || r.openNow === null || r.openNow === undefined
     ).length;
-    
+
     // Verify tri-state split
     assert.strictEqual(openNowCount, 3, 'should count 3 places as open');
     assert.strictEqual(closedCount, 2, 'should count 2 places as closed');
     assert.strictEqual(openNowUnknownCount, 5, 'should count 5 places with unknown status');
-    
+
     // Total should match
     assert.strictEqual(
       openNowCount + closedCount + openNowUnknownCount,
       mockResults.length,
       'tri-state counts should add up to total results'
     );
-    
+
     // CRITICAL: With any unknowns, openNowCount + currentHour should be OMITTED
     const shouldOmitOpenNowMetadata = openNowUnknownCount > 0;
     assert.ok(shouldOmitOpenNowMetadata, 'should omit openNow metadata when any unknowns present');
@@ -238,15 +238,15 @@ describe('Route2 - Mixed OpenNow Status Handling', () => {
       { name: 'Place C', openNow: undefined },
       { name: 'Place D', openNow: 'UNKNOWN' }
     ];
-    
+
     const openNowCount = mockResults.filter((r: any) => r.openNow === true).length;
-    const openNowUnknownCount = mockResults.filter((r: any) => 
+    const openNowUnknownCount = mockResults.filter((r: any) =>
       r.openNow === 'UNKNOWN' || r.openNow === null || r.openNow === undefined
     ).length;
-    
+
     assert.strictEqual(openNowCount, 0, 'should count 0 places as open');
     assert.strictEqual(openNowUnknownCount, 4, 'all places should be unknown');
-    
+
     // In this case, assistant should NOT make claims about "most places closed"
     // because we simply don't know the status
     const majorityUnknown = openNowUnknownCount > mockResults.length / 2;
@@ -259,13 +259,13 @@ describe('Route2 - Mixed OpenNow Status Handling', () => {
       { name: 'Place B', openNow: null },
       { name: 'Place C', openNow: undefined }
     ];
-    
+
     // Verify that unknown values are NOT counted as false
     const closedCount = mockResults.filter((r: any) => r.openNow === false).length;
-    const openNowUnknownCount = mockResults.filter((r: any) => 
+    const openNowUnknownCount = mockResults.filter((r: any) =>
       r.openNow === 'UNKNOWN' || r.openNow === null || r.openNow === undefined
     ).length;
-    
+
     assert.strictEqual(closedCount, 0, 'unknown should NOT be coerced to false');
     assert.strictEqual(openNowUnknownCount, 3, 'all should be counted as unknown');
   });
@@ -278,32 +278,32 @@ describe('Route2 - Mixed OpenNow Status Handling', () => {
       { name: 'Place C', openNow: false },
       { name: 'Place D', openNow: false }
     ];
-    
+
     const openNowCount1 = allKnownResults.filter((r: any) => r.openNow === true).length;
-    const openNowUnknownCount1 = allKnownResults.filter((r: any) => 
+    const openNowUnknownCount1 = allKnownResults.filter((r: any) =>
       r.openNow === 'UNKNOWN' || r.openNow === null || r.openNow === undefined
     ).length;
-    
+
     assert.strictEqual(openNowUnknownCount1, 0, 'should have zero unknowns');
     assert.strictEqual(openNowCount1, 2, 'should count 2 open places');
-    
+
     // With zero unknowns, metadata SHOULD include openNowCount + currentHour
     const shouldIncludeMetadata1 = openNowUnknownCount1 === 0;
     assert.ok(shouldIncludeMetadata1, 'should include openNow metadata when all status known');
-    
+
     // Scenario 2: At least one unknown result
     const someUnknownResults = [
       { name: 'Place A', openNow: true },
       { name: 'Place B', openNow: 'UNKNOWN' }, // One unknown
       { name: 'Place C', openNow: false }
     ];
-    
-    const openNowUnknownCount2 = someUnknownResults.filter((r: any) => 
+
+    const openNowUnknownCount2 = someUnknownResults.filter((r: any) =>
       r.openNow === 'UNKNOWN' || r.openNow === null || r.openNow === undefined
     ).length;
-    
+
     assert.strictEqual(openNowUnknownCount2, 1, 'should have one unknown');
-    
+
     // With any unknowns, metadata should OMIT openNowCount + currentHour
     const shouldIncludeMetadata2 = openNowUnknownCount2 === 0;
     assert.ok(!shouldIncludeMetadata2, 'should omit openNow metadata when any status unknown');

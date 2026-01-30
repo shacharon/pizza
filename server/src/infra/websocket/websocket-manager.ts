@@ -20,6 +20,7 @@ import { setupConnection, handleClose, handleError, executeHeartbeat } from './c
 import { BacklogManager } from './backlog-manager.js';
 import { PendingSubscriptionsManager } from './pending-subscriptions.js';
 import { SubscriptionManager } from './subscription-manager.js';
+import { normalizeLegacyMessage } from './message-normalizer.js';
 import type {
   WebSocketManagerConfig,
   SubscriptionKey,
@@ -151,17 +152,35 @@ export class WebSocketManager {
     }
 
     // Normalize requestId from various legacy locations
-    if (message && message.type === 'subscribe' && !message.requestId) {
-      if (message.payload?.requestId) {
-        message.requestId = message.payload.requestId;
-        logger.debug({ clientId }, '[WS] Normalized requestId from payload.requestId');
-      } else if ((message as any).data?.requestId) {
-        message.requestId = (message as any).data.requestId;
-        logger.debug({ clientId }, '[WS] Normalized requestId from data.requestId');
-      } else if ((message as any).reqId) {
-        message.requestId = (message as any).reqId;
-        logger.debug({ clientId }, '[WS] Normalized requestId from reqId');
+    // Returns null if legacy message is rejected (WS_ALLOW_LEGACY=false)
+    message = normalizeLegacyMessage(message, clientId);
+
+    // Check if message was rejected due to legacy protocol enforcement
+    if (message === null) {
+      // Legacy protocol rejected - send NACK and close connection
+      const nackMessage = {
+        type: 'sub_nack',
+        reason: 'LEGACY_PROTOCOL_REJECTED',
+        message: 'Legacy WebSocket protocol is no longer supported. Please upgrade your client to use canonical protocol v1. See: docs/ws-legacy-sunset.md',
+        migrationDoc: 'docs/ws-legacy-sunset.md'
+      };
+
+      logger.warn({
+        clientId,
+        event: 'ws_legacy_rejected',
+        reason: 'LEGACY_PROTOCOL_REJECTED',
+        message: 'Connection rejected due to legacy protocol usage'
+      }, '[WS] Rejecting connection: legacy protocol not allowed');
+
+      try {
+        ws.send(JSON.stringify(nackMessage));
+      } catch (sendErr) {
+        logger.error({ clientId, error: String(sendErr) }, '[WS] Failed to send legacy rejection NACK');
       }
+
+      // Close connection with clear reason
+      ws.close(1008, 'Legacy protocol not supported'); // 1008 = Policy Violation
+      return;
     }
 
     // Validate message structure
