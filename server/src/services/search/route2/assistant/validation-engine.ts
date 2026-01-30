@@ -1,12 +1,12 @@
 /**
  * Assistant Validation Engine
- * Validates LLM output, enforces business rules, provides fallbacks
+ * Validates LLM output and enforces business rules
  * 
  * Responsibility: 
- * - Validate language match
- * - Validate message/question format
+ * - Validate language match (delegates to text-validator)
+ * - Validate message/question format (delegates to text-validator)
  * - Enforce type-specific invariants
- * - Provide deterministic fallbacks
+ * - Coordinate fallback generation (delegates to fallback-generator)
  */
 
 import { logger } from '../../../../lib/logger/structured-logger.js';
@@ -14,19 +14,14 @@ import type {
   AssistantContext,
   AssistantGateContext,
   AssistantClarifyContext,
-  AssistantSummaryContext,
-  AssistantSearchFailedContext,
-  AssistantGenericQueryNarrationContext,
   AssistantOutput
 } from './assistant.types.js';
-
-/**
- * Validation error result
- */
-interface ValidationErrors {
-  messageError?: string;
-  questionError?: string;
-}
+import { 
+  isHebrewText, 
+  validateMessageFormat,
+  type ValidationErrors 
+} from './text-validator.js';
+import { getDeterministicFallback } from './fallback-generator.js';
 
 /**
  * Assistant Validation Engine
@@ -45,8 +40,8 @@ export class AssistantValidationEngine {
     const validationIssues: string[] = [];
 
     // 1. Validate language match
-    const messageIsHebrew = this.isHebrewText(output.message);
-    const questionIsHebrew = output.question ? this.isHebrewText(output.question) : null;
+    const messageIsHebrew = isHebrewText(output.message);
+    const questionIsHebrew = output.question ? isHebrewText(output.question) : null;
 
     const requestedHebrew = requestedLanguage === 'he';
     const messageMismatch = messageIsHebrew !== requestedHebrew;
@@ -58,7 +53,7 @@ export class AssistantValidationEngine {
     }
 
     // 2. Validate message/question format
-    const formatErrors = this.validateMessageFormat(output.message, output.question);
+    const formatErrors = validateMessageFormat(output.message, output.question);
     if (formatErrors) {
       if (formatErrors.messageError) {
         validationIssues.push(`message_format: ${formatErrors.messageError}`);
@@ -78,7 +73,7 @@ export class AssistantValidationEngine {
         usingFallback: true
       }, '[ASSISTANT] Validation failed - using deterministic fallback');
 
-      const fallback = this.getDeterministicFallback(context, requestedLanguage);
+      const fallback = getDeterministicFallback(context, requestedLanguage);
 
       return {
         type: output.type,
@@ -270,222 +265,5 @@ export class AssistantValidationEngine {
     }
 
     return normalized;
-  }
-
-  // ========================================================================
-  // Private Helpers
-  // ========================================================================
-
-  /**
-   * Detect if text is primarily Hebrew
-   */
-  private isHebrewText(text: string): boolean {
-    const hebrewChars = text.match(/[\u0590-\u05FF]/g);
-    const totalChars = text.replace(/\s/g, '').length;
-    return hebrewChars !== null && hebrewChars.length / totalChars > 0.5;
-  }
-
-  /**
-   * Count sentences in text (simple heuristic: period, exclamation, question mark followed by space or end)
-   */
-  private countSentences(text: string): number {
-    if (!text) return 0;
-    // Match sentence-ending punctuation followed by space/end
-    const matches = text.match(/[.!?](\s|$)/g);
-    return matches ? matches.length : 1; // Default to 1 if no punctuation
-  }
-
-  /**
-   * Count question marks in text
-   */
-  private countQuestionMarks(text: string): number {
-    if (!text) return 0;
-    const matches = text.match(/\?/g);
-    return matches ? matches.length : 0;
-  }
-
-  /**
-   * Validate message and question format
-   * Returns validation errors or null if valid
-   */
-  private validateMessageFormat(
-    message: string,
-    question: string | null
-  ): ValidationErrors | null {
-    const errors: ValidationErrors = {};
-
-    // Message: max 2 sentences
-    const messageSentences = this.countSentences(message);
-    if (messageSentences > 2) {
-      errors.messageError = `Too many sentences (${messageSentences}, max 2)`;
-    }
-
-    // Question: max 1 sentence and max one "?"
-    if (question) {
-      const questionSentences = this.countSentences(question);
-      if (questionSentences > 1) {
-        errors.questionError = `Too many sentences (${questionSentences}, max 1)`;
-      }
-
-      const questionMarks = this.countQuestionMarks(question);
-      if (questionMarks > 1) {
-        errors.questionError = `Too many question marks (${questionMarks}, max 1)`;
-      }
-    }
-
-    return Object.keys(errors).length > 0 ? errors : null;
-  }
-
-  /**
-   * Get deterministic fallback message for language mismatch OR validation failure
-   * Public for use by LLMClient error handling
-   */
-  getDeterministicFallback(
-    context: AssistantContext,
-    requestedLanguage: 'he' | 'en'
-  ): {
-    message: string;
-    question: string | null;
-    suggestedAction: AssistantOutput['suggestedAction'];
-    blocksSearch: boolean;
-  } {
-    if (requestedLanguage === 'he') {
-      if (context.type === 'CLARIFY') {
-        if (context.reason === 'MISSING_LOCATION') {
-          return {
-            message: 'כדי לחפש מסעדות לידך אני צריך את המיקום שלך.',
-            question: 'אפשר לאשר מיקום או לכתוב עיר/אזור?',
-            suggestedAction: 'ASK_LOCATION',
-            blocksSearch: true
-          };
-        } else {
-          return {
-            message: 'כדי לחפש טוב צריך 2 דברים: מה אוכלים + איפה.',
-            question: 'איזה אוכל את/ה מחפש/ת?',
-            suggestedAction: 'ASK_FOOD',
-            blocksSearch: true
-          };
-        }
-      } else if (context.type === 'GATE_FAIL') {
-        return {
-          message: 'זה לא נראה כמו חיפוש אוכל/מסעדות.',
-          question: 'מה תרצה/י לאכול ובאיזה עיר/אזור?',
-          suggestedAction: 'ASK_FOOD',
-          blocksSearch: true
-        };
-      } else if (context.type === 'SEARCH_FAILED') {
-        return {
-          message: 'משהו השתבש בחיפוש. אפשר לנסות שוב?',
-          question: null,
-          suggestedAction: 'RETRY',
-          blocksSearch: true
-        };
-      } else if (context.type === 'GENERIC_QUERY_NARRATION') {
-        return {
-          message: 'חיפשתי לפי המיקום הנוכחי שלך.',
-          question: 'איזה סוג אוכל מעניין אותך?',
-          suggestedAction: 'REFINE',
-          blocksSearch: false
-        };
-      } else {
-        // SUMMARY
-        const count = (context as any).resultCount || 0;
-        const metadata = (context as any).metadata || {};
-
-        if (count === 0) {
-          return {
-            message: 'לא מצאתי תוצאות. נסה להרחיב רדיוס חיפוש או להסיר סינון.',
-            question: null,
-            suggestedAction: 'NONE',
-            blocksSearch: false
-          };
-        }
-
-        if (metadata.openNowCount !== undefined && metadata.openNowCount < count / 2) {
-          return {
-            message: 'רוב המקומות סגורים עכשיו. אפשר לסנן ל"פתוח עכשיו" או לחפש שוב מאוחר יותר.',
-            question: null,
-            suggestedAction: 'NONE',
-            blocksSearch: false
-          };
-        }
-
-        return {
-          message: 'יש כמה אפשרויות טובות באזור. אפשר למיין לפי מרחק או דירוג.',
-          question: null,
-          suggestedAction: 'NONE',
-          blocksSearch: false
-        };
-      }
-    } else {
-      // English fallbacks
-      if (context.type === 'CLARIFY') {
-        if (context.reason === 'MISSING_LOCATION') {
-          return {
-            message: 'To search for restaurants near you, I need your location.',
-            question: 'Can you enable location or enter a city/area?',
-            suggestedAction: 'ASK_LOCATION',
-            blocksSearch: true
-          };
-        } else {
-          return {
-            message: 'To search well, I need 2 things: what food + where.',
-            question: 'What type of food are you looking for?',
-            suggestedAction: 'ASK_FOOD',
-            blocksSearch: true
-          };
-        }
-      } else if (context.type === 'GATE_FAIL') {
-        return {
-          message: "This doesn't look like a food/restaurant search.",
-          question: 'What do you want to eat, and in which city/area?',
-          suggestedAction: 'ASK_FOOD',
-          blocksSearch: true
-        };
-      } else if (context.type === 'SEARCH_FAILED') {
-        return {
-          message: 'Something went wrong with the search. Can you try again?',
-          question: null,
-          suggestedAction: 'RETRY',
-          blocksSearch: true
-        };
-      } else if (context.type === 'GENERIC_QUERY_NARRATION') {
-        return {
-          message: 'I searched near your current location.',
-          question: 'What type of cuisine interests you?',
-          suggestedAction: 'REFINE',
-          blocksSearch: false
-        };
-      } else {
-        // SUMMARY
-        const count = (context as any).resultCount || 0;
-        const metadata = (context as any).metadata || {};
-
-        if (count === 0) {
-          return {
-            message: 'No results found. Try expanding search radius or removing filters.',
-            question: null,
-            suggestedAction: 'NONE',
-            blocksSearch: false
-          };
-        }
-
-        if (metadata.openNowCount !== undefined && metadata.openNowCount < count / 2) {
-          return {
-            message: 'Most places are closed right now. Filter by "open now" or search again later.',
-            question: null,
-            suggestedAction: 'NONE',
-            blocksSearch: false
-          };
-        }
-
-        return {
-          message: 'Several good options in the area. Sort by distance or rating to refine.',
-          question: null,
-          suggestedAction: 'NONE',
-          blocksSearch: false
-        };
-      }
-    }
   }
 }

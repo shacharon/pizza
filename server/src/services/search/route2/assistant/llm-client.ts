@@ -21,6 +21,7 @@ import {
 } from './assistant.types.js';
 import { AssistantPromptEngine } from './prompt-engine.js';
 import { AssistantValidationEngine } from './validation-engine.js';
+import { getDeterministicFallback } from './fallback-generator.js';
 
 export interface GenerationOptions {
   timeout?: number;
@@ -143,7 +144,7 @@ export class AssistantLLMClient {
       }, '[ASSISTANT] LLM call failed - using deterministic fallback');
 
       // Use deterministic fallback on LLM error/timeout
-      const fallback = this.validationEngine.getDeterministicFallback(context, questionLanguage);
+      const fallback = getDeterministicFallback(context, questionLanguage);
 
       return {
         type: context.type,
