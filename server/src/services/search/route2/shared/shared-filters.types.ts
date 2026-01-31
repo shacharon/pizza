@@ -6,6 +6,7 @@
  */
 
 import { z } from 'zod';
+import type { LanguageContext } from './language-context.js';
 
 /**
  * Open/Closed state filter
@@ -109,8 +110,9 @@ export type PreGoogleBaseFilters = z.infer<typeof PreGoogleBaseFiltersSchema>;
  * Final Shared Filters
  *
  * Tightened filters passed to client with results
- * - uiLanguage: resolved UI language (he|en only)
- * - providerLanguage: language for API provider calls (preserves intent languages like fr, es, ar, ru)
+ * - uiLanguage: resolved UI language (he|en only) [DEPRECATED - use languageContext.uiLanguage]
+ * - providerLanguage: language for API provider calls [DEPRECATED - use languageContext.searchLanguage]
+ * - languageContext: NEW - Strict language separation (assistant, search, query, ui)
  * - openState: null unless explicitly requested
  * - priceIntent: null unless explicitly requested
  * - minRatingBucket: null unless explicitly requested
@@ -134,4 +136,7 @@ export const FinalSharedFiltersSchema = z.object({
     })
 });
 
-export type FinalSharedFilters = z.infer<typeof FinalSharedFiltersSchema>;
+export type FinalSharedFilters = z.infer<typeof FinalSharedFiltersSchema> & {
+    /** NEW: Strict language context with separation (assistant, search, query, ui) */
+    languageContext?: LanguageContext;
+};

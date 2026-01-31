@@ -1,12 +1,14 @@
 /**
  * Orchestrator Ranking Module
- * Handles LLM-driven ranking profile selection and deterministic scoring
+ * Handles deterministic ranking profile selection and scoring
+ * 
+ * LANGUAGE-INDEPENDENT: Ranking results identical for same inputs regardless of query/assistant language
  */
 
 import type { Route2Context, IntentResult, RouteLLMMapping } from './types.js';
 import type { FinalSharedFilters } from './shared/shared-filters.types.js';
 import { getRankingLLMConfig } from '../config/ranking.config.js';
-import { selectRankingProfile, type RankingContext } from './ranking/ranking-profile-llm.service.js';
+import { selectRankingProfileDeterministic } from './ranking/ranking-profile-deterministic.js';
 import { rankResults, computeScoreBreakdown } from './ranking/results-ranker.js';
 import { buildRankingSignals, type RankingSignals, type RelaxationApplied, type OpenUnknownStats } from './ranking/ranking-signals.js';
 import { logger } from '../../../lib/logger/structured-logger.js';
@@ -37,7 +39,9 @@ export interface RankingResult {
 }
 
 /**
- * Apply LLM-driven ranking to results (if enabled) and build ranking signals
+ * Apply deterministic ranking to results (if enabled) and build ranking signals
+ * 
+ * LANGUAGE-INDEPENDENT: Same inputs → identical ranking order
  * 
  * This is the ONLY place where ranking is applied.
  * Called after post-filters in orchestrator.
@@ -149,28 +153,13 @@ export async function applyRankingIfEnabled(
       reordered: false
     }, '[RANKING] Input order (Google)');
 
-    // Build minimal context for LLM (no restaurant data)
-    const rankingContext: RankingContext = {
-      query: ctx.query ?? '',
+    // Step 1: DETERMINISTIC profile selection (language-independent)
+    const selection = selectRankingProfileDeterministic({
       route: intentDecision.route,
       hasUserLocation: !!ctx.userLocation,
-      appliedFilters: {
-        openState: finalFilters.openState,
-        priceIntent: finalFilters.priceIntent ?? null,
-        minRatingBucket: finalFilters.minRatingBucket ?? null
-      }
-    };
-
-    // Extract biasRadiusMeters from mapping (for deterministic profile selection)
-    const biasRadiusMeters = mapping && 'bias' in mapping ? mapping.bias?.radiusMeters : undefined;
-
-    // Step 1: LLM selects profile and weights (with deterministic fallback)
-    const selection = await selectRankingProfile(
-      rankingContext,
-      ctx.llmProvider,
-      requestId,
-      biasRadiusMeters
-    );
+      intentReason: intentDecision.reason,
+      requestId
+    });
 
     // Step 2: DETERMINISTIC distance origin resolution
     const distanceDecision = resolveDistanceOrigin(intentDecision, ctx.userLocation, mapping);

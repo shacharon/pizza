@@ -43,7 +43,7 @@ export class SearchApiHandler {
     sessionId: string;
     userLocation?: { lat: number; lng: number };
     clearContext?: boolean;
-    locale: string;
+    uiLanguage?: 'he' | 'en';
     idempotencyKey?: string;
   }): Promise<{ requestId: string; resultUrl: string } | SearchResponse> {
     try {

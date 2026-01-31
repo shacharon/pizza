@@ -382,9 +382,21 @@ function buildTextSearchBody(
   mapping: Extract<RouteLLMMapping, { providerMethod: 'textSearch' }>,
   requestId?: string
 ): any {
+  const languageCode = mapping.language === 'he' ? 'he' : 'en';
+  
+  // Log Google API call language (observability for language separation)
+  logger.info({
+    requestId,
+    event: 'google_call_language',
+    providerMethod: 'textSearch',
+    searchLanguage: languageCode,
+    regionCode: mapping.region,
+    textQuery: mapping.textQuery.substring(0, 50)
+  }, '[GOOGLE] Text Search API call language (from LanguageContext policy)');
+  
   const body: any = {
     textQuery: mapping.textQuery,
-    languageCode: mapping.language === 'he' ? 'he' : 'en'
+    languageCode
     // NOTE: Do NOT include includedTypes - not supported by searchText endpoint
     // Rely on textQuery containing place type (e.g., "מסעדה", "restaurant")
   };

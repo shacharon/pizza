@@ -17,6 +17,7 @@ import { AssistantBottomSheetComponent } from '../components/assistant-bottom-sh
 import { AssistantLineComponent } from '../components/assistant-line/assistant-line.component';
 import { ClarificationBlockComponent } from '../components/clarification-block/clarification-block.component';
 import { AssistantSummaryComponent } from '../components/assistant-summary/assistant-summary.component';
+import { LanguageDebugPanelComponent } from '../components/language-debug-panel/language-debug-panel.component';
 import { LocationService } from '../../../services/location.service';
 import { WsClientService } from '../../../core/services/ws-client.service';
 import type { Restaurant, ClarificationChoice, Coordinates } from '../../../domain/types/search.types';
@@ -35,7 +36,8 @@ import '../../../facades/assistant-dev-tools';
     AssistantBottomSheetComponent,
     AssistantLineComponent,
     ClarificationBlockComponent,
-    AssistantSummaryComponent
+    AssistantSummaryComponent,
+    LanguageDebugPanelComponent
   ],
   providers: [
     SearchFacade,

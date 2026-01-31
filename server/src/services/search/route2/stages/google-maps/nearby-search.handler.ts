@@ -9,6 +9,7 @@ import { generateSearchCacheKey, type CacheKeyParams } from '../../../../../lib/
 import { getCacheService, raceWithCleanup } from './cache-manager.js';
 import { mapGooglePlaceToResult } from './result-mapper.js';
 import type { RouteLLMMapping, Route2Context } from '../../types.js';
+import { mapCuisineToIncludedTypes, mapTypeToIncludedTypes } from './cuisine-to-types-mapper.js';
 
 // Field mask for Google Places API (New) - includes opening hours data
 const PLACES_FIELD_MASK = 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.priceLevel,places.currentOpeningHours,places.regularOpeningHours,places.utcOffsetMinutes,places.photos,places.types,places.googleMapsUri';
@@ -47,9 +48,9 @@ export async function executeNearbySearch(
     return [];
   }
 
-  // Prepare cache key parameters
+  // Prepare cache key parameters (use cuisineKey for deterministic caching)
   const cacheKeyParams: CacheKeyParams = {
-    category: mapping.keyword,
+    category: mapping.cuisineKey || mapping.typeKey || mapping.keyword,
     lat: mapping.location.lat,
     lng: mapping.location.lng,
     radius: mapping.radiusMeters,
@@ -57,13 +58,26 @@ export async function executeNearbySearch(
     language: mapping.language
   };
 
+  // Log nearby payload (for observability)
+  logger.info({
+    requestId,
+    event: 'nearby_payload_built',
+    latLng: `${mapping.location.lat.toFixed(4)},${mapping.location.lng.toFixed(4)}`,
+    radius: mapping.radiusMeters,
+    cuisineKey: mapping.cuisineKey || null,
+    typeKey: mapping.typeKey || null,
+    searchLanguage: mapping.language,
+    anchorSource: 'USER_LOCATION'
+  }, '[NEARBY] Payload built (language-independent)');
+
+
   const cache = getCacheService();
   const fetchFn = async (): Promise<any[]> => {
     const results: any[] = [];
     let nextPageToken: string | undefined;
     const maxResults = 40; // Fetch up to 40 results (2 pages of 20)
 
-    const requestBody = buildNearbySearchBody(mapping);
+    const requestBody = buildNearbySearchBody(mapping, requestId);
 
     // Fetch first page
     const firstResponse = await callGooglePlacesSearchNearby(requestBody, apiKey, requestId);
@@ -177,24 +191,39 @@ export async function executeNearbySearch(
 
 /**
  * Build Nearby Search API request body (New API)
+ * Uses cuisineKey/typeKey for language-independent includedTypes
  */
 function buildNearbySearchBody(
-  mapping: Extract<RouteLLMMapping, { providerMethod: 'nearbySearch' }>
+  mapping: Extract<RouteLLMMapping, { providerMethod: 'nearbySearch' }>,
+  requestId?: string
 ): any {
-  // Normalize keyword for non-IL regions
-  let normalizedKeyword = mapping.keyword;
-  if (mapping.region && mapping.region !== 'IL') {
-    // Convert to English with "restaurant" suffix
-    if (mapping.keyword.includes('איטלק') || mapping.keyword.toLowerCase().includes('italian')) {
-      normalizedKeyword = 'Italian restaurant';
-    } else {
-      // Generic: append "restaurant" if not present
-      normalizedKeyword = mapping.keyword.toLowerCase().includes('restaurant')
-        ? mapping.keyword
-        : `${mapping.keyword} restaurant`;
-    }
+  // Determine includedTypes from cuisineKey/typeKey (language-independent)
+  let includedTypes: string[];
+  if (mapping.cuisineKey) {
+    includedTypes = mapCuisineToIncludedTypes(mapping.cuisineKey);
+  } else if (mapping.typeKey) {
+    includedTypes = mapTypeToIncludedTypes(mapping.typeKey);
+  } else {
+    // Fallback: use default
+    includedTypes = ['restaurant'];
   }
 
+  const languageCode = mapping.language === 'he' ? 'he' : 'en';
+  
+  // Log Google API call language (observability for language separation)
+  if (requestId) {
+    logger.info({
+      requestId,
+      event: 'google_call_language',
+      providerMethod: 'nearbySearch',
+      searchLanguage: languageCode,
+      regionCode: mapping.region,
+      cuisineKey: mapping.cuisineKey || null,
+      typeKey: mapping.typeKey || null,
+      includedTypes: includedTypes.slice(0, 3) // Log first 3 only
+    }, '[GOOGLE] Nearby Search API call (language-independent includedTypes from cuisineKey)');
+  }
+  
   const body: any = {
     locationRestriction: {
       circle: {
@@ -205,8 +234,8 @@ function buildNearbySearchBody(
         radius: mapping.radiusMeters
       }
     },
-    languageCode: mapping.language === 'he' ? 'he' : 'en',
-    includedTypes: ['restaurant'],
+    languageCode,
+    includedTypes, // Language-independent types
     rankPreference: 'DISTANCE'
   };
 

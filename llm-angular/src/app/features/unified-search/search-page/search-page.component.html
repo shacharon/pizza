@@ -127,30 +127,32 @@
       
       <div class="results-header">
         <!-- Order Explanation (Ranking Transparency) -->
-        @if (facade.response()?.meta?.order_explain) {
+        @if (facade.response()?.meta?.order_explain; as orderExplain) {
         <div class="order-explain">
           <div class="order-explain-header">
             <span class="order-label">Order:</span>
-            <span class="order-profile">{{ getProfileDisplayName(facade.response()!.meta.order_explain.profile) }}</span>
+            <span class="order-profile">{{ getProfileDisplayName(orderExplain.profile) }}</span>
           </div>
           <div class="order-explain-details">
             <span class="order-weights">
-              @if (facade.response()!.meta.order_explain.weights.rating > 0) {
-                <span class="weight-item">⭐ {{ (facade.response()!.meta.order_explain.weights.rating * 100) | number:'1.0-0' }}%</span>
+              @if (orderExplain.weights.rating > 0) {
+                <span class="weight-item">⭐ {{ (orderExplain.weights.rating * 100) | number:'1.0-0' }}%</span>
               }
-              @if (facade.response()!.meta.order_explain.weights.reviews > 0) {
-                <span class="weight-item">💬 {{ (facade.response()!.meta.order_explain.weights.reviews * 100) | number:'1.0-0' }}%</span>
+              @if (orderExplain.weights.reviews > 0) {
+                <span class="weight-item">💬 {{ (orderExplain.weights.reviews * 100) | number:'1.0-0' }}%</span>
               }
-              @if (facade.response()!.meta.order_explain.weights.distance > 0) {
-                <span class="weight-item">📍 {{ (facade.response()!.meta.order_explain.weights.distance * 100) | number:'1.0-0' }}%</span>
+              @if (orderExplain.weights.distance > 0) {
+                <span class="weight-item">📍 {{ (orderExplain.weights.distance * 100) | number:'1.0-0' }}%</span>
               }
-              @if (facade.response()!.meta.order_explain.weights.openBoost > 0) {
-                <span class="weight-item">🟢 {{ (facade.response()!.meta.order_explain.weights.openBoost * 100) | number:'1.0-0' }}%</span>
+              @if (orderExplain.weights.openBoost > 0) {
+                <span class="weight-item">🟢 {{ (orderExplain.weights.openBoost * 100) | number:'1.0-0' }}%</span>
               }
             </span>
-            <span class="order-origin">
-              {{ getOriginDisplayText(facade.response()!.meta.order_explain.distanceOrigin) }}
-            </span>
+            @if (orderExplain.distanceOrigin) {
+              <span class="order-origin">
+                {{ getOriginDisplayText(orderExplain.distanceOrigin) }}
+              </span>
+            }
           </div>
         </div>
         }
@@ -219,4 +221,7 @@
     </aside>
     }
   </main>
+
+  <!-- DEV-ONLY: Language Debug Panel -->
+  <app-language-debug-panel [response]="facade.response()" />
 </div>

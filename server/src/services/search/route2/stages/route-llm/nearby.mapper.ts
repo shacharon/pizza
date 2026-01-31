@@ -12,6 +12,7 @@ import type { Message } from '../../../../../llm/types.js';
 import { buildLLMJsonSchema } from '../../../../../llm/types.js';
 import { logger } from '../../../../../lib/logger/structured-logger.js';
 import { NearbyMappingSchema, type NearbyMapping } from './schemas.js';
+import { extractCuisineKeyFromQuery, extractTypeKeyFromQuery } from './query-cuisine-extractor.js';
 
 const NEARBY_MAPPER_VERSION = 'nearby_mapper_v1';
 
@@ -132,8 +133,21 @@ export async function executeNearbyMapper(
       mapping = response.data;
       
       // CRITICAL: Override LLM's region/language with filters_resolved values (single source of truth)
+      // Use languageContext.searchLanguage (region-based policy) instead of providerLanguage
       mapping.region = finalFilters.regionCode;
-      mapping.language = finalFilters.providerLanguage;
+      mapping.language = finalFilters.languageContext?.searchLanguage ?? finalFilters.providerLanguage;
+      
+      // NEW: Extract cuisineKey/typeKey deterministically (language-independent)
+      const cuisineKey = extractCuisineKeyFromQuery(request.query);
+      if (cuisineKey) {
+        mapping.cuisineKey = cuisineKey;
+      } else {
+        // Fallback: try to extract typeKey
+        const typeKey = extractTypeKeyFromQuery(request.query);
+        if (typeKey) {
+          mapping.typeKey = typeKey;
+        }
+      }
       
       tokenUsage = {
         ...(response.usage?.prompt_tokens !== undefined && { input: response.usage.prompt_tokens }),
@@ -183,8 +197,21 @@ export async function executeNearbyMapper(
           mapping = retryResponse.data;
           
           // CRITICAL: Override LLM's region/language with filters_resolved values (single source of truth)
+          // Use languageContext.searchLanguage (region-based policy) instead of providerLanguage
           mapping.region = finalFilters.regionCode;
-          mapping.language = finalFilters.providerLanguage;
+          mapping.language = finalFilters.languageContext?.searchLanguage ?? finalFilters.providerLanguage;
+          
+          // NEW: Extract cuisineKey/typeKey deterministically (language-independent)
+          const cuisineKey = extractCuisineKeyFromQuery(request.query);
+          if (cuisineKey) {
+            mapping.cuisineKey = cuisineKey;
+          } else {
+            // Fallback: try to extract typeKey
+            const typeKey = extractTypeKeyFromQuery(request.query);
+            if (typeKey) {
+              mapping.typeKey = typeKey;
+            }
+          }
           
           tokenUsage = {
             ...(retryResponse.usage?.prompt_tokens !== undefined && { input: retryResponse.usage.prompt_tokens }),
@@ -272,10 +299,11 @@ function buildUserPrompt(
   finalFilters: FinalSharedFilters,
   userLocation: { lat: number; lng: number }
 ): string {
+  const language = finalFilters.languageContext?.searchLanguage ?? finalFilters.providerLanguage;
   return `Query: "${query}"
 User location: lat=${userLocation.lat}, lng=${userLocation.lng}
 Region: ${finalFilters.regionCode}
-Language: ${finalFilters.providerLanguage}`;
+Language: ${language}`;
 }
 
 /**
@@ -327,13 +355,22 @@ function buildFallbackMapping(
     keyword = query.substring(0, 50);
   }
 
+  // Extract cuisineKey/typeKey deterministically
+  const cuisineKey = extractCuisineKeyFromQuery(query);
+  const typeKey = cuisineKey ? undefined : extractTypeKeyFromQuery(query);
+
   return {
     providerMethod: 'nearbySearch',
     location: userLocation,
     radiusMeters,
     keyword,
     region: finalFilters.regionCode,
-    language: finalFilters.providerLanguage,
-    reason
+    language: finalFilters.languageContext?.searchLanguage ?? finalFilters.providerLanguage,
+    reason,
+    ...(cuisineKey && { cuisineKey }),
+    ...(typeKey && { typeKey })
   };
 }
+
+// Export extractors for testing
+export { extractCuisineKeyFromQuery, extractTypeKeyFromQuery } from './query-cuisine-extractor.js';

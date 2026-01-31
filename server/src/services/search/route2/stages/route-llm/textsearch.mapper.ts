@@ -197,8 +197,9 @@ export async function executeTextSearchMapper(
     const mapping = response.data as any;
 
     // CRITICAL: Override LLM's region/language with filters_resolved values (single source of truth)
+    // Use languageContext.searchLanguage (region-based policy) instead of providerLanguage
     mapping.region = finalFilters.regionCode;
-    mapping.language = finalFilters.providerLanguage;
+    mapping.language = finalFilters.languageContext?.searchLanguage ?? finalFilters.providerLanguage;
 
     // CRITICAL: Canonicalize textQuery to avoid chatty conversational queries
     const canonicalized = canonicalizeTextQuery(mapping.textQuery, requestId);
@@ -343,8 +344,9 @@ async function buildDeterministicMapping(
   const mapping: TextSearchMapping = {
     providerMethod: 'textSearch',
     textQuery: cleanedQuery,
+    cuisineKey: null, // No cuisine detected in fallback
     region: finalFilters.regionCode,
-    language: finalFilters.providerLanguage,
+    language: finalFilters.languageContext?.searchLanguage ?? finalFilters.providerLanguage,
     bias: undefined,
     reason: 'deterministic_fallback',
     requiredTerms: [],  // No cuisine enforcement in fallback
@@ -362,7 +364,8 @@ async function buildDeterministicMapping(
 }
 
 function buildUserPrompt(query: string, finalFilters: FinalSharedFilters): string {
-  return `Query: "${query}"\nRegion: ${finalFilters.regionCode}\nLanguage: ${finalFilters.providerLanguage}`;
+  const language = finalFilters.languageContext?.searchLanguage ?? finalFilters.providerLanguage;
+  return `Query: "${query}"\nRegion: ${finalFilters.regionCode}\nLanguage: ${language}`;
 }
 
 /**

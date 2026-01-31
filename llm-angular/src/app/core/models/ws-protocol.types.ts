@@ -166,7 +166,7 @@ export interface WSServerAssistant {
     question: string | null;
     blocksSearch: boolean;
     suggestedAction?: 'REFINE_QUERY';
-    uiLanguage?: 'he' | 'en';
+    language?: 'he' | 'en';  // Language of the message (assistantLanguage)
   };
 }
 

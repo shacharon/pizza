@@ -8,6 +8,8 @@ import { logger } from '../../../../lib/logger/structured-logger.js';
 import type { PreGoogleBaseFilters, FinalSharedFilters } from './shared-filters.types.js';
 import type { IntentResult } from '../types.js';
 import { sanitizeRegionCode, getFallbackRegion, isKnownUnsupportedRegion } from '../utils/region-code-validator.js';
+import { resolveLanguageContext } from './language-context.js';
+import { detectQueryLanguage } from '../utils/query-language-detector.js';
 
 export interface ResolveFiltersParams {
     base: PreGoogleBaseFilters;
@@ -15,6 +17,7 @@ export interface ResolveFiltersParams {
     deviceRegionCode?: string | null;
     userLocation?: { lat: number; lng: number } | null;
     requestId?: string;
+    query?: string; // For deterministic query language detection
 }
 
 /**
@@ -22,12 +25,12 @@ export interface ResolveFiltersParams {
  * Simple passthrough with minimal logic + region code validation
  */
 export async function resolveFilters(params: ResolveFiltersParams): Promise<FinalSharedFilters> {
-    const { base, intent, deviceRegionCode, userLocation, requestId } = params;
+    const { base, intent, deviceRegionCode, userLocation, requestId, query } = params;
 
     // 1. Resolve UI language (he or en only)
     const uiLanguage: 'he' | 'en' = intent.language === 'he' ? 'he' : 'en';
 
-    // 2. Resolve provider language (preserve intent language)
+    // 2. Resolve provider language (preserve intent language) [DEPRECATED - use languageContext.searchLanguage]
     const providerLanguage: 'he' | 'en' | 'ar' | 'fr' | 'es' | 'ru' =
         ['he', 'en', 'ar', 'fr', 'es', 'ru'].includes(intent.language)
             ? intent.language as any
@@ -65,7 +68,18 @@ export async function resolveFilters(params: ResolveFiltersParams): Promise<Fina
         }
     }
 
-    // 6. Pass through openState + time filters + priceIntent + minRatingBucket + minReviewCountBucket (NO MODIFICATION)
+    // 6. Resolve language context with strict separation
+    const queryLanguage = query ? detectQueryLanguage(query) : uiLanguage;
+    const languageContext = resolveLanguageContext({
+        uiLanguage,
+        queryLanguage,
+        regionCode: sanitizedRegionCode || 'IL',
+        cityText: intent.cityText,
+        intentLanguage: intent.language,
+        intentLanguageConfidence: intent.languageConfidence
+    }, requestId);
+
+    // 7. Pass through openState + time filters + priceIntent + minRatingBucket + minReviewCountBucket (NO MODIFICATION)
     const openState = base.openState;
     const openAt = base.openAt;
     const openBetween = base.openBetween;
@@ -75,7 +89,7 @@ export async function resolveFilters(params: ResolveFiltersParams): Promise<Fina
 
     const finalFilters: FinalSharedFilters = {
         uiLanguage,
-        providerLanguage,
+        providerLanguage,  // DEPRECATED - use languageContext.searchLanguage instead
         openState,
         openAt,
         openBetween,
@@ -86,7 +100,8 @@ export async function resolveFilters(params: ResolveFiltersParams): Promise<Fina
         disclaimers: {
             hours: true,
             dietary: true
-        }
+        },
+        languageContext  // NEW: Strict language separation
     };
 
     logger.info({

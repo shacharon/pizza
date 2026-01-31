@@ -11,6 +11,8 @@ import { mapGooglePlaceToResult } from './result-mapper.js';
 import { callGooglePlacesSearchText } from './text-search.handler.js';
 import { callGooglePlacesSearchNearby } from './nearby-search.handler.js';
 import type { RouteLLMMapping, Route2Context } from '../../types.js';
+import { createLandmarkResolutionCacheKey, createLandmarkSearchCacheKey } from '../route-llm/landmark-normalizer.js';
+import { mapCuisineToIncludedTypes, mapTypeToIncludedTypes } from './cuisine-to-types-mapper.js';
 
 // Field mask for Google Places API (New) - includes opening hours data
 const PLACES_FIELD_MASK = 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.priceLevel,places.currentOpeningHours,places.regularOpeningHours,places.utcOffsetMinutes,places.photos,places.types,places.googleMapsUri';
@@ -53,68 +55,118 @@ export async function executeLandmarkPlan(
   }
 
   try {
-    // Phase 1: Geocode the landmark (uses legacy Geocoding API)
+    // Phase 1: Resolve landmark (with two-tier caching)
     const geocodeStartTime = Date.now();
-    const geocodeResult = await callGoogleGeocodingAPI(
-      mapping.geocodeQuery,
-      mapping.region,
-      apiKey,
-      requestId
-    );
-
-    if (!geocodeResult) {
-      logger.warn({
+    let geocodeResult: { lat: number; lng: number };
+    let landmarkSource: string;
+    
+    // Check if we have known coordinates (from landmark registry)
+    if (mapping.resolvedLatLng) {
+      geocodeResult = mapping.resolvedLatLng;
+      landmarkSource = 'registry_cache';
+      
+      logger.info({
         requestId,
-        provider: 'google_places_new',
-        method: 'landmarkPlan',
-        geocodeQuery: mapping.geocodeQuery
-      }, '[GOOGLE] Geocoding returned no results');
-      return [];
+        event: 'landmark_resolved',
+        landmarkId: mapping.landmarkId || 'unknown',
+        latLng: `${geocodeResult.lat.toFixed(4)},${geocodeResult.lng.toFixed(4)}`,
+        source: landmarkSource
+      }, '[LANDMARK] Resolved from registry (no geocoding needed)');
+    } else {
+      // Need to geocode (with resolution cache)
+      const cache = getCacheService();
+      const resolutionCacheKey = createLandmarkResolutionCacheKey(
+        mapping.geocodeQuery,
+        mapping.region
+      );
+      
+      const geocodeFn = async (): Promise<{ lat: number; lng: number } | null> => {
+        return await callGoogleGeocodingAPI(
+          mapping.geocodeQuery,
+          mapping.region,
+          apiKey,
+          requestId
+        );
+      };
+      
+      let geocodeResultNullable: { lat: number; lng: number } | null = null;
+      
+      if (cache) {
+        try {
+          // Cache landmark resolution (TTL: 7 days for landmarks)
+          const cachePromise = cache.wrap(resolutionCacheKey, 604800, geocodeFn);
+          geocodeResultNullable = await raceWithCleanup(cachePromise, 10000);
+          landmarkSource = 'geocode_cache_or_api';
+        } catch (cacheError) {
+          logger.warn({
+            requestId,
+            error: (cacheError as Error).message,
+            msg: '[LANDMARK] Resolution cache error, falling back to direct geocode'
+          });
+          geocodeResultNullable = await geocodeFn();
+          landmarkSource = 'geocode_api';
+        }
+      } else {
+        geocodeResultNullable = await geocodeFn();
+        landmarkSource = 'geocode_api';
+      }
+      
+      if (!geocodeResultNullable) {
+        logger.warn({
+          requestId,
+          provider: 'google_places_new',
+          method: 'landmarkPlan',
+          geocodeQuery: mapping.geocodeQuery
+        }, '[GOOGLE] Geocoding returned no results');
+        return [];
+      }
+      
+      geocodeResult = geocodeResultNullable;
+      
+      logger.info({
+        requestId,
+        event: 'landmark_resolved',
+        landmarkId: mapping.landmarkId || 'unknown',
+        latLng: `${geocodeResult.lat.toFixed(4)},${geocodeResult.lng.toFixed(4)}`,
+        source: landmarkSource,
+        geocodeDurationMs: Date.now() - geocodeStartTime
+      }, '[LANDMARK] Resolved from geocoding');
     }
 
-    const geocodeDurationMs = Date.now() - geocodeStartTime;
-    logger.info({
-      requestId,
-      provider: 'google_places_new',
-      method: 'landmarkPlan',
-      phase: 'geocode',
-      durationMs: geocodeDurationMs,
-      location: geocodeResult
-    }, '[GOOGLE] Landmark geocoded successfully');
-
-    // Phase 2: Search based on afterGeocode strategy (using New Places API)
+    // Phase 2: Search around landmark (with search cache)
     const searchStartTime = Date.now();
     let results: any[] = [];
     let fromCache = false;
-
-    // Prepare cache key parameters using geocoded location
-    const cacheKeyParams: CacheKeyParams = {
-      category: mapping.keyword,
-      locationText: mapping.geocodeQuery, // Include landmark name for cache differentiation
-      lat: geocodeResult.lat,
-      lng: geocodeResult.lng,
+    
+    // Determine includedTypes from cuisineKey/typeKey (language-independent, like NEARBY)
+    let includedTypes: string[];
+    if (mapping.cuisineKey) {
+      includedTypes = mapCuisineToIncludedTypes(mapping.cuisineKey);
+    } else if (mapping.typeKey) {
+      includedTypes = mapTypeToIncludedTypes(mapping.typeKey);
+    } else {
+      includedTypes = ['restaurant']; // Fallback
+    }
+    
+    // Log landmark search payload (observability)
+    logger.info({
+      requestId,
+      event: 'landmark_search_payload_built',
+      landmarkId: mapping.landmarkId || 'unknown',
+      latLng: `${geocodeResult.lat.toFixed(4)},${geocodeResult.lng.toFixed(4)}`,
       radius: mapping.radiusMeters,
-      region: mapping.region,
-      language: mapping.language
-    };
+      cuisineKey: mapping.cuisineKey || null,
+      typeKey: mapping.typeKey || null,
+      includedTypes: includedTypes.slice(0, 3),
+      searchLanguage: mapping.language,
+      afterGeocode: mapping.afterGeocode
+    }, '[LANDMARK] Search payload built (language-independent)');
 
     const cache = getCacheService();
 
     const fetchFn = async (): Promise<any[]> => {
       if (mapping.afterGeocode === 'nearbySearch') {
-        // Normalize keyword for non-IL regions
-        let normalizedKeyword = mapping.keyword;
-        if (mapping.region && mapping.region !== 'IL') {
-          if (mapping.keyword.includes('איטלק') || mapping.keyword.toLowerCase().includes('italian')) {
-            normalizedKeyword = 'Italian restaurant';
-          } else {
-            normalizedKeyword = mapping.keyword.toLowerCase().includes('restaurant')
-              ? mapping.keyword
-              : `${mapping.keyword} restaurant`;
-          }
-        }
-
-        // Use Nearby Search centered on geocoded location
+        // Use Nearby Search centered on landmark location
         const requestBody = {
           locationRestriction: {
             circle: {
@@ -126,20 +178,13 @@ export async function executeLandmarkPlan(
             }
           },
           languageCode: mapping.language === 'he' ? 'he' : 'en',
-          includedTypes: ['restaurant'],
+          includedTypes, // Language-independent types from cuisineKey
           rankPreference: 'DISTANCE'
         };
 
         if (mapping.region) {
           (requestBody as any).regionCode = mapping.region;
         }
-
-        logger.debug({
-          requestId,
-          originalKeyword: mapping.keyword,
-          normalizedKeyword,
-          region: mapping.region
-        }, '[GOOGLE] Keyword normalized for nearby search');
 
         const response = await callGooglePlacesSearchNearby(requestBody, apiKey, requestId);
         return response.places ? response.places.map((r: any) => mapGooglePlaceToResult(r)) : [];
@@ -169,27 +214,41 @@ export async function executeLandmarkPlan(
       }
     };
 
-    // Execute with cache
+    // Execute with landmark search cache (two-tier caching)
     if (cache) {
       try {
-        // Validate cache service
-        if (typeof cache.wrap !== 'function') {
-          throw new Error('Cache service wrap method not available');
-        }
-
-        const cacheKey = generateSearchCacheKey(cacheKeyParams);
+        // Use landmarkId-based cache key for perfect multilingual sharing
+        const searchCacheKey = mapping.landmarkId
+          ? createLandmarkSearchCacheKey(
+              mapping.landmarkId,
+              mapping.radiusMeters,
+              mapping.cuisineKey,
+              mapping.typeKey,
+              mapping.region
+            )
+          : generateSearchCacheKey({
+              category: mapping.cuisineKey || mapping.typeKey || mapping.keyword,
+              locationText: mapping.geocodeQuery,
+              lat: geocodeResult.lat,
+              lng: geocodeResult.lng,
+              radius: mapping.radiusMeters,
+              region: mapping.region,
+              language: mapping.language
+            });
+        
         const ttl = cache.getTTL(mapping.keyword);
 
         logger.debug({
           requestId,
           event: 'CACHE_WRAP_ENTER',
           providerMethod: 'landmarkPlan',
-          cacheKey,
-          ttlSeconds: ttl
+          cacheKey: searchCacheKey,
+          ttlSeconds: ttl,
+          landmarkId: mapping.landmarkId || null
         });
 
         // P0 Fix: Use raceWithCleanup to prevent timeout memory leaks
-        const cachePromise = cache.wrap(cacheKey, ttl, fetchFn);
+        const cachePromise = cache.wrap(searchCacheKey, ttl, fetchFn);
         results = await raceWithCleanup(cachePromise, 10000);
         fromCache = (Date.now() - searchStartTime) < 100;
       } catch (cacheError) {

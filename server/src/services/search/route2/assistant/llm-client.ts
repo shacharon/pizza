@@ -151,7 +151,8 @@ export class AssistantLLMClient {
         message: fallback.message,
         question: fallback.question,
         suggestedAction: fallback.suggestedAction,
-        blocksSearch: fallback.blocksSearch
+        blocksSearch: fallback.blocksSearch,
+        language: questionLanguage // Set language from requested
       };
     }
   }

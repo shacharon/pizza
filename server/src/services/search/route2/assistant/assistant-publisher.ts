@@ -38,7 +38,8 @@ export function publishAssistantMessage(
         type: assistant.type,
         message: assistant.message,
         question: assistant.question,
-        blocksSearch: assistant.blocksSearch
+        blocksSearch: assistant.blocksSearch,
+        language: assistant.language || 'en' // Language of the message (assistantLanguage)
       }
     };
 

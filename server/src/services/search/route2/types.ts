@@ -33,6 +33,9 @@ export interface Route2Context {
     lat: number;
     lng: number;
   } | null;
+  // UI language (from client, for assistant messages ONLY)
+  // Backend owns searchLanguage policy; uiLanguage is for display only
+  uiLanguage?: 'he' | 'en';
   // Region tracking: user (device) vs query (LLM-detected)
   userRegionCode?: 'IL' | 'OTHER';
   queryRegionCode?: 'IL' | 'OTHER';

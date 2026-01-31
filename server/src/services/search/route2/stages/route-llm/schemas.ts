@@ -21,15 +21,28 @@ const LocationSchema = z.object({
 /**
  * 1. This is for OpenAI (Strict Mode Friendly)
  * NO bias field here to avoid 400 error.
- * INCLUDES cuisine enforcement fields for explicit cuisine queries.
+ * INCLUDES cuisine enforcement fields - now extracts canonical cuisineKey instead of raw terms.
+ * 
+ * LANGUAGE SEPARATION: LLM extracts cuisineKey (language-independent), NOT raw query terms.
+ * Terms are generated deterministically from cuisineKey + searchLanguage.
  */
 export const TextSearchLLMResponseSchema = z.object({
   providerMethod: z.literal('textSearch'),
-  textQuery: z.string().min(1),
+  // DEPRECATED: textQuery will be generated deterministically (not from LLM)
+  textQuery: z.string().min(1).optional(),
   region: z.string().regex(/^[A-Z]{2}$/),
   language: z.enum(['he', 'en', 'ru', 'ar', 'fr', 'es', 'other']),
   reason: z.string().min(1),
-  // Cuisine enforcement fields (LLM-only, no hardcoded rules)
+  // Cuisine enforcement fields - NEW: canonical cuisineKey (language-independent)
+  cuisineKey: z.enum([
+    'italian', 'asian', 'japanese', 'chinese', 'thai', 'indian',
+    'mediterranean', 'middle_eastern', 'american', 'mexican', 'french',
+    'seafood', 'steakhouse', 'pizza', 'sushi', 'burger',
+    'vegan', 'vegetarian', 'kosher', 'dairy', 'meat', 'fish',
+    'breakfast', 'cafe', 'bakery', 'dessert',
+    'fast_food', 'fine_dining', 'casual_dining'
+  ]).nullable().default(null),
+  // DEPRECATED: requiredTerms/preferredTerms generated from cuisineKey
   requiredTerms: z.array(z.string()).default([]),
   preferredTerms: z.array(z.string()).default([]),
   strictness: z.enum(['STRICT', 'RELAX_IF_EMPTY']).default('RELAX_IF_EMPTY'),
@@ -38,9 +51,15 @@ export const TextSearchLLMResponseSchema = z.object({
 
 /**
  * 2. This is for your App logic
- * Includes the bias field, cityText, and cityCenter (resolved coordinates).
+ * Includes the bias field, cityText, cityCenter, and OVERRIDES textQuery (generated deterministically).
+ * 
+ * LANGUAGE SEPARATION:
+ * - textQuery: generated from cuisineKey + cityText + searchLanguage (deterministic)
+ * - requiredTerms/preferredTerms: generated from cuisineKey + searchLanguage (not query language)
  */
 export const TextSearchMappingSchema = TextSearchLLMResponseSchema.extend({
+  // Override: textQuery is REQUIRED (generated deterministically, not from LLM)
+  textQuery: z.string().min(1),
   bias: LocationBiasSchema.nullable().optional(),
   cityText: z.string().min(1).optional(),
   cityCenter: LocationSchema.nullable().optional() // Resolved city center coordinates for ranking
@@ -57,7 +76,10 @@ export const NearbyMappingSchema = z.object({
   keyword: z.string().min(1).max(80),
   region: z.string().regex(/^[A-Z]{2}$/),
   language: z.enum(['he', 'en', 'ru', 'ar', 'fr', 'es', 'other']),
-  reason: z.string().min(1)
+  reason: z.string().min(1),
+  // NEW: Canonical keys for language-independent search
+  cuisineKey: z.string().optional(), // e.g., 'italian', 'asian'
+  typeKey: z.string().optional()     // e.g., 'restaurant', 'cafe'
 }).strict();
 
 export type NearbyMapping = z.infer<typeof NearbyMappingSchema>;
@@ -72,7 +94,15 @@ export const LandmarkMappingSchema = z.object({
   keyword: z.string().min(1).max(80),
   region: z.string().regex(/^[A-Z]{2}$/),
   language: z.enum(['he', 'en', 'ru', 'ar', 'fr', 'es', 'other']),
-  reason: z.string().min(1)
+  reason: z.string().min(1),
+  // NEW: Canonical keys for language independence
+  landmarkId: z.string().optional(),      // Canonical landmark ID (resolved post-LLM)
+  cuisineKey: z.string().optional(),      // Canonical cuisine key
+  typeKey: z.string().optional(),         // Type key for non-cuisine searches
+  resolvedLatLng: z.object({              // Resolved coordinates (post-geocode)
+    lat: z.number(),
+    lng: z.number()
+  }).optional()
 }).strict();
 
 export type LandmarkMapping = z.infer<typeof LandmarkMappingSchema>;

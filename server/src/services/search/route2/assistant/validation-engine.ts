@@ -80,11 +80,16 @@ export class AssistantValidationEngine {
         message: fallback.message,
         question: fallback.question,
         suggestedAction: fallback.suggestedAction,
-        blocksSearch: fallback.blocksSearch
+        blocksSearch: fallback.blocksSearch,
+        language: requestedLanguage // Set language from requested
       };
     }
 
-    return output;
+    // Ensure language field is set from requested language
+    return {
+      ...output,
+      language: requestedLanguage
+    };
   }
 
   /**

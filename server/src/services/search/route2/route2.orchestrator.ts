@@ -475,7 +475,8 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
       wsManager,
       rankingApplied,
       cuisineEnforcementFailed,
-      orderExplain
+      orderExplain,
+      finalFilters  // NEW: For language context transparency
     );
   } catch (error) {
     return await handlePipelineError(error, ctx, wsManager);

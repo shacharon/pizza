@@ -77,7 +77,8 @@ export const AssistantOutputSchema = z.object({
   message: z.string(),
   question: z.string().nullable(),
   suggestedAction: z.enum(['NONE', 'ASK_LOCATION', 'ASK_FOOD', 'RETRY', 'EXPAND_RADIUS', 'REFINE']),
-  blocksSearch: z.boolean()
+  blocksSearch: z.boolean(),
+  language: z.enum(['he', 'en']).optional() // Language of the generated message (assistantLanguage)
 }).strict();
 
 export type AssistantOutput = z.infer<typeof AssistantOutputSchema>;
@@ -90,9 +91,10 @@ export const ASSISTANT_JSON_SCHEMA = {
     message: { type: 'string' },
     question: { type: ['string', 'null'] },
     suggestedAction: { type: 'string', enum: ['NONE', 'ASK_LOCATION', 'ASK_FOOD', 'RETRY', 'EXPAND_RADIUS', 'REFINE'] },
-    blocksSearch: { type: 'boolean' }
+    blocksSearch: { type: 'boolean' },
+    language: { type: 'string', enum: ['he', 'en'] }
   },
-  required: ['type', 'message', 'question', 'suggestedAction', 'blocksSearch'],
+  required: ['type', 'message', 'question', 'suggestedAction', 'blocksSearch', 'language'],
   additionalProperties: false
 } as const;
 

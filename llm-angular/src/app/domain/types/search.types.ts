@@ -11,8 +11,7 @@ export interface SearchRequest {
   sessionId?: string;
   userLocation?: Coordinates;
   filters?: SearchFilters;
-  locale?: string;
-  region?: string;
+  uiLanguage?: 'he' | 'en';  // UI language (for assistant messages ONLY - backend owns searchLanguage)
   clearContext?: boolean;  // Intent reset flag
 }
 
@@ -216,6 +215,17 @@ export interface SearchMeta {
     distanceOrigin: 'CITY_CENTER' | 'USER_LOCATION' | 'NONE';
     distanceRef: { lat: number; lng: number } | null;
     reordered: boolean;
+  };
+  // Language context (for language separation transparency)
+  languageContext?: {
+    uiLanguage: 'he' | 'en';
+    queryLanguage: 'he' | 'en';
+    assistantLanguage: 'he' | 'en';
+    searchLanguage: 'he' | 'en';
+    sources?: {
+      assistantLanguage: string;
+      searchLanguage: string;
+    };
   };
 }
 

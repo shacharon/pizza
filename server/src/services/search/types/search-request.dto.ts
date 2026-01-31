@@ -40,6 +40,10 @@ export const searchRequestSchema = z.object({
   // Optional: enable debug mode (include diagnostics in response)
   debug: z.boolean().optional(),
 
+  // Optional: UI language (for assistant messages, NOT for search)
+  // Backend owns searchLanguage policy; uiLanguage is for display only
+  uiLanguage: z.enum(['he', 'en']).optional(),
+
   // Optional: pagination (for "load more" UX)
   pagination: z.object({
     limit: z.number().int().min(1).max(100).optional().default(10),  // Results per page

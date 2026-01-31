@@ -28,7 +28,8 @@ export async function resolveAndStoreFilters(
     intent: intentDecision,
     deviceRegionCode: ctx.userRegionCode ?? null,
     userLocation: ctx.userLocation ?? null,
-    requestId: ctx.requestId
+    requestId: ctx.requestId,
+    query: ctx.query // For deterministic query language detection
   });
 
   // DUPLICATE LOG FIX: Removed - already logged in filters-resolver.ts (richer version)

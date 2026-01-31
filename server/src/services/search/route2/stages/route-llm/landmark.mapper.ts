@@ -13,6 +13,8 @@ import { buildLLMJsonSchema } from '../../../../../llm/types.js';
 import { logger } from '../../../../../lib/logger/structured-logger.js';
 import { resolveLLM } from '../../../../../lib/llm/index.js';
 import { LandmarkMappingSchema, type LandmarkMapping } from './schemas.js';
+import { extractCuisineKeyFromQuery, extractTypeKeyFromQuery } from './query-cuisine-extractor.js';
+import { normalizeLandmark } from './landmark-normalizer.js';
 
 const LANDMARK_MAPPER_VERSION = 'landmark_mapper_v3';
 
@@ -134,6 +136,32 @@ export async function executeLandmarkMapper(
         LANDMARK_JSON_SCHEMA
       );
       mapping = response.data;
+      
+      // CRITICAL: Override LLM's region/language with filters_resolved values
+      mapping.region = finalFilters.regionCode;
+      mapping.language = finalFilters.languageContext?.searchLanguage ?? finalFilters.providerLanguage;
+      
+      // NEW: Extract cuisineKey/typeKey deterministically (language-independent)
+      const cuisineKey = extractCuisineKeyFromQuery(request.query);
+      if (cuisineKey) {
+        mapping.cuisineKey = cuisineKey;
+      } else {
+        const typeKey = extractTypeKeyFromQuery(request.query);
+        if (typeKey) {
+          mapping.typeKey = typeKey;
+        }
+      }
+      
+      // NEW: Normalize landmark to canonical ID (multilingual support)
+      const canonical = normalizeLandmark(mapping.geocodeQuery, mapping.region);
+      if (canonical) {
+        mapping.landmarkId = canonical.landmarkId;
+        // If we have known coordinates, store them (for cache warmup)
+        if (canonical.knownLatLng) {
+          mapping.resolvedLatLng = canonical.knownLatLng;
+        }
+      }
+      
       tokenUsage = {
         ...(response.usage?.prompt_tokens !== undefined && { input: response.usage.prompt_tokens }),
         ...(response.usage?.completion_tokens !== undefined && { output: response.usage.completion_tokens }),
@@ -183,8 +211,9 @@ export async function executeLandmarkMapper(
           mapping = retryResponse.data;
           
           // CRITICAL: Override LLM's region/language with filters_resolved values (single source of truth)
+          // Use languageContext.searchLanguage (region-based policy) instead of providerLanguage
           mapping.region = finalFilters.regionCode;
-          mapping.language = finalFilters.providerLanguage;
+          mapping.language = finalFilters.languageContext?.searchLanguage ?? finalFilters.providerLanguage;
           
           tokenUsage = {
             ...(retryResponse.usage?.prompt_tokens !== undefined && { input: retryResponse.usage.prompt_tokens }),
@@ -233,6 +262,9 @@ export async function executeLandmarkMapper(
       event: 'stage_completed',
       durationMs,
       geocodeQuery: mapping.geocodeQuery,
+      landmarkId: mapping.landmarkId || null,
+      cuisineKey: mapping.cuisineKey || null,
+      typeKey: mapping.typeKey || null,
       afterGeocode: mapping.afterGeocode,
       radiusMeters: mapping.radiusMeters,
       keyword: mapping.keyword,
@@ -269,9 +301,10 @@ function buildUserPrompt(
   query: string,
   finalFilters: FinalSharedFilters
 ): string {
+  const language = finalFilters.languageContext?.searchLanguage ?? finalFilters.providerLanguage;
   const prompt = `Query: "${query}"
 Region: ${finalFilters.regionCode}
-Language: ${finalFilters.providerLanguage}`;
+Language: ${language}`;
 
   return prompt;
 }

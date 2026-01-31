@@ -283,7 +283,7 @@ export class SearchFacade {
         sessionId: this.conversationId(),
         userLocation: this.locationService.location() ?? undefined,
         clearContext: shouldClearContext,
-        locale: this.locale(),
+        uiLanguage: this.locale() as 'he' | 'en',  // UI language for assistant messages ONLY
         idempotencyKey: this.currentIdempotencyKey
       });
 

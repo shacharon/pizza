@@ -119,7 +119,8 @@ router.post('/', async (req: Request, res: Response) => {
       //   debug: { stopAfter: 'intent' },   // 👈 זו השורה
       // Fix: Only include optional properties if they actually have a value
       ...(req.traceId && { traceId: req.traceId }),
-      ...(authenticatedSessionId && { sessionId: authenticatedSessionId })
+      ...(authenticatedSessionId && { sessionId: authenticatedSessionId }),
+      ...(queryData.uiLanguage && { uiLanguage: queryData.uiLanguage })
     };
 
 

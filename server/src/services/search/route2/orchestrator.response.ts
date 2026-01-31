@@ -136,7 +136,8 @@ export async function buildFinalResponse(
     distanceOrigin: 'CITY_CENTER' | 'USER_LOCATION' | 'NONE';
     distanceRef: { lat: number; lng: number } | null;
     reordered: boolean;
-  }
+  },
+  finalFilters?: any  // NEW: For language context transparency
 ): Promise<SearchResponse> {
   const { requestId, startTime } = ctx;
   const sessionId = resolveSessionId(request, ctx);
@@ -314,7 +315,9 @@ export async function buildFinalResponse(
       // Cuisine enforcement flag (when failed)
       ...(cuisineEnforcementFailed && { cuisineEnforcementFailed: true }),
       // Order explanation (for frontend transparency)
-      ...(orderExplain && { order_explain: orderExplain })
+      ...(orderExplain && { order_explain: orderExplain }),
+      // Language context (for language separation transparency)
+      ...(finalFilters.languageContext && { languageContext: finalFilters.languageContext })
     }
   };
 
