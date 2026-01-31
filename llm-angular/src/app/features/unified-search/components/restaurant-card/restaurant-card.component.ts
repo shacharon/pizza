@@ -397,6 +397,120 @@ export class RestaurantCardComponent implements AfterViewInit {
     const signal = this.cardSignal();
     return signal ? signal.label : '';
   }
+
+  /**
+   * NEW: Extract primary cuisine/category for display under title
+   * Returns emoji + category (e.g. "🍣 Sushi · Asian")
+   */
+  getCuisineTag(): string {
+    const tags = this.restaurant().tags || [];
+
+    // Cuisine mapping with emojis
+    const cuisineMap: { [key: string]: { emoji: string; label: string } } = {
+      'sushi': { emoji: '🍣', label: 'Sushi' },
+      'pizza': { emoji: '🍕', label: 'Pizza' },
+      'italian': { emoji: '🍝', label: 'Italian' },
+      'burger': { emoji: '🍔', label: 'Burger' },
+      'chinese': { emoji: '🥡', label: 'Chinese' },
+      'indian': { emoji: '🍛', label: 'Indian' },
+      'mexican': { emoji: '🌮', label: 'Mexican' },
+      'japanese': { emoji: '🍱', label: 'Japanese' },
+      'thai': { emoji: '🍜', label: 'Thai' },
+      'mediterranean': { emoji: '🥙', label: 'Mediterranean' },
+      'american': { emoji: '🍔', label: 'American' },
+      'asian': { emoji: '🥢', label: 'Asian' },
+      'middle_eastern': { emoji: '🥙', label: 'Middle Eastern' },
+      'seafood': { emoji: '🦞', label: 'Seafood' },
+      'steakhouse': { emoji: '🥩', label: 'Steakhouse' },
+      'vegan': { emoji: '🌱', label: 'Vegan' },
+      'vegetarian': { emoji: '🥗', label: 'Vegetarian' },
+      'cafe': { emoji: '☕', label: 'Cafe' },
+      'bar': { emoji: '🍺', label: 'Bar' },
+      'bakery': { emoji: '🥐', label: 'Bakery' },
+      'dessert': { emoji: '🍰', label: 'Dessert' },
+      // Hebrew mappings
+      'סושי': { emoji: '🍣', label: 'סושי' },
+      'פיצה': { emoji: '🍕', label: 'פיצה' },
+      'איטלקי': { emoji: '🍝', label: 'איטלקי' },
+      'המבורגר': { emoji: '🍔', label: 'המבורגר' },
+      'סיני': { emoji: '🥡', label: 'סיני' },
+      'הודי': { emoji: '🍛', label: 'הודי' },
+      'יפני': { emoji: '🍱', label: 'יפני' },
+      'תאילנדי': { emoji: '🍜', label: 'תאילנדי' },
+      'ים תיכוני': { emoji: '🥙', label: 'ים תיכוני' },
+      'אמריקאי': { emoji: '🍔', label: 'אמריקאי' },
+      'אסייתי': { emoji: '🥢', label: 'אסייתי' },
+      'מזרח תיכוני': { emoji: '🥙', label: 'מזרח תיכוני' },
+      'פירות ים': { emoji: '🦞', label: 'פירות ים' },
+      'בשרים': { emoji: '🥩', label: 'בשרים' },
+      'טבעוני': { emoji: '🌱', label: 'טבעוני' },
+      'צמחוני': { emoji: '🥗', label: 'צמחוני' },
+      'בית קפה': { emoji: '☕', label: 'בית קפה' },
+      'בר': { emoji: '🍺', label: 'בר' },
+      'מאפייה': { emoji: '🥐', label: 'מאפייה' },
+    };
+
+    // Find first matching cuisine from tags
+    for (const tag of tags) {
+      const normalized = tag.toLowerCase().trim();
+      for (const [key, value] of Object.entries(cuisineMap)) {
+        if (normalized.includes(key)) {
+          return `${value.emoji} ${value.label}`;
+        }
+      }
+    }
+
+    // Default fallback
+    return '🍽️ Restaurant';
+  }
+
+  /**
+   * NEW: Get compact city + distance line for address
+   * Format: "📍 City · 2.3 km"
+   */
+  getCompactAddress(): string {
+    const restaurant = this.restaurant();
+    const address = restaurant.address || '';
+
+    // Extract city (simple heuristic - get last non-Israel part)
+    let city = '';
+    if (address) {
+      const parts = address.split(',').map(p => p.trim());
+      // Filter out "Israel", "ישראל", and street numbers
+      const filtered = parts.filter(p =>
+        !p.match(/^(Israel|ישראל)$/i) &&
+        !p.match(/^\d+$/)
+      );
+      // Take the last part as city
+      city = filtered[filtered.length - 1] || filtered[0] || '';
+    }
+
+    // Add distance if available
+    if (restaurant.distanceMeters !== undefined) {
+      const km = (restaurant.distanceMeters / 1000).toFixed(1);
+      return city ? `📍 ${city} · ${km} km` : `📍 ${km} km`;
+    }
+
+    return city ? `📍 ${city}` : '📍 Location';
+  }
+
+  /**
+   * NEW: Get opening time if restaurant is closed
+   * Returns "Opens at HH:MM" or empty string
+   */
+  getOpeningTime(): string {
+    // Note: This requires backend to provide next opening time
+    // For now, return empty - can be enhanced later with opening hours data
+    return '';
+  }
+
+  /**
+   * NEW: Check if restaurant name should be clickable
+   * Always true - name is primary navigation target
+   */
+  isNameClickable(): boolean {
+    return true;
+  }
 }
 
 

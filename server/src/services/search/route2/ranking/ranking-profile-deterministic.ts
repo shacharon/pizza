@@ -42,6 +42,7 @@ export interface DeterministicRankingContext {
 /**
  * Profile weights configurations
  * Each profile has fixed, normalized weights (sum = 1.0)
+ * cuisineMatch weight added for score-only cuisine filtering
  */
 const PROFILE_WEIGHTS = {
   /**
@@ -50,9 +51,10 @@ const PROFILE_WEIGHTS = {
    */
   DISTANCE_HEAVY: {
     rating: 0.15,
-    reviews: 0.10,
-    distance: 0.65,
-    openBoost: 0.10
+    reviews: 0.08,
+    distance: 0.62,
+    openBoost: 0.10,
+    cuisineMatch: 0.05  // Small weight - distance is primary
   },
 
   /**
@@ -60,22 +62,24 @@ const PROFILE_WEIGHTS = {
    * Used when: No strong proximity signal
    */
   BALANCED: {
-    rating: 0.30,
-    reviews: 0.25,
-    distance: 0.35,
-    openBoost: 0.10
+    rating: 0.25,
+    reviews: 0.20,
+    distance: 0.30,
+    openBoost: 0.10,
+    cuisineMatch: 0.15  // Moderate weight for balanced queries
   },
 
   /**
    * CUISINE_FOCUSED: For specific cuisine searches
    * Used when: cuisineKey is present (e.g., Italian, Japanese, etc.)
-   * Higher rating/reviews weight to find best restaurants of that cuisine
+   * Higher cuisineMatch weight for explicit cuisine queries
    */
   CUISINE_FOCUSED: {
-    rating: 0.35,
-    reviews: 0.30,
-    distance: 0.25,
-    openBoost: 0.10
+    rating: 0.30,
+    reviews: 0.25,
+    distance: 0.20,
+    openBoost: 0.05,
+    cuisineMatch: 0.20  // Higher weight for cuisine-specific queries
   },
 
   /**
@@ -84,10 +88,11 @@ const PROFILE_WEIGHTS = {
    * Highest rating/reviews weight to prioritize best experiences
    */
   QUALITY_FOCUSED: {
-    rating: 0.40,
-    reviews: 0.35,
+    rating: 0.35,
+    reviews: 0.30,
     distance: 0.15,
-    openBoost: 0.10
+    openBoost: 0.05,
+    cuisineMatch: 0.15  // Moderate weight - quality is primary
   },
 
   /**
@@ -95,10 +100,11 @@ const PROFILE_WEIGHTS = {
    * Distance weight = 0 (no distance available)
    */
   NO_LOCATION: {
-    rating: 0.45,
-    reviews: 0.45,
+    rating: 0.40,
+    reviews: 0.35,
     distance: 0.00,
-    openBoost: 0.10
+    openBoost: 0.10,
+    cuisineMatch: 0.15  // Moderate weight
   }
 } as const;
 
@@ -285,8 +291,9 @@ export function validateWeights(weights: {
   reviews: number;
   distance: number;
   openBoost: number;
+  cuisineMatch?: number;
 }): void {
-  const sum = weights.rating + weights.reviews + weights.distance + weights.openBoost;
+  const sum = weights.rating + weights.reviews + weights.distance + weights.openBoost + (weights.cuisineMatch || 0);
   const tolerance = 0.001;
 
   if (Math.abs(sum - 1.0) > tolerance) {
@@ -294,7 +301,7 @@ export function validateWeights(weights: {
   }
 
   // Validate each weight is in [0, 1]
-  const allWeights = [weights.rating, weights.reviews, weights.distance, weights.openBoost];
+  const allWeights = [weights.rating, weights.reviews, weights.distance, weights.openBoost, weights.cuisineMatch || 0];
   for (const w of allWeights) {
     if (w < 0 || w > 1) {
       throw new Error(`Weight must be in [0, 1] (got ${w})`);

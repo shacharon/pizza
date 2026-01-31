@@ -46,17 +46,10 @@ RULES:
   * day: 0=Sunday, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat (null if not specified)
   * timeHHmm: "HH:mm" format (e.g., "21:30", "09:00") - null if can't extract
   * timezone: always null (we use local time)
-  * Examples:
-    - "פתוח ב-21:30" → {"day":null, "timeHHmm":"21:30", "timezone":null}
-    - "פתוח מחר ב-20:00" → {"day":<tomorrow>, "timeHHmm":"20:00", "timezone":null}
-    - "פתוח ביום שישי בשעה 19:00" → {"day":5, "timeHHmm":"19:00", "timezone":null}
 
 - openBetween (set to null UNLESS openState="OPEN_BETWEEN"):
   * When openState="OPEN_BETWEEN", return object with ALL keys:
     {"day": 0-6|null, "startHHmm": "HH:mm"|null, "endHHmm": "HH:mm"|null, "timezone": null}
-  * Examples:
-    - "פתוח בין 18:00 ל-22:00" → {"day":null, "startHHmm":"18:00", "endHHmm":"22:00", "timezone":null}
-    - "open 6-10pm Friday" → {"day":5, "startHHmm":"18:00", "endHHmm":"22:00", "timezone":null}
 
 - regionHint: 2 uppercase letters OR null (country only, not cities)
 
@@ -77,18 +70,6 @@ RULES:
   * "C100" if: "הרבה ביקורות", "מקום מוכר", "מקומות מוכרים", "popular", "well known", "established", "many reviews", "lots of reviews"
   * "C500" if: "מאוד מוכר", "כולם מכירים", "מאות ביקורות", "very popular", "very well known", "hundreds of reviews", "extremely popular", "everyone knows"
   * null if no explicit review count preference OR no mention of popularity/reviews
-
-Examples:
-- "מסעדות פתוחות עכשיו" → {"language":"he","openState":"OPEN_NOW","openAt":null,"openBetween":null,"regionHint":null,"priceIntent":null,"minRatingBucket":null,"minReviewCountBucket":null}
-- "מסעדות סגורות לידי" → {"language":"he","openState":"CLOSED_NOW","openAt":null,"openBetween":null,"regionHint":null,"priceIntent":null,"minRatingBucket":null,"minReviewCountBucket":null}
-- "פתוח ב-21:30 בגדרה" → {"language":"he","openState":"OPEN_AT","openAt":{"day":null,"timeHHmm":"21:30","timezone":null},"openBetween":null,"regionHint":null,"priceIntent":null,"minRatingBucket":null,"minReviewCountBucket":null}
-- "פיצה בתל אביב" → {"language":"he","openState":null,"openAt":null,"openBetween":null,"regionHint":null,"priceIntent":null,"minRatingBucket":null,"minReviewCountBucket":null}
-- "מסעדות זולות בגדרה" → {"language":"he","openState":null,"openAt":null,"openBetween":null,"regionHint":null,"priceIntent":"CHEAP","minRatingBucket":null,"minReviewCountBucket":null}
-- "מסעדה יוקרתית פתוחה עכשיו" → {"language":"he","openState":"OPEN_NOW","openAt":null,"openBetween":null,"regionHint":null,"priceIntent":"EXPENSIVE","minRatingBucket":null,"minReviewCountBucket":null}
-- "מסעדות עם דירוג גבוה" → {"language":"he","openState":null,"openAt":null,"openBetween":null,"regionHint":null,"priceIntent":null,"minRatingBucket":"R40","minReviewCountBucket":null}
-- "המסעדות הכי טובות בתל אביב" → {"language":"he","openState":null,"openAt":null,"openBetween":null,"regionHint":null,"priceIntent":null,"minRatingBucket":"R45","minReviewCountBucket":null}
-- "מקומות מוכרים עם הרבה ביקורות" → {"language":"he","openState":null,"openAt":null,"openBetween":null,"regionHint":null,"priceIntent":null,"minRatingBucket":null,"minReviewCountBucket":"C100"}
-- "מסעדות שכולם מכירים" → {"language":"he","openState":null,"openAt":null,"openBetween":null,"regionHint":null,"priceIntent":null,"minRatingBucket":null,"minReviewCountBucket":"C500"}
 `;
 
 const BASE_FILTERS_PROMPT_HASH = createHash('sha256')

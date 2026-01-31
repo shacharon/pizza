@@ -17,12 +17,19 @@ import { logger } from '../../../../../lib/logger/structured-logger.js';
 /**
  * Fetch all pages of results up to maxResults limit
  * Returns aggregated results from all pages with deduplication
+ * 
+ * @param requestBody Google Places API request body
+ * @param apiKey Google API key
+ * @param requestId Request ID for logging
+ * @param maxResults Maximum number of unique results to return (default 20)
+ * @param maxPages Maximum number of pages to fetch (default 3 for safety cap)
  */
 export async function fetchAllPages(
   requestBody: any,
   apiKey: string,
   requestId: string,
-  maxResults: number = 40
+  maxResults: number = 20,
+  maxPages: number = 3
 ): Promise<any[]> {
   const results: any[] = [];
   const seenPlaceIds = new Set<string>();
@@ -31,6 +38,15 @@ export async function fetchAllPages(
   let totalFetched = 0;
 
   // Fetch first page
+  logger.info({
+    requestId,
+    event: 'google_textsearch_page',
+    page: 1,
+    maxResults,
+    maxPages,
+    textQuery: requestBody.textQuery
+  }, '[GOOGLE] Fetching page 1');
+
   const firstResponse = await callGooglePlacesSearchText(requestBody, apiKey, requestId);
   pagesFetched++;
 
@@ -44,10 +60,30 @@ export async function fetchAllPages(
       }
     }
     nextPageToken = firstResponse.nextPageToken;
+
+    // Log page 1 results
+    logger.info({
+      requestId,
+      event: 'google_textsearch_page',
+      page: 1,
+      fetchedCount: firstResponse.places.length,
+      cumulativeCount: results.length,
+      hasNextPageToken: !!nextPageToken
+    }, '[GOOGLE] Page 1 completed');
   }
 
-  // Fetch additional pages if needed (up to maxResults)
-  while (nextPageToken && results.length < maxResults) {
+  // Fetch additional pages if needed (up to maxResults and maxPages)
+  while (nextPageToken && results.length < maxResults && pagesFetched < maxPages) {
+    const pageNumber = pagesFetched + 1;
+    
+    logger.info({
+      requestId,
+      event: 'google_textsearch_page',
+      page: pageNumber,
+      cumulativeCount: results.length,
+      remainingNeeded: maxResults - results.length
+    }, `[GOOGLE] Fetching page ${pageNumber}`);
+
     // New API: no delay needed for pagination
     const pageBody = { ...requestBody, pageToken: nextPageToken };
     const pageResponse = await callGooglePlacesSearchText(pageBody, apiKey, requestId);
@@ -55,7 +91,7 @@ export async function fetchAllPages(
 
     if (pageResponse.places) {
       totalFetched += pageResponse.places.length;
-      const remaining = maxResults - results.length;
+      const beforeCount = results.length;
 
       for (const place of pageResponse.places) {
         if (results.length >= maxResults) break;
@@ -68,25 +104,57 @@ export async function fetchAllPages(
       }
 
       nextPageToken = pageResponse.nextPageToken;
+
+      // Log page results
+      logger.info({
+        requestId,
+        event: 'google_textsearch_page',
+        page: pageNumber,
+        fetchedCount: pageResponse.places.length,
+        newUniqueCount: results.length - beforeCount,
+        cumulativeCount: results.length,
+        hasNextPageToken: !!nextPageToken
+      }, `[GOOGLE] Page ${pageNumber} completed`);
     } else {
+      logger.info({
+        requestId,
+        event: 'google_textsearch_page',
+        page: pageNumber,
+        fetchedCount: 0,
+        cumulativeCount: results.length,
+        reason: 'no_places_in_response'
+      }, `[GOOGLE] Page ${pageNumber} returned no places`);
       break;
     }
   }
 
-  // Log pagination summary
+  // Determine stop reason
+  let stopReason = 'completed';
+  if (results.length >= maxResults) {
+    stopReason = 'max_results_reached';
+  } else if (pagesFetched >= maxPages) {
+    stopReason = 'max_pages_reached';
+  } else if (!nextPageToken) {
+    stopReason = 'no_more_pages';
+  }
+
+  // Log aggregated pagination summary
   logger.info({
     requestId,
-    event: 'google_pages_fetched',
-    pages: pagesFetched,
+    event: 'google_textsearch_aggregated',
+    requested: maxResults,
+    returned: results.length,
+    pagesUsed: pagesFetched,
+    maxPagesAllowed: maxPages,
     totalFetched,
-    totalUnique: results.length,
-    nextPageTokenUsed: pagesFetched > 1,
+    duplicatesRemoved: totalFetched - results.length,
+    stopReason,
     hadMorePages: !!nextPageToken
-  }, '[GOOGLE] Pagination summary');
+  }, '[GOOGLE] Text Search aggregated results');
 
   // DEBUG: Log when Google returns exactly 20 results with no second page
   // This helps identify cases where Google may have more results but doesn't provide nextPageToken
-  if (!nextPageToken && totalFetched === 20) {
+  if (!nextPageToken && totalFetched === 20 && pagesFetched === 1) {
     logger.debug({
       event: 'google_no_second_page',
       requestId,

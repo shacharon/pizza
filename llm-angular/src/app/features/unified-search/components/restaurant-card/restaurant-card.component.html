@@ -1,5 +1,5 @@
 <article class="restaurant-card" [class.selected]="selected()" [class.top-result]="isTopResult()"
-  [class.compact]="compact()" (click)="onCardClick()" role="button" tabindex="0"
+  [class.compact]="compact()" [class.closed]="getOpenStatus() === 'closed'" role="button" tabindex="0"
   [attr.aria-label]="'View details for ' + restaurant().name">
   @if (showReasonLabel() && isTopResult()) {
   <app-reason-label [restaurant]="restaurant()" />
@@ -16,9 +16,9 @@
   </div>
   }
 
-  <div class="restaurant-info">
+  <div class="restaurant-info" (click)="onCardClick()">
     <div class="restaurant-name-row">
-      <h3 class="restaurant-name">{{ restaurant().name }}</h3>
+      <h3 class="restaurant-name clickable">{{ restaurant().name }}</h3>
 
       @if (glutenFreeBadge()) {
       <span class="dietary-badge gluten-free" [class.high]="glutenFreeBadge()!.level === 'high'"
@@ -27,6 +27,9 @@
       </span>
       }
     </div>
+
+    <!-- NEW: Cuisine/category tag -->
+    <p class="cuisine-tag">{{ getCuisineTag() }}</p>
 
     <div class="restaurant-meta">
       @if (restaurant().rating) {
@@ -46,43 +49,42 @@
       }
     </div>
 
-    <p class="restaurant-address">{{ getShortAddress(restaurant().address) }}</p>
+    <!-- NEW: Compact city + distance -->
+    <p class="restaurant-address-compact">{{ getCompactAddress() }}</p>
 
     <!-- UX SIGNALS: Canonical card signal (priority-based) -->
     @if (cardSignal()) {
     <p class="card-signal-text" [class.emphasized]="isCardSignalEmphasized()" [style.color]="getCardSignalColor()"
       [attr.aria-label]="'Signal: ' + getCardSignalLabel()">
       {{ getCardSignalLabel() }}
-    </p>
-    }
-
-    @if (getDisplayTags().length > 0) {
-    <div class="restaurant-tags">
-      @for (tag of getDisplayTags(); track tag) {
-      <span class="tag">{{ tag }}</span>
+      @if (getOpenStatus() === 'closed' && getOpeningTime()) {
+      <span class="opening-time"> · {{ getOpeningTime() }}</span>
       }
-    </div>
+    </p>
     }
   </div>
 
-  <div class="quick-actions">
-    <!-- Secondary actions (all equal weight) -->
-    <button type="button" class="action-button icon-only maps" (click)="onAction($event, 'GET_DIRECTIONS')"
+  <!-- NEW: Horizontal action bar with labels -->
+  <div class="action-bar" (click)="$event.stopPropagation()">
+    <button type="button" class="action-button" (click)="onAction($event, 'GET_DIRECTIONS')"
       [disabled]="!isActionAvailable('GET_DIRECTIONS')"
-      [title]="isActionAvailable('GET_DIRECTIONS') ? 'הצג במפות' : 'Location not available'"
-      [attr.aria-label]="isActionAvailable('GET_DIRECTIONS') ? 'Show ' + restaurant().name + ' on maps' : 'Location not available'">
-      📍
+      [title]="isActionAvailable('GET_DIRECTIONS') ? 'Navigate to restaurant' : 'Location not available'"
+      [attr.aria-label]="isActionAvailable('GET_DIRECTIONS') ? 'Navigate to ' + restaurant().name : 'Location not available'">
+      <span class="action-icon">📍</span>
+      <span class="action-label">Navigate</span>
     </button>
-    <button type="button" class="action-button icon-only" (click)="onAction($event, 'CALL_RESTAURANT')"
+    <button type="button" class="action-button" (click)="onAction($event, 'CALL_RESTAURANT')"
       [disabled]="!isActionAvailable('CALL_RESTAURANT')"
       [title]="isActionAvailable('CALL_RESTAURANT') ? 'Call restaurant' : 'Phone number not available'"
       [attr.aria-label]="isActionAvailable('CALL_RESTAURANT') ? 'Call ' + restaurant().name : 'Phone number not available'">
-      📞
+      <span class="action-icon">📞</span>
+      <span class="action-label">Call</span>
     </button>
-    <button type="button" class="action-button icon-only favorite" (click)="onAction($event, 'SAVE_FAVORITE')"
+    <button type="button" class="action-button" (click)="onAction($event, 'SAVE_FAVORITE')"
       [disabled]="!isActionAvailable('SAVE_FAVORITE')" title="Save to favorites"
       [attr.aria-label]="'Save ' + restaurant().name + ' to favorites'">
-      ❤️
+      <span class="action-icon">❤️</span>
+      <span class="action-label">Save</span>
     </button>
   </div>
 </article>

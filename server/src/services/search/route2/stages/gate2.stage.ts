@@ -49,32 +49,20 @@ const GATE2_SCHEMA_HASH = createHash('sha256')
   .substring(0, 12);
 
 const GATE2_PROMPT_VERSION = 'gate2_v4';
-const GATE2_SYSTEM_PROMPT = `You are Gate2 for FOOD SEARCH DOMAIN. Return ONLY JSON.
-
-Schema: {"foodSignal":"NO|YES|UNCERTAIN","confidence":0..1}
+const GATE2_SYSTEM_PROMPT = `You are Gate2 for FOOD SEARCH DOMAIN.
+Return ONLY valid JSON matching schema:
+{"foodSignal":"YES|NO|UNCERTAIN","confidence":0..1}
 
 Decide foodSignal:
-- YES: user wants food. Includes:
-  1) Food/venue terms even without verbs (pizza, sushi, מסעדה, שווארמיה, סופגניה, מלאווח).
-  2) Food actions: find/order/recommend/near me/open now/delivery/“מה לאכול”.
-  3) Hunger expressions.
-
-- UNCERTAIN: generic “open now/near me/what’s here” with no food terms.
-
-- NO: clearly not food (weather/news/tourism) OR pure profanity with no food intent.
+- YES: user wants food/restaurant/cuisine OR food action (find/order/recommend/delivery/open now to eat/near me to eat) OR hunger/what to eat.
+- UNCERTAIN: generic place intent ("open now/near me/what's here") with no food terms.
+- NO: clearly non-food intent (weather/news/tourism/etc) OR profanity-only without food intent.
 
 Confidence:
-- Clear food term or explicit food ask: 0.90-1.0
-- Generic “open now/near me” without food: UNCERTAIN 0.45-0.65
-- Clear non-food: 0.95-1.0
-- Profanity-only: NO 1.0
+- clear YES/NO: 0.9-1.0
+- UNCERTAIN: 0.45-0.65
+No extra keys. No text.
 
-Examples:
-"pizza" -> {"foodSignal":"YES","confidence":0.95}
-"שווארמיה בתל אביב" -> {"foodSignal":"YES","confidence":0.98}
-"מה פתוח עכשיו" -> {"foodSignal":"UNCERTAIN","confidence":0.55}
-"מה פתוח עכשיו לאכול" -> {"foodSignal":"YES","confidence":0.80}
-"weather in London" -> {"foodSignal":"NO","confidence":1.0}
 `;
 /*
 //Return ONLY JSON.

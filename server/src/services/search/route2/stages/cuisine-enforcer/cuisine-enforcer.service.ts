@@ -17,76 +17,53 @@ import {
   type CuisineEnforcementResponse
 } from './cuisine-enforcer.schema.js';
 
-const CUISINE_ENFORCER_VERSION = 'cuisine_enforcer_v1';
+const CUISINE_ENFORCER_VERSION = 'cuisine_enforcer_v3_compact';
 
-const CUISINE_ENFORCER_SYSTEM_PROMPT = `You are a cuisine enforcement filter for restaurant search results.
-
-Your task: Given a list of places from Google Maps and explicit cuisine requirements (requiredTerms, preferredTerms), determine which places ACTUALLY match the cuisine intent.
-
-NO HARDCODED RULES - Use your understanding of:
-- Restaurant names (e.g., "Pasta Bar" = Italian)
-- Google place types (e.g., "italian_restaurant")
-- Address context
-- Cuisine keywords in any language
-
-Output ONLY JSON with:
-{
-  "keepPlaceIds": ["id1", "id2", ...],
-  "relaxApplied": boolean,
-  "relaxStrategy": "none" | "fallback_preferred" | "drop_required_once"
-}
-
-Rules:
-1) STRICT mode: Keep only places that STRONGLY match requiredTerms via name/types/address signals
-2) If keepPlaceIds.length < 5 in STRICT, apply relaxation ONCE:
-   - Try strategy "fallback_preferred": include places matching preferredTerms
-   - If still < 5, try "drop_required_once": relax to broader cuisine category
-3) RELAX_IF_EMPTY mode: Prioritize requiredTerms but keep top places even if no strong match
-4) ALWAYS return keepPlaceIds in best-first order (strongest match first)
-5) If no matches at all after relaxation: return empty keepPlaceIds with relaxApplied=true
-
-Examples:
-Query: "מסעדות איטלקיות" (Italian restaurants)
-- requiredTerms: ["איטלקית", "איטלקי"]
-- KEEP: "Pasta Bar", "Pizza Hut" (name signals), place with types=["italian_restaurant"]
-- REJECT: "Burger King", "סושי בר" (no Italian signals)
-
-Query: "מסעדות טובות" (good restaurants)
-- requiredTerms: []
-- strictness: RELAX_IF_EMPTY
-- KEEP: All places (no specific cuisine requirement)
-`;
-
-const CUISINE_ENFORCER_USER_PROMPT_TEMPLATE = `Strictness: {{strictness}}
-Required Terms: {{requiredTerms}}
-Preferred Terms: {{preferredTerms}}
-
-Places ({{count}} total):
-{{places}}
-
-Filter these places based on cuisine requirements. Return keepPlaceIds in best-first order.`;
+/**
+ * Minimal system prompt for BOOST-only mode (score-based ranking, no filtering)
+ */
+const CUISINE_ENFORCER_SYSTEM_PROMPT = `Score cuisine match 0-1 for each place using name/types/address hints.
+Return ONLY valid JSON matching schema; no prose.
+keepPlaceIds must include ALL input ids in the SAME order as input.
+cuisineScores must include a numeric score for EVERY id.`;
 
 export interface CuisineEnforcerInput {
   requiredTerms: string[];
   preferredTerms: string[];
   strictness: 'STRICT' | 'RELAX_IF_EMPTY';
   places: PlaceInput[];
+  hardConstraintsExist?: boolean; // If kosher/meatDairy are active
+}
+
+/**
+ * Compact place representation for LLM (reduce prompt size)
+ */
+interface CompactPlace {
+  id: string;   // placeId
+  n: string;    // name (trimmed to 50 chars)
+  t: string[];  // first 6 types only
+  a?: string | undefined;   // address (trimmed to 60 chars), explicitly allow undefined
 }
 
 /**
  * Execute cuisine enforcement via LLM
  * 
- * P0 FIX: If countIn <= 5 and LLM returns keepCount=0 in STRICT mode,
- * apply deterministic relax policy to prevent returning 0 results
+ * BOOST-ONLY MODE: Score-based ranking (no filtering).
+ * Returns ALL place IDs with cuisineScores (0-1) for ranking.
+ * 
+ * Optimizations:
+ * - Compact JSON payload (not verbose text)
+ * - Minimal system prompt
+ * - Fast path for small place counts (<=3)
  */
 export async function executeCuisineEnforcement(
   input: CuisineEnforcerInput,
   llmProvider: LLMProvider,
   requestId: string
 ): Promise<CuisineEnforcementResponse> {
-  const { requiredTerms, preferredTerms, strictness, places } = input;
+  const { requiredTerms, preferredTerms, strictness, places, hardConstraintsExist } = input;
 
-  // Early exit: no places to filter
+  // Early exit: no places to score
   if (places.length === 0) {
     return {
       keepPlaceIds: [],
@@ -95,7 +72,7 @@ export async function executeCuisineEnforcement(
     };
   }
 
-  // Early exit: no required terms and RELAX mode => keep all
+  // Early exit: no required terms and RELAX mode => keep all with neutral scores
   if (requiredTerms.length === 0 && strictness === 'RELAX_IF_EMPTY') {
     return {
       keepPlaceIds: places.map(p => p.placeId),
@@ -104,20 +81,44 @@ export async function executeCuisineEnforcement(
     };
   }
 
-  try {
-    // Build user prompt with places data
-    const placesText = places.map((p, idx) => {
-      const typesStr = p.types.length > 0 ? p.types.join(', ') : 'none';
-      const addressStr = p.address || 'unknown';
-      return `${idx + 1}. placeId="${p.placeId}", name="${p.name}", types=[${typesStr}], address="${addressStr}"`;
-    }).join('\n');
+  // Fast path: small result sets don't need LLM scoring (deterministic fallback)
+  if (places.length <= 3) {
+    logger.info({
+      requestId,
+      event: 'cuisine_enforcer_fast_path',
+      countIn: places.length
+    }, '[CUISINE_ENFORCER] Small result set, skipping LLM');
 
-    const userPrompt = CUISINE_ENFORCER_USER_PROMPT_TEMPLATE
-      .replace('{{strictness}}', strictness)
-      .replace('{{requiredTerms}}', JSON.stringify(requiredTerms))
-      .replace('{{preferredTerms}}', JSON.stringify(preferredTerms))
-      .replace('{{count}}', String(places.length))
-      .replace('{{places}}', placesText);
+    return {
+      keepPlaceIds: places.map(p => p.placeId),
+      relaxApplied: false,
+      relaxStrategy: 'none',
+      cuisineScores: {} // Empty scores = neutral ranking
+    };
+  }
+
+  logger.info({
+    requestId,
+    event: 'cuisine_policy_selected',
+    policy: 'SOFT_BOOST',
+    reason: 'score_only_mode',
+    countIn: places.length
+  }, `[CUISINE_ENFORCER] BOOST-only mode (score-only, never filter)`);
+
+  try {
+    // Build compact JSON payload (reduce prompt size)
+    const compactPlaces: CompactPlace[] = places.map(p => ({
+      id: p.placeId,
+      n: p.name.substring(0, 50),              // Trim long names
+      t: p.types.slice(0, 6),                  // First 6 types only
+      a: p.address?.substring(0, 60)           // Trim long addresses
+    }));
+
+    const userPrompt = JSON.stringify({
+      requiredTerms,
+      preferredTerms,
+      places: compactPlaces
+    });
 
     const messages: Message[] = [
       { role: 'system', content: CUISINE_ENFORCER_SYSTEM_PROMPT },
@@ -127,17 +128,18 @@ export async function executeCuisineEnforcement(
     // Resolve LLM config
     const { model, timeoutMs } = resolveLLM('filterEnforcer');
 
+    const promptChars = messages.reduce((sum, m) => sum + m.content.length, 0);
     logger.info({
       requestId,
       event: 'cuisine_enforcement_llm_call',
       version: CUISINE_ENFORCER_VERSION,
-      strictness,
       requiredTermsCount: requiredTerms.length,
       preferredTermsCount: preferredTerms.length,
       placesCount: places.length,
+      promptChars,
       model,
       schemaHash: CUISINE_ENFORCEMENT_SCHEMA_HASH
-    }, '[CUISINE_ENFORCER] Calling LLM for enforcement');
+    }, '[CUISINE_ENFORCER] Calling LLM for scoring');
 
     // Call LLM with structured output
     const response = await llmProvider.completeJSON(
@@ -151,43 +153,42 @@ export async function executeCuisineEnforcement(
         stage: 'cuisine_enforcer',
         schemaHash: CUISINE_ENFORCEMENT_SCHEMA_HASH
       },
-      CUISINE_ENFORCEMENT_JSON_SCHEMA  // Pass static schema as 4th argument
+      CUISINE_ENFORCEMENT_JSON_SCHEMA
     );
+
+    // Log top cuisine scores
+    if (response.data.cuisineScores) {
+      const sortedScores = Object.entries(response.data.cuisineScores)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 10)
+        .map(([placeId, score]) => {
+          const place = places.find(p => p.placeId === placeId);
+          return { placeId, placeName: place?.name || 'unknown', score };
+        });
+
+      logger.info({
+        requestId,
+        event: 'cuisine_scores_top10',
+        scores: sortedScores
+      }, '[CUISINE_ENFORCER] Top 10 cuisine scores');
+    }
 
     logger.info({
       requestId,
       event: 'cuisine_enforcement_llm_success',
-      keepCount: response.data.keepPlaceIds.length,
-      relaxApplied: response.data.relaxApplied,
-      relaxStrategy: response.data.relaxStrategy
-    }, '[CUISINE_ENFORCER] LLM enforcement completed');
+      countIn: places.length,
+      countOut: response.data.keepPlaceIds.length,
+      hasScores: !!response.data.cuisineScores,
+      scoresCount: Object.keys(response.data.cuisineScores || {}).length
+    }, '[CUISINE_ENFORCER] LLM scoring completed');
 
-    // P0 FIX: Apply deterministic relax policy if small sample + 0 results
-    if (places.length <= 5 && response.data.keepPlaceIds.length === 0 && strictness === 'STRICT') {
-      logger.warn({
-        requestId,
-        event: 'enforcement_relax_applied',
-        reason: 'small_sample_zero_results',
-        countIn: places.length,
-        keepCountBeforeRelax: 0,
-        strictness: 'STRICT',
-        relaxStrategy: 'keep_top_n'
-      }, '[CUISINE_ENFORCER] Small sample + 0 results detected - applying deterministic relax (keep top N)');
-
-      // Deterministic fallback: keep top 3 places (or all if < 3)
-      const topN = Math.min(3, places.length);
-      const topPlaceIds = places.slice(0, topN).map(p => p.placeId);
-
-      return {
-        keepPlaceIds: topPlaceIds,
-        relaxApplied: true,
-        relaxStrategy: 'fallback_keep_top_n',
-        enforcementSkipped: false
-      };
-    }
-
-    return response.data;
-
+    // BOOST mode: Always return all places with scores
+    return {
+      keepPlaceIds: places.map(p => p.placeId), // Keep all places in original order
+      relaxApplied: false,
+      relaxStrategy: 'none',
+      cuisineScores: response.data.cuisineScores || {}
+    };
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
 
@@ -197,11 +198,12 @@ export async function executeCuisineEnforcement(
       error: msg
     }, '[CUISINE_ENFORCER] LLM call failed, returning all places');
 
-    // Fail gracefully: return all places
+    // Fail gracefully: return all places with neutral scores
     return {
       keepPlaceIds: places.map(p => p.placeId),
       relaxApplied: false,
-      relaxStrategy: 'none'
+      relaxStrategy: 'none',
+      cuisineScores: {} // Empty scores = neutral ranking
     };
   }
 }

@@ -6,6 +6,7 @@
  * Parallelization: base_filters + post_constraints fire after Gate2, awaited when needed
  */
 
+
 import type { SearchRequest } from '../types/search-request.dto.js';
 import type { SearchResponse } from '../types/search-response.dto.js';
 import type { Route2Context } from './types.js';
@@ -33,9 +34,11 @@ import { applyRankingIfEnabled } from './orchestrator.ranking.js';
 import { buildFinalResponse } from './orchestrator.response.js';
 import { handlePipelineError } from './orchestrator.error.js';
 import { deriveEarlyRoutingContext } from './orchestrator.early-context.js';
+import { detectHardConstraints } from './shared/hard-constraints.types.js';
 
 // Extracted helpers
 import { shouldDebugStop, resolveSessionId } from './orchestrator.helpers.js';
+import { countSentences } from './assistant/text-validator.js';
 
 /**
  * Internal pipeline implementation (without timeout)
@@ -329,8 +332,19 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
     let enforcedResults = googleResult.results;
     let cuisineEnforcementApplied = false;
     let cuisineEnforcementFailed = false;
+    let cuisineScores: Record<string, number> | undefined;
 
     if (mapping.providerMethod === 'textSearch' && mapping.requiredTerms && mapping.requiredTerms.length > 0) {
+      // Detect if hard constraints exist (kosher or meat/dairy)
+      // Note: We check finalFilters + postConstraints inline since filtersForPostFilter isn't available yet
+      const cuisineKey = (mapping as any).cuisineKey ?? null;
+      const postConstraints = await postConstraintsPromise; // Await to check isKosher
+      const hardConstraintsActive = detectHardConstraints(
+        { ...finalFilters, isKosher: postConstraints.isKosher } as any,
+        cuisineKey
+      );
+      const hardConstraintsExist = hardConstraintsActive.length > 0;
+
       logger.info({
         requestId,
         pipelineVersion: 'route2',
@@ -338,7 +352,9 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
         strictness: mapping.strictness,
         requiredTerms: mapping.requiredTerms,
         preferredTerms: mapping.preferredTerms || [],
-        countIn: googleResult.results.length
+        countIn: googleResult.results.length,
+        hardConstraintsExist,
+        hardConstraintsActive
       }, '[ROUTE2] Starting cuisine enforcement');
 
       try {
@@ -352,12 +368,13 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
           userRatingsTotal: r.userRatingsTotal
         }));
 
-        // Execute LLM-based enforcement (initial STRICT attempt)
+        // Execute LLM-based enforcement (with hard constraints awareness)
         const enforcerInput: CuisineEnforcerInput = {
           requiredTerms: mapping.requiredTerms,
           preferredTerms: mapping.preferredTerms || [],
           strictness: mapping.strictness || 'RELAX_IF_EMPTY',
-          places: placesForEnforcement
+          places: placesForEnforcement,
+          hardConstraintsExist // Pass hard constraints flag
         };
 
         let enforcementResult = await executeCuisineEnforcement(
@@ -365,6 +382,26 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
           ctx.llmProvider,
           requestId
         );
+
+        // Store cuisine scores if in BOOST mode
+        if (enforcementResult.cuisineScores) {
+          cuisineScores = enforcementResult.cuisineScores;
+
+          // Attach cuisine scores to results for ranking
+          for (const result of googleResult.results) {
+            const placeId = result.placeId || result.id;
+            if (placeId && cuisineScores[placeId] !== undefined) {
+              result.cuisineScore = cuisineScores[placeId];
+            }
+          }
+
+          logger.info({
+            requestId,
+            event: 'cuisine_scores_attached',
+            scoresAttached: Object.keys(cuisineScores).length,
+            resultsCount: googleResult.results.length
+          }, '[ROUTE2] Cuisine scores attached to results for ranking');
+        }
 
         logger.info({
           requestId,
@@ -374,8 +411,21 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
           countOut: enforcementResult.keepPlaceIds.length,
           relaxApplied: enforcementResult.relaxApplied,
           relaxStrategy: enforcementResult.relaxStrategy,
-          enforcementSkipped: enforcementResult.enforcementSkipped
+          enforcementSkipped: enforcementResult.enforcementSkipped,
+          hasScores: !!enforcementResult.cuisineScores
         }, '[ROUTE2] Cuisine enforcement completed');
+
+        // Track result drops from cuisine enforcement
+        if (enforcementResult.keepPlaceIds.length < googleResult.results.length) {
+          logger.info({
+            requestId,
+            event: 'results_drop_reason',
+            reason: 'cuisine_filter',
+            countBefore: googleResult.results.length,
+            countAfter: enforcementResult.keepPlaceIds.length,
+            dropped: googleResult.results.length - enforcementResult.keepPlaceIds.length
+          }, '[ROUTE2] Results dropped by cuisine enforcement');
+        }
 
         // REAL RELAX STRATEGY: If 0 results after enforcement (and not skipped), apply relaxation
         if (enforcementResult.keepPlaceIds.length === 0 && !enforcementResult.enforcementSkipped) {
@@ -490,13 +540,21 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
           }
         }
 
-        // Apply enforcement: filter and reorder by keepPlaceIds
+        // Apply enforcement: In SCORE-ONLY mode, keep all results (no filtering)
+        // Results already have cuisineScore attached for ranking
         if (enforcementResult.keepPlaceIds.length > 0) {
-          const keepSet = new Set(enforcementResult.keepPlaceIds);
-          enforcedResults = enforcementResult.keepPlaceIds
-            .map(placeId => googleResult.results.find(r => (r.placeId || r.id) === placeId))
-            .filter((r): r is NonNullable<typeof r> => r !== undefined);
+          // SCORE-ONLY mode: keepPlaceIds should equal input (no filtering)
+          // Keep results in Google order; ranking will reorder based on scores
+          enforcedResults = googleResult.results;
           cuisineEnforcementApplied = true;
+
+          logger.info({
+            requestId,
+            event: 'cuisine_score_only_applied',
+            countIn: googleResult.results.length,
+            countOut: enforcedResults.length,
+            mode: 'SCORE_ONLY'
+          }, '[ROUTE2] Cuisine score-only mode: all results kept for ranking');
         } else if (!enforcementResult.relaxApplied && !enforcementResult.enforcementSkipped) {
           // No matches and no relaxation => enforcement failed, keep original
           logger.warn({
@@ -540,7 +598,31 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
 
     // STAGE 6: POST_FILTERS (await post constraints, apply filters)
     const postConstraints = await postConstraintsPromise;
-    const postFilterResult = applyPostFiltersToResults(enforcedResults, postConstraints, finalFilters, ctx);
+    const cuisineKey = (mapping as any).cuisineKey ?? null; // Extract cuisineKey for hard constraint detection
+    const postFilterResult = applyPostFiltersToResults(enforcedResults, postConstraints, finalFilters, ctx, cuisineKey);
+
+    // Track result drops from post-filters
+    if (postFilterResult.stats.removed > 0) {
+      const reasons: string[] = [];
+      if (postFilterResult.applied.openState) reasons.push('openNow_filter');
+      if (postFilterResult.applied.priceIntent) reasons.push('price_filter');
+      if (postFilterResult.applied.minRatingBucket) reasons.push('rating_filter');
+
+      logger.info({
+        requestId,
+        event: 'results_drop_reason',
+        reason: reasons.length > 0 ? reasons.join('+') : 'post_constraints',
+        countBefore: postFilterResult.stats.before,
+        countAfter: postFilterResult.stats.after,
+        dropped: postFilterResult.stats.removed,
+        details: {
+          openState: postFilterResult.applied.openState,
+          priceIntent: postFilterResult.applied.priceIntent,
+          minRatingBucket: postFilterResult.applied.minRatingBucket,
+          relaxed: postFilterResult.relaxed
+        }
+      }, '[ROUTE2] Results dropped by post-filters');
+    }
 
     // Get merged filters for response building (using shared utility)
     const filtersForPostFilter = mergePostConstraints(finalFilters, postConstraints);

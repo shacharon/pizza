@@ -27,7 +27,8 @@ export const RankingWeightsSchema = z.object({
   rating: z.number().min(0).max(1),
   reviews: z.number().min(0).max(1),
   distance: z.number().min(0).max(1),
-  openBoost: z.number().min(0).max(1)
+  openBoost: z.number().min(0).max(1),
+  cuisineMatch: z.number().min(0).max(1).optional().default(0) // NEW: cuisine scoring weight
 }).strict();
 
 export type RankingWeights = z.infer<typeof RankingWeightsSchema>;
@@ -60,7 +61,8 @@ export const RANKING_SELECTION_JSON_SCHEMA = {
         rating: { type: 'number', minimum: 0, maximum: 1 },
         reviews: { type: 'number', minimum: 0, maximum: 1 },
         distance: { type: 'number', minimum: 0, maximum: 1 },
-        openBoost: { type: 'number', minimum: 0, maximum: 1 }
+        openBoost: { type: 'number', minimum: 0, maximum: 1 },
+        cuisineMatch: { type: 'number', minimum: 0, maximum: 1 }
       },
       required: ['rating', 'reviews', 'distance', 'openBoost'],
       additionalProperties: false
@@ -80,7 +82,7 @@ export const RANKING_SELECTION_SCHEMA_HASH = createHash('sha256')
  * Used when LLM returns weights that don't perfectly sum to 1.
  */
 export function normalizeWeights(weights: RankingWeights): RankingWeights {
-  const sum = weights.rating + weights.reviews + weights.distance + weights.openBoost;
+  const sum = weights.rating + weights.reviews + weights.distance + weights.openBoost + (weights.cuisineMatch || 0);
 
   // If sum is already ~1, return as-is
   if (Math.abs(sum - 1.0) < 0.001) {
@@ -90,10 +92,11 @@ export function normalizeWeights(weights: RankingWeights): RankingWeights {
   // If sum is 0, return balanced weights
   if (sum === 0) {
     return {
-      rating: 0.25,
-      reviews: 0.25,
-      distance: 0.25,
-      openBoost: 0.25
+      rating: 0.20,
+      reviews: 0.20,
+      distance: 0.20,
+      openBoost: 0.20,
+      cuisineMatch: 0.20
     };
   }
 
@@ -102,6 +105,7 @@ export function normalizeWeights(weights: RankingWeights): RankingWeights {
     rating: weights.rating / sum,
     reviews: weights.reviews / sum,
     distance: weights.distance / sum,
-    openBoost: weights.openBoost / sum
+    openBoost: weights.openBoost / sum,
+    cuisineMatch: (weights.cuisineMatch || 0) / sum
   };
 }

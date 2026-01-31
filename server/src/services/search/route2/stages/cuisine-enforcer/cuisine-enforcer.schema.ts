@@ -21,20 +21,21 @@ export const PlaceInputSchema = z.object({
 export type PlaceInput = z.infer<typeof PlaceInputSchema>;
 
 /**
- * Output: Filtered place IDs with relaxation metadata
+ * Output: Filtered place IDs with relaxation metadata OR cuisine scores for BOOST mode
  */
 export const CuisineEnforcementResponseSchema = z.object({
   keepPlaceIds: z.array(z.string()),
   relaxApplied: z.boolean(),
   relaxStrategy: z.enum(['none', 'fallback_preferred', 'drop_required_once', 'google_rerun_broader']),
-  enforcementSkipped: z.boolean().optional() // True when skipped due to small sample
+  enforcementSkipped: z.boolean().optional(), // True when skipped due to small sample
+  cuisineScores: z.record(z.string(), z.number()).optional() // placeId -> score (0-1) for BOOST mode
 }).strict();
 
 export type CuisineEnforcementResponse = z.infer<typeof CuisineEnforcementResponseSchema>;
 
 /**
  * Static JSON Schema for OpenAI Structured Output
- * Updated to support google_rerun_broader strategy
+ * Updated to support google_rerun_broader strategy and cuisine scoring for BOOST mode
  */
 export const CUISINE_ENFORCEMENT_JSON_SCHEMA = {
   type: 'object',
@@ -52,6 +53,11 @@ export const CUISINE_ENFORCEMENT_JSON_SCHEMA = {
       type: 'string',
       enum: ['none', 'fallback_preferred', 'drop_required_once', 'google_rerun_broader'],
       description: 'Relaxation strategy used'
+    },
+    cuisineScores: {
+      type: 'object',
+      additionalProperties: { type: 'number' },
+      description: 'BOOST mode: placeId -> cuisine match score (0.0-1.0). Higher = stronger match to cuisine requirements.'
     }
   },
   required: ['keepPlaceIds', 'relaxApplied', 'relaxStrategy'],

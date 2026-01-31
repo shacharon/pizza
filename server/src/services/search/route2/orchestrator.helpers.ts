@@ -63,7 +63,7 @@ function decideAssistantLanguage(
   // Priority 1: LLM-detected language with confidence check
   if (detectedLanguage && languageConfidence !== undefined) {
     const normalized = toAssistantLanguage(detectedLanguage);
-    
+
     if (languageConfidence >= LANGUAGE_CONFIDENCE_THRESHOLD) {
       // High confidence - use LLM detection
       if (normalized === 'he') {
@@ -79,12 +79,12 @@ function decideAssistantLanguage(
 
   // Priority 2: UI language (from resolved filters)
   if (ctx.sharedFilters?.final?.uiLanguage) {
-    return { 
-      language: ctx.sharedFilters.final.uiLanguage, 
-      source: languageConfidence !== undefined && languageConfidence < LANGUAGE_CONFIDENCE_THRESHOLD 
-        ? 'uiLanguage_low_confidence' 
+    return {
+      language: ctx.sharedFilters.final.uiLanguage,
+      source: languageConfidence !== undefined && languageConfidence < LANGUAGE_CONFIDENCE_THRESHOLD
+        ? 'uiLanguage_low_confidence'
         : 'uiLanguage',
-      confidence: languageConfidence
+      ...(languageConfidence !== undefined && { confidence: languageConfidence })
     };
   }
 
@@ -92,14 +92,14 @@ function decideAssistantLanguage(
   if (ctx.sharedFilters?.preGoogle?.language) {
     const lang = ctx.sharedFilters.preGoogle.language;
     if (lang === 'he') {
-      return { language: 'he', source: 'baseFilters', confidence: languageConfidence };
+      return { language: 'he', source: 'baseFilters', ...(languageConfidence !== undefined && { confidence: languageConfidence }) };
     } else if (lang === 'en') {
-      return { language: 'en', source: 'baseFilters', confidence: languageConfidence };
+      return { language: 'en', source: 'baseFilters', ...(languageConfidence !== undefined && { confidence: languageConfidence }) };
     }
   }
 
   // Final fallback: 'en' (should rarely happen)
-  return { language: 'en', source: 'fallback', confidence: languageConfidence };
+  return { language: 'en', source: 'fallback', ...(languageConfidence !== undefined && { confidence: languageConfidence }) };
 }
 
 /**

@@ -24,6 +24,7 @@ else:
 **Full implementation** - Creates deterministic policy with structured logging.
 
 Key features:
+
 - `determineCanonicalMode()` function - pure deterministic logic, no LLM calls
 - Checks location anchors: cityText, nearMe+userLocation, addressText (future)
 - Checks category keys: cuisineKey, placeTypeKey, dietaryKey
@@ -33,6 +34,7 @@ Key features:
 ### 2. MODIFIED: `server/src/services/search/route2/stages/route-llm/textsearch.mapper.ts`
 
 **Changes:**
+
 1. Import `determineCanonicalMode` from canonical-mode-policy
 2. In `executeTextSearchMapper()`:
    - Call `determineCanonicalMode()` with intent + request + LLM results
@@ -44,6 +46,7 @@ Key features:
    - Add canonical decision fields to fallback logs
 
 **Key changes:**
+
 ```typescript
 // After LLM returns result:
 const canonicalDecision = determineCanonicalMode(
@@ -55,37 +58,45 @@ const canonicalDecision = determineCanonicalMode(
 );
 
 // Override mode
-llmResult.mode = canonicalDecision.mode === 'CLARIFY' ? 'FREETEXT' : canonicalDecision.mode;
+llmResult.mode =
+  canonicalDecision.mode === "CLARIFY" ? "FREETEXT" : canonicalDecision.mode;
 
 // Enhanced logging
-logger.info({
-  // ... existing fields
-  canonicalModeDecision: canonicalDecision.mode,
-  canonicalModeReason: canonicalDecision.reason,
-  canonicalLocationAnchor: canonicalDecision.locationAnchor,
-  canonicalCategoryKey: canonicalDecision.categoryKey
-}, '[TEXTSEARCH] Mapper completed successfully');
+logger.info(
+  {
+    // ... existing fields
+    canonicalModeDecision: canonicalDecision.mode,
+    canonicalModeReason: canonicalDecision.reason,
+    canonicalLocationAnchor: canonicalDecision.locationAnchor,
+    canonicalCategoryKey: canonicalDecision.categoryKey,
+  },
+  "[TEXTSEARCH] Mapper completed successfully"
+);
 ```
 
 ### 3. MODIFIED: `server/src/services/search/route2/types.ts`
 
 **Changes:**
+
 - Add `placeTypeKey: string | null` to `IntentResult` interface
 
 ### 4. MODIFIED: `server/src/services/search/route2/stages/intent/intent.types.ts`
 
 **Changes:**
+
 - Add `placeTypeKey: z.string().nullable()` to `IntentLLMSchema`
 
 ### 5. MODIFIED: `server/src/services/search/route2/stages/intent/intent.stage.ts`
 
 **Changes:**
+
 - Add `placeTypeKey: null` to `createFallbackResult()`
 - Add `placeTypeKey: llmResult.placeTypeKey` to both return paths
 
 ### 6. MODIFIED: `server/src/services/search/route2/stages/intent/intent.prompt.ts`
 
 **Changes:**
+
 - Add `placeTypeKey` documentation to prompt (extracts "restaurant", "cafe", "bar", "bakery")
 - Add `placeTypeKey: { type: ["string", "null"] }` to JSON schema properties
 - Add `"placeTypeKey"` to required array
@@ -115,6 +126,7 @@ logger.info({
 ### Enhanced Mapper Logs
 
 Existing `mapper_success` and `fallback_mapping_complete` logs now include:
+
 - `canonicalModeDecision`
 - `canonicalModeReason`
 - `canonicalLocationAnchor`
@@ -125,11 +137,13 @@ Existing `mapper_success` and `fallback_mapping_complete` logs now include:
 ### KEYED Mode (both anchors present)
 
 1. **cityText + cuisineKey**
+
    - Query: "מסעדות איטלקיות בגדרה"
    - Intent: `{ cityText: "גדרה", cuisineKey: "italian" }`
    - Decision: `KEYED (has_cityText_and_cuisineKey)`
 
 2. **nearMe + cuisineKey + userLocation**
+
    - Query: "pizza near me"
    - Intent: `{ route: "NEARBY", cuisineKey: "italian" }`
    - Request: `{ userLocation: {lat, lng} }`
@@ -144,11 +158,13 @@ Existing `mapper_success` and `fallback_mapping_complete` logs now include:
 ### FREETEXT Mode (missing anchor)
 
 4. **No location anchor**
+
    - Query: "איטלקי"
    - Intent: `{ cuisineKey: "italian", cityText: null }`
    - Decision: `FREETEXT (missing_location_anchor)`
 
 5. **No category anchor**
+
    - Query: "מסעדות בגדרה"
    - Intent: `{ cityText: "גדרה", cuisineKey: null }`
    - Decision: `FREETEXT (missing_category_anchor)`

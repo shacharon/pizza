@@ -54,7 +54,7 @@ function generateIdempotencyKey(params: {
   let filtersHash = 'no-filters';
   if (params.filters) {
     const filterParts: string[] = [];
-    
+
     if (params.filters.openNow !== undefined) {
       filterParts.push(`openNow:${params.filters.openNow}`);
     }
@@ -116,7 +116,7 @@ router.post('/', async (req: Request, res: Response) => {
       startTime: Date.now(),
       llmProvider: llm,
       userLocation: queryData.userLocation ?? null,
-      //   debug: { stopAfter: 'intent' },   // 👈 זו השורה
+      debug: { stopAfter: 'gate' },   // 👈 זו השורה
       // Fix: Only include optional properties if they actually have a value
       ...(req.traceId && { traceId: req.traceId }),
       ...(authenticatedSessionId && { sessionId: authenticatedSessionId }),

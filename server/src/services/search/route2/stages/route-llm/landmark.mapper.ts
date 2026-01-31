@@ -18,53 +18,40 @@ import { normalizeLandmark } from './landmark-normalizer.js';
 
 const LANDMARK_MAPPER_VERSION = 'landmark_mapper_v3';
 
-const LANDMARK_MAPPER_PROMPT = `You are a landmark geocoding planner.
+const LANDMARK_MAPPER_PROMPT = `
+You are LANDMARK_PLAN.
 
 Output ONLY JSON with ALL fields:
 {
-  "providerMethod": "landmarkPlan",
-  "geocodeQuery": "specific landmark name",
-  "afterGeocode": "nearbySearch" or "textSearchWithBias",
-  "radiusMeters": 500-2000,
-  "keyword": "food keyword",
-  "region": "IL|FR|US etc",
-  "language": "he|en|ru|ar|fr|es|other",
-  "reason": "short_token"
+  "providerMethod":"landmarkPlan",
+  "geocodeQuery":string,
+  "afterGeocode":"nearbySearch"|"textSearchWithBias",
+  "radiusMeters":number,
+  "keyword":string,
+  "region":string,
+  "language":"he|en|ru|ar|fr|es|other",
+  "reason":"distance_from_landmark"|"poi_landmark"|"street_landmark"|"area_landmark"
 }
 
-Rules for geocodeQuery:
-- Full, specific landmark name for geocoding (NOT the food/cuisine)
-- If query has "X meters from <landmark>", extract ONLY the landmark name
-- Include city if ambiguous (e.g., "Azrieli Center Tel Aviv", not just "Azrieli")
-- Examples:
-  * "פיצה ליד דיזנגוף סנטר" → "Dizengoff Center Tel Aviv"
-  * "מרינה הרצליה חומוס" → "Marina Herzliya Israel"
-- Keep in original language or translate to English for foreign landmarks
+geocodeQuery:
+- Landmark name ONLY (no cuisine/food words).
+- Add city/country if needed for disambiguation.
+- Keep the same language as the user query (do NOT translate).
 
-Rules for afterGeocode:
-- "nearbySearch": tight proximity search after geocoding (for specific venues)
-- "textSearchWithBias": broader text search biased to geocoded point (for areas/neighborhoods)
-- Examples:
-  * POI/building → nearbySearch
-  * Street/neighborhood → textSearchWithBias
+afterGeocode:
+- nearbySearch for a specific POI/building/venue.
+- textSearchWithBias for street/area/neighborhood.
 
-Rules for radiusMeters:
-- If query explicitly states distance (e.g., "800 meters", "500 מטר"), USE that exact value
-- Otherwise:
-  * 500-800: specific buildings/POIs
-  * 1000-1500: streets/small areas
-  * 1500-2000: neighborhoods/larger areas
+radiusMeters:
+- If explicit distance exists, use that exact number.
+- Else: POI 700, street 1200, area 1800.
 
-Rules for keyword:
-- Short food term (1-3 words max)
-- Extract from query, keep in original language
-- Examples: "pizza", "restaurant", "Italian restaurant", "מסעדות איטלקיות"
+keyword:
+- 1-3 words food/place term only.
+- If no explicit food/place term, set keyword="restaurant".
 
-Rules for reason:
-- "distance_from_landmark": if query has explicit distance pattern
-- "poi_landmark": specific building/POI
-- "street_landmark": street/avenue
-- "area_landmark": neighborhood/area
+No extra keys. No text.
+
 `;
 
 const LANDMARK_MAPPER_PROMPT_HASH = createHash('sha256')
@@ -136,11 +123,11 @@ export async function executeLandmarkMapper(
         LANDMARK_JSON_SCHEMA
       );
       mapping = response.data;
-      
+
       // CRITICAL: Override LLM's region/language with filters_resolved values
       mapping.region = finalFilters.regionCode;
       mapping.language = finalFilters.languageContext?.searchLanguage ?? finalFilters.providerLanguage;
-      
+
       // NEW: Extract cuisineKey/typeKey deterministically (language-independent)
       const cuisineKey = extractCuisineKeyFromQuery(request.query);
       if (cuisineKey) {
@@ -151,7 +138,7 @@ export async function executeLandmarkMapper(
           mapping.typeKey = typeKey;
         }
       }
-      
+
       // NEW: Normalize landmark to canonical ID (multilingual support)
       const canonical = normalizeLandmark(mapping.geocodeQuery, mapping.region);
       if (canonical) {
@@ -161,7 +148,7 @@ export async function executeLandmarkMapper(
           mapping.resolvedLatLng = canonical.knownLatLng;
         }
       }
-      
+
       tokenUsage = {
         ...(response.usage?.prompt_tokens !== undefined && { input: response.usage.prompt_tokens }),
         ...(response.usage?.completion_tokens !== undefined && { output: response.usage.completion_tokens }),
@@ -209,12 +196,12 @@ export async function executeLandmarkMapper(
             LANDMARK_JSON_SCHEMA
           );
           mapping = retryResponse.data;
-          
+
           // CRITICAL: Override LLM's region/language with filters_resolved values (single source of truth)
           // Use languageContext.searchLanguage (region-based policy) instead of providerLanguage
           mapping.region = finalFilters.regionCode;
           mapping.language = finalFilters.languageContext?.searchLanguage ?? finalFilters.providerLanguage;
-          
+
           tokenUsage = {
             ...(retryResponse.usage?.prompt_tokens !== undefined && { input: retryResponse.usage.prompt_tokens }),
             ...(retryResponse.usage?.completion_tokens !== undefined && { output: retryResponse.usage.completion_tokens }),

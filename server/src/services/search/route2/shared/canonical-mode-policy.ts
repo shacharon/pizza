@@ -49,7 +49,7 @@ export function determineCanonicalMode(
 
   // Determine location anchor
   let locationAnchor: 'cityText' | 'addressText' | 'nearMe' | null = null;
-  
+
   if (hasCityText) {
     locationAnchor = 'cityText';
   } else if (isNearMeIntent && hasUserLocation) {
@@ -64,7 +64,7 @@ export function determineCanonicalMode(
 
   // Determine category anchor
   let categoryKey: 'cuisineKey' | 'placeTypeKey' | 'dietaryKey' | null = null;
-  
+
   if (cuisineKey) {
     categoryKey = 'cuisineKey';
   } else if (placeTypeKey) {
@@ -74,7 +74,7 @@ export function determineCanonicalMode(
   }
 
   // Step 3: Apply policy rules
-  
+
   // Rule 1: CLARIFY if nearMe intent but missing userLocation
   if (isNearMeIntent && !hasUserLocation) {
     const decision: CanonicalModeDecision = {

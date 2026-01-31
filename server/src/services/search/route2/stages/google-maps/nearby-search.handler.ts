@@ -75,7 +75,7 @@ export async function executeNearbySearch(
   const fetchFn = async (): Promise<any[]> => {
     const results: any[] = [];
     let nextPageToken: string | undefined;
-    const maxResults = 40; // Fetch up to 40 results (2 pages of 20)
+  const maxResults = 20; // Fetch up to 20 results (align with text search)
 
     const requestBody = buildNearbySearchBody(mapping, requestId);
 

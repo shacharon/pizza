@@ -16,37 +16,29 @@ import { extractCuisineKeyFromQuery, extractTypeKeyFromQuery } from './query-cui
 
 const NEARBY_MAPPER_VERSION = 'nearby_mapper_v1';
 
-const NEARBY_MAPPER_PROMPT = `You are a proximity search parameter generator.
-
-Output ONLY JSON with ALL fields:
+const NEARBY_MAPPER_PROMPT = ` You are NEARBY_PARAMS for Google Places Nearby Search.
+Input includes a fixed location {lat,lng}. Use it EXACTLY.
+Return ONLY JSON with ALL fields:
 {
-  "providerMethod": "nearbySearch",
-  "location": {"lat": number, "lng": number},
-  "radiusMeters": number,
-  "keyword": "food keyword",
-  "region": "IL|FR|US etc",
-  "language": "he|en|ru|ar|fr|es|other",
-  "reason": "short_token"
+  "providerMethod":"nearbySearch",
+  "location":{"lat":number,"lng":number},
+  "radiusMeters":number,
+  "keyword":string,
+  "region":string,
+  "language":"he|en|ru|ar|fr|es|other",
+  "reason":"distance_explicit|distance_default"
 }
 
-Rules for radiusMeters:
-- If query contains explicit distance (e.g., "200 מטר", "300m", "100 meters", "500m"):
-  → Use that EXACT numeric value (e.g., 200, 300, 100, 500)
-- If NO explicit distance in query:
-  → Use default 500
+radiusMeters:
+- If an explicit distance appears (meters only): use that exact number.
+- Otherwise use 500.
 
-Rules for keyword:
-- Short food term (1-3 words max)
-- Examples: "pizza", "hummus", "sushi restaurant", "cafe"
-- Extract from query, keep in original language
-- Do NOT include location words
+keyword:
+- 1-3 words, food/place term only. No location words.
+- If no explicit food/place term in the query, set keyword="restaurant".
 
-Rules for location:
-- Use EXACTLY the coordinates provided in input
-- Do NOT invent or modify coordinates
+No extra keys. No text.
 
-Rules for reason:
-- One-word token: "distance_explicit" (if distance in query), "distance_default" (if no distance)
 `;
 
 const NEARBY_MAPPER_PROMPT_HASH = createHash('sha256')
@@ -131,12 +123,12 @@ export async function executeNearbyMapper(
         NEARBY_JSON_SCHEMA
       );
       mapping = response.data;
-      
+
       // CRITICAL: Override LLM's region/language with filters_resolved values (single source of truth)
       // Use languageContext.searchLanguage (region-based policy) instead of providerLanguage
       mapping.region = finalFilters.regionCode;
       mapping.language = finalFilters.languageContext?.searchLanguage ?? finalFilters.providerLanguage;
-      
+
       // NEW: Extract cuisineKey/typeKey deterministically (language-independent)
       const cuisineKey = extractCuisineKeyFromQuery(request.query);
       if (cuisineKey) {
@@ -148,7 +140,7 @@ export async function executeNearbyMapper(
           mapping.typeKey = typeKey;
         }
       }
-      
+
       tokenUsage = {
         ...(response.usage?.prompt_tokens !== undefined && { input: response.usage.prompt_tokens }),
         ...(response.usage?.completion_tokens !== undefined && { output: response.usage.completion_tokens }),
@@ -195,12 +187,12 @@ export async function executeNearbyMapper(
             NEARBY_JSON_SCHEMA
           );
           mapping = retryResponse.data;
-          
+
           // CRITICAL: Override LLM's region/language with filters_resolved values (single source of truth)
           // Use languageContext.searchLanguage (region-based policy) instead of providerLanguage
           mapping.region = finalFilters.regionCode;
           mapping.language = finalFilters.languageContext?.searchLanguage ?? finalFilters.providerLanguage;
-          
+
           // NEW: Extract cuisineKey/typeKey deterministically (language-independent)
           const cuisineKey = extractCuisineKeyFromQuery(request.query);
           if (cuisineKey) {
@@ -212,7 +204,7 @@ export async function executeNearbyMapper(
               mapping.typeKey = typeKey;
             }
           }
-          
+
           tokenUsage = {
             ...(retryResponse.usage?.prompt_tokens !== undefined && { input: retryResponse.usage.prompt_tokens }),
             ...(retryResponse.usage?.completion_tokens !== undefined && { output: retryResponse.usage.completion_tokens }),

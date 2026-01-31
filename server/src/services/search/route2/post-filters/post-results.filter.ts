@@ -4,10 +4,14 @@
  * Deterministic filtering applied after Google API results are received
  * Filters: openState (OPEN_NOW, CLOSED_NOW, null), priceIntent (CHEAP, MID, EXPENSIVE, null), minRatingBucket (R35, R40, R45, null)
  * Hints: dietary preferences (SOFT hints, no removal)
+ * 
+ * HARD CONSTRAINTS: kosher (isKosher=true) is NEVER auto-relaxed
  */
 
 import { logger } from '../../../../lib/logger/structured-logger.js';
 import type { FinalSharedFilters, OpenState, PriceIntent, MinRatingBucket } from '../shared/shared-filters.types.js';
+import type { HardConstraintField } from '../shared/hard-constraints.types.js';
+import { detectHardConstraints, buildHardConstraintsMetadata } from '../shared/hard-constraints.types.js';
 import { attachDietaryHints } from './dietary-hints.js';
 import { matchesPriceIntent } from './price/price-matrix.js';
 import { meetsMinRating } from './rating/rating-matrix.js';
@@ -18,6 +22,7 @@ export interface PostFilterInput {
   sharedFilters: FinalSharedFilters;
   requestId: string;
   pipelineVersion: 'route2';
+  cuisineKey?: string | null; // For meat/dairy hard constraint detection
 }
 
 export interface PostFilterOutput {
@@ -38,16 +43,37 @@ export interface PostFilterOutput {
     priceIntent?: boolean;
     minRating?: boolean;
   };
+  hardConstraints?: {
+    active: HardConstraintField[];
+    count: number;
+    hasKosher: boolean;
+    hasMeatDairy: boolean;
+  };
 }
 
 /**
  * Apply post-result filters to search results
  */
 export function applyPostFilters(input: PostFilterInput): PostFilterOutput {
-  const { results, sharedFilters, requestId, pipelineVersion } = input;
+  const { results, sharedFilters, requestId, pipelineVersion, cuisineKey } = input;
 
   const beforeCount = results.length;
   let relaxed: { priceIntent?: boolean; minRating?: boolean } = {};
+
+  // Detect hard constraints (for logging and enforcement)
+  const activeHardConstraints = detectHardConstraints(sharedFilters, cuisineKey);
+  const hasHardConstraints = activeHardConstraints.length > 0;
+
+  // Log hard constraints if present
+  if (hasHardConstraints) {
+    const hardMeta = buildHardConstraintsMetadata(activeHardConstraints);
+    logger.info({
+      requestId,
+      pipelineVersion,
+      event: 'constraints_hard_applied',
+      ...hardMeta
+    }, '[POST_FILTER] Hard constraints detected (never auto-relaxed)');
+  }
 
   // Step 1: Apply open/closed filter ONLY if explicitly requested
   const { filtered: openFiltered, unknownKept, unknownRemoved } = filterByOpenState(
@@ -63,13 +89,13 @@ export function applyPostFilters(input: PostFilterInput): PostFilterOutput {
 
   if (sharedFilters.priceIntent !== null) {
     const priceFiltered = filterByPrice(currentFiltered, sharedFilters.priceIntent);
-    
-    // Auto-relax if filtering yields 0 results
+
+    // Auto-relax if filtering yields 0 results (price is NOT a hard constraint)
     if (priceFiltered.length === 0 && currentFiltered.length > 0) {
       // Relax: return results without price filter
       relaxed.priceIntent = true;
       priceIntentApplied = null; // Mark as not applied due to relaxation
-      
+
       logger.info({
         requestId,
         pipelineVersion,
@@ -90,14 +116,14 @@ export function applyPostFilters(input: PostFilterInput): PostFilterOutput {
 
   if (sharedFilters.minRatingBucket !== null) {
     const ratingFiltered = filterByRating(currentFiltered, sharedFilters.minRatingBucket);
-    
-    // Auto-relax if filtering yields 0 results
+
+    // Auto-relax if filtering yields 0 results (rating is NOT a hard constraint)
     if (ratingFiltered.length === 0 && currentFiltered.length > 0) {
       // Relax: return results without rating filter
       finalFiltered = currentFiltered;
       relaxed.minRating = true;
       minRatingBucketApplied = null; // Mark as not applied due to relaxation
-      
+
       logger.info({
         requestId,
         pipelineVersion,
@@ -144,6 +170,11 @@ export function applyPostFilters(input: PostFilterInput): PostFilterOutput {
   // Only include relaxed field if we actually relaxed
   if (relaxed.priceIntent || relaxed.minRating) {
     output.relaxed = relaxed;
+  }
+
+  // Include hard constraints metadata if present
+  if (hasHardConstraints) {
+    output.hardConstraints = buildHardConstraintsMetadata(activeHardConstraints);
   }
 
   return output;

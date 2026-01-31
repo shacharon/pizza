@@ -92,20 +92,33 @@ function hasUsedPostConstraints(postConstraints: PostConstraints): boolean {
 function executePostFiltering(
   googleResults: any[],
   mergedFilters: any,
-  requestId: string
+  requestId: string,
+  cuisineKey?: string | null
 ): {
   resultsFiltered: any[];
+  applied: {
+    openState: any;
+    priceIntent: any;
+    minRatingBucket: any;
+  };
   stats: any;
   relaxed?: {
     priceIntent?: boolean;
     minRating?: boolean;
+  };
+  hardConstraints?: {
+    active: any[];
+    count: number;
+    hasKosher: boolean;
+    hasMeatDairy: boolean;
   };
 } {
   return applyPostFilters({
     results: googleResults,
     sharedFilters: mergedFilters,
     requestId,
-    pipelineVersion: 'route2'
+    pipelineVersion: 'route2',
+    cuisineKey
   });
 }
 
@@ -117,13 +130,25 @@ export function applyPostFiltersToResults(
   googleResults: any[],
   postConstraints: PostConstraints,
   finalFilters: FinalSharedFilters,
-  ctx: Route2Context
+  ctx: Route2Context,
+  cuisineKey?: string | null
 ): {
   resultsFiltered: any[];
+  applied: {
+    openState: any;
+    priceIntent: any;
+    minRatingBucket: any;
+  };
   stats: any;
   relaxed?: {
     priceIntent?: boolean;
     minRating?: boolean;
+  };
+  hardConstraints?: {
+    active: any[];
+    count: number;
+    hasKosher: boolean;
+    hasMeatDairy: boolean;
   };
 } {
   const { requestId } = ctx;
@@ -144,12 +169,13 @@ export function applyPostFiltersToResults(
 
   // Merge and apply filters (core logic)
   const mergedFilters = mergePostConstraints(finalFilters, postConstraints);
-  const postFilterResult = executePostFiltering(googleResults, mergedFilters, ctx.requestId);
+  const postFilterResult = executePostFiltering(googleResults, mergedFilters, ctx.requestId, cuisineKey);
 
   // End post_filter stage (telemetry)
   endStage(ctx, 'post_filter', postFilterStart, {
     stats: postFilterResult.stats,
-    usedPostConstraints: hasUsedPostConstraints(postConstraints)
+    usedPostConstraints: hasUsedPostConstraints(postConstraints),
+    hardConstraints: postFilterResult.hardConstraints
   });
 
   return postFilterResult;

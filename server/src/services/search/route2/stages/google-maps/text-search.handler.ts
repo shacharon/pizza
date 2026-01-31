@@ -201,9 +201,10 @@ export async function executeTextSearch(
         }
 
         // Generate cache key with all request parameters
+        // CRITICAL: Use providerTextQuery (not textQuery) - this is what's actually sent to Google
         const cacheKey = generateTextSearchCacheKey({
-          textQuery: mapping.textQuery,
-          languageCode: mapToGoogleLanguageCode(mapping.language),
+          textQuery: mapping.providerTextQuery, // What's sent to Google API
+          languageCode: mapToGoogleLanguageCode(mapping.providerLanguage), // Use providerLanguage
           regionCode: mapping.region,
           bias: mapping.bias ? {
             lat: mapping.bias.center.lat,
@@ -213,7 +214,7 @@ export async function executeTextSearch(
           fieldMask: PLACES_FIELD_MASK,
           pipelineVersion: 'route2'
         });
-        const ttl = cache.getTTL(mapping.textQuery);
+        const ttl = cache.getTTL(mapping.providerTextQuery || mapping.textQuery);
 
         logger.info({
           requestId,
@@ -314,7 +315,8 @@ async function executeTextSearchAttempt(
   apiKey: string,
   requestId: string
 ): Promise<any[]> {
-  const maxResults = 40; // Fetch up to 40 results across pages (2 pages × 20)
+  const maxResults = 20; // Fetch up to 20 unique results (iterate pages if needed)
+  const maxPages = 3; // Safety cap: max 3 Google API requests per attempt
 
   // Use providerTextQuery directly (already deterministically built in mapper)
   const finalTextQuery = mapping.providerTextQuery;
@@ -482,7 +484,7 @@ async function executeTextSearchAttempt(
   }
 
   // Delegate pagination to pagination-handler
-  const results = await fetchAllPages(requestBody, apiKey, requestId, maxResults);
+  const results = await fetchAllPages(requestBody, apiKey, requestId, maxResults, maxPages);
 
   return results;
 }

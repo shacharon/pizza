@@ -1,10 +1,12 @@
 # Canonical Mode Policy - Deterministic Implementation
 
 ## Summary
+
 Implements deterministic CanonicalMode policy without adding new LLM stages.
 Reuses existing `intent` + `textsearch_mapper` outputs.
 
 ## Rules
+
 ```
 mode = KEYED if:
   (cityText OR addressText OR (nearMe AND hasUserLocation))
@@ -22,27 +24,27 @@ else:
 ```typescript
 /**
  * Canonical Mode Policy - Deterministic Decision
- * 
+ *
  * Decides between KEYED and FREETEXT modes based on available location + category anchors.
  * NO LLM calls - pure deterministic logic.
- * 
+ *
  * Rules:
  * - KEYED: Has location anchor (city/address/nearMe) AND category key (cuisine/placeType/dietary)
  * - FREETEXT: Otherwise (missing either location or category)
  * - CLARIFY: nearMe intent but missing userLocation
  */
 
-import { logger } from '../../../../lib/logger/structured-logger.js';
-import type { IntentResult } from '../types.js';
-import type { SearchRequest } from '../../types/search-request.dto.js';
+import { logger } from "../../../../lib/logger/structured-logger.js";
+import type { IntentResult } from "../types.js";
+import type { SearchRequest } from "../../types/search-request.dto.js";
 
-export type CanonicalMode = 'KEYED' | 'FREETEXT' | 'CLARIFY';
+export type CanonicalMode = "KEYED" | "FREETEXT" | "CLARIFY";
 
 export interface CanonicalModeDecision {
   mode: CanonicalMode;
   reason: string;
-  locationAnchor: 'cityText' | 'addressText' | 'nearMe' | null;
-  categoryKey: 'cuisineKey' | 'placeTypeKey' | 'dietaryKey' | null;
+  locationAnchor: "cityText" | "addressText" | "nearMe" | null;
+  categoryKey: "cuisineKey" | "placeTypeKey" | "dietaryKey" | null;
   cuisineKey: string | null;
   placeTypeKey: string | null;
   dietaryKey: string | null;
@@ -50,7 +52,7 @@ export interface CanonicalModeDecision {
 
 /**
  * Determine canonical mode based on available anchors
- * 
+ *
  * @param intent Intent stage result (contains cityText, cuisineKey)
  * @param request Search request (contains userLocation, filters.dietary)
  * @param llmCuisineKey Optional cuisine key from LLM (textsearch mapper)
@@ -67,15 +69,15 @@ export function determineCanonicalMode(
   // Step 1: Check location anchors
   const hasCityText = !!intent.cityText;
   const hasUserLocation = !!request.userLocation;
-  const isNearMeIntent = intent.route === 'NEARBY' || intent.distanceIntent;
+  const isNearMeIntent = intent.route === "NEARBY" || intent.distanceIntent;
 
   // Determine location anchor
-  let locationAnchor: 'cityText' | 'addressText' | 'nearMe' | null = null;
-  
+  let locationAnchor: "cityText" | "addressText" | "nearMe" | null = null;
+
   if (hasCityText) {
-    locationAnchor = 'cityText';
+    locationAnchor = "cityText";
   } else if (isNearMeIntent && hasUserLocation) {
-    locationAnchor = 'nearMe';
+    locationAnchor = "nearMe";
   }
   // Note: addressText not implemented yet (future: intent could extract address)
 
@@ -85,44 +87,47 @@ export function determineCanonicalMode(
   const dietaryKey = request.filters?.dietary?.[0] || null; // Take first dietary filter if any
 
   // Determine category anchor
-  let categoryKey: 'cuisineKey' | 'placeTypeKey' | 'dietaryKey' | null = null;
-  
+  let categoryKey: "cuisineKey" | "placeTypeKey" | "dietaryKey" | null = null;
+
   if (cuisineKey) {
-    categoryKey = 'cuisineKey';
+    categoryKey = "cuisineKey";
   } else if (placeTypeKey) {
-    categoryKey = 'placeTypeKey';
+    categoryKey = "placeTypeKey";
   } else if (dietaryKey) {
-    categoryKey = 'dietaryKey';
+    categoryKey = "dietaryKey";
   }
 
   // Step 3: Apply policy rules
-  
+
   // Rule 1: CLARIFY if nearMe intent but missing userLocation
   if (isNearMeIntent && !hasUserLocation) {
     const decision: CanonicalModeDecision = {
-      mode: 'CLARIFY',
-      reason: 'nearMe_intent_missing_location',
+      mode: "CLARIFY",
+      reason: "nearMe_intent_missing_location",
       locationAnchor: null,
       categoryKey,
       cuisineKey,
       placeTypeKey,
-      dietaryKey
+      dietaryKey,
     };
 
-    logger.info({
-      requestId,
-      stage: 'canonical_mode_policy',
-      event: 'canonical_decision',
-      mode: decision.mode,
-      reason: decision.reason,
-      locationAnchor: decision.locationAnchor,
-      categoryKey: decision.categoryKey,
-      cuisineKey,
-      placeTypeKey,
-      dietaryKey,
-      isNearMeIntent,
-      hasUserLocation
-    }, '[CANONICAL] Mode decision: CLARIFY (nearMe without location)');
+    logger.info(
+      {
+        requestId,
+        stage: "canonical_mode_policy",
+        event: "canonical_decision",
+        mode: decision.mode,
+        reason: decision.reason,
+        locationAnchor: decision.locationAnchor,
+        categoryKey: decision.categoryKey,
+        cuisineKey,
+        placeTypeKey,
+        dietaryKey,
+        isNearMeIntent,
+        hasUserLocation,
+      },
+      "[CANONICAL] Mode decision: CLARIFY (nearMe without location)"
+    );
 
     return decision;
   }
@@ -130,19 +135,54 @@ export function determineCanonicalMode(
   // Rule 2: KEYED if both location AND category anchors exist
   if (locationAnchor && categoryKey) {
     const decision: CanonicalModeDecision = {
-      mode: 'KEYED',
+      mode: "KEYED",
       reason: `has_${locationAnchor}_and_${categoryKey}`,
       locationAnchor,
       categoryKey,
       cuisineKey,
       placeTypeKey,
-      dietaryKey
+      dietaryKey,
     };
 
-    logger.info({
+    logger.info(
+      {
+        requestId,
+        stage: "canonical_mode_policy",
+        event: "canonical_decision",
+        mode: decision.mode,
+        reason: decision.reason,
+        locationAnchor: decision.locationAnchor,
+        categoryKey: decision.categoryKey,
+        cuisineKey,
+        placeTypeKey,
+        dietaryKey,
+        hasCityText,
+        hasUserLocation,
+        isNearMeIntent,
+      },
+      "[CANONICAL] Mode decision: KEYED (location + category)"
+    );
+
+    return decision;
+  }
+
+  // Rule 3: FREETEXT (missing either location or category)
+  const missingAnchor = !locationAnchor ? "location" : "category";
+  const decision: CanonicalModeDecision = {
+    mode: "FREETEXT",
+    reason: `missing_${missingAnchor}_anchor`,
+    locationAnchor,
+    categoryKey,
+    cuisineKey,
+    placeTypeKey,
+    dietaryKey,
+  };
+
+  logger.info(
+    {
       requestId,
-      stage: 'canonical_mode_policy',
-      event: 'canonical_decision',
+      stage: "canonical_mode_policy",
+      event: "canonical_decision",
       mode: decision.mode,
       reason: decision.reason,
       locationAnchor: decision.locationAnchor,
@@ -150,42 +190,13 @@ export function determineCanonicalMode(
       cuisineKey,
       placeTypeKey,
       dietaryKey,
+      missingAnchor,
       hasCityText,
       hasUserLocation,
-      isNearMeIntent
-    }, '[CANONICAL] Mode decision: KEYED (location + category)');
-
-    return decision;
-  }
-
-  // Rule 3: FREETEXT (missing either location or category)
-  const missingAnchor = !locationAnchor ? 'location' : 'category';
-  const decision: CanonicalModeDecision = {
-    mode: 'FREETEXT',
-    reason: `missing_${missingAnchor}_anchor`,
-    locationAnchor,
-    categoryKey,
-    cuisineKey,
-    placeTypeKey,
-    dietaryKey
-  };
-
-  logger.info({
-    requestId,
-    stage: 'canonical_mode_policy',
-    event: 'canonical_decision',
-    mode: decision.mode,
-    reason: decision.reason,
-    locationAnchor: decision.locationAnchor,
-    categoryKey: decision.categoryKey,
-    cuisineKey,
-    placeTypeKey,
-    dietaryKey,
-    missingAnchor,
-    hasCityText,
-    hasUserLocation,
-    isNearMeIntent
-  }, '[CANONICAL] Mode decision: FREETEXT (missing anchor)');
+      isNearMeIntent,
+    },
+    "[CANONICAL] Mode decision: FREETEXT (missing anchor)"
+  );
 
   return decision;
 }
@@ -239,7 +250,7 @@ export function determineCanonicalMode(
 @@ -638,22 +654,32 @@ async function buildDeterministicMapping(
    const detectedCuisineKey = detectCuisineKeyword(request.query);
    const hasCityText = !!intent.cityText;
-   
+
 -  let mode: 'KEYED' | 'FREE_TEXT' = 'FREE_TEXT';
 +  // Use deterministic policy instead of ad-hoc logic
 +  const canonicalDecision = determineCanonicalMode(
@@ -253,7 +264,7 @@ export function determineCanonicalMode(
 +  let mode: 'KEYED' | 'FREE_TEXT' = canonicalDecision.mode === 'CLARIFY' ? 'FREE_TEXT' : canonicalDecision.mode;
    let cityText: string | null = null;
    let cuisineKey: CuisineKey | null = null;
-   
+
 -  // Determine mode based on detection results
 -  if (detectedCuisineKey && hasCityText) {
 +  // Apply canonical decision
@@ -263,7 +274,7 @@ export function determineCanonicalMode(
 -    cityText = intent.cityText!;
 +    cuisineKey = canonicalDecision.cuisineKey as CuisineKey;
 +    cityText = intent.cityText || null;
-     
+
      logger.info({
        requestId,
        stage: 'textsearch_mapper_fallback',
@@ -278,7 +289,7 @@ export function determineCanonicalMode(
 @@ -661,28 +687,18 @@ async function buildDeterministicMapping(
      mode = 'KEYED';
      cuisineKey = detectedCuisineKey;
-     
+
 -    logger.info({
 -      requestId,
 -      stage: 'textsearch_mapper_fallback',
@@ -298,7 +309,7 @@ export function determineCanonicalMode(
 +      categoryKey: canonicalDecision.categoryKey
      }, '[TEXTSEARCH] Fallback: FREE_TEXT mode (no cuisine detected)');
    }
-   
+
    // Build provider query using deterministic builder
 ```
 
@@ -317,6 +328,7 @@ export function determineCanonicalMode(
 ## Structured Logs
 
 New log events:
+
 ```
 event=canonical_decision {
   mode: 'KEYED' | 'FREETEXT' | 'CLARIFY',
@@ -332,16 +344,19 @@ event=canonical_decision {
 ## Test Cases
 
 ### KEYED Mode (location + category)
+
 1. "מסעדות איטלקיות בגדרה" → cityText + cuisineKey → KEYED
 2. "pizza near me" (with userLocation) → nearMe + cuisineKey → KEYED
 3. "vegan restaurants" + filters.dietary=["vegan"] → implicit + dietaryKey → KEYED
 
 ### FREETEXT Mode (missing anchor)
+
 4. "מסעדות טובות" → no cityText, no cuisineKey → FREETEXT
 5. "איטלקי" → cuisineKey but no location → FREETEXT
 6. "בגדרה" → cityText but no category → FREETEXT
 
 ### CLARIFY Mode
+
 7. "near me" (no userLocation) → nearMe intent but missing location → CLARIFY
 
 ## Implementation Notes

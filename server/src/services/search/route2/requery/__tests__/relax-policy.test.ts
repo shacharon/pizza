@@ -22,7 +22,7 @@ describe('Relax Policy - No Relaxation Needed', () => {
       minReviewCountBucket: null
     };
 
-    const result = relaxIfTooFew(10, filters, 0, 5);
+    const result = relaxIfTooFew(10, filters, 0, 5, []);
 
     assert.strictEqual(result.relaxed, false);
     assert.strictEqual(result.steps.length, 0);
@@ -41,7 +41,7 @@ describe('Relax Policy - No Relaxation Needed', () => {
       minReviewCountBucket: null
     };
 
-    const result = relaxIfTooFew(2, filters, 2, 5); // attempt=2 (max)
+    const result = relaxIfTooFew(2, filters, 2, 5, []); // attempt=2 (max)
 
     assert.strictEqual(result.relaxed, false);
     assert.strictEqual(result.steps.length, 0);
@@ -61,7 +61,7 @@ describe('Relax Policy - Step 1: Opening Hours', () => {
       minReviewCountBucket: null
     };
 
-    const result = relaxIfTooFew(3, filters, 0, 5);
+    const result = relaxIfTooFew(3, filters, 0, 5, []);
 
     assert.strictEqual(result.relaxed, true);
     assert.strictEqual(result.steps.length, 1);
@@ -84,7 +84,7 @@ describe('Relax Policy - Step 1: Opening Hours', () => {
       minReviewCountBucket: null
     };
 
-    const result = relaxIfTooFew(2, filters, 0, 5);
+    const result = relaxIfTooFew(2, filters, 0, 5, []);
 
     assert.strictEqual(result.relaxed, true);
     assert.strictEqual(result.steps[0].field, 'openAt');
@@ -103,7 +103,7 @@ describe('Relax Policy - Step 1: Opening Hours', () => {
       minReviewCountBucket: null
     };
 
-    const result = relaxIfTooFew(1, filters, 0, 5);
+    const result = relaxIfTooFew(1, filters, 0, 5, []);
 
     assert.strictEqual(result.relaxed, true);
     assert.strictEqual(result.steps[0].field, 'openBetween');
@@ -125,7 +125,7 @@ describe('Relax Policy - Step 2: Dietary Filters', () => {
       isKosher: true
     } as any;
 
-    const result = relaxIfTooFew(3, filters, 0, 5);
+    const result = relaxIfTooFew(3, filters, 0, 5, []); // No hard constraints
 
     assert.strictEqual(result.relaxed, true);
     assert.strictEqual(result.steps.length, 1);
@@ -149,7 +149,7 @@ describe('Relax Policy - Step 2: Dietary Filters', () => {
       isGlutenFree: true
     } as any;
 
-    const result = relaxIfTooFew(2, filters, 0, 5);
+    const result = relaxIfTooFew(2, filters, 0, 5, []);
 
     assert.strictEqual(result.relaxed, true);
     assert.strictEqual(result.steps[0].field, 'isGlutenFree');
@@ -170,7 +170,7 @@ describe('Relax Policy - Step 3: Rating', () => {
       minReviewCountBucket: null
     };
 
-    const result = relaxIfTooFew(3, filters, 0, 5);
+    const result = relaxIfTooFew(3, filters, 0, 5, []);
 
     assert.strictEqual(result.relaxed, true);
     assert.strictEqual(result.steps.length, 1);
@@ -194,7 +194,7 @@ describe('Relax Policy - Multiple Attempts', () => {
       minReviewCountBucket: null
     };
 
-    const result = relaxIfTooFew(2, filters, 0, 5);
+    const result = relaxIfTooFew(2, filters, 0, 5, []);
 
     assert.strictEqual(result.relaxed, false);
     assert.strictEqual(result.steps.length, 0);
@@ -214,14 +214,14 @@ describe('Relax Policy - Multiple Attempts', () => {
       isKosher: true
     } as any;
 
-    const result1 = relaxIfTooFew(3, filters1, 0, 5);
+    const result1 = relaxIfTooFew(3, filters1, 0, 5, []); // No hard constraints
 
     assert.strictEqual(result1.relaxed, true);
     assert.strictEqual(result1.steps[0].field, 'openState');
     assert.strictEqual(result1.nextFilters.openState, null);
 
     // Second attempt: relax isKosher
-    const result2 = relaxIfTooFew(3, result1.nextFilters, 1, 5);
+    const result2 = relaxIfTooFew(3, result1.nextFilters, 1, 5, []);
 
     assert.strictEqual(result2.relaxed, true);
     assert.strictEqual(result2.steps[0].field, 'isKosher');

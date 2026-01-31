@@ -34,6 +34,7 @@ interface RankableResult {
     lat: number;
     lng: number;
   };
+  cuisineScore?: number; // NEW: Cuisine match score from enforcer (0-1)
   [key: string]: any; // Allow other fields to pass through
 }
 
@@ -103,12 +104,14 @@ export interface ScoreBreakdown {
   userRatingCount: number | null;
   distanceMeters: number | null;
   openNow: boolean | 'UNKNOWN' | null;
+  cuisineScore: number | null; // NEW
   weights: RankingWeights;
   components: {
     ratingScore: number;
     reviewsScore: number;
     distanceScore: number;
     openBoostScore: number;
+    cuisineMatchScore: number; // NEW
   };
   totalScore: number;
 }
@@ -154,14 +157,18 @@ export function computeScoreBreakdown(
     openNorm = 0;
   }
 
+  // Cuisine match normalized (0-1, already normalized from enforcer)
+  const cuisineNorm = result.cuisineScore ?? 0.5; // Default 0.5 if no score
+
   // Compute component scores (weighted)
   const ratingScore = weights.rating * ratingNorm;
   const reviewsScore = weights.reviews * reviewsNorm;
   const distanceScore = weights.distance * distanceNorm;
   const openBoostScore = weights.openBoost * openNorm;
+  const cuisineMatchScore = (weights.cuisineMatch || 0) * cuisineNorm;
 
   // Total score
-  const totalScore = ratingScore + reviewsScore + distanceScore + openBoostScore;
+  const totalScore = ratingScore + reviewsScore + distanceScore + openBoostScore + cuisineMatchScore;
 
   return {
     placeId: (result as any).placeId || (result as any).id || 'unknown',
@@ -169,12 +176,14 @@ export function computeScoreBreakdown(
     userRatingCount: result.userRatingsTotal ?? null,
     distanceMeters,
     openNow: result.openNow ?? null,
+    cuisineScore: result.cuisineScore ?? null,
     weights,
     components: {
       ratingScore: Math.round(ratingScore * 1000) / 1000, // 3 decimals
       reviewsScore: Math.round(reviewsScore * 1000) / 1000,
       distanceScore: Math.round(distanceScore * 1000) / 1000,
-      openBoostScore: Math.round(openBoostScore * 1000) / 1000
+      openBoostScore: Math.round(openBoostScore * 1000) / 1000,
+      cuisineMatchScore: Math.round(cuisineMatchScore * 1000) / 1000
     },
     totalScore: Math.round(totalScore * 1000) / 1000
   };
@@ -183,13 +192,14 @@ export function computeScoreBreakdown(
 /**
  * Compute deterministic score for a single result
  * 
- * Score = w.rating * ratingNorm + w.reviews * reviewsNorm + w.distance * distanceNorm + w.openBoost * openNorm
+ * Score = w.rating * ratingNorm + w.reviews * reviewsNorm + w.distance * distanceNorm + w.openBoost * openNorm + w.cuisineMatch * cuisineNorm
  * 
  * Normalization:
  * - ratingNorm: rating / 5 (clamped 0-1)
  * - reviewsNorm: log10(reviews + 1) / 5 (clamped 0-1)
  * - distanceNorm: 1 / (1 + distanceKm) if user location available, else 0
  * - openNorm: 1 if open, 0 if closed, 0.5 if unknown
+ * - cuisineNorm: cuisineScore from enforcer (0-1), defaults to 0.5 if missing
  */
 function computeScore(
   result: RankableResult,
@@ -223,12 +233,16 @@ function computeScore(
     openNorm = 0;
   }
 
+  // Cuisine match normalized (0-1, from enforcer)
+  const cuisineNorm = result.cuisineScore ?? 0.5; // Default 0.5 if no score
+
   // Compute weighted score
   const score =
     weights.rating * ratingNorm +
     weights.reviews * reviewsNorm +
     weights.distance * distanceNorm +
-    weights.openBoost * openNorm;
+    weights.openBoost * openNorm +
+    (weights.cuisineMatch || 0) * cuisineNorm;
 
   return score;
 }
