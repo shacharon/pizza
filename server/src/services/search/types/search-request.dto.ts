@@ -38,7 +38,12 @@ export const searchRequestSchema = z.object({
   clearContext: z.boolean().optional(),
 
   // Optional: enable debug mode (include diagnostics in response)
-  debug: z.boolean().optional(),
+  debug: z.union([
+    z.boolean(),
+    z.object({
+      stopAfter: z.enum(['gate2', 'intent', 'route_llm', 'google', 'cuisine', 'post_filters', 'ranking', 'response']).optional(),
+    })
+  ]).optional(),
 
   // Optional: UI language (for assistant messages, NOT for search)
   // Backend owns searchLanguage policy; uiLanguage is for display only

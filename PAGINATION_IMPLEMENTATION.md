@@ -1,14 +1,17 @@
 # Google Places Text Search Pagination Implementation
 
 ## Summary
+
 Implemented pagination for Google Places Text Search API to guarantee up to 20 results per query by iterating through multiple pages.
 
 ## Changes Made
 
 ### 1. **pagination-handler.ts** - Core Pagination Logic
+
 **File**: `server/src/services/search/route2/stages/google-maps/pagination-handler.ts`
 
 #### Changes:
+
 - Added `maxPages` parameter (default 3) to `fetchAllPages()` function signature
 - Changed `maxResults` default from 40 to 20
 - Added per-page logging with `google_textsearch_page` event
@@ -17,15 +20,18 @@ Implemented pagination for Google Places Text Search API to guarantee up to 20 r
 - Improved deduplication metrics (tracks duplicatesRemoved count)
 
 #### Key Features:
+
 - **Safety Cap**: Maximum 3 Google API requests per attempt
 - **Per-Page Logging**: Tracks fetchedCount, newUniqueCount, cumulativeCount per page
 - **Aggregated Summary**: Logs requested vs returned counts, pages used, stop reason
 - **Deduplication**: Removes duplicates across pages using Set<placeId>
 
 ### 2. **text-search.handler.ts** - Query Orchestration
+
 **File**: `server/src/services/search/route2/stages/google-maps/text-search.handler.ts`
 
 #### Changes:
+
 - Changed `maxResults` from 40 to 20 in `executeTextSearchAttempt()`
 - Added `maxPages = 3` constant for safety cap
 - Updated `fetchAllPages()` call to pass both `maxResults` and `maxPages`
@@ -33,12 +39,15 @@ Implemented pagination for Google Places Text Search API to guarantee up to 20 r
 - **CRITICAL FIX**: Cache key now uses `mapping.providerLanguage` instead of `mapping.language`
 
 #### Cache Key Fix Rationale:
+
 The cache key must use the ACTUAL query sent to Google (`providerTextQuery`) not the internal textQuery. Different providerTextQueries could map to the same textQuery, causing incorrect cache hits. Similarly, `providerLanguage` is the deterministically-built language code sent to Google.
 
 ### 3. **pagination.test.ts** - Unit Tests
+
 **File**: `server/src/services/search/route2/stages/google-maps/__tests__/pagination.test.ts`
 
 #### Test Coverage:
+
 1. **2-page aggregation**: Verifies 20 unique places from page1 (12) + page2 (8)
 2. **Early termination**: Returns <20 when nextPageToken is missing
 3. **maxPages cap**: Stops at 3 pages (returns 15 from 3×5)
@@ -50,11 +59,13 @@ All tests pass ✅
 ## Behavior Changes
 
 ### Before:
+
 - Fetched up to 40 results across pages
 - Sometimes returned only 6-12 results when Google didn't provide nextPageToken
 - No per-page visibility in logs
 
 ### After:
+
 - Fetches up to 20 unique results (matches Google's default page size)
 - Iterates up to 3 pages to reach 20 results
 - Detailed per-page logging shows fetch progress
@@ -63,6 +74,7 @@ All tests pass ✅
 ## Log Examples
 
 ### Per-Page Logs:
+
 ```json
 {
   "requestId": "abc123",
@@ -85,6 +97,7 @@ All tests pass ✅
 ```
 
 ### Aggregated Summary:
+
 ```json
 {
   "requestId": "abc123",
@@ -103,13 +116,16 @@ All tests pass ✅
 ## Testing
 
 ### Unit Tests:
+
 ```bash
 cd server
 node --test --import tsx src/services/search/route2/stages/google-maps/__tests__/pagination.test.ts
 ```
 
 ### Integration Test:
+
 Query "מסעדות איטלקיות בגדרה" should now show:
+
 - `google_textsearch_aggregated` event with `returned: 20` (or close to 20 if Google has fewer results)
 - Multiple `google_textsearch_page` events if pagination occurred
 
@@ -120,7 +136,7 @@ Query "מסעדות איטלקיות בגדרה" should now show:
 ✅ **Caching correct**: Cache key includes providerTextQuery + providerLanguage (not pageToken, which would break aggregation)  
 ✅ **Deduplication working**: Set<placeId> prevents duplicates across pages  
 ✅ **Rate limits respected**: No artificial delays needed (Google Places API New doesn't require them)  
-✅ **Other flows preserved**: No changes to kosher/meat/dairy/openNow/nearbySearch flows  
+✅ **Other flows preserved**: No changes to kosher/meat/dairy/openNow/nearbySearch flows
 
 ## Performance Impact
 

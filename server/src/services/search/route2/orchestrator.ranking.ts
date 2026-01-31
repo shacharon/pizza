@@ -60,6 +60,15 @@ export async function applyRankingIfEnabled(
   cityCenter?: { lat: number; lng: number } | null
 ): Promise<RankingResult> {
   const { requestId } = ctx;
+  
+  // Safety check: CLARIFY route should have been handled by guard before calling ranking
+  if (intentDecision.route === 'CLARIFY') {
+    throw new Error('[ROUTE2] applyRankingIfEnabled called with CLARIFY route - should have been handled by guard');
+  }
+  
+  // TypeScript now knows intentDecision.route is MappingRoute
+  const mappingRoute: import('./types.js').MappingRoute = intentDecision.route;
+  
   const rankingConfig = getRankingLLMConfig();
 
   // Compute open/unknown stats from filtered results
@@ -155,7 +164,7 @@ export async function applyRankingIfEnabled(
 
     // Step 1: DETERMINISTIC profile selection (language-independent)
     const selection = selectRankingProfileDeterministic({
-      route: intentDecision.route,
+      route: mappingRoute,
       hasUserLocation: !!ctx.userLocation,
       intentReason: intentDecision.reason,
       cuisineKey: mapping?.cuisineKey ?? null,

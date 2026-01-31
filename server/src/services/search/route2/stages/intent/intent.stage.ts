@@ -189,29 +189,25 @@ export async function executeIntentStage(
       const cityText = llmResult.cityText ?? undefined;
 
       return {
-        // אם הוספת CLARIFY בטייפים/סכימה – זה עדיף:
-        // route: 'CLARIFY',
-        // reason: 'missing_user_location',
-        // confidence: Math.min(llmResult.confidence ?? 0.8, 0.8),
-
-        // אם עדיין אין CLARIFY, זה ה"פאץ'" המינימלי:
-        route: 'TEXTSEARCH',
-        confidence: Math.min(llmResult.confidence ?? 0.8, 0.6),
-        reason: 'nearby_location_missing_fallback',
+        route: 'CLARIFY',
+        confidence: Math.min(llmResult.confidence ?? 0.8, 0.8),
+        reason: 'missing_user_location',
         language: llmResult.language,
         languageConfidence: llmResult.languageConfidence,
         regionCandidate: llmResult.regionCandidate,
         regionConfidence: llmResult.regionConfidence,
         regionReason: llmResult.regionReason,
         ...(cityText && { cityText }),
-        // NEW: Pass through hybrid ordering flags
-        distanceIntent: llmResult.distanceIntent,
+
+        // flags נשארים (נוח ל-UX וללוגים)
+        distanceIntent: true, // או llmResult.distanceIntent
         openNowRequested: llmResult.openNowRequested,
         priceIntent: llmResult.priceIntent,
         qualityIntent: llmResult.qualityIntent,
         occasion: llmResult.occasion,
         cuisineKey: llmResult.cuisineKey
       };
+
     }
     // Validate regionCandidate against ISO-3166-1 allowlist
     // If invalid (e.g., "TQ", "IS"), set to null to trigger device/default fallback

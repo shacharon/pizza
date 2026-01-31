@@ -28,7 +28,7 @@ import { JOB_MILESTONES } from '../job-store/job-milestones.js';
 // Extracted modules
 import { fireParallelTasks } from './orchestrator.parallel-tasks.js';
 import { handleNearMeLocationCheck, applyNearMeRouteOverride } from './orchestrator.nearme.js';
-import { handleGateStop, handleGateClarify, handleNearbyLocationGuard, handleGenericQueryGuard, checkGenericFoodQuery } from './orchestrator.guards.js';
+import { handleGateStop, handleGateClarify, handleIntentClarify, handleNearbyLocationGuard, handleGenericQueryGuard, checkGenericFoodQuery } from './orchestrator.guards.js';
 import { resolveAndStoreFilters, applyPostFiltersToResults, mergePostConstraints } from './orchestrator.filters.js';
 import { applyRankingIfEnabled } from './orchestrator.ranking.js';
 import { buildFinalResponse } from './orchestrator.response.js';
@@ -146,6 +146,8 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
     // STAGE 2: INTENT
     let intentDecision = await executeIntentStage(request, ctx);
 
+
+
     // MILESTONE: INTENT_DONE (40%)
     try {
       await searchJobStore.setStatus(requestId, 'RUNNING', JOB_MILESTONES.INTENT_DONE);
@@ -153,6 +155,10 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
       // Non-fatal: progress tracking is optional
       logger.debug({ requestId, error: err instanceof Error ? err.message : 'unknown' }, '[ROUTE2] Progress update failed (non-fatal)');
     }
+
+    // Guard: INTENT CLARIFY (e.g. near-me requested but no userLocation)
+    const intentClarifyResponse = await handleIntentClarify(request, intentDecision, ctx, wsManager);
+    if (intentClarifyResponse) return intentClarifyResponse;
 
     // Debug stop after intent
     if (shouldDebugStop(ctx, 'intent')) {
@@ -254,6 +260,39 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
       '[ROUTE2] Route-LLM mapping completed (using early context)'
     );
 
+    // Debug stop after route_llm
+    if (shouldDebugStop(ctx, 'route_llm')) {
+      return {
+        requestId: ctx.requestId,
+        sessionId,
+        query: { original: request.query, parsed: null as any, language: intentDecision.language },
+        results: [],
+        chips: [],
+        assist: { type: 'debug', message: 'DEBUG STOP after route_llm' } as any,
+        meta: {
+          tookMs: Date.now() - ctx.startTime,
+          mode: 'textsearch' as any,
+          appliedFilters: [],
+          confidence: intentDecision.confidence,
+          source: 'route2_debug_stop',
+          failureReason: 'NONE' as any
+        },
+        debug: { 
+          stopAfter: 'route_llm', 
+          gate: gateResult, 
+          intent: intentDecision,
+          mapping: {
+            providerMethod: mapping.providerMethod,
+            region: mapping.region,
+            language: mapping.language,
+            mode: (mapping as any).mode,
+            cuisineKey: (mapping as any).cuisineKey,
+            strictness: (mapping as any).strictness
+          }
+        } as any
+      } as any;
+    }
+
     // DEBUG: Log normalized query effect on routing
     // Shows how query normalization impacts route selection and final textQuery
     if (mapping.providerMethod === 'textSearch') {
@@ -318,6 +357,42 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
       },
       '[ROUTE2] Google fetch completed (parallel optimization saved time)'
     );
+
+    // Debug stop after google
+    if (shouldDebugStop(ctx, 'google')) {
+      return {
+        requestId: ctx.requestId,
+        sessionId,
+        query: { original: request.query, parsed: null as any, language: intentDecision.language },
+        results: [],
+        chips: [],
+        assist: { type: 'debug', message: 'DEBUG STOP after google' } as any,
+        meta: {
+          tookMs: Date.now() - ctx.startTime,
+          mode: 'textsearch' as any,
+          appliedFilters: [],
+          confidence: intentDecision.confidence,
+          source: 'route2_debug_stop',
+          failureReason: 'NONE' as any
+        },
+        debug: { 
+          stopAfter: 'google',
+          gate: gateResult,
+          intent: intentDecision,
+          mapping: {
+            providerMethod: mapping.providerMethod,
+            region: mapping.region,
+            language: mapping.language
+          },
+          google: {
+            count: googleResult.results.length,
+            durationMs: googleResult.durationMs,
+            providerMethod: googleResult.providerMethod,
+            firstFivePlaceIds: googleResult.results.slice(0, 5).map((r: any) => r.placeId || r.id)
+          }
+        } as any
+      } as any;
+    }
 
     // MILESTONE: GOOGLE_DONE (60%)
     try {
@@ -596,6 +671,46 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
       }
     }
 
+    // Debug stop after cuisine
+    if (shouldDebugStop(ctx, 'cuisine')) {
+      return {
+        requestId: ctx.requestId,
+        sessionId,
+        query: { original: request.query, parsed: null as any, language: intentDecision.language },
+        results: [],
+        chips: [],
+        assist: { type: 'debug', message: 'DEBUG STOP after cuisine' } as any,
+        meta: {
+          tookMs: Date.now() - ctx.startTime,
+          mode: 'textsearch' as any,
+          appliedFilters: [],
+          confidence: intentDecision.confidence,
+          source: 'route2_debug_stop',
+          failureReason: 'NONE' as any
+        },
+        debug: { 
+          stopAfter: 'cuisine',
+          gate: gateResult,
+          intent: intentDecision,
+          mapping: {
+            providerMethod: mapping.providerMethod,
+            region: mapping.region
+          },
+          google: {
+            count: googleResult.results.length,
+            durationMs: googleResult.durationMs
+          },
+          cuisine: {
+            enforcementApplied: cuisineEnforcementApplied,
+            enforcementFailed: cuisineEnforcementFailed,
+            countIn: googleResult.results.length,
+            countOut: enforcedResults.length,
+            hasScores: !!cuisineScores
+          }
+        } as any
+      } as any;
+    }
+
     // STAGE 6: POST_FILTERS (await post constraints, apply filters)
     const postConstraints = await postConstraintsPromise;
     const cuisineKey = (mapping as any).cuisineKey ?? null; // Extract cuisineKey for hard constraint detection
@@ -635,6 +750,47 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
       logger.debug({ requestId, error: err instanceof Error ? err.message : 'unknown' }, '[ROUTE2] Progress update failed (non-fatal)');
     }
 
+    // Debug stop after post_filters
+    if (shouldDebugStop(ctx, 'post_filters')) {
+      return {
+        requestId: ctx.requestId,
+        sessionId,
+        query: { original: request.query, parsed: null as any, language: intentDecision.language },
+        results: [],
+        chips: [],
+        assist: { type: 'debug', message: 'DEBUG STOP after post_filters' } as any,
+        meta: {
+          tookMs: Date.now() - ctx.startTime,
+          mode: 'textsearch' as any,
+          appliedFilters: [],
+          confidence: intentDecision.confidence,
+          source: 'route2_debug_stop',
+          failureReason: 'NONE' as any
+        },
+        debug: { 
+          stopAfter: 'post_filters',
+          gate: gateResult,
+          intent: intentDecision,
+          mapping: {
+            providerMethod: mapping.providerMethod
+          },
+          google: {
+            count: googleResult.results.length,
+            durationMs: googleResult.durationMs
+          },
+          cuisine: {
+            enforcementApplied: cuisineEnforcementApplied,
+            countOut: enforcedResults.length
+          },
+          postFilters: {
+            stats: postFilterResult.stats,
+            applied: postFilterResult.applied,
+            relaxed: postFilterResult.relaxed
+          }
+        } as any
+      } as any;
+    }
+
     // STAGE 6.5: LLM RANKING (if enabled) + RANKING SIGNALS
     // Apply LLM-driven ranking to post-filtered results and build ranking signals
     // Extract cityCenter from mapping if present (for distance calculation)
@@ -664,6 +820,92 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
     } catch (err) {
       // Non-fatal: progress tracking is optional
       logger.debug({ requestId, error: err instanceof Error ? err.message : 'unknown' }, '[ROUTE2] Progress update failed (non-fatal)');
+    }
+
+    // Debug stop after ranking
+    if (shouldDebugStop(ctx, 'ranking')) {
+      return {
+        requestId: ctx.requestId,
+        sessionId,
+        query: { original: request.query, parsed: null as any, language: intentDecision.language },
+        results: [],
+        chips: [],
+        assist: { type: 'debug', message: 'DEBUG STOP after ranking' } as any,
+        meta: {
+          tookMs: Date.now() - ctx.startTime,
+          mode: 'textsearch' as any,
+          appliedFilters: [],
+          confidence: intentDecision.confidence,
+          source: 'route2_debug_stop',
+          failureReason: 'NONE' as any
+        },
+        debug: { 
+          stopAfter: 'ranking',
+          gate: gateResult,
+          intent: intentDecision,
+          mapping: {
+            providerMethod: mapping.providerMethod
+          },
+          google: {
+            count: googleResult.results.length,
+            durationMs: googleResult.durationMs
+          },
+          cuisine: {
+            enforcementApplied: cuisineEnforcementApplied,
+            countOut: enforcedResults.length
+          },
+          postFilters: {
+            stats: postFilterResult.stats
+          },
+          ranking: {
+            rankingApplied,
+            countIn: postFilterResult.resultsFiltered.length,
+            countOut: finalResults.length,
+            orderExplain
+          }
+        } as any
+      } as any;
+    }
+
+    // Debug stop before response
+    if (shouldDebugStop(ctx, 'response')) {
+      return {
+        requestId: ctx.requestId,
+        sessionId,
+        query: { original: request.query, parsed: null as any, language: intentDecision.language },
+        results: [],
+        chips: [],
+        assist: { type: 'debug', message: 'DEBUG STOP before response' } as any,
+        meta: {
+          tookMs: Date.now() - ctx.startTime,
+          mode: 'textsearch' as any,
+          appliedFilters: [],
+          confidence: intentDecision.confidence,
+          source: 'route2_debug_stop',
+          failureReason: 'NONE' as any
+        },
+        debug: { 
+          stopAfter: 'response',
+          gate: gateResult,
+          intent: intentDecision,
+          mapping: {
+            providerMethod: mapping.providerMethod
+          },
+          google: {
+            count: googleResult.results.length
+          },
+          cuisine: {
+            enforcementApplied: cuisineEnforcementApplied
+          },
+          postFilters: {
+            stats: postFilterResult.stats
+          },
+          ranking: {
+            rankingApplied,
+            countOut: finalResults.length
+          }
+        } as any
+      } as any;
     }
 
     // STAGE 7: BUILD RESPONSE

@@ -5,7 +5,7 @@
 
 import type { SearchRequest } from '../types/search-request.dto.js';
 import type { SearchResponse } from '../types/search-response.dto.js';
-import type { Route2Context, Gate2StageOutput, IntentResult } from './types.js';
+import type { Route2Context, Gate2StageOutput, IntentResult, Gate2Language } from './types.js';
 import type { RouteLLMMapping } from './stages/route-llm/schemas.js';
 import { logger } from '../../../lib/logger/structured-logger.js';
 import { generateAndPublishAssistant } from './assistant/assistant-integration.js';
@@ -13,6 +13,14 @@ import type { AssistantGateContext, AssistantClarifyContext, AssistantGenericQue
 import { resolveAssistantLanguage, resolveSessionId } from './orchestrator.helpers.js';
 import type { WebSocketManager } from '../../../infra/websocket/websocket-manager.js';
 import { buildEarlyExitResponse } from './orchestrator.response.js';
+
+/**
+ * Narrow Gate2Language to response language type ('he' | 'en')
+ * Fallback: 'other'/'ru'/'ar'/'fr'/'es' → 'en'
+ */
+function narrowLanguageForResponse(language: Gate2Language): 'he' | 'en' {
+  return language === 'he' ? 'he' : 'en';
+}
 
 /**
  * Handle GATE2 STOP (not food related)
@@ -142,7 +150,7 @@ export async function handleGateClarify(
     requestId,
     sessionId,
     query: request.query,
-    language: gateResult.gate.language,
+    language: narrowLanguageForResponse(gateResult.gate.language),
     confidence: gateResult.gate.confidence,
     assistType: 'clarify',
     assistMessage,
@@ -151,6 +159,7 @@ export async function handleGateClarify(
     startTime
   });
 }
+
 
 /**
  * Handle NEARBY route guard (requires userLocation)
@@ -204,7 +213,7 @@ export async function handleNearbyLocationGuard(
     requestId,
     sessionId,
     query: request.query,
-    language: gateResult.gate.language,
+    language: narrowLanguageForResponse(gateResult.gate.language),
     confidence: intentDecision.confidence,
     assistType: 'clarify',
     assistMessage,
@@ -333,7 +342,7 @@ export async function handleGenericQueryGuard(
     requestId,
     sessionId,
     query: request.query,
-    language: gateResult.gate.language,
+    language: narrowLanguageForResponse(gateResult.gate.language),
     confidence: gateResult.gate.confidence,
     assistType: 'clarify',
     assistMessage,
@@ -343,6 +352,49 @@ export async function handleGenericQueryGuard(
   });
 }
 
+export async function handleIntentClarify(
+  request: SearchRequest,
+  intentDecision: IntentResult,
+  ctx: Route2Context,
+  wsManager: any
+): Promise<SearchResponse | null> {
+  if (intentDecision.route !== 'CLARIFY') return null;
+  
+    const sessionId = resolveSessionId(request, ctx);
+  
+    // שליחת הודעת עוזר (WS)
+    wsManager.publishAssistant(ctx.requestId, {
+      type: 'CLARIFY',
+      message: intentDecision.reason || 'Please provide more information',
+      question: null,
+      blocksSearch: true
+    });
+  
+    return {
+      requestId: ctx.requestId,
+      sessionId,
+      query: {
+        original: request.query,
+        parsed: null as any,
+        language: intentDecision.language
+      },
+      results: [],
+      chips: [],
+      assist: {
+        type: 'clarify' as const,
+        message: intentDecision.reason
+      },
+      meta: {
+        tookMs: Date.now() - ctx.startTime,
+        mode: 'textsearch' as const,
+        appliedFilters: [],
+        confidence: intentDecision.confidence,
+        source: 'intent_clarify',
+        failureReason: 'LOW_CONFIDENCE' as const
+      }
+    };
+  }
+  
 /**
  * Store generic query narration flag for later use in response builder
  * Returns null (always continues)

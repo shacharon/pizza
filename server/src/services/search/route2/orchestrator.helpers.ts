@@ -6,11 +6,73 @@
 import type { Route2Context } from './types.js';
 import type { SearchRequest } from '../types/search-request.dto.js';
 import { logger } from '../../../lib/logger/structured-logger.js';
+import { detectQueryLanguage } from './utils/query-language-detector.js';
+
+/**
+ * ============================================================================
+ * DEBUG STOP-AFTER-STAGE SUPPORT
+ * ============================================================================
+ * 
+ * Allows forcing the pipeline to return early after specific stages for debugging.
+ * 
+ * SUPPORTED STAGES:
+ * - 'gate2'        : After gate2 validation (food signal detection)
+ * - 'intent'       : After intent routing decision
+ * - 'route_llm'    : After route-LLM mapping (before Google fetch)
+ * - 'google'       : After Google Maps API results
+ * - 'cuisine'      : After cuisine enforcement (LLM-based filtering)
+ * - 'post_filters' : After post-constraints filters applied
+ * - 'ranking'      : After ranking/reordering
+ * - 'response'     : Before final response building
+ * 
+ * HOW TO USE:
+ * 
+ * 1. Via HTTP Request Payload:
+ *    POST /api/v1/search
+ *    {
+ *      "query": "sushi in tel aviv",
+ *      "debug": { "stopAfter": "google" }
+ *    }
+ * 
+ * 2. Response Shape:
+ *    Returns SearchResponse with:
+ *    - results: []
+ *    - chips: []
+ *    - assist: { type: 'debug', message: 'DEBUG STOP after <stage>' }
+ *    - meta.source = 'route2_debug_stop'
+ *    - debug: lightweight artifacts (see below)
+ * 
+ * 3. Debug Artifacts by Stage:
+ *    - gate2/intent/route_llm: Full objects
+ *    - google: count + durationMs + first 5 placeIds (NO full results)
+ *    - cuisine: flags + counts + hasScores
+ *    - post_filters: stats/applied/relaxed
+ *    - ranking: rankingApplied + countIn/countOut + orderExplain
+ * 
+ * IMPLEMENTATION NOTES:
+ * - No business logic changes - only early returns
+ * - Parallel promises still drained in finally block (prevents unhandled rejections)
+ * - Safe in production: returns lightweight response, no memory leaks
+ * - Type-safe: DebugStage enum enforces valid stage names
+ * 
+ * ============================================================================
+ */
+
+export type DebugStage = 'gate2' | 'intent' | 'route_llm' | 'google' | 'cuisine' | 'post_filters' | 'ranking' | 'response';
 
 /**
  * Check if debug stop is requested at a specific stage
+ * 
+ * @param ctx - Route2Context with optional debug config
+ * @param stopAfter - Stage to check for stop
+ * @returns true if debug stop is requested at this stage
+ * 
+ * @example
+ * if (shouldDebugStop(ctx, 'google')) {
+ *   return buildDebugResponse(...);
+ * }
  */
-export function shouldDebugStop(ctx: Route2Context, stopAfter: string): boolean {
+export function shouldDebugStop(ctx: Route2Context, stopAfter: DebugStage): boolean {
   return ctx.debug?.stopAfter === stopAfter;
 }
 
@@ -50,13 +112,15 @@ const LANGUAGE_CONFIDENCE_THRESHOLD = 0.7;
  * 
  * Rules:
  * 1. If detectedLanguage exists AND languageConfidence >= threshold → use detectedLanguage
- * 2. Else if uiLanguage available → use uiLanguage
- * 3. Else → use 'en' (should rarely happen)
+ * 2. CRITICAL: If detectedLanguage is 'other', perform deterministic Hebrew detection on query
+ * 3. Else if uiLanguage available → use uiLanguage
+ * 4. Else → use 'en' (should rarely happen)
  * 
  * @returns { language, source, confidence } - decision result with source attribution
  */
 function decideAssistantLanguage(
   ctx: Route2Context,
+  request?: SearchRequest,
   detectedLanguage?: unknown,
   languageConfidence?: number
 ): { language: 'he' | 'en'; source: string; confidence?: number } {
@@ -74,6 +138,19 @@ function decideAssistantLanguage(
       // If 'other' (ru/ar/fr/es), fall through to uiLanguage
     } else {
       // Low confidence - fall through to uiLanguage
+    }
+  }
+
+  // Priority 1.5: CRITICAL - Deterministic Hebrew detection for 'other' language
+  // When LLM returns 'other', check if query contains Hebrew characters
+  if (detectedLanguage === 'other' && request?.query) {
+    const deterministicLanguage = detectQueryLanguage(request.query);
+    if (deterministicLanguage === 'he') {
+      return { 
+        language: 'he', 
+        source: 'deterministic_hebrew', 
+        confidence: 0.95 
+      };
     }
   }
 
@@ -116,7 +193,7 @@ export function resolveAssistantLanguage(
   detectedLanguage?: unknown,
   languageConfidence?: number
 ): 'he' | 'en' {
-  const { language, source, confidence } = decideAssistantLanguage(ctx, detectedLanguage, languageConfidence);
+  const { language, source, confidence } = decideAssistantLanguage(ctx, request, detectedLanguage, languageConfidence);
 
   // Log language resolution (observability only)
   if (ctx.requestId) {

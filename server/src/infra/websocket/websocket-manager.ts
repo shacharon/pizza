@@ -545,6 +545,39 @@ export class WebSocketManager {
     return this.publishToChannel('search', requestId, undefined, message);
   }
 
+  /**
+   * Publish assistant message
+   * Thin wrapper over publishToChannel for assistant channel
+   */
+  publishAssistant(
+    requestId: string,
+    payload: {
+      type: 'GATE_FAIL' | 'CLARIFY' | 'SUMMARY' | 'SEARCH_FAILED' | 'GENERIC_QUERY_NARRATION' | 'NUDGE_REFINE';
+      reason?: string;
+      language?: string;
+      blocksSearch?: boolean;
+      message?: string;
+      question?: string | null;
+      suggestedAction?: string;
+      uiLanguage?: 'he' | 'en';
+    }
+  ): PublishSummary {
+    const message: WSServerMessage = {
+      type: 'assistant',
+      requestId,
+      payload: {
+        type: payload.type,
+        message: payload.message || '',
+        question: payload.question || null,
+        blocksSearch: payload.blocksSearch ?? false,
+        ...(payload.suggestedAction && { suggestedAction: payload.suggestedAction as 'REFINE_QUERY' }),
+        ...(payload.uiLanguage && { uiLanguage: payload.uiLanguage })
+      }
+    };
+    
+    return this.publishToChannel('assistant', requestId, undefined, message);
+  }
+
   private sendError(ws: WebSocket, error: string, message: string): void {
     this.publisher.sendError(ws, error, message, this.cleanup.bind(this));
   }

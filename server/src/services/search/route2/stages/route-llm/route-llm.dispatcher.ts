@@ -30,9 +30,17 @@ export async function executeRouteLLM(
   context: Route2Context,
   finalFilters: FinalSharedFilters
 ): Promise<RouteLLMMapping> {
-  // Exhaustive switch on intent.route
+  // Safety check: CLARIFY route should have been handled by guard before calling route-llm
+  if (intent.route === 'CLARIFY') {
+    throw new Error('[ROUTE2] executeRouteLLM called with CLARIFY route - should have been handled by guard');
+  }
+  
+  // TypeScript now knows intent.route is MappingRoute
+  const mappingRoute: import('../../types.js').MappingRoute = intent.route;
+  
+  // Exhaustive switch on mappingRoute
   // TypeScript will error if a new route is added to MappingRoute but not handled here
-  switch (intent.route) {
+  switch (mappingRoute) {
     case 'TEXTSEARCH':
       return executeTextSearchMapper(intent, request, context, finalFilters);
 
@@ -44,7 +52,7 @@ export async function executeRouteLLM(
 
     default:
       // Exhaustiveness check: if this compiles, all routes are handled
-      const _exhaustive: never = intent.route;
+      const _exhaustive: never = mappingRoute;
       throw new Error(`Unknown route: ${_exhaustive}`);
   }
 }

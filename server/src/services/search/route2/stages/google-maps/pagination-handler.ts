@@ -75,7 +75,7 @@ export async function fetchAllPages(
   // Fetch additional pages if needed (up to maxResults and maxPages)
   while (nextPageToken && results.length < maxResults && pagesFetched < maxPages) {
     const pageNumber = pagesFetched + 1;
-    
+
     logger.info({
       requestId,
       event: 'google_textsearch_page',

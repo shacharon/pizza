@@ -5,13 +5,22 @@
 
 import type { SearchRequest } from '../types/search-request.dto.js';
 import type { SearchResponse } from '../types/search-response.dto.js';
-import type { Route2Context, IntentResult } from './types.js';
+import type { Route2Context, IntentResult, Gate2Language } from './types.js';
 import { isNearMeQuery, getNearMePattern } from './utils/near-me-detector.js';
 import { logger } from '../../../lib/logger/structured-logger.js';
 import { generateAndPublishAssistant } from './assistant/assistant-integration.js';
 import type { AssistantClarifyContext } from './assistant/assistant-llm.service.js';
 import { resolveAssistantLanguage, resolveSessionId } from './orchestrator.helpers.js';
 import type { WebSocketManager } from '../../../infra/websocket/websocket-manager.js';
+import { buildEarlyExitResponse } from './orchestrator.response.js';
+
+/**
+ * Narrow Gate2Language to response language type ('he' | 'en')
+ * Fallback: 'other'/'ru'/'ar'/'fr'/'es' → 'en'
+ */
+function narrowLanguageForResponse(language: Gate2Language): 'he' | 'en' {
+  return language === 'he' ? 'he' : 'en';
+}
 
 /**
  * Check if query is "near me" and handle location requirements
@@ -68,7 +77,7 @@ export async function handleNearMeLocationCheck(
       requestId,
       sessionId,
       query: request.query,
-      language: intentDecision.language,
+      language: narrowLanguageForResponse(intentDecision.language),
       confidence: intentDecision.confidence,
       assistType: 'clarify',
       assistMessage,

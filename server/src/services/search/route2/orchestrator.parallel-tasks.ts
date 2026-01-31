@@ -73,6 +73,8 @@ function shouldSkipBaseFiltersLLM(
  * Optimizes LLM calls for generic queries with location
  * 
  * Returns promises that can be awaited later in the pipeline
+ * 
+ * NOTE: Should only be called when intentDecision.route is a MappingRoute (not CLARIFY)
  */
 export function fireParallelTasks(
   request: SearchRequest,
@@ -84,6 +86,15 @@ export function fireParallelTasks(
   postConstraintsPromise: Promise<PostConstraints>;
 } {
   const { requestId } = ctx;
+  
+  // Safety check: CLARIFY route should have been handled by guard before calling this
+  if (intentDecision.route === 'CLARIFY') {
+    throw new Error('[ROUTE2] fireParallelTasks called with CLARIFY route - should have been handled by guard');
+  }
+  
+  // TypeScript now knows intentDecision.route is MappingRoute
+  const mappingRoute: import('./types.js').MappingRoute = intentDecision.route;
+  
   const isGenericWithLocation = isGenericFoodQueryWithLocation(gateResult, intentDecision, ctx);
   const skipBaseFilters = shouldSkipBaseFiltersLLM(intentDecision, ctx);
 
@@ -92,7 +103,7 @@ export function fireParallelTasks(
       requestId,
       pipelineVersion: 'route2',
       event: 'parallel_started',
-      route: intentDecision.route,
+      route: mappingRoute,
       isGenericWithLocation,
       skipBaseFilters,
       hasUserLocation: !!ctx.userLocation,
@@ -140,7 +151,7 @@ export function fireParallelTasks(
         pipelineVersion: 'route2',
         event: 'base_filters_skipped',
         reason: 'nearby_with_gps_location',
-        route: intentDecision.route,
+        route: mappingRoute,
         hasUserLocation: true,
         hasCityText: false,
         msg: '[ROUTE2] Skipping base_filters LLM for NEARBY route with GPS location (language-agnostic rule)'
@@ -149,7 +160,7 @@ export function fireParallelTasks(
     })
     : resolveBaseFiltersLLM({
       query: request.query,
-      route: intentDecision.route, // ✅ Use actual route from intent (not hardcoded)
+      route: mappingRoute, // ✅ Use MappingRoute (guaranteed not CLARIFY)
       llmProvider: ctx.llmProvider,
       requestId: ctx.requestId,
       ...(ctx.traceId && { traceId: ctx.traceId }),

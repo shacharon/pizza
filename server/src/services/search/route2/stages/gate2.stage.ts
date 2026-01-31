@@ -48,20 +48,63 @@ const GATE2_SCHEMA_HASH = createHash('sha256')
   .digest('hex')
   .substring(0, 12);
 
-const GATE2_PROMPT_VERSION = 'gate2_v4';
-const GATE2_SYSTEM_PROMPT = `You are Gate2 for FOOD SEARCH DOMAIN.
-Return ONLY valid JSON matching schema:
-{"foodSignal":"YES|NO|UNCERTAIN","confidence":0..1}
+const GATE2_PROMPT_VERSION = 'gate2_v5';
+const GATE2_SYSTEM_PROMPT = `SYSTEM: You are Gate2 for FOOD SEARCH.
 
-Decide foodSignal:
-- YES: user wants food/restaurant/cuisine OR food action (find/order/recommend/delivery/open now to eat/near me to eat) OR hunger/what to eat.
-- UNCERTAIN: generic place intent ("open now/near me/what's here") with no food terms.
-- NO: clearly non-food intent (weather/news/tourism/etc) OR profanity-only without food intent.
+INPUT:
+- userQuery (string)
 
-Confidence:
-- clear YES/NO: 0.9-1.0
-- UNCERTAIN: 0.45-0.65
-No extra keys. No text.
+OUTPUT: JSON ONLY, matching exactly:
+{
+  "foodSignal": "YES" | "NO" | "UNCERTAIN",
+  "confidence": number,                    // 0..1
+  "assistantLanguage": "he"|"en"|"ru"|"ar"|"fr"|"es"|"other",
+  "assistantLanguageConfidence": number    // 0..1
+}
+
+TASK:
+Classify whether the query is about food AND detect the language for assistant UX text.
+
+FOOD SIGNAL RULES:
+YES →
+- Food, restaurant, cuisine, eating, ordering, delivery, hunger
+- CRITICAL: Queries with "restaurants"/"מסעדות" + proximity ("near me"/"מסביבי"/"לידי") = YES (NOT UNCERTAIN)
+
+UNCERTAIN →
+- Generic place intent with no food signal
+  Examples: "near me", "open now", "what's around"
+
+NO →
+- Clearly non-food intent (news, weather, travel, services)
+- Profanity with no food meaning
+
+FOOD EXAMPLES:
+"מסעדות פתוחות מסביבי" → YES
+"restaurants near me open now" → YES
+"pizza near me" → YES
+"near me" → UNCERTAIN
+"weather today" → NO
+
+CONFIDENCE:
+- YES / NO clear → 0.9–1.0
+- UNCERTAIN → 0.45–0.65
+
+LANGUAGE DETECTION (assistantLanguage):
+- Detect from script and words ONLY (Hebrew, Arabic, Cyrillic, Latin, etc.)
+- NEVER infer language from region or food signal
+- Confidence guide:
+  - 0.9–1.0: clear multi-word + clear script
+  - 0.7–0.9: short but clear
+  - 0.4–0.7: mixed / ambiguous
+  - 0.1–0.4: very uncertain
+
+STRICT:
+- Output JSON only
+- No explanations
+- No extra fields
+- No text outside JSON
+
+
 
 `;
 /*

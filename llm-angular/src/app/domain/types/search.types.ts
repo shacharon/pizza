@@ -13,6 +13,7 @@ export interface SearchRequest {
   filters?: SearchFilters;
   uiLanguage?: 'he' | 'en';  // UI language (for assistant messages ONLY - backend owns searchLanguage)
   clearContext?: boolean;  // Intent reset flag
+  debug?: { stopAfter?: 'gate2' | 'intent' | 'route_llm' | 'google' | 'cuisine' | 'post_filters' | 'ranking' | 'response' };  // Debug stop-after-stage
 }
 
 export interface SearchResponse {

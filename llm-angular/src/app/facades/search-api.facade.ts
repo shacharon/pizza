@@ -45,6 +45,7 @@ export class SearchApiHandler {
     clearContext?: boolean;
     uiLanguage?: 'he' | 'en';
     idempotencyKey?: string;
+    debug?: { stopAfter?: 'gate2' | 'intent' | 'route_llm' | 'google' | 'cuisine' | 'post_filters' | 'ranking' | 'response' };
   }): Promise<{ requestId: string; resultUrl: string } | SearchResponse> {
     try {
       return await firstValueFrom(this.searchApiClient.searchAsync(params, params.idempotencyKey));

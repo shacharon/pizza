@@ -75,7 +75,7 @@ export async function executeNearbySearch(
   const fetchFn = async (): Promise<any[]> => {
     const results: any[] = [];
     let nextPageToken: string | undefined;
-  const maxResults = 20; // Fetch up to 20 results (align with text search)
+    const maxResults = 20; // Fetch up to 20 results (align with text search)
 
     const requestBody = buildNearbySearchBody(mapping, requestId);
 
@@ -211,7 +211,7 @@ function buildNearbySearchBody(
   // Map language to Google API format (supports expanded language set)
   const supportedLanguages = ['he', 'en', 'es', 'ru', 'ar', 'fr'];
   const languageCode = supportedLanguages.includes(mapping.language) ? mapping.language : 'en';
-  
+
   // Log Google API call language (observability for language separation)
   if (requestId) {
     logger.info({
@@ -227,7 +227,7 @@ function buildNearbySearchBody(
       languageSource: 'query_language_policy'
     }, '[GOOGLE] Nearby Search API call (query-driven language policy)');
   }
-  
+
   const body: any = {
     locationRestriction: {
       circle: {

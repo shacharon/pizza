@@ -1,7 +1,9 @@
 # End-to-End Pagination Implementation: 20 Fetch + Score-Only Cuisine + UI 10+5+5
 
 ## Overview
+
 Complete implementation of the agreed pagination contract:
+
 - Backend fetches up to 20 places (TextSearch + Nearby)
 - Cuisine enforcement = SCORE-ONLY (never drops results)
 - Frontend shows 10 initially, then "Load more 5" twice (max visible 20)
@@ -15,11 +17,13 @@ Complete implementation of the agreed pagination contract:
 ### 1. Google Fetch: 20 Results Target ✅
 
 **Files Modified:**
+
 - `server/src/services/search/route2/stages/google-maps/text-search.handler.ts`
 - `server/src/services/search/route2/stages/google-maps/pagination-handler.ts`
 - `server/src/services/search/route2/stages/google-maps/nearby-search.handler.ts`
 
 **Changes:**
+
 - Text Search: maxResults=20, maxPages=3 (already implemented in previous task)
 - Nearby Search: maxResults=20 (changed from 40)
 - Pagination logging: per-page + aggregated summary
@@ -29,21 +33,25 @@ Complete implementation of the agreed pagination contract:
 **File Modified:** `server/src/services/search/route2/stages/cuisine-enforcer/cuisine-enforcer.service.ts`
 
 **Changes:**
+
 ```typescript
 // OLD: Policy selection based on hard constraints
-const policy = inputPolicy || (hardConstraintsExist ? 'SOFT_BOOST' : 'STRICT_FILTER');
+const policy =
+  inputPolicy || (hardConstraintsExist ? "SOFT_BOOST" : "STRICT_FILTER");
 
 // NEW: Always score-only mode
-const policy: CuisineEnforcementPolicy = 'SOFT_BOOST';
+const policy: CuisineEnforcementPolicy = "SOFT_BOOST";
 ```
 
 **Behavior:**
+
 - NEVER drops results based on cuisine
 - Returns cuisineScore (0-1) for each place
 - Score used for ranking, not filtering
 - Removed all relaxation logic (no longer needed)
 
 **Logs:**
+
 ```json
 {
   "event": "cuisine_policy_selected",
@@ -63,6 +71,7 @@ const policy: CuisineEnforcementPolicy = 'SOFT_BOOST';
 ### 3. Ranking: CuisineScore Integration ✅
 
 **Files Modified:**
+
 - `server/src/services/search/route2/ranking/ranking-profile.schema.ts`
 - `server/src/services/search/route2/ranking/results-ranker.ts`
 - `server/src/services/search/route2/ranking/ranking-profile-deterministic.ts`
@@ -70,17 +79,21 @@ const policy: CuisineEnforcementPolicy = 'SOFT_BOOST';
 **Changes:**
 
 #### Schema (ranking-profile.schema.ts):
+
 ```typescript
-export const RankingWeightsSchema = z.object({
-  rating: z.number().min(0).max(1),
-  reviews: z.number().min(0).max(1),
-  distance: z.number().min(0).max(1),
-  openBoost: z.number().min(0).max(1),
-  cuisineMatch: z.number().min(0).max(1).optional().default(0) // NEW
-}).strict();
+export const RankingWeightsSchema = z
+  .object({
+    rating: z.number().min(0).max(1),
+    reviews: z.number().min(0).max(1),
+    distance: z.number().min(0).max(1),
+    openBoost: z.number().min(0).max(1),
+    cuisineMatch: z.number().min(0).max(1).optional().default(0), // NEW
+  })
+  .strict();
 ```
 
 #### Ranker (results-ranker.ts):
+
 ```typescript
 interface RankableResult {
   cuisineScore?: number; // NEW: From enforcer (0-1)
@@ -90,51 +103,57 @@ interface RankableResult {
 // Score calculation now includes:
 const cuisineNorm = result.cuisineScore ?? 0.5; // Default 0.5 if no score
 const cuisineMatchScore = (weights.cuisineMatch || 0) * cuisineNorm;
-const totalScore = ratingScore + reviewsScore + distanceScore + openBoostScore + cuisineMatchScore;
+const totalScore =
+  ratingScore +
+  reviewsScore +
+  distanceScore +
+  openBoostScore +
+  cuisineMatchScore;
 ```
 
 #### Profile Weights (ranking-profile-deterministic.ts):
+
 ```typescript
 const PROFILE_WEIGHTS = {
   DISTANCE_HEAVY: {
     rating: 0.15,
     reviews: 0.08,
     distance: 0.62,
-    openBoost: 0.10,
-    cuisineMatch: 0.05  // Small weight - distance primary
+    openBoost: 0.1,
+    cuisineMatch: 0.05, // Small weight - distance primary
   },
-  
+
   BALANCED: {
     rating: 0.25,
-    reviews: 0.20,
-    distance: 0.30,
-    openBoost: 0.10,
-    cuisineMatch: 0.15  // Moderate weight
+    reviews: 0.2,
+    distance: 0.3,
+    openBoost: 0.1,
+    cuisineMatch: 0.15, // Moderate weight
   },
-  
+
   CUISINE_FOCUSED: {
-    rating: 0.30,
+    rating: 0.3,
     reviews: 0.25,
-    distance: 0.20,
+    distance: 0.2,
     openBoost: 0.05,
-    cuisineMatch: 0.20  // Higher for explicit cuisine queries
+    cuisineMatch: 0.2, // Higher for explicit cuisine queries
   },
-  
+
   QUALITY_FOCUSED: {
     rating: 0.35,
-    reviews: 0.30,
+    reviews: 0.3,
     distance: 0.15,
     openBoost: 0.05,
-    cuisineMatch: 0.15  // Moderate - quality primary
+    cuisineMatch: 0.15, // Moderate - quality primary
   },
-  
+
   NO_LOCATION: {
-    rating: 0.40,
+    rating: 0.4,
     reviews: 0.35,
-    distance: 0.00,
-    openBoost: 0.10,
-    cuisineMatch: 0.15  // Moderate weight
-  }
+    distance: 0.0,
+    openBoost: 0.1,
+    cuisineMatch: 0.15, // Moderate weight
+  },
 };
 ```
 
@@ -143,11 +162,12 @@ const PROFILE_WEIGHTS = {
 **File Modified:** `server/src/services/search/route2/route2.orchestrator.ts`
 
 **Changes:**
+
 ```typescript
 // After cuisine enforcement:
 if (enforcementResult.cuisineScores) {
   cuisineScores = enforcementResult.cuisineScores;
-  
+
   // Attach cuisine scores to results for ranking
   for (const result of googleResult.results) {
     const placeId = result.placeId || result.id;
@@ -161,12 +181,12 @@ if (enforcementResult.cuisineScores) {
 if (enforcementResult.keepPlaceIds.length > 0) {
   enforcedResults = googleResult.results; // Keep all
   cuisineEnforcementApplied = true;
-  
+
   logger.info({
-    event: 'cuisine_score_only_applied',
+    event: "cuisine_score_only_applied",
     countIn: googleResult.results.length,
     countOut: enforcedResults.length,
-    mode: 'SCORE_ONLY'
+    mode: "SCORE_ONLY",
   });
 }
 ```
@@ -180,6 +200,7 @@ if (enforcementResult.keepPlaceIds.length > 0) {
 **File to Modify:** `server/src/services/search/route2/orchestrator.response.ts`
 
 **Required Changes:**
+
 ```typescript
 // Add to response metadata:
 {
@@ -195,6 +216,7 @@ if (enforcementResult.keepPlaceIds.length > 0) {
 ```
 
 **Implementation:**
+
 - Slice final ranked results to 10 for initial response
 - Store full 20 in response for client-side pagination
 - Add pagination metadata to meta object
@@ -202,10 +224,12 @@ if (enforcementResult.keepPlaceIds.length > 0) {
 ### 6. Client-Side Pagination: 10+5+5 UI ⏳
 
 **Files to Modify:**
+
 - `llm-angular/src/app/features/unified-search/search-page/search-page.component.ts`
 - `llm-angular/src/app/features/unified-search/components/ranked-results/ranked-results.component.ts`
 
 **Required Changes:**
+
 ```typescript
 // Component state:
 interface PaginationState {
@@ -229,11 +253,11 @@ onLoadMore() {
 }
 
 // Template:
-<app-restaurant-card 
+<app-restaurant-card
   *ngFor="let restaurant of allResults | slice:0:visibleCount"
   [restaurant]="restaurant"
 />
-<button 
+<button
   *ngIf="canLoadMore"
   (click)="onLoadMore()"
   class="load-more-btn"
@@ -251,6 +275,7 @@ onLoadMore() {
 **File to Create:** `server/src/services/search/route2/stages/cuisine-enforcer/__tests__/score-only.test.ts`
 
 **Test Cases:**
+
 1. Score-only mode returns all places with scores
 2. No results are filtered regardless of cuisine match
 3. CuisineScores are properly attached to results
@@ -261,6 +286,7 @@ onLoadMore() {
 **File to Create:** `llm-angular/src/app/features/unified-search/components/ranked-results/__tests__/pagination.spec.ts`
 
 **Test Cases:**
+
 1. Initial render shows 10 results
 2. "Load more" increments by 5
 3. Button disappears at max (20 or total, whichever is smaller)
@@ -269,6 +295,7 @@ onLoadMore() {
 ### E2E Test Scenarios
 
 1. **Query: "מסעדות אסיאתיות בתל אביב"**
+
    - Backend: fetchedCount ≈ 20
    - UI: Shows 10 initially
    - Action: Click "Load more" → shows 15
@@ -276,6 +303,7 @@ onLoadMore() {
    - Button: Disappears
 
 2. **Query: "בשריות באשקלון" (small city)**
+
    - Backend: fetchedCount = 6
    - UI: Shows all 6
    - Button: Not visible
@@ -292,24 +320,28 @@ onLoadMore() {
 ## Architecture Decisions
 
 ### 1. Why Score-Only Cuisine?
+
 - Prevents zero-result scenarios (e.g., Gedera Italian query returning 0 after strict filtering)
 - Maintains result diversity while still boosting relevant cuisines
 - Works harmoniously with other filters (kosher, price, etc.)
 - Allows LLM to influence ranking without binary decisions
 
 ### 2. Why cuisineMatch Weight?
+
 - Cuisine scores influence ranking but don't dominate (5-20% depending on profile)
 - Preserves quality signals (rating/reviews) as primary factors
 - Distance remains critical for proximity queries
 - Balanced approach: cuisine matters but isn't everything
 
 ### 3. Why 10+5+5 Pagination?
+
 - **10 initial**: Prevents overwhelming UI, fast initial render
 - **5 increment**: Small enough to load quickly, large enough to show progress
 - **20 max**: Balances discoverability vs choice overload
 - **Client-side**: No server round-trip, instant response
 
 ### 4. Why No Relax Logic?
+
 - Score-only mode never produces zero results
 - Relaxation was designed for strict filtering edge cases
 - Removed complexity: no multi-stage LLM calls
@@ -319,18 +351,19 @@ onLoadMore() {
 
 ## Behavioral Changes Summary
 
-| Scenario | Before | After |
-|----------|--------|-------|
+| Scenario                | Before                            | After                             |
+| ----------------------- | --------------------------------- | --------------------------------- |
 | "מסעדות איטלקיות בגדרה" | 6 fetched → 0 after strict filter | 18 fetched → 18 ranked → 10 shown |
-| Asian Tel Aviv | 40 fetched → UI shows all | 20 fetched → 10 shown + load more |
-| Meat Ashkelon | 8 fetched → 3 after kosher filter | 20 fetched → filtered → 10 shown |
-| No cuisine query | All results shown | All results shown (same) |
+| Asian Tel Aviv          | 40 fetched → UI shows all         | 20 fetched → 10 shown + load more |
+| Meat Ashkelon           | 8 fetched → 3 after kosher filter | 20 fetched → filtered → 10 shown  |
+| No cuisine query        | All results shown                 | All results shown (same)          |
 
 ---
 
 ## Files Modified (Summary)
 
 ### Backend (10 files):
+
 1. `server/src/services/search/route2/stages/google-maps/nearby-search.handler.ts`
 2. `server/src/services/search/route2/stages/cuisine-enforcer/cuisine-enforcer.service.ts`
 3. `server/src/services/search/route2/ranking/ranking-profile.schema.ts`
@@ -341,6 +374,7 @@ onLoadMore() {
 8. `server/src/services/search/route2/stages/google-maps/pagination-handler.ts` (from previous task)
 
 ### Frontend (TODO - 2-3 files):
+
 1. `llm-angular/src/app/features/unified-search/search-page/search-page.component.ts`
 2. `llm-angular/src/app/features/unified-search/components/ranked-results/ranked-results.component.ts`
 3. `llm-angular/src/app/features/unified-search/components/ranked-results/ranked-results.component.html`

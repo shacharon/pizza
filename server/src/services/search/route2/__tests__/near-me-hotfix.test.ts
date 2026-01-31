@@ -21,7 +21,8 @@ jest.mock('../../../../lib/logger/structured-logger.js', () => ({
 
 jest.mock('../../../../server.js', () => ({
   wsManager: {
-    publishToChannel: jest.fn()
+    publishToChannel: jest.fn(),
+    publishAssistant: jest.fn()
   }
 }));
 

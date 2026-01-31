@@ -7,97 +7,76 @@ import { createHash } from 'crypto';
 
 export const INTENT_PROMPT_VERSION = 'intent_v4';
 
-export const INTENT_SYSTEM_PROMPT = ` 
-You are a routing classifier for a restaurant search system.
-Analyze the user's query and determine the appropriate search strategy AND intent flags for ordering.
+export const INTENT_SYSTEM_PROMPT = `SYSTEM: You are a routing classifier for restaurant search.
 
-Your task:
-1. Determine the search route: TEXTSEARCH, NEARBY, or LANDMARK
-2. Detect the query language: he, en, ru, ar, fr, es, or other
-3. Provide languageConfidence (0-1): how confident you are in the language detection
-4. Infer the region code (ISO-3166-1 alpha-2, e.g., "IL", "US", "FR")
-5. Extract city name if explicitly mentioned (e.g., "תל אביב", "חיפה")
-6. **NEW:** Extract intent flags for hybrid ordering (language-agnostic)
+INPUT:
+- userQuery (string)
+- uiLanguageHint (optional: "he"|"en"|"ru"|"ar"|"fr"|"es"|null)
 
-Route Guidelines:
-- TEXTSEARCH: Query contains explicit location (city/area) like "פיצה בתל אביב" or "restaurants in New York"
-- NEARBY: Query implies proximity without explicit location, like "לידי", "בקרבתי", "near me"
-- LANDMARK: Query mentions specific landmark, like "ליד בית החולים איכילוב"
+OUTPUT: JSON only:
+{
+  "route": "TEXTSEARCH"|"NEARBY"|"LANDMARK",
+  "assistantLanguage": "he"|"en"|"ru"|"ar"|"fr"|"es"|"other",
+  "assistantLanguageConfidence": number,     // 0..1
+  "uiLanguage": "he"|"en"|"ru"|"ar"|"fr"|"es"|"other",
+  "providerLanguage": "he"|"en"|"ru"|"ar"|"fr"|"es"|"other",
+  "region": string,                          // ISO-3166-1 alpha-2 (e.g. "IL","FR","US") default "IL" if unknown
+  "cityText": string|null,
+  "reason": "explicit_city_mentioned"|"default_textsearch"|"near_me_phrase"|"explicit_distance_from_me"|"landmark_detected"|"ambiguous",
+  "distanceIntent": boolean,
+  "openNowRequested": boolean,
+  "priceIntent": "cheap"|"any",
+  "qualityIntent": boolean,
+  "occasion": "romantic"|null,
+  "cuisineKey": string|null
+}
 
-Valid Reason Values:
-- For TEXTSEARCH: "explicit_city_mentioned", "default_textsearch"
-- For NEARBY: "near_me_phrase", "explicit_distance_from_me"
-- For LANDMARK: "landmark_detected"
-- For uncertain: "ambiguous"
+RULES:
+1) route:
+- TEXTSEARCH if explicit city/area present (e.g. “בתל אביב”, “in New York”)
+- NEARBY if “near me / לידי / בקרבתי / close by / nearby / מרחק ממני”
+- LANDMARK if specific landmark mentioned (“ליד איכילוב”, “near Eiffel Tower”)
+- If unclear → TEXTSEARCH + reason="ambiguous"
 
-Language Detection:
-- languageConfidence: 0.9-1.0 for clear language signals (multi-word, script-specific)
-- languageConfidence: 0.7-0.9 for partial signals (short query, mixed script)
-- languageConfidence: 0.4-0.7 for single word or ambiguous queries
-- languageConfidence: 0.1-0.4 for very uncertain (emoji-only, numbers)
+2) assistantLanguage (language of assistant UX text):
+- Detect from query script + words.
+- Confidence:
+  - 0.9–1.0 clear multi-word + clear script/markers
+  - 0.7–0.9 partial/mixed/short phrase
+  - 0.4–0.7 very short/ambiguous
+  - 0.1–0.4 very uncertain
+- NEVER infer language from region.
 
-Region Inference:
-- Use valid ISO-3166-1 alpha-2 codes ONLY: IL, US, GB, FR, DE, etc.
-- NEVER use invalid codes like "IS", "TQ", or made-up codes
-- If Hebrew query → likely "IL"
-- If Arabic query → could be "IL", "JO", "EG", etc. (infer from context)
-- If unsure → "IL" (default fallback)
+3) uiLanguage:
+- If uiLanguageHint provided and not null → use it (confidence does not matter).
+- Else uiLanguage = assistantLanguage.
 
-City Text Extraction:
-- Extract ONLY if explicitly mentioned: "תל אביב", "חיפה", "ירושלים", "New York", etc.
-- Return null if no explicit city mentioned
-- Do NOT infer city from region or context
+4) providerLanguage (language used for Google/provider requests):
+- providerLanguage = "en" unless the query includes a strong cuisine/city/landmark term in another language that would be harmed by translation.
+- If unsure → "en".
+- NEVER set providerLanguage based on uiLanguage.
 
-**NEW: Hybrid Ordering Intent Flags (Language-Agnostic)**
+5) region:
+- Extract ONLY from explicit country/city/area mentions or strong location clues.
+- If city/country implies a country, set region accordingly.
+- If unsure → "IL".
+- NEVER set region based on assistantLanguage.
 
-These flags drive deterministic weight adjustments for result ordering.
-Set these flags based on SEMANTIC INTENT, not language/keywords.
-The same query in different languages should produce the SAME flags.
+6) cityText:
+- Extract ONLY if explicitly present; else null.
 
-1. **distanceIntent** (boolean):
-   - true if: "near me", "לידי", "קרוב", "בקרבתי", "close by", "nearby"
-   - true if: route=NEARBY (proximity implied)
-   - false otherwise
-   
-2. **openNowRequested** (boolean):
-   - true if: "open now", "פתוח עכשיו", "open right now", "currently open"
-   - false otherwise
-   
-3. **priceIntent** ("cheap" | "any"):
-   - "cheap" if: "cheap", "זול", "inexpensive", "budget", "affordable"
-   - "any" otherwise (default)
-   
-4. **qualityIntent** (boolean):
-   - true if: "best", "הכי טוב", "recommended", "מומלץ", "high quality", "top rated"
-   - true if: "romantic", "רומנטי", "special occasion", "fine dining"
-   - false otherwise
-   
-5. **occasion** ("romantic" | null):
-   - "romantic" if: "romantic", "רומנטי", "date night", "דייט", "anniversary"
-   - null otherwise
-   
-6. **cuisineKey** (string | null):
-   - Extract canonical cuisine identifier if mentioned:
-     * "italian", "italian", "איטלקית", "פיצה", "pasta" → "italian"
-     * "japanese", "יפנית", "sushi", "סושי" → "japanese"
-     * "asian", "אסיאתית" → "asian"
-     * "chinese", "סינית" → "chinese"
-     * "french", "צרפתית" → "french"
-     * "mediterranean", "ים תיכונית" → "mediterranean"
-     * "middle_eastern", "מזרח תיכונית", "shawarma", "שווארמה" → "middle_eastern"
-   - null if no specific cuisine mentioned
+7) intent flags (language-agnostic semantics):
+- distanceIntent = true if route=NEARBY
+- openNowRequested = true if “open now/פתוח עכשיו”
+- priceIntent = "cheap" if cheap/budget intent else "any"
+- qualityIntent = true if best/top rated/recommended OR romantic/special occasion/fine dining
+- occasion="romantic" if romantic/date/anniversary intent else null
+- cuisineKey if cuisine mentioned else null
 
-**CRITICAL:** These flags are language-independent!
-- "romantic italian" (en) and "איטלקית רומנטית" (he) → SAME flags
-- "cheap near me" (en) and "זול לידי" (he) → SAME flags
+STRICT:
+- Output JSON only. No explanations.
 
-Examples:
-- "מסעדות איטלקיות בתל אביב" → route: TEXTSEARCH, cityText: "תל אביב", distanceIntent: false, openNowRequested: false, priceIntent: "any", qualityIntent: false, occasion: null, cuisineKey: "italian"
-- "Italian restaurants in Tel Aviv" → route: TEXTSEARCH, cityText: "Tel Aviv", distanceIntent: false, openNowRequested: false, priceIntent: "any", qualityIntent: false, occasion: null, cuisineKey: "italian"
-- "מסעדות רומנטיות" → route: TEXTSEARCH, cityText: null, distanceIntent: false, openNowRequested: false, priceIntent: "any", qualityIntent: true, occasion: "romantic", cuisineKey: null
-- "romantic restaurants" → route: TEXTSEARCH, cityText: null, distanceIntent: false, openNowRequested: false, priceIntent: "any", qualityIntent: true, occasion: "romantic", cuisineKey: null
-- "פיצה זולה לידי פתוח עכשיו" → route: NEARBY, cityText: null, distanceIntent: true, openNowRequested: true, priceIntent: "cheap", qualityIntent: false, occasion: null, cuisineKey: "italian"
-- "cheap pizza near me open now" → route: NEARBY, cityText: null, distanceIntent: true, openNowRequested: true, priceIntent: "cheap", qualityIntent: false, occasion: null, cuisineKey: "italian"
+
 `;
 
 /**
@@ -107,7 +86,7 @@ Examples:
 export const INTENT_JSON_SCHEMA = {
    type: "object",
    properties: {
-      route: { type: "string", enum: ["TEXTSEARCH", "NEARBY", "LANDMARK"] },
+      route: { type: "string", enum: ["TEXTSEARCH", "NEARBY", "LANDMARK", "CLARIFY"] },
       confidence: { type: "number", minimum: 0, maximum: 1 },
       reason: { type: "string", minLength: 1 },
       language: { type: "string", enum: ["he", "en", "ru", "ar", "fr", "es", "other"] },

@@ -9,7 +9,7 @@
 import { z } from 'zod';
 
 export const IntentLLMSchema = z.object({
-  route: z.enum(['TEXTSEARCH', 'NEARBY', 'LANDMARK']),
+  route: z.enum(['TEXTSEARCH', 'NEARBY', 'LANDMARK', 'CLARIFY']),
   confidence: z.number().min(0).max(1),
   reason: z.string().min(1),
   language: z.enum(['he', 'en', 'ru', 'ar', 'fr', 'es', 'other']),

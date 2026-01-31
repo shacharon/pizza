@@ -158,13 +158,13 @@ export class SearchFacade {
     this.wsHandler.ticketUnavailable$.subscribe(() => {
       const requestId = this.currentRequestId();
       const query = this.query();
-      
+
       if (requestId && query) {
         safeLog('SearchFacade', 'ws-ticket unavailable - starting immediate polling fallback', { requestId });
-        
+
         // Cancel deferred polling start and start immediately
         this.apiHandler.cancelPollingStart();
-        
+
         // Start polling immediately (no delay)
         this.apiHandler.startPolling(
           requestId,
@@ -282,6 +282,7 @@ export class SearchFacade {
         filters,
         sessionId: this.conversationId(),
         userLocation: this.locationService.location() ?? undefined,
+        //  debug: { stopAfter: 'intent' },
         clearContext: shouldClearContext,
         uiLanguage: this.locale() as 'he' | 'en',  // UI language for assistant messages ONLY
         idempotencyKey: this.currentIdempotencyKey

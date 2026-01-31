@@ -98,10 +98,10 @@ export async function executeGoogleMapsStage(
 
   } catch (error) {
     const durationMs = Date.now() - startTime;
-    
+
     // Extract errorKind from TimeoutError if available
-    const errorKind = (error && typeof error === 'object' && 'errorKind' in error) 
-      ? (error as any).errorKind 
+    const errorKind = (error && typeof error === 'object' && 'errorKind' in error)
+      ? (error as any).errorKind
       : undefined;
 
     logger.error({

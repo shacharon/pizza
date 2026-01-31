@@ -7,6 +7,7 @@
 **Location:** In `buildFinalResponse()` function, after line ~180
 
 **Add before response is built:**
+
 ```typescript
 // PAGINATION: Slice results for initial display (10) while keeping full list (20) available
 const INITIAL_DISPLAY_COUNT = 10;
@@ -17,34 +18,38 @@ const initialResults = finalResults.slice(0, INITIAL_DISPLAY_COUNT); // First 10
 
 // Build pagination metadata
 const paginationMeta = {
-  fetchedCount: allRankedResults.length,           // What we got from Google (after filters)
-  returnedCount: initialResults.length,            // What we're showing initially
-  availableCount: allRankedResults.length,         // Total available client-side
-  nextIncrement: 5,                                 // Step size for "Load more"
-  maxVisible: MAX_RESULTS_CAP                       // Hard cap
+  fetchedCount: allRankedResults.length, // What we got from Google (after filters)
+  returnedCount: initialResults.length, // What we're showing initially
+  availableCount: allRankedResults.length, // Total available client-side
+  nextIncrement: 5, // Step size for "Load more"
+  maxVisible: MAX_RESULTS_CAP, // Hard cap
 };
 
-logger.info({
-  requestId,
-  event: 'pagination_contract',
-  fetchedCount: paginationMeta.fetchedCount,
-  initial: paginationMeta.returnedCount,
-  step: paginationMeta.nextIncrement,
-  max: paginationMeta.maxVisible
-}, '[RESPONSE] Pagination contract applied');
+logger.info(
+  {
+    requestId,
+    event: "pagination_contract",
+    fetchedCount: paginationMeta.fetchedCount,
+    initial: paginationMeta.returnedCount,
+    step: paginationMeta.nextIncrement,
+    max: paginationMeta.maxVisible,
+  },
+  "[RESPONSE] Pagination contract applied"
+);
 ```
 
 **In response object construction:**
+
 ```typescript
 const response: SearchResponse = {
   // ... existing fields
-  results: initialResults,  // ← Change from finalResults to initialResults
+  results: initialResults, // ← Change from finalResults to initialResults
   // ... existing fields
   meta: {
     // ... existing meta fields
-    pagination: paginationMeta,  // ← ADD THIS
+    pagination: paginationMeta, // ← ADD THIS
     // ... rest of meta
-  }
+  },
 };
 ```
 
@@ -57,6 +62,7 @@ const response: SearchResponse = {
 **File:** `llm-angular/src/app/shared/services/unified-search.service.ts`
 
 **Add pagination state:**
+
 ```typescript
 export interface PaginationState {
   allResults: Restaurant[];
@@ -81,7 +87,7 @@ readonly paginationState = this._paginationState.asReadonly();
 handleSearchResponse(response: SearchResponse) {
   const meta = response.meta.pagination;
   const allResults = response.results; // Server sends 10, but we'll request all 20
-  
+
   this._paginationState.set({
     allResults: allResults,
     visibleCount: Math.min(meta?.returnedCount || 10, allResults.length),
@@ -97,7 +103,7 @@ loadMore() {
     current.visibleCount + current.nextIncrement,
     Math.min(current.maxVisible, current.allResults.length)
   );
-  
+
   this._paginationState.update(state => ({
     ...state,
     visibleCount: newCount,
@@ -114,17 +120,15 @@ loadMore() {
 export class RankedResultsComponent {
   @Input() results: Restaurant[] = [];
   @Input() paginationMeta?: PaginationMeta;
-  
+
   visibleCount = signal(10);
-  
-  visibleResults = computed(() => 
-    this.results.slice(0, this.visibleCount())
+
+  visibleResults = computed(() => this.results.slice(0, this.visibleCount()));
+
+  canLoadMore = computed(
+    () => this.visibleCount() < Math.min(20, this.results.length)
   );
-  
-  canLoadMore = computed(() => 
-    this.visibleCount() < Math.min(20, this.results.length)
-  );
-  
+
   onLoadMore() {
     const newCount = Math.min(
       this.visibleCount() + 5,
@@ -136,20 +140,18 @@ export class RankedResultsComponent {
 ```
 
 **Template:**
+
 ```html
 <div class="results-grid">
   @for (restaurant of visibleResults(); track restaurant.placeId) {
-    <app-restaurant-card [restaurant]="restaurant" />
+  <app-restaurant-card [restaurant]="restaurant" />
   }
 </div>
 
 @if (canLoadMore()) {
-  <button 
-    class="load-more-btn"
-    (click)="onLoadMore()"
-  >
-    Load 5 More Results
-  </button>
+<button class="load-more-btn" (click)="onLoadMore()">
+  Load 5 More Results
+</button>
 }
 ```
 
@@ -158,6 +160,7 @@ export class RankedResultsComponent {
 ## Testing Checklist
 
 ### Backend Verification
+
 ```bash
 # 1. Check fetch count
 curl -X POST http://localhost:3000/api/search \
@@ -185,6 +188,7 @@ grep "cuisine_score_only_applied" server.log | tail -1
 ```
 
 ### Frontend Verification (Dev Tools Console)
+
 ```javascript
 // After search completes:
 // 1. Check state
@@ -200,6 +204,7 @@ console.log($0.canLoadMore()); // Should be true (if >10 results)
 ```
 
 ### Manual Test Cases
+
 1. **Rich results (Tel Aviv Asian)**: 10 → 15 → 20
 2. **Small city (6 results)**: Shows 6, no button
 3. **Edge case (12 results)**: 10 → 12, button disappears
@@ -209,11 +214,13 @@ console.log($0.canLoadMore()); // Should be true (if >10 results)
 ## Quick Win Implementation Order
 
 1. **Backend response slicing** (15 min)
+
    - Add pagination metadata to response
    - Slice to 10 for initial display
    - Test with curl
 
 2. **Frontend pagination UI** (30 min)
+
    - Add visibleCount signal
    - Implement loadMore()
    - Add button to template
@@ -230,11 +237,13 @@ Total estimated time: ~1 hour for critical path
 ## Known Issues & Edge Cases
 
 1. **Server returns all 20 in results array**
+
    - Initially, return first 10 in `results` field
    - Later, can optimize to return all 20 and let client slice
    - Current approach: Server slices to 10
 
 2. **Cached results from old contract**
+
    - Cache invalidation may be needed
    - Add pipeline version to cache key if issues arise
 
@@ -253,4 +262,3 @@ Total estimated time: ~1 hour for critical path
 - [ ] Frontend: Clicking button shows 15, then 20
 - [ ] Frontend: Button disappears at 20 or total (whichever smaller)
 - [ ] No regressions: Filters still work (kosher, price, etc.)
-

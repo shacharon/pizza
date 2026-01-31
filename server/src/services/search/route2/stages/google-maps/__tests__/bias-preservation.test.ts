@@ -89,7 +89,12 @@ describe('Bias Preservation', () => {
     assert.equal(hasBiasApplied, true, 'hasBiasApplied should be true when locationBias exists');
 
     // Without bias
-    const requestBodyNoBias = {
+    const requestBodyNoBias: {
+      textQuery: string;
+      languageCode: string;
+      regionCode: string;
+      locationBias?: any;
+    } = {
       textQuery: 'pizza',
       languageCode: 'he',
       regionCode: 'IL'

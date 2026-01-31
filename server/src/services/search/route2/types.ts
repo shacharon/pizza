@@ -23,7 +23,7 @@ export interface Route2Context {
   traceId?: string;
   sessionId?: string;
   startTime: number;
-  debug?: { stopAfter: string }; // ← הוסף רק את זה
+  debug?: { stopAfter?: 'gate2' | 'intent' | 'route_llm' | 'google' | 'cuisine' | 'post_filters' | 'ranking' | 'response' };
 
   jobCreatedAt?: number; // Timestamp when search job was created (for queueDelayMs)
   sessionService?: any; // Optional session service for region caching
@@ -86,6 +86,12 @@ export interface Gate2StageOutput {
 export type MappingRoute = 'TEXTSEARCH' | 'NEARBY' | 'LANDMARK';
 
 /**
+ * Intent routes including clarification request
+ * CLARIFY is returned by Intent stage when user location is missing for NEARBY queries
+ */
+export type IntentRoute = MappingRoute | 'CLARIFY';
+
+/**
  * INTENT Stage Result
  * Router-only decision without extraction
  * Includes language and regionCandidate detection (NOT final region)
@@ -95,7 +101,7 @@ export type MappingRoute = 'TEXTSEARCH' | 'NEARBY' | 'LANDMARK';
  * IMPORTANT: regionCandidate is a suggestion only - filters_resolved decides the final region
  */
 export interface IntentResult {
-  route: MappingRoute;
+  route: IntentRoute;
   confidence: number;
   reason: string;
   language: Gate2Language;
@@ -121,7 +127,7 @@ export interface IntentResult {
 }
 
 // Intent2 specific types (DEPRECATED - will be removed)
-export type Intent2Mode = 'nearby' | 'landmark' | 'textsearch';
+export type Intent2Mode = 'nearby' | 'landmark' | 'textsearch' | 'CLARIFY';;
 export type Intent2Reason = 'near_me_phrase' | 'explicit_distance_from_me' | 'landmark_detected' | 'default_textsearch' | 'ambiguous';
 export type LandmarkType = 'address' | 'poi' | 'street' | 'neighborhood' | 'area' | 'unknown' | null;
 export type RadiusSource = 'explicit' | 'default' | null;
