@@ -277,9 +277,9 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
           source: 'route2_debug_stop',
           failureReason: 'NONE' as any
         },
-        debug: { 
-          stopAfter: 'route_llm', 
-          gate: gateResult, 
+        debug: {
+          stopAfter: 'route_llm',
+          gate: gateResult,
           intent: intentDecision,
           mapping: {
             providerMethod: mapping.providerMethod,
@@ -375,7 +375,7 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
           source: 'route2_debug_stop',
           failureReason: 'NONE' as any
         },
-        debug: { 
+        debug: {
           stopAfter: 'google',
           gate: gateResult,
           intent: intentDecision,
@@ -432,246 +432,249 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
         hardConstraintsActive
       }, '[ROUTE2] Starting cuisine enforcement');
 
-      try {
-        // Convert Google results to PlaceInput format
-        const placesForEnforcement: PlaceInput[] = googleResult.results.map(r => ({
-          placeId: r.placeId || r.id,
-          name: r.name || '',
-          types: r.types || [],
-          address: r.address || r.formattedAddress || '',
-          rating: r.rating,
-          userRatingsTotal: r.userRatingsTotal
-        }));
+      /*
+     try {
+       // Convert Google results to PlaceInput format
+       const placesForEnforcement: PlaceInput[] = googleResult.results.map(r => ({
+         placeId: r.placeId || r.id,
+         name: r.name || '',
+         types: r.types || [],
+         address: r.address || r.formattedAddress || '',
+         rating: r.rating,
+         userRatingsTotal: r.userRatingsTotal
+       }));
 
-        // Execute LLM-based enforcement (with hard constraints awareness)
-        const enforcerInput: CuisineEnforcerInput = {
-          requiredTerms: mapping.requiredTerms,
-          preferredTerms: mapping.preferredTerms || [],
-          strictness: mapping.strictness || 'RELAX_IF_EMPTY',
-          places: placesForEnforcement,
-          hardConstraintsExist // Pass hard constraints flag
-        };
+       // Execute LLM-based enforcement (with hard constraints awareness)
+       const enforcerInput: CuisineEnforcerInput = {
+         requiredTerms: mapping.requiredTerms,
+         preferredTerms: mapping.preferredTerms || [],
+         strictness: mapping.strictness || 'RELAX_IF_EMPTY',
+         places: placesForEnforcement,
+         hardConstraintsExist // Pass hard constraints flag
+       };
 
-        let enforcementResult = await executeCuisineEnforcement(
-          enforcerInput,
-          ctx.llmProvider,
-          requestId
-        );
+       let enforcementResult = await executeCuisineEnforcement(
+         enforcerInput,
+         ctx.llmProvider,
+         requestId
+       );
 
-        // Store cuisine scores if in BOOST mode
-        if (enforcementResult.cuisineScores) {
-          cuisineScores = enforcementResult.cuisineScores;
+       // Store cuisine scores if in BOOST mode
+       if (enforcementResult.cuisineScores) {
+         cuisineScores = enforcementResult.cuisineScores;
 
-          // Attach cuisine scores to results for ranking
-          for (const result of googleResult.results) {
-            const placeId = result.placeId || result.id;
-            if (placeId && cuisineScores[placeId] !== undefined) {
-              result.cuisineScore = cuisineScores[placeId];
-            }
-          }
+         // Attach cuisine scores to results for ranking
+         for (const result of googleResult.results) {
+           const placeId = result.placeId || result.id;
+           if (placeId && cuisineScores[placeId] !== undefined) {
+             result.cuisineScore = cuisineScores[placeId];
+           }
+         }
 
-          logger.info({
-            requestId,
-            event: 'cuisine_scores_attached',
-            scoresAttached: Object.keys(cuisineScores).length,
-            resultsCount: googleResult.results.length
-          }, '[ROUTE2] Cuisine scores attached to results for ranking');
-        }
+         logger.info({
+           requestId,
+           event: 'cuisine_scores_attached',
+           scoresAttached: Object.keys(cuisineScores).length,
+           resultsCount: googleResult.results.length
+         }, '[ROUTE2] Cuisine scores attached to results for ranking');
+       }
 
-        logger.info({
-          requestId,
-          pipelineVersion: 'route2',
-          event: 'cuisine_enforcement_completed',
-          countIn: googleResult.results.length,
-          countOut: enforcementResult.keepPlaceIds.length,
-          relaxApplied: enforcementResult.relaxApplied,
-          relaxStrategy: enforcementResult.relaxStrategy,
-          enforcementSkipped: enforcementResult.enforcementSkipped,
-          hasScores: !!enforcementResult.cuisineScores
-        }, '[ROUTE2] Cuisine enforcement completed');
+       logger.info({
+         requestId,
+         pipelineVersion: 'route2',
+         event: 'cuisine_enforcement_completed',
+         countIn: googleResult.results.length,
+         countOut: enforcementResult.keepPlaceIds.length,
+         relaxApplied: enforcementResult.relaxApplied,
+         relaxStrategy: enforcementResult.relaxStrategy,
+         enforcementSkipped: enforcementResult.enforcementSkipped,
+         hasScores: !!enforcementResult.cuisineScores
+       }, '[ROUTE2] Cuisine enforcement completed');
 
-        // Track result drops from cuisine enforcement
-        if (enforcementResult.keepPlaceIds.length < googleResult.results.length) {
-          logger.info({
-            requestId,
-            event: 'results_drop_reason',
-            reason: 'cuisine_filter',
-            countBefore: googleResult.results.length,
-            countAfter: enforcementResult.keepPlaceIds.length,
-            dropped: googleResult.results.length - enforcementResult.keepPlaceIds.length
-          }, '[ROUTE2] Results dropped by cuisine enforcement');
-        }
+       // Track result drops from cuisine enforcement
+       if (enforcementResult.keepPlaceIds.length < googleResult.results.length) {
+         logger.info({
+           requestId,
+           event: 'results_drop_reason',
+           reason: 'cuisine_filter',
+           countBefore: googleResult.results.length,
+           countAfter: enforcementResult.keepPlaceIds.length,
+           dropped: googleResult.results.length - enforcementResult.keepPlaceIds.length
+         }, '[ROUTE2] Results dropped by cuisine enforcement');
+       }
 
-        // REAL RELAX STRATEGY: If 0 results after enforcement (and not skipped), apply relaxation
-        if (enforcementResult.keepPlaceIds.length === 0 && !enforcementResult.enforcementSkipped) {
-          logger.info({
-            requestId,
-            pipelineVersion: 'route2',
-            event: 'cuisine_enforcement_relax_triggered',
-            reason: 'zero_results_after_strict',
-            originalStrictness: mapping.strictness
-          }, '[ROUTE2] Zero results after STRICT enforcement, applying relaxation');
+       // REAL RELAX STRATEGY: If 0 results after enforcement (and not skipped), apply relaxation
+       if (enforcementResult.keepPlaceIds.length === 0 && !enforcementResult.enforcementSkipped) {
+         logger.info({
+           requestId,
+           pipelineVersion: 'route2',
+           event: 'cuisine_enforcement_relax_triggered',
+           reason: 'zero_results_after_strict',
+           originalStrictness: mapping.strictness
+         }, '[ROUTE2] Zero results after STRICT enforcement, applying relaxation');
 
-          // Relax #1: Downgrade STRICT → SOFT (requiredTerms become preferred-only)
-          logger.info({
-            requestId,
-            event: 'relax_strategy_soft',
-            attempt: 1
-          }, '[ROUTE2] Relax #1: Downgrade to SOFT mode (requiredTerms → preferredTerms)');
+         // Relax #1: Downgrade STRICT → SOFT (requiredTerms become preferred-only)
+         logger.info({
+           requestId,
+           event: 'relax_strategy_soft',
+           attempt: 1
+         }, '[ROUTE2] Relax #1: Downgrade to SOFT mode (requiredTerms → preferredTerms)');
 
-          const relaxedInput: CuisineEnforcerInput = {
-            requiredTerms: [], // Clear required terms
-            preferredTerms: [...mapping.requiredTerms, ...mapping.preferredTerms], // Merge into preferred
-            strictness: 'RELAX_IF_EMPTY',
-            places: placesForEnforcement
-          };
+         const relaxedInput: CuisineEnforcerInput = {
+           requiredTerms: [], // Clear required terms
+           preferredTerms: [...mapping.requiredTerms, ...mapping.preferredTerms], // Merge into preferred
+           strictness: 'RELAX_IF_EMPTY',
+           places: placesForEnforcement
+         };
 
-          enforcementResult = await executeCuisineEnforcement(
-            relaxedInput,
-            ctx.llmProvider,
-            requestId
-          );
+         enforcementResult = await executeCuisineEnforcement(
+           relaxedInput,
+           ctx.llmProvider,
+           requestId
+         );
 
-          logger.info({
-            requestId,
-            event: 'relax_soft_completed',
-            countOut: enforcementResult.keepPlaceIds.length
-          }, '[ROUTE2] SOFT mode enforcement completed');
+         logger.info({
+           requestId,
+           event: 'relax_soft_completed',
+           countOut: enforcementResult.keepPlaceIds.length
+         }, '[ROUTE2] SOFT mode enforcement completed');
 
-          // Relax #2: If still 0, rerun Google with broader query
-          if (enforcementResult.keepPlaceIds.length === 0 && mapping.cityText) {
-            logger.info({
-              requestId,
-              event: 'relax_strategy_google_rerun',
-              attempt: 2,
-              cityText: mapping.cityText
-            }, '[ROUTE2] Relax #2: Rerun Google with broader query');
+         // Relax #2: If still 0, rerun Google with broader query
+         if (enforcementResult.keepPlaceIds.length === 0 && mapping.cityText) {
+           logger.info({
+             requestId,
+             event: 'relax_strategy_google_rerun',
+             attempt: 2,
+             cityText: mapping.cityText
+           }, '[ROUTE2] Relax #2: Rerun Google with broader query');
 
-            // Import the text search handler
-            const { executeTextSearch } = await import('./stages/google-maps/text-search.handler.js');
+           // Import the text search handler
+           const { executeTextSearch } = await import('./stages/google-maps/text-search.handler.js');
 
-            // Build broader mapping: "restaurants in <city>" (English)
-            const broaderMapping = {
-              ...mapping,
-              mode: 'KEYED' as const,
-              cuisineKey: null,
-              providerTextQuery: `restaurants in ${mapping.cityText}`,
-              providerLanguage: 'en' as const,
-              requiredTerms: [],
-              preferredTerms: [],
-              strictness: 'RELAX_IF_EMPTY' as const
-            };
+           // Build broader mapping: "restaurants in <city>" (English)
+           const broaderMapping = {
+             ...mapping,
+             mode: 'KEYED' as const,
+             cuisineKey: null,
+             providerTextQuery: `restaurants in ${mapping.cityText}`,
+             providerLanguage: 'en' as const,
+             requiredTerms: [],
+             preferredTerms: [],
+             strictness: 'RELAX_IF_EMPTY' as const
+           };
 
-            logger.info({
-              requestId,
-              event: 'google_rerun_broader_query',
-              providerTextQuery: broaderMapping.providerTextQuery,
-              providerLanguage: broaderMapping.providerLanguage
-            }, '[ROUTE2] Rerunning Google with broader query');
+           logger.info({
+             requestId,
+             event: 'google_rerun_broader_query',
+             providerTextQuery: broaderMapping.providerTextQuery,
+             providerLanguage: broaderMapping.providerLanguage
+           }, '[ROUTE2] Rerunning Google with broader query');
 
-            // Rerun Google search
-            const broaderResults = await executeTextSearch(broaderMapping, ctx);
+           // Rerun Google search
+           const broaderResults = await executeTextSearch(broaderMapping, ctx);
 
-            logger.info({
-              requestId,
-              event: 'google_rerun_completed',
-              countOut: broaderResults.length
-            }, '[ROUTE2] Google rerun completed');
+           logger.info({
+             requestId,
+             event: 'google_rerun_completed',
+             countOut: broaderResults.length
+           }, '[ROUTE2] Google rerun completed');
 
-            // Apply SOFT enforcement to broader results
-            if (broaderResults.length > 0) {
-              const broaderPlaces: PlaceInput[] = broaderResults.map(r => ({
-                placeId: r.placeId || r.id,
-                name: r.name || '',
-                types: r.types || [],
-                address: r.address || r.formattedAddress || '',
-                rating: r.rating,
-                userRatingsTotal: r.userRatingsTotal
-              }));
+           // Apply SOFT enforcement to broader results
+           if (broaderResults.length > 0) {
+             const broaderPlaces: PlaceInput[] = broaderResults.map(r => ({
+               placeId: r.placeId || r.id,
+               name: r.name || '',
+               types: r.types || [],
+               address: r.address || r.formattedAddress || '',
+               rating: r.rating,
+               userRatingsTotal: r.userRatingsTotal
+             }));
 
-              enforcementResult = await executeCuisineEnforcement(
-                {
-                  ...relaxedInput,
-                  places: broaderPlaces
-                },
-                ctx.llmProvider,
-                requestId
-              );
+             enforcementResult = await executeCuisineEnforcement(
+               {
+                 ...relaxedInput,
+                 places: broaderPlaces
+               },
+               ctx.llmProvider,
+               requestId
+             );
 
-              logger.info({
-                requestId,
-                event: 'relax_google_rerun_completed',
-                countIn: broaderResults.length,
-                countOut: enforcementResult.keepPlaceIds.length
-              }, '[ROUTE2] Google rerun + SOFT enforcement completed');
+             logger.info({
+               requestId,
+               event: 'relax_google_rerun_completed',
+               countIn: broaderResults.length,
+               countOut: enforcementResult.keepPlaceIds.length
+             }, '[ROUTE2] Google rerun + SOFT enforcement completed');
 
-              // Use broader results if enforcement succeeded
-              if (enforcementResult.keepPlaceIds.length > 0) {
-                googleResult.results = broaderResults; // Update base results
-                enforcementResult.relaxStrategy = 'google_rerun_broader';
-                enforcementResult.relaxApplied = true;
-              }
-            }
-          }
-        }
+             // Use broader results if enforcement succeeded
+             if (enforcementResult.keepPlaceIds.length > 0) {
+               googleResult.results = broaderResults; // Update base results
+               enforcementResult.relaxStrategy = 'google_rerun_broader';
+               enforcementResult.relaxApplied = true;
+             }
+           }
+         }
+       }
 
-        // Apply enforcement: In SCORE-ONLY mode, keep all results (no filtering)
-        // Results already have cuisineScore attached for ranking
-        if (enforcementResult.keepPlaceIds.length > 0) {
-          // SCORE-ONLY mode: keepPlaceIds should equal input (no filtering)
-          // Keep results in Google order; ranking will reorder based on scores
-          enforcedResults = googleResult.results;
-          cuisineEnforcementApplied = true;
+       // Apply enforcement: In SCORE-ONLY mode, keep all results (no filtering)
+       // Results already have cuisineScore attached for ranking
+       if (enforcementResult.keepPlaceIds.length > 0) {
+         // SCORE-ONLY mode: keepPlaceIds should equal input (no filtering)
+         // Keep results in Google order; ranking will reorder based on scores
+         enforcedResults = googleResult.results;
+         cuisineEnforcementApplied = true;
 
-          logger.info({
-            requestId,
-            event: 'cuisine_score_only_applied',
-            countIn: googleResult.results.length,
-            countOut: enforcedResults.length,
-            mode: 'SCORE_ONLY'
-          }, '[ROUTE2] Cuisine score-only mode: all results kept for ranking');
-        } else if (!enforcementResult.relaxApplied && !enforcementResult.enforcementSkipped) {
-          // No matches and no relaxation => enforcement failed, keep original
-          logger.warn({
-            requestId,
-            pipelineVersion: 'route2',
-            event: 'cuisine_enforcement_empty',
-            strictness: mapping.strictness
-          }, '[ROUTE2] Cuisine enforcement returned empty, keeping original results');
-          cuisineEnforcementFailed = true;
-        } else if (enforcementResult.enforcementSkipped) {
-          // Enforcement was skipped (small sample guard)
-          logger.info({
-            requestId,
-            pipelineVersion: 'route2',
-            event: 'cuisine_enforcement_skipped',
-            reason: 'small_sample_guard'
-          }, '[ROUTE2] Cuisine enforcement skipped (small sample guard)');
-        } else {
-          // Relaxation applied but still empty => keep original with flag
-          logger.warn({
-            requestId,
-            pipelineVersion: 'route2',
-            event: 'cuisine_enforcement_failed_after_relax',
-            relaxStrategy: enforcementResult.relaxStrategy
-          }, '[ROUTE2] Cuisine enforcement failed even after relaxation');
-          cuisineEnforcementFailed = true;
-        }
+         logger.info({
+           requestId,
+           event: 'cuisine_score_only_applied',
+           countIn: googleResult.results.length,
+           countOut: enforcedResults.length,
+           mode: 'SCORE_ONLY'
+         }, '[ROUTE2] Cuisine score-only mode: all results kept for ranking');
+       } else if (!enforcementResult.relaxApplied && !enforcementResult.enforcementSkipped) {
+         // No matches and no relaxation => enforcement failed, keep original
+         logger.warn({
+           requestId,
+           pipelineVersion: 'route2',
+           event: 'cuisine_enforcement_empty',
+           strictness: mapping.strictness
+         }, '[ROUTE2] Cuisine enforcement returned empty, keeping original results');
+         cuisineEnforcementFailed = true;
+       } else if (enforcementResult.enforcementSkipped) {
+         // Enforcement was skipped (small sample guard)
+         logger.info({
+           requestId,
+           pipelineVersion: 'route2',
+           event: 'cuisine_enforcement_skipped',
+           reason: 'small_sample_guard'
+         }, '[ROUTE2] Cuisine enforcement skipped (small sample guard)');
+       } else {
+         // Relaxation applied but still empty => keep original with flag
+         logger.warn({
+           requestId,
+           pipelineVersion: 'route2',
+           event: 'cuisine_enforcement_failed_after_relax',
+           relaxStrategy: enforcementResult.relaxStrategy
+         }, '[ROUTE2] Cuisine enforcement failed even after relaxation');
+         cuisineEnforcementFailed = true;
+       }
 
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error);
-        logger.error({
-          requestId,
-          pipelineVersion: 'route2',
-          event: 'cuisine_enforcement_error',
-          error: msg
-        }, '[ROUTE2] Cuisine enforcement failed, keeping original results');
-        // Fail gracefully: keep original results
-        cuisineEnforcementFailed = true;
-      }
+     } catch (error) {
+       const msg = error instanceof Error ? error.message : String(error);
+       logger.error({
+         requestId,
+         pipelineVersion: 'route2',
+         event: 'cuisine_enforcement_error',
+         error: msg
+       }, '[ROUTE2] Cuisine enforcement failed, keeping original results');
+       // Fail gracefully: keep original results
+       cuisineEnforcementFailed = true;
+     } */
     }
 
+
     // Debug stop after cuisine
+    /*
     if (shouldDebugStop(ctx, 'cuisine')) {
       return {
         requestId: ctx.requestId,
@@ -688,7 +691,7 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
           source: 'route2_debug_stop',
           failureReason: 'NONE' as any
         },
-        debug: { 
+        debug: {
           stopAfter: 'cuisine',
           gate: gateResult,
           intent: intentDecision,
@@ -709,8 +712,9 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
           }
         } as any
       } as any;
+   
     }
-
+    */
     // STAGE 6: POST_FILTERS (await post constraints, apply filters)
     const postConstraints = await postConstraintsPromise;
     const cuisineKey = (mapping as any).cuisineKey ?? null; // Extract cuisineKey for hard constraint detection
@@ -767,7 +771,7 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
           source: 'route2_debug_stop',
           failureReason: 'NONE' as any
         },
-        debug: { 
+        debug: {
           stopAfter: 'post_filters',
           gate: gateResult,
           intent: intentDecision,
@@ -839,7 +843,7 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
           source: 'route2_debug_stop',
           failureReason: 'NONE' as any
         },
-        debug: { 
+        debug: {
           stopAfter: 'ranking',
           gate: gateResult,
           intent: intentDecision,
@@ -884,7 +888,7 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
           source: 'route2_debug_stop',
           failureReason: 'NONE' as any
         },
-        debug: { 
+        debug: {
           stopAfter: 'response',
           gate: gateResult,
           intent: intentDecision,

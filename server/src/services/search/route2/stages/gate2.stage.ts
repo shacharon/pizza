@@ -22,7 +22,9 @@ import { resolveLLM } from '../../../../lib/llm/index.js';
 // Gate2 Zod Schema for LLM output (before routing logic) - SOURCE OF TRUTH
 const Gate2LLMSchema = z.object({
   foodSignal: z.enum(['NO', 'UNCERTAIN', 'YES']),
-  confidence: z.number().min(0).max(1)
+  confidence: z.number().min(0).max(1),
+  assistantLanguage: z.enum(['he', 'en', 'ru', 'ar', 'fr', 'es', 'other']),
+  assistantLanguageConfidence: z.number().min(0).max(1)
 }).strict();
 
 // Static JSON Schema for OpenAI (zod-to-json-schema library is broken with Zod v4)
@@ -37,9 +39,18 @@ const GATE2_JSON_SCHEMA = {
       type: 'number',
       minimum: 0,
       maximum: 1
+    },
+    assistantLanguage: {
+      type: 'string',
+      enum: ['he', 'en', 'ru', 'ar', 'fr', 'es', 'other']
+    },
+    assistantLanguageConfidence: {
+      type: 'number',
+      minimum: 0,
+      maximum: 1
     }
   },
-  required: ['foodSignal', 'confidence'],
+  required: ['foodSignal', 'confidence', 'assistantLanguage', 'assistantLanguageConfidence'],
   additionalProperties: false
 } as const;
 
@@ -133,6 +144,7 @@ function createTimeoutErrorResult(): Gate2Result {
   return {
     foodSignal: 'NO', // Use NO to trigger STOP route
     language: 'other',
+    languageConfidence: 0.1,
     route: 'STOP',
     confidence: 0.1 // Very low confidence indicates error, not genuine NO
   };
@@ -155,7 +167,8 @@ function applyDeterministicRouting(llmResult: z.infer<typeof Gate2LLMSchema>): G
 
   return {
     foodSignal: llmResult.foodSignal,
-    language: 'other', // Language detection optional for now
+    language: llmResult.assistantLanguage,
+    languageConfidence: llmResult.assistantLanguageConfidence,
     route,
     confidence: llmResult.confidence
   };

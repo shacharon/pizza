@@ -86,15 +86,15 @@ export function fireParallelTasks(
   postConstraintsPromise: Promise<PostConstraints>;
 } {
   const { requestId } = ctx;
-  
+
   // Safety check: CLARIFY route should have been handled by guard before calling this
   if (intentDecision.route === 'CLARIFY') {
     throw new Error('[ROUTE2] fireParallelTasks called with CLARIFY route - should have been handled by guard');
   }
-  
+
   // TypeScript now knows intentDecision.route is MappingRoute
   const mappingRoute: import('./types.js').MappingRoute = intentDecision.route;
-  
+
   const isGenericWithLocation = isGenericFoodQueryWithLocation(gateResult, intentDecision, ctx);
   const skipBaseFilters = shouldSkipBaseFiltersLLM(intentDecision, ctx);
 

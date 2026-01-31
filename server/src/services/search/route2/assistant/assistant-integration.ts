@@ -40,7 +40,7 @@ export async function generateAndPublishAssistant(
     // No need for duplicate enforcement here
 
     // Publish to WebSocket (best-effort)
-    publishAssistantMessage(wsManager, requestId, sessionId, assistant);
+    publishAssistantMessage(wsManager, requestId, sessionId, assistant, ctx.langCtx, ctx.uiLanguage);
 
     // Return message for HTTP response
     return assistant.message || fallbackHttpMessage;
@@ -108,7 +108,7 @@ export function generateAndPublishAssistantDeferred(
       }, '[ASSISTANT] Deferred generation completed');
 
       // Publish to WebSocket
-      publishAssistantMessage(wsManager, requestId, sessionId, assistant);
+      publishAssistantMessage(wsManager, requestId, sessionId, assistant, ctx.langCtx, ctx.uiLanguage);
     } catch (error) {
       const durationMs = Date.now() - startTime;
       const errorMsg = error instanceof Error ? error.message : String(error);
@@ -207,7 +207,7 @@ export async function publishSearchFailedAssistant(
       language: resolvedLanguage
     }, '[ASSISTANT] Generated SEARCH_FAILED message via LLM');
 
-    publishAssistantMessage(wsManager, requestId, ctx.sessionId, assistant);
+    publishAssistantMessage(wsManager, requestId, ctx.sessionId, assistant, ctx.langCtx, ctx.uiLanguage);
   } catch (assistErr) {
     // If LLM fails, publish assistant_error event (no deterministic fallback)
     const errorMsg = assistErr instanceof Error ? assistErr.message : String(assistErr);

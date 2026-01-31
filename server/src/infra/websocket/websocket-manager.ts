@@ -574,7 +574,7 @@ export class WebSocketManager {
         ...(payload.uiLanguage && { uiLanguage: payload.uiLanguage })
       }
     };
-    
+
     return this.publishToChannel('assistant', requestId, undefined, message);
   }
 

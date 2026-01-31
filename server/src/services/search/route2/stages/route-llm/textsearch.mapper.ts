@@ -17,57 +17,34 @@ import { getCachedCanonicalQuery } from './canonical-query.cache.js';
 
 const TEXTSEARCH_MAPPER_VERSION = 'textsearch_mapper_v4_keyed_freetext';
 
-const TEXTSEARCH_MAPPER_PROMPT = `You are a query analyzer for Google Places Text Search API.
-Your goal is to extract structured intent (cuisine keys, city, place type) from user queries.
+const TEXTSEARCH_MAPPER_PROMPT = `You analyze a restaurant search query for Google Places Text Search.
 
-CRITICAL: DO NOT generate full query sentences. Output ONLY semantic keys and mode.
-
-Output ONLY JSON with these fields:
+Output JSON only:
 {
-  "providerMethod": "textSearch",
-  "mode": "KEYED" | "FREE_TEXT",
-  "cuisineKey": "italian" | "asian" | ... | null,
-  "placeTypeKey": "restaurant" | "cafe" | "bar" | null,
-  "cityText": "string" | null,
-  "region": "IL|FR|US|etc",
-  "language": "he|en|ru|ar|fr|es|other",
-  "reason": "token",
+  "providerMethod":"textSearch",
+  "mode":"KEYED"|"FREE_TEXT",
+  "cuisineKey": string|null,
+  "placeTypeKey":"restaurant"|"cafe"|"bar"|null,
+  "cityText": string|null,
+  "region": string,
+  "reason":"keyed_city"|"keyed_cuisine"|"keyed_both"|"freetext",
   "requiredTerms": [],
   "preferredTerms": [],
-  "strictness": "STRICT" | "RELAX_IF_EMPTY",
-  "typeHint": "restaurant" | "cafe" | "bar" | "any"
+  "strictness":"STRICT"|"RELAX_IF_EMPTY",
+  "typeHint":"restaurant"|"cafe"|"bar"|"any"
 }
 
-Mode Selection Rules:
-1) KEYED mode: Use when query contains EXPLICIT cuisine intent or city mention
-   - Extract cuisineKey (canonical: "italian", "asian", "japanese", etc.)
-   - Extract cityText if explicitly mentioned (e.g., "בגדרה", "Ashdod")
-   - Set strictness = "STRICT" if explicit cuisine detected
-   - Example: "מסעדות איטלקיות בגדרה" → mode="KEYED", cuisineKey="italian", cityText="גדרה"
+Rules:
+- Do NOT detect or output language.
+- Do NOT use any hardcoded keyword lists or mappings.
+- KEYED if an explicit cuisine and/or a specific city is present; else FREE_TEXT.
+- cuisineKey must be a short canonical token (e.g., "italian") or null.
+- cityText only if explicitly mentioned; keep original form; do not translate.
+- region must be ISO-3166-1 alpha-2; default "IL" if unknown.
+- Never generate full query sentences. Never translate.
+- Leave requiredTerms/preferredTerms empty.
 
-2) FREE_TEXT mode: Use for generic queries without specific cuisine/city keys
-   - Set cuisineKey = null, cityText = null
-   - Set strictness = "RELAX_IF_EMPTY"
-   - Example: "מסעדות טובות" → mode="FREE_TEXT"
 
-Cuisine Key Mapping (examples):
-- "איטלקיות", "איטלקי", "Italian", "pasta", "pizza" → cuisineKey="italian"
-- "סושי", "sushi", "יפנית", "Japanese" → cuisineKey="japanese"
-- "בשרים", "בשר", "steak", "meat" → cuisineKey="steakhouse"
-- "דגים", "דג", "fish", "seafood" → cuisineKey="seafood"
-- "חלבי", "חלבית", "dairy" → cuisineKey="dairy"
-- "טבעוני", "vegan" → cuisineKey="vegan"
-
-City Extraction:
-- Extract ONLY if explicitly mentioned in query
-- Keep original form (don't translate): "גדרה" stays "גדרה", "Ashdod" stays "Ashdod"
-- Set cityText = null if no explicit city mention
-
-Important:
-- NEVER generate full query sentences (no "Italian restaurant in Gedera")
-- Output ONLY keys: cuisineKey, placeTypeKey, cityText, mode
-- DO NOT fill requiredTerms/preferredTerms arrays (leave empty, filled by mapper)
-- Reason must be: "keyed_cuisine_city", "keyed_cuisine_only", "freetext_generic", etc.
 `;
 
 
@@ -98,16 +75,16 @@ function buildProviderQuery(
   searchLanguage: 'he' | 'en',
   requestId?: string
 ): { providerTextQuery: string; providerLanguage: 'he' | 'en' | 'ru' | 'ar' | 'fr' | 'es' | 'other'; source: string } {
-  
+
   if (mode === 'KEYED' && llmResult.cuisineKey && llmResult.cityText) {
     // KEYED mode with cuisine + city: Build structured English query
     const cuisineKey = llmResult.cuisineKey as CuisineKey;
     const restaurantLabel = getCuisineRestaurantLabel(cuisineKey, 'en'); // Always English for provider
-    
+
     // P0 FIX: Transliterate city to English for provider query
     const cityEnglish = transliterateCityToEnglish(llmResult.cityText);
     const providerTextQuery = `${restaurantLabel} in ${cityEnglish}`;
-    
+
     logger.info({
       requestId,
       stage: 'textsearch_mapper',
@@ -120,19 +97,19 @@ function buildProviderQuery(
       providerLanguage: 'en',
       source: 'deterministic_builder'
     }, '[TEXTSEARCH] Built KEYED mode query (cuisine + city) - fully in English');
-    
+
     return {
       providerTextQuery,
       providerLanguage: 'en', // Provider always uses English for structured queries
       source: 'deterministic_builder_keyed'
     };
   }
-  
+
   if (mode === 'KEYED' && llmResult.cuisineKey) {
     // KEYED mode with cuisine only (no city): Use restaurant label
     const cuisineKey = llmResult.cuisineKey as CuisineKey;
     const restaurantLabel = getCuisineRestaurantLabel(cuisineKey, 'en');
-    
+
     logger.info({
       requestId,
       stage: 'textsearch_mapper',
@@ -144,21 +121,21 @@ function buildProviderQuery(
       providerLanguage: 'en',
       source: 'deterministic_builder'
     }, '[TEXTSEARCH] Built KEYED mode query (cuisine only)');
-    
+
     return {
       providerTextQuery: restaurantLabel,
       providerLanguage: 'en',
       source: 'deterministic_builder_keyed_no_city'
     };
   }
-  
+
   // FREE_TEXT mode: Clean original query, preserve language
   const cleanedQuery = originalQuery
     .trim()
     .replace(/\s+/g, ' ') // Collapse multiple spaces
     .replace(/[״""'']/g, '') // Remove quotes
     .replace(/\?+$/g, ''); // Remove trailing question marks
-  
+
   logger.info({
     requestId,
     stage: 'textsearch_mapper',
@@ -169,7 +146,7 @@ function buildProviderQuery(
     providerLanguage: searchLanguage,
     source: 'deterministic_builder'
   }, '[TEXTSEARCH] Built FREE_TEXT mode query (cleaned original)');
-  
+
   return {
     providerTextQuery: cleanedQuery,
     providerLanguage: searchLanguage, // Preserve original query language
@@ -267,10 +244,10 @@ function buildDeterministicCuisineCityQuery(
 ): string {
   // Format: "מסעדה <cuisine> ב<city>"
   // Example: "מסעדה איטלקית בגדרה"
-  
+
   // Check if query is in Hebrew (contains Hebrew characters)
   const hasHebrew = /[\u0590-\u05FF]/.test(originalQuery);
-  
+
   if (hasHebrew) {
     // Hebrew format
     return `מסעדה ${cuisineWord} ${cityText}`;
@@ -346,15 +323,15 @@ function transliterateCityToEnglish(cityText: string): string {
   if (!hasHebrew) {
     return cityText; // Already English, return as-is
   }
-  
+
   // Look up transliteration
   const normalized = cityText.trim();
   const transliteration = CITY_TRANSLITERATION_MAP[normalized];
-  
+
   if (transliteration) {
     return transliteration;
   }
-  
+
   // Fallback: return original (Google can handle Hebrew too)
   return cityText;
 }
@@ -390,7 +367,7 @@ export async function executeTextSearchMapper(
     const requiredArray = TEXTSEARCH_JSON_SCHEMA.required as readonly string[];
     const missingRequired = propertyKeys.filter(key => !requiredArray.includes(key));
     const hasModeField = requiredArray.includes('mode');
-    
+
     logger.info({
       requestId,
       stage: 'textsearch_mapper',
@@ -419,7 +396,7 @@ export async function executeTextSearchMapper(
     const finalPropertyKeys = Object.keys(TEXTSEARCH_JSON_SCHEMA.properties);
     const finalRequiredKeys = Array.from(TEXTSEARCH_JSON_SCHEMA.required);
     const missingRequiredKeys = finalPropertyKeys.filter(key => !finalRequiredKeys.includes(key as any));
-    
+
     logger.info({
       requestId,
       stage: 'textsearch_mapper',
@@ -566,7 +543,7 @@ export async function executeTextSearchMapper(
       mapping.requiredTerms = getCuisineSearchTerms(llmResult.cuisineKey as CuisineKey, searchLang);
       mapping.preferredTerms = getCuisinePreferredTerms(llmResult.cuisineKey as CuisineKey, searchLang);
       mapping.strictness = 'STRICT';
-      
+
       logger.info({
         requestId,
         stage: 'textsearch_mapper',
@@ -633,21 +610,21 @@ async function buildDeterministicMapping(
   context: Route2Context
 ): Promise<TextSearchMapping> {
   const { requestId } = context;
-  
+
   // Deterministic cuisine detection
   const detectedCuisineKey = detectCuisineKeyword(request.query);
   const hasCityText = !!intent.cityText;
-  
+
   let mode: 'KEYED' | 'FREE_TEXT' = 'FREE_TEXT';
   let cityText: string | null = null;
   let cuisineKey: CuisineKey | null = null;
-  
+
   // Determine mode based on detection results
   if (detectedCuisineKey && hasCityText) {
     mode = 'KEYED';
     cuisineKey = detectedCuisineKey;
     cityText = intent.cityText!;
-    
+
     logger.info({
       requestId,
       stage: 'textsearch_mapper_fallback',
@@ -659,7 +636,7 @@ async function buildDeterministicMapping(
   } else if (detectedCuisineKey) {
     mode = 'KEYED';
     cuisineKey = detectedCuisineKey;
-    
+
     logger.info({
       requestId,
       stage: 'textsearch_mapper_fallback',
@@ -676,7 +653,7 @@ async function buildDeterministicMapping(
       reason: 'no_cuisine_detected'
     }, '[TEXTSEARCH] Fallback: FREE_TEXT mode (no cuisine detected)');
   }
-  
+
   // Build provider query using deterministic builder
   const searchLang = finalFilters.languageContext?.searchLanguage as 'he' | 'en' ?? 'he';
   const { providerTextQuery, providerLanguage, source } = buildProviderQuery(
@@ -686,17 +663,17 @@ async function buildDeterministicMapping(
     searchLang,
     requestId
   );
-  
+
   // Generate cuisine terms if cuisineKey detected
   let requiredTerms: string[] = [];
   let preferredTerms: string[] = [];
   let strictness: 'STRICT' | 'RELAX_IF_EMPTY' = 'RELAX_IF_EMPTY';
-  
+
   if (cuisineKey) {
     requiredTerms = getCuisineSearchTerms(cuisineKey, searchLang);
     preferredTerms = getCuisinePreferredTerms(cuisineKey, searchLang);
     strictness = 'STRICT';
-    
+
     logger.info({
       requestId,
       stage: 'textsearch_mapper_fallback',
@@ -772,7 +749,7 @@ function applyLocationBias(
   // P0 FIX: Priority 1 - Check for EXPLICIT city first (before userLocation)
   // When user explicitly mentions a city, prefer city-center bias over their current location
   const hasExplicitCity = !!(mapping.cityText || intent.reason === 'explicit_city_mentioned');
-  
+
   if (hasExplicitCity && mapping.cityText) {
     logger.info({
       requestId,

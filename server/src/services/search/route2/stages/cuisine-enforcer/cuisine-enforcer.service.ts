@@ -22,10 +22,14 @@ const CUISINE_ENFORCER_VERSION = 'cuisine_enforcer_v3_compact';
 /**
  * Minimal system prompt for BOOST-only mode (score-based ranking, no filtering)
  */
-const CUISINE_ENFORCER_SYSTEM_PROMPT = `Score cuisine match 0-1 for each place using name/types/address hints.
-Return ONLY valid JSON matching schema; no prose.
+const CUISINE_ENFORCER_SYSTEM_PROMPT = `You are a cuisine match scorer for restaurant search results.
+
+Score cuisine match 0..1 for each place using name/types/address hints.
+Do NOT rely on exact keyword matches in the user's language; treat requiredTerms/preferredTerms as canonical tokens.
+Return ONLY JSON matching schema; no prose.
 keepPlaceIds must include ALL input ids in the SAME order as input.
-cuisineScores must include a numeric score for EVERY id.`;
+cuisineScores must include a numeric score for EVERY id.
+.`;
 
 export interface CuisineEnforcerInput {
   requiredTerms: string[];

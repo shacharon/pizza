@@ -2,7 +2,7 @@
   @if (loading) {
     <div class="loading-state">
       <div class="spinner"></div>
-      <p>Searching...</p>
+      <p>{{ t(uiLanguage, 'results.searching') }}</p>
     </div>
   } @else if (hasAnyResults) {
     <!-- Iterate through groups -->
@@ -33,8 +33,8 @@
   } @else {
     <div class="empty-state">
       <div class="empty-icon">🔍</div>
-      <h3>No results found</h3>
-      <p>Try adjusting your search or filters</p>
+      <h3>{{ t(uiLanguage, 'results.noResults') }}</h3>
+      <p>{{ t(uiLanguage, 'error.retry') }}</p>
     </div>
   }
 </div>

@@ -8,6 +8,7 @@ import { Component, Input, Output, EventEmitter, ChangeDetectionStrategy } from 
 import { CommonModule } from '@angular/common';
 import { RestaurantCardComponent } from '../restaurant-card/restaurant-card.component';
 import type { ResultGroup, RestaurantResult, ActionDefinition } from '../../../../domain/types/search.types';
+import { t, type Lang } from '../../../../i18n/search-narration.i18n';
 
 export interface ActionClickEvent {
   restaurant: RestaurantResult;
@@ -25,6 +26,10 @@ export interface ActionClickEvent {
 export class GroupedResultsComponent {
   @Input() groups: ResultGroup[] = [];
   @Input() loading = false;
+  @Input() uiLanguage: Lang = 'en'; // UI language for i18n
+  
+  // Expose t function for template
+  readonly t = t;
   
   @Output() restaurantClick = new EventEmitter<RestaurantResult>();
   @Output() actionClick = new EventEmitter<ActionClickEvent>();

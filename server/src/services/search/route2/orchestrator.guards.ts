@@ -9,6 +9,7 @@ import type { Route2Context, Gate2StageOutput, IntentResult, Gate2Language } fro
 import type { RouteLLMMapping } from './stages/route-llm/schemas.js';
 import { logger } from '../../../lib/logger/structured-logger.js';
 import { generateAndPublishAssistant } from './assistant/assistant-integration.js';
+import { publishAssistantMessage } from './assistant/assistant-publisher.js';
 import type { AssistantGateContext, AssistantClarifyContext, AssistantGenericQueryNarrationContext } from './assistant/assistant-llm.service.js';
 import { resolveAssistantLanguage, resolveSessionId } from './orchestrator.helpers.js';
 import type { WebSocketManager } from '../../../infra/websocket/websocket-manager.js';
@@ -359,42 +360,49 @@ export async function handleIntentClarify(
   wsManager: any
 ): Promise<SearchResponse | null> {
   if (intentDecision.route !== 'CLARIFY') return null;
-  
-    const sessionId = resolveSessionId(request, ctx);
-  
-    // שליחת הודעת עוזר (WS)
-    wsManager.publishAssistant(ctx.requestId, {
+
+  const sessionId = resolveSessionId(request, ctx);
+
+  // Publish CLARIFY assistant message (UNIFIED)
+  publishAssistantMessage(
+    wsManager,
+    ctx.requestId,
+    sessionId,
+    {
       type: 'CLARIFY',
       message: intentDecision.reason || 'Please provide more information',
       question: null,
       blocksSearch: true
-    });
-  
-    return {
-      requestId: ctx.requestId,
-      sessionId,
-      query: {
-        original: request.query,
-        parsed: null as any,
-        language: intentDecision.language
-      },
-      results: [],
-      chips: [],
-      assist: {
-        type: 'clarify' as const,
-        message: intentDecision.reason
-      },
-      meta: {
-        tookMs: Date.now() - ctx.startTime,
-        mode: 'textsearch' as const,
-        appliedFilters: [],
-        confidence: intentDecision.confidence,
-        source: 'intent_clarify',
-        failureReason: 'LOW_CONFIDENCE' as const
-      }
-    };
-  }
-  
+    },
+    ctx.langCtx,
+    ctx.uiLanguage
+  );
+
+  return {
+    requestId: ctx.requestId,
+    sessionId,
+    query: {
+      original: request.query,
+      parsed: null as any,
+      language: intentDecision.language
+    },
+    results: [],
+    chips: [],
+    assist: {
+      type: 'clarify' as const,
+      message: intentDecision.reason
+    },
+    meta: {
+      tookMs: Date.now() - ctx.startTime,
+      mode: 'textsearch' as const,
+      appliedFilters: [],
+      confidence: intentDecision.confidence,
+      source: 'intent_clarify',
+      failureReason: 'LOW_CONFIDENCE' as const
+    }
+  };
+}
+
 /**
  * Store generic query narration flag for later use in response builder
  * Returns null (always continues)

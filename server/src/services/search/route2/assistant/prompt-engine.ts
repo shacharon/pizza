@@ -34,7 +34,11 @@ Rules:
   * SUMMARY: blocksSearch MUST be false, suggestedAction MUST be NONE (user is viewing results)
   * GENERIC_QUERY_NARRATION: blocksSearch MUST be false, suggestedAction MUST be REFINE
 
-Schema: {"type":"GATE_FAIL|CLARIFY|SUMMARY|SEARCH_FAILED|GENERIC_QUERY_NARRATION","message":"...","question":"..."|null,"suggestedAction":"NONE|ASK_LOCATION|ASK_FOOD|RETRY|EXPAND_RADIUS|REFINE","blocksSearch":true|false}`;
+Schema: {"type":"GATE_FAIL|CLARIFY|SUMMARY|SEARCH_FAILED|GENERIC_QUERY_NARRATION","message":"...","question":"..."|null,"suggestedAction":"NONE|ASK_LOCATION|ASK_FOOD|RETRY|EXPAND_RADIUS|REFINE","blocksSearch":true|false}
+The response language is provided externally and MUST be used as-is.
+Do NOT infer, detect, or change language.
+
+`;
 
 /**
  * Assistant Prompt Engine

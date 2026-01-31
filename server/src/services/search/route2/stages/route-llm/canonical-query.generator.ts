@@ -38,35 +38,32 @@ const ALLOWED_PHRASES = {
   ]
 } as const;
 
-const CANONICAL_QUERY_PROMPT = `You are a Google query optimizer for restaurant/food searches.
+const CANONICAL_QUERY_PROMPT = `SYSTEM: You analyze a restaurant search query for Google Places Text Search.
 
-Transform user queries into CANONICAL Google search format.
-
-Output ONLY JSON:
+OUTPUT: JSON ONLY
 {
-  "googleQuery": string,
-  "confidence": number
+  "providerMethod": "textSearch",
+  "mode": "KEYED" | "FREE_TEXT",
+  "cuisineKey": string | null,
+  "placeTypeKey": "restaurant" | "cafe" | "bar" | null,
+  "cityText": string | null,
+  "region": string,
+  "reason": "keyed_city" | "keyed_cuisine" | "keyed_both" | "freetext",
+  "strictness": "STRICT" | "RELAX_IF_EMPTY",
+  "typeHint": "restaurant" | "cafe" | "bar" | "any"
 }
 
-STRICT RULES:
-1) googleQuery MUST be EXACTLY "<canonical phrase> <city>" (if city exists)
-2) ONLY allowed phrases:
-   Hebrew: "מסעדה איטלקית" | "פיצה" | "בית קפה" | "שווארמה" | "תחנת דלק" | "מסעדות"
-   English: "italian restaurant" | "pizza" | "cafe" | "shawarma" | "gas station" | "restaurants"
-3) NO extra tokens, NO filler words, NO variations
-4) confidence: 0.0-1.0 (how well the query matches a canonical phrase)
-5) If no canonical match → return original query with low confidence (<0.7)
-6) CRITICAL: NEVER remove cuisine keywords from query (e.g., "איטלקית", "italian", "asian")
-7) CRITICAL: NEVER remove city names from query (e.g., "תל אביב", "tel aviv", "גדרה")
-8) CRITICAL: Preserve plural→singular conversions ONLY for "restaurant" word, keep cuisine keywords intact
-
-Examples:
-Input: "italian food tel aviv" → {"googleQuery": "italian restaurant tel aviv", "confidence": 0.95}
-Input: "pizza in haifa" → {"googleQuery": "pizza haifa", "confidence": 0.99}
-Input: "מסעדה איטלקית בתל אביב" → {"googleQuery": "מסעדה איטלקית תל אביב", "confidence": 0.99}
-Input: "מסעדות איטלקיות בגדרה" → {"googleQuery": "מסעדה איטלקית גדרה", "confidence": 0.99}
-Input: "where can I eat sushi" → {"googleQuery": "where can I eat sushi", "confidence": 0.3}
-Input: "best burger place" → {"googleQuery": "best burger place", "confidence": 0.4}`;
+RULES:
+- DO NOT detect, infer, translate, or output language.
+- DO NOT use keyword lists, word mappings, or hardcoded examples.
+- Decide KEYED vs FREE_TEXT by semantic meaning only.
+- cuisineKey must be a short canonical label (e.g., "italian", "asian", "burger") or null.
+- cuisineKey must be chosen from an allowed canonical set provided by the system.
+- cityText ONLY if explicitly present; keep original form; do not translate.
+- region must be ISO-3166-1 alpha-2; default "IL" if unknown.
+- Never generate full query sentences.
+- Never add or remove words beyond extracting structured fields.
+`;
 
 const CANONICAL_QUERY_PROMPT_HASH = createHash('sha256')
   .update(CANONICAL_QUERY_PROMPT, 'utf8')
@@ -108,7 +105,7 @@ export interface CanonicalQueryOutput {
   googleQuery: string;
   wasRewritten: boolean;
   confidence: number;
-  reason: 'canonical_success' | 'canonical_fallback_low_confidence' | 'canonical_fallback_error' | 'canonical_fallback_timeout';
+  reason: 'canonical_success' | 'canonical_fallback_low_confidence' | 'canonical_fallback_preservation_failed' | 'canonical_fallback_error' | 'canonical_fallback_timeout';
 }
 
 /**

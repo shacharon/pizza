@@ -34,10 +34,10 @@ export async function executeRouteLLM(
   if (intent.route === 'CLARIFY') {
     throw new Error('[ROUTE2] executeRouteLLM called with CLARIFY route - should have been handled by guard');
   }
-  
+
   // TypeScript now knows intent.route is MappingRoute
   const mappingRoute: import('../../types.js').MappingRoute = intent.route;
-  
+
   // Exhaustive switch on mappingRoute
   // TypeScript will error if a new route is added to MappingRoute but not handled here
   switch (mappingRoute) {

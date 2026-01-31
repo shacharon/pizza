@@ -16,28 +16,23 @@ import { extractCuisineKeyFromQuery, extractTypeKeyFromQuery } from './query-cui
 
 const NEARBY_MAPPER_VERSION = 'nearby_mapper_v1';
 
-const NEARBY_MAPPER_PROMPT = ` You are NEARBY_PARAMS for Google Places Nearby Search.
-Input includes a fixed location {lat,lng}. Use it EXACTLY.
-Return ONLY JSON with ALL fields:
+const NEARBY_MAPPER_PROMPT = ` You generate Google Places Nearby Search parameters.
+
+Output JSON only:
 {
   "providerMethod":"nearbySearch",
   "location":{"lat":number,"lng":number},
   "radiusMeters":number,
-  "keyword":string,
-  "region":string,
-  "language":"he|en|ru|ar|fr|es|other",
-  "reason":"distance_explicit|distance_default"
+  "keyword": string|null,
+  "region": string,
+  "reason":"distance_explicit"|"distance_default"
 }
 
-radiusMeters:
-- If an explicit distance appears (meters only): use that exact number.
-- Otherwise use 500.
+Rules:
+- location must be exactly the input coordinates.
+- radiusMeters: if an explicit distance appears in the query, use that number exactly; else 500.
+- keyword: a short canonical food/place term (1-3 words). Do NOT include location words. Do NOT translate the city. Do NOT output language.
 
-keyword:
-- 1-3 words, food/place term only. No location words.
-- If no explicit food/place term in the query, set keyword="restaurant".
-
-No extra keys. No text.
 
 `;
 

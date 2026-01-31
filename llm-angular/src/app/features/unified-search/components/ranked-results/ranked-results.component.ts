@@ -8,6 +8,7 @@ import { Component, Input, Output, EventEmitter, ChangeDetectionStrategy } from 
 import { CommonModule } from '@angular/common';
 import { RestaurantCardComponent } from '../restaurant-card/restaurant-card.component';
 import type { Restaurant } from '../../../../domain/types/search.types';
+import { t, type Lang } from '../../../../i18n/search-narration.i18n';
 
 @Component({
   selector: 'app-ranked-results',
@@ -21,6 +22,10 @@ export class RankedResultsComponent {
   @Input() results: Restaurant[] = [];
   @Input() loading = false;
   @Input() showReasonLabels = true; // Top result gets reason label
+  @Input() uiLanguage: Lang = 'en'; // UI language for i18n
+  
+  // Expose t function for template
+  readonly t = t;
   
   @Output() restaurantClick = new EventEmitter<Restaurant>();
 

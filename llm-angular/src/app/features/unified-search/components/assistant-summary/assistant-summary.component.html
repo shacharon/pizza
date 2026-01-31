@@ -29,7 +29,7 @@
       @if (isPending()) {
         <div class="status-pending">
           <span class="spinner"></span>
-          <span class="text">Preparing assistant...</span>
+          <span class="text">{{ t(uiLanguage(), 'assistant.preparing') }}</span>
         </div>
       }
       
@@ -48,7 +48,7 @@
       @if (isFailed()) {
         <div class="error-text">
           <span class="icon">⚠️</span>
-          <span>{{ error() || 'Assistant unavailable. Results are still shown below.' }}</span>
+          <span>{{ error() || t(uiLanguage(), 'assistant.unavailable') }}</span>
         </div>
       }
     }

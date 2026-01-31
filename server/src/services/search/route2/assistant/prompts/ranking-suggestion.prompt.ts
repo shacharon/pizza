@@ -69,7 +69,12 @@ Output: {"message":"Showing nearby options. Want to focus on highly-rated places
 Input (he): manyOpenUnknown=true
 Output: {"message":"אין לנו מידע על שעות פתיחה לחלק מהמקומות. אפשר לחפש לפי אזור ספציפי?","suggestion":"ציין שכונה או רחוב","suggestedAction":"REFINE_LOCATION"}
 
-Return ONLY valid JSON.`;
+Return ONLY valid JSON.
+uiLanguage is provided by the system context and MUST be used as-is.
+Do NOT infer, detect, or modify language.
+
+
+`;
 
 /**
  * Build user prompt from ranking context

@@ -1,22 +1,21 @@
-<div class="search-page">
+<div class="search-page" [attr.dir]="isRTLLanguage() ? 'rtl' : 'ltr'">
   <header class="search-header">
     <div class="hero-section">
-      <h1 class="page-title">Search food the way you think</h1>
-      <p class="page-subtitle">Search for food naturally, in any language.
-        Just say what you’re in the mood for.</p>
+      <h1 class="page-title">{{ t(uiLanguage(), 'hero.title') }}</h1>
+      <p class="page-subtitle">{{ t(uiLanguage(), 'hero.subtitle') }}</p>
 
       <!-- Location Status (automatic, inline) -->
       <div class="location-status">
         @if (locationState() === 'ON') {
-        <span class="location-text">📍 Using your location</span>
+        <span class="location-text">{{ t(uiLanguage(), 'location.using') }}</span>
         } @else if (locationState() === 'REQUESTING') {
-        <span class="location-text">⏳ Getting location...</span>
+        <span class="location-text">{{ t(uiLanguage(), 'location.getting') }}</span>
         } @else if (locationState() === 'DENIED') {
-        <span class="location-text location-error">🚫 Location access denied</span>
+        <span class="location-text location-error">{{ t(uiLanguage(), 'location.denied') }}</span>
         } @else if (locationState() === 'ERROR') {
-        <span class="location-text location-error">⚠️ Location unavailable</span>
+        <span class="location-text location-error">{{ t(uiLanguage(), 'location.unavailable') }}</span>
         } @else {
-        <button class="location-link" (click)="onLocationToggle()">Enable location for better results</button>
+        <button class="location-link" (click)="onLocationToggle()">{{ t(uiLanguage(), 'location.enable') }}</button>
         }
       </div>
     </div>
@@ -24,7 +23,7 @@
     <!-- Search Card: Input + Assistant Line + Contextual Assistant -->
     <div class="search-card">
       <app-search-bar [value]="facade.currentQuery()" [loading]="facade.loading()"
-        [placeholder]="'What are you hungry for?'" (search)="onSearch($event)" (inputChange)="onInputChange($event)"
+        [placeholder]="t(uiLanguage(), 'search.placeholder')" (search)="onSearch($event)" (inputChange)="onInputChange($event)"
         (clear)="onClear()" />
 
       <!-- Assistant Line (always shown - includes WS status) -->
@@ -37,7 +36,7 @@
       @if (showContextualAssistant()) {
       <app-assistant-summary [cardMessages]="contextualCardMessages()" [messages]="contextualMessages()"
         [text]="asyncAssistantMessage()" [status]="facade.assistantState()" [error]="facade.assistantError()"
-        [locale]="facade.locale()" />
+        [locale]="uiLanguage()" />
       }
     </div>
 
@@ -46,7 +45,7 @@
     @if (showGlobalAssistant()) {
     <app-assistant-summary [cardMessages]="globalCardMessages()" [messages]="globalMessages()"
       [text]="asyncAssistantMessage()" [status]="facade.assistantState()" [error]="facade.assistantError()"
-      [locale]="facade.locale()" />
+      [locale]="uiLanguage()" />
     }
   </header>
 
@@ -55,9 +54,9 @@
     @if (facade.showRecentSearches() && facade.hasRecentSearches()) {
     <section class="recent-searches">
       <div class="section-header">
-        <h2>Recent Searches</h2>
+        <h2>{{ t(uiLanguage(), 'recent.title') }}</h2>
         <button class="clear-link" (click)="onClearRecentSearches()">
-          Clear all
+          {{ t(uiLanguage(), 'recent.clearAll') }}
         </button>
       </div>
       <ul class="recent-list">
@@ -77,10 +76,10 @@
     @if (facade.error() && !facade.loading()) {
     <div class="error-state">
       <div class="error-icon">⚠️</div>
-      <h2>Oops! Something went wrong</h2>
+      <h2>{{ t(uiLanguage(), 'error.title') }}</h2>
       <p>{{ facade.error() }}</p>
       <button class="retry-button" (click)="retry()">
-        Try Again
+        {{ t(uiLanguage(), 'error.retry') }}
       </button>
     </div>
     }
@@ -95,14 +94,14 @@
     @if (isRecoveryMode() && !facade.loading()) {
     <div class="mode-indicator recovery">
       <span class="mode-icon">🔄</span>
-      <span class="mode-text">Recovery mode - refining search</span>
+      <span class="mode-text">{{ t(uiLanguage(), 'mode.recovery') }}</span>
     </div>
     }
 
     @if (isClarifyMode() && !facade.loading()) {
     <div class="mode-indicator clarify">
       <span class="mode-icon">❓</span>
-      <span class="mode-text">Need more info</span>
+      <span class="mode-text">{{ t(uiLanguage(), 'mode.clarify') }}</span>
     </div>
     }
 
@@ -118,7 +117,7 @@
         <!-- ALWAYS RENDER (P0 Fix): Show order badge even if meta.order missing (fallback to defaults) -->
         <div class="order-explain">
           <div class="order-explain-header">
-            <span class="order-label">Order:</span>
+            <span class="order-label">{{ t(uiLanguage(), 'order.label') }}</span>
             <span class="order-profile">{{ hybridBadgeText() }}</span>
             <!-- DEV-ONLY: Debug info -->
             @if (orderDebugInfo()) {
@@ -153,14 +152,14 @@
         <div class="applied-filters">
           @if (closedFilterActive() === 'open') {
           <span class="filter-chip open-now"
-            [title]="facade.response()?.query?.language === 'he' ? 'מציג רק מסעדות פתוחות עכשיו' : 'Showing only restaurants open now'">
-            {{ facade.response()?.query?.language === 'he' ? '🟢 פתוח עכשיו' : '🟢 Open now' }}
+            [title]="t(uiLanguage(), 'filter.openNowTooltip')">
+            {{ t(uiLanguage(), 'filter.openNow') }}
           </span>
           }
           @if (glutenFreeFilterActive()) {
           <span class="filter-chip gluten-free"
-            [title]="facade.response()?.query?.language === 'he' ? 'מבוסס על רמזים בטקסט — לא מובטח' : 'Based on text signals — not guaranteed'">
-            {{ facade.response()?.query?.language === 'he' ? 'ללא גלוטן (רמזים)' : 'Gluten-free (signals)' }}
+            [title]="t(uiLanguage(), 'filter.glutenFreeTooltip')">
+            {{ t(uiLanguage(), 'filter.glutenFree') }}
           </span>
           }
         </div>
@@ -177,7 +176,7 @@
       @if (canShowMore()) {
       <div class="pagination-controls">
         <button class="show-more-button" (click)="loadMore()">
-          Load more
+          {{ t(uiLanguage(), 'pagination.loadMore') }}
         </button>
       </div>
       }
@@ -193,7 +192,7 @@
     <!-- Pending Actions Panel -->
     @if (facade.pendingActions().length > 0) {
     <aside class="pending-actions-panel">
-      <h3>Pending Approvals</h3>
+      <h3>{{ t(uiLanguage(), 'actions.pendingTitle') }}</h3>
       @for (action of facade.pendingActions(); track trackByAction($index, action)) {
       <div class="pending-action">
         <div class="action-info">
@@ -202,10 +201,10 @@
         </div>
         <div class="action-buttons">
           <button class="approve-button" (click)="onApproveAction(action.id)">
-            ✓ Approve
+            {{ t(uiLanguage(), 'actions.approve') }}
           </button>
           <button class="reject-button" (click)="onRejectAction(action.id)">
-            ✗ Reject
+            {{ t(uiLanguage(), 'actions.reject') }}
           </button>
         </div>
       </div>

@@ -7,6 +7,7 @@
 import { Component, inject, signal, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { WsClientService } from '../../../core/services/ws-client.service';
+import { t, type Lang } from '../../../i18n/search-narration.i18n';
 
 @Component({
   selector: 'app-ws-status-banner',
@@ -16,7 +17,7 @@ import { WsClientService } from '../../../core/services/ws-client.service';
     @if (showBanner()) {
       <div class="ws-banner reconnecting">
         <span class="icon">⟳</span>
-        <span>Connection issue - reconnecting...</span>
+        <span>{{ t('en', 'ws.reconnecting') }}</span>
       </div>
     }
   `,
@@ -67,6 +68,9 @@ import { WsClientService } from '../../../core/services/ws-client.service';
 })
 export class WsStatusBannerComponent {
   private wsClient = inject(WsClientService);
+  
+  // Expose t function for template
+  readonly t = t;
   
   readonly status = this.wsClient.connectionStatus;
   readonly showBanner = signal(false);

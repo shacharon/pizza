@@ -23,6 +23,7 @@ import { WsClientService } from '../../../core/services/ws-client.service';
 import type { Restaurant, ClarificationChoice, Coordinates } from '../../../domain/types/search.types';
 import type { ActionType, ActionLevel } from '../../../domain/types/action.types';
 import { mapChipToSortKey } from '../../../domain/mappers/chip.mapper';
+import { t, normalizeLang, isRTL, type Lang } from '../../../i18n/search-narration.i18n';
 // DEV: Import dev tools for testing (auto-loaded)
 import '../../../facades/assistant-dev-tools';
 
@@ -56,11 +57,25 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   private readonly locationService = inject(LocationService);
   private readonly wsClient = inject(WsClientService);
 
+  // Expose t function for template
+  readonly t = t;
+
   private cleanupInterval?: number;
 
   // Location state
   readonly locationState = this.locationService.state;
   readonly locationCoords = this.locationService.location;
+
+  // i18n: Determine UI language from response or fallback to English
+  readonly uiLanguage = computed(() => {
+    const response = this.response();
+    // Priority: assistant message language > meta.langCtx.uiLanguage > query language > fallback 'en'
+    const langCtx = response?.meta?.languageContext;
+    const queryLang = response?.query?.language;
+    return normalizeLang(langCtx?.uiLanguage || queryLang || 'en');
+  });
+
+  readonly isRTLLanguage = computed(() => isRTL(this.uiLanguage()));
 
   // Phase 5: Mode indicators
   readonly response = this.facade.response;
@@ -70,22 +85,24 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   });
 
   /**
-   * Get location tooltip text
+   * Get location tooltip text (i18n)
    */
   getLocationTooltip(): string {
     const state = this.locationState();
     const coords = this.locationCoords();
+    const lang = this.uiLanguage();
 
     if (state === 'ON' && coords) {
-      return `Location: On (${coords.lat.toFixed(2)}, ${coords.lng.toFixed(2)})`;
+      // Return coordinates format (same across languages)
+      return `${t(lang, 'location.using')} (${coords.lat.toFixed(2)}, ${coords.lng.toFixed(2)})`;
     } else if (state === 'DENIED') {
-      return 'Location: Denied';
+      return t(lang, 'location.denied');
     } else if (state === 'ERROR') {
-      return 'Location: Error';
+      return t(lang, 'location.unavailable');
     } else if (state === 'REQUESTING') {
-      return 'Requesting location...';
+      return t(lang, 'location.getting');
     } else {
-      return 'Click to enable location';
+      return t(lang, 'location.enable');
     }
   }
   readonly isRecoveryMode = computed(() => this.currentMode() === 'RECOVERY');
@@ -106,23 +123,26 @@ export class SearchPageComponent implements OnInit, OnDestroy {
 
   readonly orderProfileName = computed(() => {
     const profile = this.orderProfile()?.profile;
-    if (!profile) return 'Unknown'; // Show 'Unknown' if missing (shouldn't happen)
+    const lang = this.uiLanguage();
+    if (!profile) return t(lang, 'order.balanced'); // Default fallback
 
-    // Map backend profile names to display names
-    const profileDisplayNames: Record<string, string> = {
-      'balanced': 'Balanced',
-      'BALANCED': 'Balanced',
-      'nearby': 'Nearby',
-      'NEARBY': 'Nearby',
-      'quality': 'Quality',
-      'QUALITY': 'Quality',
-      'budget': 'Budget',
-      'BUDGET': 'Budget',
-      'CUISINE': 'Cuisine',
-      'cuisine': 'Cuisine'
-    };
-
-    return profileDisplayNames[profile] || profile;
+    // Map backend profile names to i18n keys
+    const profileKey = profile.toLowerCase() as 'balanced' | 'nearby' | 'quality' | 'budget' | 'cuisine';
+    
+    switch (profileKey) {
+      case 'balanced':
+        return t(lang, 'order.balanced');
+      case 'nearby':
+        return t(lang, 'order.nearby');
+      case 'quality':
+        return t(lang, 'order.quality');
+      case 'budget':
+        return t(lang, 'order.budget');
+      case 'cuisine':
+        return t(lang, 'order.cuisine');
+      default:
+        return t(lang, 'order.balanced');
+    }
   });
 
   readonly orderWeights = computed(() => {
@@ -156,11 +176,13 @@ export class SearchPageComponent implements OnInit, OnDestroy {
     };
   });
 
-  // NEW: Hybrid badge text with reason codes
+  // NEW: Hybrid badge text with reason codes (i18n)
   readonly hybridBadgeText = computed(() => {
     const order = this.orderProfile();
+    const lang = this.uiLanguage();
+    
     if (!order || !order.reasonCodes || order.reasonCodes.length === 0) {
-      return 'Hybrid'; // Fallback if no reason codes
+      return t(lang, 'order.hybrid'); // Fallback if no reason codes
     }
 
     // Extract meaningful labels from reason codes
@@ -169,19 +191,19 @@ export class SearchPageComponent implements OnInit, OnDestroy {
     for (const code of order.reasonCodes) {
       if (code === 'BASE_BALANCED') continue; // Skip base, it's implicit
 
-      // Map reason codes to user-friendly labels
-      if (code === 'RULE_A_DISTANCE') reasonLabels.push('Nearby');
-      else if (code === 'RULE_B_OPEN_NOW') reasonLabels.push('OpenNow');
-      else if (code === 'RULE_C_BUDGET') reasonLabels.push('Budget');
-      else if (code === 'RULE_D_QUALITY') reasonLabels.push('Quality');
+      // Map reason codes to user-friendly labels (i18n)
+      if (code === 'RULE_A_DISTANCE') reasonLabels.push(t(lang, 'order.nearby'));
+      else if (code === 'RULE_B_OPEN_NOW') reasonLabels.push(t(lang, 'filter.openNow').replace('🟢 ', '')); // Remove emoji
+      else if (code === 'RULE_C_BUDGET') reasonLabels.push(t(lang, 'order.budget'));
+      else if (code === 'RULE_D_QUALITY') reasonLabels.push(t(lang, 'order.quality'));
       else reasonLabels.push(code); // Fallback: use raw code
     }
 
     // Build badge text: "Hybrid" or "Hybrid · Nearby+OpenNow"
     if (reasonLabels.length === 0) {
-      return 'Hybrid';
+      return t(lang, 'order.hybrid');
     } else {
-      return `Hybrid · ${reasonLabels.join('+')}`;
+      return `${t(lang, 'order.hybrid')} · ${reasonLabels.join('+')}`;
     }
   });
 

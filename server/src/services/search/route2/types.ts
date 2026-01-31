@@ -9,10 +9,12 @@ import type { SearchRequest } from '../types/search-request.dto.js';
 import type { SearchResponse } from '../types/search-response.dto.js';
 import type { LLMProvider } from '../../../llm/types.js';
 import type { PreGoogleBaseFilters, FinalSharedFilters } from './shared/shared-filters.types.js';
+import type { LangCtx } from './language-enforcement.js';
 
 // Re-export for convenience
 export type { SearchRequest, SearchResponse };
 export type { PreGoogleBaseFilters, FinalSharedFilters };
+export type { LangCtx };
 
 /**
  * ROUTE2 Pipeline Context
@@ -33,9 +35,16 @@ export interface Route2Context {
     lat: number;
     lng: number;
   } | null;
+  
+  // LANGUAGE ENFORCEMENT: Single source of truth for all language decisions
+  // Set once by Gate2, flows through entire pipeline
+  langCtx?: LangCtx;
+  
+  // DEPRECATED: Use langCtx.uiLanguage instead
   // UI language (from client, for assistant messages ONLY)
   // Backend owns searchLanguage policy; uiLanguage is for display only
   uiLanguage?: 'he' | 'en';
+  
   // Region tracking: user (device) vs query (LLM-detected)
   userRegionCode?: 'IL' | 'OTHER';
   queryRegionCode?: 'IL' | 'OTHER';
@@ -69,6 +78,7 @@ export type Gate2Route = 'CONTINUE' | 'ASK_CLARIFY' | 'STOP';
 export interface Gate2Result {
   foodSignal: Gate2FoodSignal;
   language: Gate2Language;
+  languageConfidence: number;
   route: Gate2Route;
   confidence: number;
 }

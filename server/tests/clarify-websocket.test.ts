@@ -17,7 +17,7 @@ describe('CLARIFY WebSocket Publishing', () => {
   beforeEach(() => {
     // Disable auth requirement for testing
     process.env.WS_REQUIRE_AUTH = 'false';
-    
+
     server = createServer();
     wsManager = new WebSocketManager(server, {
       path: '/ws-test',
@@ -87,7 +87,7 @@ describe('CLARIFY WebSocket Publishing', () => {
 
   it('should work with other assistant types', () => {
     const types = ['GATE_FAIL', 'SUMMARY', 'SEARCH_FAILED', 'GENERIC_QUERY_NARRATION', 'NUDGE_REFINE'] as const;
-    
+
     types.forEach(type => {
       const result = wsManager.publishAssistant(`test-${type}`, {
         type,
@@ -95,7 +95,7 @@ describe('CLARIFY WebSocket Publishing', () => {
         question: null,
         blocksSearch: type === 'GATE_FAIL'
       });
-      
+
       assert.ok(result, `Should work with type: ${type}`);
     });
   });

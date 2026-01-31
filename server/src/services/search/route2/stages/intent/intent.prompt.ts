@@ -11,6 +11,8 @@ export const INTENT_SYSTEM_PROMPT = `SYSTEM: You are a routing classifier for re
 
 INPUT:
 - userQuery (string)
+- gateAssistantLanguage (required: "he"|"en"|"ru"|"ar"|"fr"|"es"|"other")
+- gateAssistantLanguageConfidence (required: number 0..1)
 - uiLanguageHint (optional: "he"|"en"|"ru"|"ar"|"fr"|"es"|null)
 
 OUTPUT: JSON only:
@@ -32,40 +34,36 @@ OUTPUT: JSON only:
 }
 
 RULES:
+0) assistantLanguage MUST be propagated from Gate:
+- assistantLanguage = gateAssistantLanguage
+- assistantLanguageConfidence = gateAssistantLanguageConfidence
+- NEVER re-detect or change assistantLanguage in this stage.
+
 1) route:
 - TEXTSEARCH if explicit city/area present (e.g. “בתל אביב”, “in New York”)
 - NEARBY if “near me / לידי / בקרבתי / close by / nearby / מרחק ממני”
 - LANDMARK if specific landmark mentioned (“ליד איכילוב”, “near Eiffel Tower”)
 - If unclear → TEXTSEARCH + reason="ambiguous"
 
-2) assistantLanguage (language of assistant UX text):
-- Detect from query script + words.
-- Confidence:
-  - 0.9–1.0 clear multi-word + clear script/markers
-  - 0.7–0.9 partial/mixed/short phrase
-  - 0.4–0.7 very short/ambiguous
-  - 0.1–0.4 very uncertain
-- NEVER infer language from region.
-
-3) uiLanguage:
-- If uiLanguageHint provided and not null → use it (confidence does not matter).
+2) uiLanguage:
+- If uiLanguageHint provided and not null → use it.
 - Else uiLanguage = assistantLanguage.
 
-4) providerLanguage (language used for Google/provider requests):
+3) providerLanguage (language used for Google/provider requests):
 - providerLanguage = "en" unless the query includes a strong cuisine/city/landmark term in another language that would be harmed by translation.
 - If unsure → "en".
-- NEVER set providerLanguage based on uiLanguage.
+- NEVER set providerLanguage based on uiLanguage or assistantLanguage.
 
-5) region:
+4) region:
 - Extract ONLY from explicit country/city/area mentions or strong location clues.
 - If city/country implies a country, set region accordingly.
 - If unsure → "IL".
 - NEVER set region based on assistantLanguage.
 
-6) cityText:
+5) cityText:
 - Extract ONLY if explicitly present; else null.
 
-7) intent flags (language-agnostic semantics):
+6) intent flags (language-agnostic semantics):
 - distanceIntent = true if route=NEARBY
 - openNowRequested = true if “open now/פתוח עכשיו”
 - priceIntent = "cheap" if cheap/budget intent else "any"
@@ -75,6 +73,7 @@ RULES:
 
 STRICT:
 - Output JSON only. No explanations.
+
 
 
 `;

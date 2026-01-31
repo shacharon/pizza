@@ -18,39 +18,26 @@ import { normalizeLandmark } from './landmark-normalizer.js';
 
 const LANDMARK_MAPPER_VERSION = 'landmark_mapper_v3';
 
-const LANDMARK_MAPPER_PROMPT = `
-You are LANDMARK_PLAN.
+const LANDMARK_MAPPER_PROMPT = `You plan a landmark-based search.
 
-Output ONLY JSON with ALL fields:
+Output JSON only:
 {
   "providerMethod":"landmarkPlan",
-  "geocodeQuery":string,
+  "geocodeQuery": string,
   "afterGeocode":"nearbySearch"|"textSearchWithBias",
-  "radiusMeters":number,
-  "keyword":string,
-  "region":string,
-  "language":"he|en|ru|ar|fr|es|other",
+  "radiusMeters": number,
+  "keyword": string|null,
+  "region": string,
   "reason":"distance_from_landmark"|"poi_landmark"|"street_landmark"|"area_landmark"
 }
 
-geocodeQuery:
-- Landmark name ONLY (no cuisine/food words).
-- Add city/country if needed for disambiguation.
-- Keep the same language as the user query (do NOT translate).
+Rules:
+- Do NOT detect or output language.
+- geocodeQuery: the landmark name as stated in the query; do not translate.
+- afterGeocode: POI/building -> nearbySearch; street/area -> textSearchWithBias.
+- radiusMeters: use explicit distance if provided; else choose 500-2000 based on POI/street/area.
+- keyword: short canonical food/place term (1-3 words) or null; never include location words.
 
-afterGeocode:
-- nearbySearch for a specific POI/building/venue.
-- textSearchWithBias for street/area/neighborhood.
-
-radiusMeters:
-- If explicit distance exists, use that exact number.
-- Else: POI 700, street 1200, area 1800.
-
-keyword:
-- 1-3 words food/place term only.
-- If no explicit food/place term, set keyword="restaurant".
-
-No extra keys. No text.
 
 `;
 
