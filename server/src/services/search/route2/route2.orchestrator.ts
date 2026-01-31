@@ -329,7 +329,7 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
     let enforcedResults = googleResult.results;
     let cuisineEnforcementApplied = false;
     let cuisineEnforcementFailed = false;
-    
+
     if (mapping.providerMethod === 'textSearch' && mapping.requiredTerms && mapping.requiredTerms.length > 0) {
       logger.info({
         requestId,
@@ -352,7 +352,7 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
           userRatingsTotal: r.userRatingsTotal
         }));
 
-        // Execute LLM-based enforcement
+        // Execute LLM-based enforcement (initial STRICT attempt)
         const enforcerInput: CuisineEnforcerInput = {
           requiredTerms: mapping.requiredTerms,
           preferredTerms: mapping.preferredTerms || [],
@@ -360,7 +360,7 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
           places: placesForEnforcement
         };
 
-        const enforcementResult = await executeCuisineEnforcement(
+        let enforcementResult = await executeCuisineEnforcement(
           enforcerInput,
           ctx.llmProvider,
           requestId
@@ -373,8 +373,122 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
           countIn: googleResult.results.length,
           countOut: enforcementResult.keepPlaceIds.length,
           relaxApplied: enforcementResult.relaxApplied,
-          relaxStrategy: enforcementResult.relaxStrategy
+          relaxStrategy: enforcementResult.relaxStrategy,
+          enforcementSkipped: enforcementResult.enforcementSkipped
         }, '[ROUTE2] Cuisine enforcement completed');
+
+        // REAL RELAX STRATEGY: If 0 results after enforcement (and not skipped), apply relaxation
+        if (enforcementResult.keepPlaceIds.length === 0 && !enforcementResult.enforcementSkipped) {
+          logger.info({
+            requestId,
+            pipelineVersion: 'route2',
+            event: 'cuisine_enforcement_relax_triggered',
+            reason: 'zero_results_after_strict',
+            originalStrictness: mapping.strictness
+          }, '[ROUTE2] Zero results after STRICT enforcement, applying relaxation');
+
+          // Relax #1: Downgrade STRICT → SOFT (requiredTerms become preferred-only)
+          logger.info({
+            requestId,
+            event: 'relax_strategy_soft',
+            attempt: 1
+          }, '[ROUTE2] Relax #1: Downgrade to SOFT mode (requiredTerms → preferredTerms)');
+
+          const relaxedInput: CuisineEnforcerInput = {
+            requiredTerms: [], // Clear required terms
+            preferredTerms: [...mapping.requiredTerms, ...mapping.preferredTerms], // Merge into preferred
+            strictness: 'RELAX_IF_EMPTY',
+            places: placesForEnforcement
+          };
+
+          enforcementResult = await executeCuisineEnforcement(
+            relaxedInput,
+            ctx.llmProvider,
+            requestId
+          );
+
+          logger.info({
+            requestId,
+            event: 'relax_soft_completed',
+            countOut: enforcementResult.keepPlaceIds.length
+          }, '[ROUTE2] SOFT mode enforcement completed');
+
+          // Relax #2: If still 0, rerun Google with broader query
+          if (enforcementResult.keepPlaceIds.length === 0 && mapping.cityText) {
+            logger.info({
+              requestId,
+              event: 'relax_strategy_google_rerun',
+              attempt: 2,
+              cityText: mapping.cityText
+            }, '[ROUTE2] Relax #2: Rerun Google with broader query');
+
+            // Import the text search handler
+            const { executeTextSearch } = await import('./stages/google-maps/text-search.handler.js');
+
+            // Build broader mapping: "restaurants in <city>" (English)
+            const broaderMapping = {
+              ...mapping,
+              mode: 'KEYED' as const,
+              cuisineKey: null,
+              providerTextQuery: `restaurants in ${mapping.cityText}`,
+              providerLanguage: 'en' as const,
+              requiredTerms: [],
+              preferredTerms: [],
+              strictness: 'RELAX_IF_EMPTY' as const
+            };
+
+            logger.info({
+              requestId,
+              event: 'google_rerun_broader_query',
+              providerTextQuery: broaderMapping.providerTextQuery,
+              providerLanguage: broaderMapping.providerLanguage
+            }, '[ROUTE2] Rerunning Google with broader query');
+
+            // Rerun Google search
+            const broaderResults = await executeTextSearch(broaderMapping, ctx);
+
+            logger.info({
+              requestId,
+              event: 'google_rerun_completed',
+              countOut: broaderResults.length
+            }, '[ROUTE2] Google rerun completed');
+
+            // Apply SOFT enforcement to broader results
+            if (broaderResults.length > 0) {
+              const broaderPlaces: PlaceInput[] = broaderResults.map(r => ({
+                placeId: r.placeId || r.id,
+                name: r.name || '',
+                types: r.types || [],
+                address: r.address || r.formattedAddress || '',
+                rating: r.rating,
+                userRatingsTotal: r.userRatingsTotal
+              }));
+
+              enforcementResult = await executeCuisineEnforcement(
+                {
+                  ...relaxedInput,
+                  places: broaderPlaces
+                },
+                ctx.llmProvider,
+                requestId
+              );
+
+              logger.info({
+                requestId,
+                event: 'relax_google_rerun_completed',
+                countIn: broaderResults.length,
+                countOut: enforcementResult.keepPlaceIds.length
+              }, '[ROUTE2] Google rerun + SOFT enforcement completed');
+
+              // Use broader results if enforcement succeeded
+              if (enforcementResult.keepPlaceIds.length > 0) {
+                googleResult.results = broaderResults; // Update base results
+                enforcementResult.relaxStrategy = 'google_rerun_broader';
+                enforcementResult.relaxApplied = true;
+              }
+            }
+          }
+        }
 
         // Apply enforcement: filter and reorder by keepPlaceIds
         if (enforcementResult.keepPlaceIds.length > 0) {
@@ -383,7 +497,7 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
             .map(placeId => googleResult.results.find(r => (r.placeId || r.id) === placeId))
             .filter((r): r is NonNullable<typeof r> => r !== undefined);
           cuisineEnforcementApplied = true;
-        } else if (!enforcementResult.relaxApplied) {
+        } else if (!enforcementResult.relaxApplied && !enforcementResult.enforcementSkipped) {
           // No matches and no relaxation => enforcement failed, keep original
           logger.warn({
             requestId,
@@ -392,6 +506,14 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
             strictness: mapping.strictness
           }, '[ROUTE2] Cuisine enforcement returned empty, keeping original results');
           cuisineEnforcementFailed = true;
+        } else if (enforcementResult.enforcementSkipped) {
+          // Enforcement was skipped (small sample guard)
+          logger.info({
+            requestId,
+            pipelineVersion: 'route2',
+            event: 'cuisine_enforcement_skipped',
+            reason: 'small_sample_guard'
+          }, '[ROUTE2] Cuisine enforcement skipped (small sample guard)');
         } else {
           // Relaxation applied but still empty => keep original with flag
           logger.warn({
@@ -434,10 +556,10 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
     // STAGE 6.5: LLM RANKING (if enabled) + RANKING SIGNALS
     // Apply LLM-driven ranking to post-filtered results and build ranking signals
     // Extract cityCenter from mapping if present (for distance calculation)
-    const cityCenter = (mapping.providerMethod === 'textSearch' && mapping.cityCenter) 
-      ? mapping.cityCenter 
+    const cityCenter = (mapping.providerMethod === 'textSearch' && mapping.cityCenter)
+      ? mapping.cityCenter
       : null;
-    
+
     const rankingResult = await applyRankingIfEnabled(
       postFilterResult.resultsFiltered,
       intentDecision,

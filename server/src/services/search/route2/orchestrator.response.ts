@@ -18,6 +18,8 @@ import type { WebSocketManager } from '../../../infra/websocket/websocket-manage
 import { buildAppliedFiltersArray } from './orchestrator.filters.js';
 import { publishRankingSuggestionDeferred } from './assistant/ranking-suggestion-publisher.js';
 import { rankingSignalsCache } from './ranking/ranking-signals-cache.redis.js';
+import { resolveOrderMetadata } from './ranking/order-profile.js';
+import { resolveHybridOrderWeights, type HybridWeightContext } from './ranking/order-weights.hybrid.js';
 
 /**
  * DEFENSIVE INVARIANT: Validate response for CLARIFY/STOPPED states
@@ -79,6 +81,26 @@ export function buildEarlyExitResponse(params: {
   failureReason: FailureReason;
   startTime: number;
 }): SearchResponse {
+  // CRITICAL: Add default order profile even for early exits
+  // This ensures UI can always render order badge (with fallback)
+  const hybridContext: HybridWeightContext = {
+    method: 'textsearch',
+    hasUserLocation: false,  // Early exit = no location context
+    distanceIntent: false,
+    openNowRequested: false,
+    priceIntent: 'any',
+    qualityIntent: false,
+    cuisineKey: null
+  };
+
+  const hybridOrderMetadata = resolveHybridOrderWeights(hybridContext);
+
+  const defaultOrderMetadata = {
+    profile: hybridOrderMetadata.base as 'balanced',
+    weights: hybridOrderMetadata.weights,
+    reasonCodes: hybridOrderMetadata.reasonCodes // NEW: Include reason codes for UI
+  };
+
   const response: SearchResponse = {
     requestId: params.requestId,
     sessionId: params.sessionId,
@@ -106,10 +128,22 @@ export function buildEarlyExitResponse(params: {
       appliedFilters: [],
       confidence: params.confidence,
       source: params.source,
-      failureReason: params.failureReason
+      failureReason: params.failureReason,
       // INVARIANT: No pagination field for CLARIFY/STOPPED
+      // CRITICAL: Add default order profile (balanced)
+      order: defaultOrderMetadata
     }
   };
+
+  // DEV LOG: Verify early exit response has order metadata
+  logger.info({
+    requestId: params.requestId,
+    event: 'early_exit_response_order_check',
+    hasOrder: !!response.meta.order,
+    orderProfile: response.meta.order?.profile,
+    failureReason: params.failureReason,
+    msg: '[ORDER] Early exit response order metadata check'
+  });
 
   // DEFENSIVE: Validate invariants before returning
   return validateClarifyResponse(response);
@@ -272,6 +306,53 @@ export async function buildFinalResponse(
     reordered: rankingApplied
   }, orderMessage);
 
+  // HYBRID DETERMINISTIC ORDER WEIGHTS: Compute from intent/context (NO LLM)
+  // Build context from intent flags + filters
+  // CRITICAL: Use intent flags directly (already language-agnostic from LLM)
+  const priceLevel = (filtersForPostFilter as any).priceLevel;
+  const derivedPriceIntent: 'cheap' | 'any' = priceLevel === 'INEXPENSIVE' ? 'cheap' : 'any';
+
+  // Use intent flags from LLM (language-agnostic)
+  // Fallback to derived detection only if intent doesn't provide them
+  const hybridContext: HybridWeightContext = {
+    method: mapping.providerMethod === 'nearbySearch' ? 'nearby' :
+      mapping.providerMethod === 'textSearch' ? 'textsearch' : 'landmark',
+    hasUserLocation: !!ctx.userLocation,
+    // Use intent flags directly (already language-agnostic)
+    distanceIntent: (intentDecision as any).distanceIntent ?? false,
+    openNowRequested: (intentDecision as any).openNowRequested ?? (filtersForPostFilter as any).openNow === true,
+    priceIntent: (intentDecision as any).priceIntent ?? derivedPriceIntent,
+    qualityIntent: (intentDecision as any).qualityIntent ?? false,
+    occasion: (intentDecision as any).occasion ?? null,
+    cuisineKey: (intentDecision as any).cuisineKey ?? (mapping as any).cuisineKey ?? null,
+    requestId
+  };
+
+  // Resolve hybrid order weights
+  const hybridOrderMetadata = resolveHybridOrderWeights(hybridContext);
+
+  // Log order weights resolution with reason codes
+  logger.info({
+    requestId,
+    event: 'order_weights_resolved',
+    base: hybridOrderMetadata.base,
+    weights: hybridOrderMetadata.weights,
+    reasonCodes: hybridOrderMetadata.reasonCodes,
+    ctx: hybridOrderMetadata.inputsSnapshot,
+    normalizedSum: hybridOrderMetadata.weights.rating +
+      hybridOrderMetadata.weights.reviews +
+      hybridOrderMetadata.weights.price +
+      hybridOrderMetadata.weights.openNow +
+      hybridOrderMetadata.weights.distance
+  }, '[ORDER] Hybrid order weights resolved');
+
+  // Convert to response format (profile name for compatibility)
+  const orderMetadata = {
+    profile: hybridOrderMetadata.base as 'balanced',
+    weights: hybridOrderMetadata.weights,
+    reasonCodes: hybridOrderMetadata.reasonCodes // NEW: Include reason codes for UI display
+  };
+
   const response: SearchResponse = {
     requestId,
     sessionId,
@@ -316,12 +397,24 @@ export async function buildFinalResponse(
       ...(cuisineEnforcementFailed && { cuisineEnforcementFailed: true }),
       // Order explanation (for frontend transparency)
       ...(orderExplain && { order_explain: orderExplain }),
+      // Order profile (deterministic ranking profile)
+      order: orderMetadata,
       // Language context (for language separation transparency)
       ...(finalFilters.languageContext && { languageContext: finalFilters.languageContext })
     }
   };
 
   endStage(ctx, 'response_build', responseBuildStart);
+
+  // DEV LOG: Verify meta.order is present before sending response
+  logger.info({
+    requestId,
+    event: 'response_order_check',
+    hasOrder: !!response.meta.order,
+    orderProfile: response.meta.order?.profile,
+    resultCount: response.results.length,
+    msg: '[ORDER] Response order metadata check before send'
+  });
 
   // Publish completion status to search channel
   wsManager.publishToChannel('search', requestId, sessionId, {

@@ -27,22 +27,49 @@ export interface ResolveFiltersParams {
 export async function resolveFilters(params: ResolveFiltersParams): Promise<FinalSharedFilters> {
     const { base, intent, deviceRegionCode, userLocation, requestId, query } = params;
 
-    // 1. Resolve UI language (he or en only)
-    const uiLanguage: 'he' | 'en' = intent.language === 'he' ? 'he' : 'en';
+    // 1. Resolve query language with LLM-first policy
+    // PRIORITY (highest to lowest):
+    // a) intentLanguage from LLM with high confidence (>= 0.7)
+    // b) detectQueryLanguage deterministic detector (limited to he/en)
+    // c) Fallback to 'en'
+    let queryLanguage: 'he' | 'en' | 'es' | 'ru' | 'ar' | 'fr';
+    const INTENT_LANGUAGE_CONFIDENCE_THRESHOLD = 0.7;
+    
+    // Priority 1: Use intentLanguage if confidence is high (LLM detected language)
+    if (intent.language && intent.languageConfidence !== undefined && intent.languageConfidence >= INTENT_LANGUAGE_CONFIDENCE_THRESHOLD) {
+        const supportedLangs = ['he', 'en', 'es', 'ru', 'ar', 'fr'];
+        if (supportedLangs.includes(intent.language)) {
+            queryLanguage = intent.language as any;
+        } else {
+            // Unsupported language, fallback to deterministic or 'en'
+            queryLanguage = query ? detectQueryLanguage(query) : 'en';
+        }
+    } else if (query) {
+        // Priority 2: Use deterministic detector (limited to he/en)
+        queryLanguage = detectQueryLanguage(query);
+    } else {
+        // Priority 3: Fallback to 'en'
+        queryLanguage = 'en';
+    }
+    
+    // 2. NEW POLICY: UI language = query language (what user types drives UX)
+    // Limit uiLanguage to he/en for now (UI only supports these two)
+    const uiLanguage: 'he' | 'en' = ['he', 'en'].includes(queryLanguage) ? queryLanguage : 'en';
 
-    // 2. Resolve provider language (preserve intent language) [DEPRECATED - use languageContext.searchLanguage]
+    // 3. Resolve provider language [DEPRECATED - use languageContext.searchLanguage]
+    // Keep for backward compatibility but will be phased out
     const providerLanguage: 'he' | 'en' | 'ar' | 'fr' | 'es' | 'ru' =
         ['he', 'en', 'ar', 'fr', 'es', 'ru'].includes(intent.language)
             ? intent.language as any
-            : 'he'; // fallback
+            : queryLanguage; // fallback to query language
 
-    // 3. Resolve region code (intent candidate > device > default)
+    // 4. Resolve region code (intent candidate > device > default)
     const rawRegionCode = intent.regionCandidate || deviceRegionCode || 'IL';
 
-    // 4. Sanitize region code (validate against CLDR, handle 'GZ' special case)
+    // 5. Sanitize region code (validate against CLDR, handle 'GZ' special case)
     const sanitizedRegionCode = sanitizeRegionCode(rawRegionCode, userLocation);
 
-    // 5. Log if region was sanitized/rejected
+    // 6. Log if region was sanitized/rejected
     // NOISE FIX: Only log when sanitization actually changed the value
     // Skip logging if intent.regionCandidate was null (no candidate to validate)
     const shouldLogSanitization = sanitizedRegionCode !== rawRegionCode && intent.regionCandidate !== null;
@@ -68,8 +95,7 @@ export async function resolveFilters(params: ResolveFiltersParams): Promise<Fina
         }
     }
 
-    // 6. Resolve language context with strict separation
-    const queryLanguage = query ? detectQueryLanguage(query) : uiLanguage;
+    // 7. Resolve language context with strict query-language policy
     const languageContext = resolveLanguageContext({
         uiLanguage,
         queryLanguage,
@@ -79,7 +105,7 @@ export async function resolveFilters(params: ResolveFiltersParams): Promise<Fina
         intentLanguageConfidence: intent.languageConfidence
     }, requestId);
 
-    // 7. Pass through openState + time filters + priceIntent + minRatingBucket + minReviewCountBucket (NO MODIFICATION)
+    // 8. Pass through openState + time filters + priceIntent + minRatingBucket + minReviewCountBucket (NO MODIFICATION)
     const openState = base.openState;
     const openAt = base.openAt;
     const openBetween = base.openBetween;

@@ -167,6 +167,10 @@ export async function executeLandmarkPlan(
     const fetchFn = async (): Promise<any[]> => {
       if (mapping.afterGeocode === 'nearbySearch') {
         // Use Nearby Search centered on landmark location
+        // Map language to Google API format
+        const supportedLanguages = ['he', 'en', 'es', 'ru', 'ar', 'fr'];
+        const languageCode = supportedLanguages.includes(mapping.language) ? mapping.language : 'en';
+        
         const requestBody = {
           locationRestriction: {
             circle: {
@@ -177,7 +181,7 @@ export async function executeLandmarkPlan(
               radius: mapping.radiusMeters
             }
           },
-          languageCode: mapping.language === 'he' ? 'he' : 'en',
+          languageCode,
           includedTypes, // Language-independent types from cuisineKey
           rankPreference: 'DISTANCE'
         };
@@ -191,9 +195,13 @@ export async function executeLandmarkPlan(
 
       } else {
         // Use Text Search with location bias
+        // Map language to Google API format
+        const supportedLanguages = ['he', 'en', 'es', 'ru', 'ar', 'fr'];
+        const languageCode = supportedLanguages.includes(mapping.language) ? mapping.language : 'en';
+        
         const requestBody: any = {
           textQuery: mapping.keyword,
-          languageCode: mapping.language === 'he' ? 'he' : 'en',
+          languageCode,
           locationBias: {
             circle: {
               center: {

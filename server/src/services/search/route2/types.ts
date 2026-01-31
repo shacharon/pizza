@@ -90,6 +90,8 @@ export type MappingRoute = 'TEXTSEARCH' | 'NEARBY' | 'LANDMARK';
  * Router-only decision without extraction
  * Includes language and regionCandidate detection (NOT final region)
  * 
+ * NEW: Includes hybrid ordering intent flags (language-agnostic)
+ * 
  * IMPORTANT: regionCandidate is a suggestion only - filters_resolved decides the final region
  */
 export interface IntentResult {
@@ -102,6 +104,20 @@ export interface IntentResult {
   regionConfidence: number;
   regionReason: string;
   cityText?: string; // Optional city name for location bias (e.g., "גדרה", "אשקלון")
+
+  // ===== NEW: Hybrid Ordering Intent Flags (Language-Agnostic) =====
+  /** Distance/proximity intent detected */
+  distanceIntent: boolean;
+  /** Explicit "open now" filter requested */
+  openNowRequested: boolean;
+  /** Price preference intent */
+  priceIntent: 'cheap' | 'any';
+  /** Quality/special occasion intent */
+  qualityIntent: boolean;
+  /** Specific occasion type (if detected) */
+  occasion: 'romantic' | null;
+  /** Cuisine key (canonical identifier) */
+  cuisineKey: string | null;
 }
 
 // Intent2 specific types (DEPRECATED - will be removed)

@@ -183,15 +183,24 @@ Language: ${context.language}${metadataContext}${dietaryNote}
 CRITICAL: You ${languageEmphasis}. Both "message" and "question" fields must be in ${languageInstruction}.
 
 Instructions:
-1. NO generic phrases like "thank you", "here are", "found X results"
-2. Provide ONE short insight (why results look this way) based on metadata
-3. Optionally suggest: narrow search (filters, rating), expand search (radius, remove filters), or time-based advice
-4. Use ONLY existing metadata - DO NOT invent weather, delivery, availability
-5. Max 2 sentences total (including any dietary note)
-6. Examples:
-   - (he) "רוב המקומות סגורים עכשיו בשעה מאוחרת. אפשר לסנן לפתוח עכשיו או לחפש למחר."
-   - (en) "Most places are rated highly in this area. Try sorting by closest if you want nearby options."
+1. CRITICAL: Reference the QUERY context in your response. User searched for "${context.query}" - acknowledge this.
+2. NO generic phrases like "thank you", "here are", "found X results"
+3. Provide ONE short insight (why results look this way OR what makes them relevant to "${context.query}")
+4. Use the QUERY + metadata together (e.g., for "מסעדות איטלקיות בגדרה": mention Italian + Gedera context)
+5. Optionally suggest: narrow search (filters, rating), expand search (radius, remove filters), or time-based advice
+6. Use ONLY existing metadata - DO NOT invent weather, delivery, availability
+7. Max 2 sentences total (including any dietary note)
+8. VARY your response based on QUERY INTENT:
+   - Cuisine queries (e.g., "איטלקיות", "sushi"): mention cuisine type and location
+   - City queries (e.g., "בגדרה", "in Tel Aviv"): mention the specific city
+   - Romantic/quality queries: acknowledge the special intent
+   - Generic queries: focus on location/variety
+9. Examples:
+   - (he) Query="מסעדות איטלקיות בגדרה": "מצאתי מסעדות איטלקיות בגדרה. אפשר למיין לפי דירוג או מרחק."
+   - (he) Query="מסעדות רומנטיות כשרות בת"א": "מצאתי מסעדות רומנטיות כשרות בתל אביב. רובן מדורגות גבוה."
+   - (en) Query="Italian restaurants in Gedera": "Found Italian restaurants in Gedera. Most are rated highly."
+   - (en) Query="romantic kosher restaurants in Tel Aviv": "Found romantic kosher spots in Tel Aviv. Several are open now."
 
-Generate insight-based message that helps user understand the results.`;
+Generate a QUERY-SPECIFIC message that helps user understand results in context of THEIR search.`;
   }
 }

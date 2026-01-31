@@ -1,0 +1,11 @@
+--- a/server/src/services/search/route2/stages/intent/intent.types.ts
++++ b/server/src/services/search/route2/stages/intent/intent.types.ts
+@@ -40,6 +40,9 @@ export const IntentLLMSchema = z.object({
+   /** Cuisine key (canonical identifier, e.g., "italian", "japanese") */
+   cuisineKey: z.string().nullable(),
++
++  /** Place type key (e.g., "restaurant", "cafe", "bar") */
++  placeTypeKey: z.string().nullable(),
+ }).strict();
+ 
+ export type IntentLLM = z.infer<typeof IntentLLMSchema>;

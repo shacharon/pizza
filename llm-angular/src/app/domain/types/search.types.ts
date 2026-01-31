@@ -91,7 +91,7 @@ export type RestaurantResult = Restaurant;
  * 
  * UI consumes this signal, not raw fields.
  */
-export type CardSignalType = 
+export type CardSignalType =
   | 'OPEN_NOW'        // Priority 1: Currently open
   | 'CLOSED_NOW'      // Priority 1: Currently closed
   | 'PRICE_CHEAP'     // Priority 2: $ (priceLevel 1)
@@ -215,6 +215,18 @@ export interface SearchMeta {
     distanceOrigin: 'CITY_CENTER' | 'USER_LOCATION' | 'NONE';
     distanceRef: { lat: number; lng: number } | null;
     reordered: boolean;
+  };
+  // Order profile (NEW: hybrid deterministic ranking with reason codes)
+  order?: {
+    profile: 'balanced' | 'nearby' | 'quality' | 'budget' | 'BALANCED' | 'NEARBY' | 'QUALITY' | 'BUDGET' | 'CUISINE' | 'cuisine';
+    weights: {
+      rating: number;      // 0-100
+      reviews: number;     // 0-100
+      price: number;       // 0-100
+      openNow: number;     // 0-100
+      distance: number;    // 0-100
+    };
+    reasonCodes?: string[]; // NEW: Reason codes explaining which rules were applied (e.g., "RULE_A_DISTANCE", "RULE_D_QUALITY")
   };
   // Language context (for language separation transparency)
   languageContext?: {

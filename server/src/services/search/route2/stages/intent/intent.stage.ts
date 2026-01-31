@@ -46,7 +46,14 @@ function createFallbackResult(query: string, isTimeout: boolean): IntentResult {
     languageConfidence: 0.5, // Moderate confidence for fallback
     regionCandidate: 'IL',
     regionConfidence: 0.1,
-    regionReason: 'fallback_default'
+    regionReason: 'fallback_default',
+    // NEW: Default hybrid ordering flags for fallback
+    distanceIntent: false,
+    openNowRequested: false,
+    priceIntent: 'any',
+    qualityIntent: false,
+    occasion: null,
+    cuisineKey: null
   };
 }
 
@@ -82,7 +89,7 @@ export async function executeIntentStage(
     // Try initial call
     let response;
     let retryAttempted = false;
-    
+
     try {
       response = await llmProvider.completeJSON(
         messages,
@@ -192,10 +199,18 @@ export async function executeIntentStage(
         confidence: Math.min(llmResult.confidence ?? 0.8, 0.6),
         reason: 'nearby_location_missing_fallback',
         language: llmResult.language,
+        languageConfidence: llmResult.languageConfidence,
         regionCandidate: llmResult.regionCandidate,
         regionConfidence: llmResult.regionConfidence,
         regionReason: llmResult.regionReason,
-        ...(cityText && { cityText })
+        ...(cityText && { cityText }),
+        // NEW: Pass through hybrid ordering flags
+        distanceIntent: llmResult.distanceIntent,
+        openNowRequested: llmResult.openNowRequested,
+        priceIntent: llmResult.priceIntent,
+        qualityIntent: llmResult.qualityIntent,
+        occasion: llmResult.occasion,
+        cuisineKey: llmResult.cuisineKey
       };
     }
     // Validate regionCandidate against ISO-3166-1 allowlist
@@ -231,10 +246,18 @@ export async function executeIntentStage(
       confidence: llmResult.confidence,
       reason: llmResult.reason,
       language: llmResult.language,
+      languageConfidence: llmResult.languageConfidence,
       regionCandidate: validatedRegionCandidate,
       regionConfidence: llmResult.regionConfidence,
       regionReason: llmResult.regionReason,
-      ...(cityText && { cityText })
+      ...(cityText && { cityText }),
+      // NEW: Hybrid ordering intent flags
+      distanceIntent: llmResult.distanceIntent,
+      openNowRequested: llmResult.openNowRequested,
+      priceIntent: llmResult.priceIntent,
+      qualityIntent: llmResult.qualityIntent,
+      occasion: llmResult.occasion,
+      cuisineKey: llmResult.cuisineKey
     };
 
   } catch (error) {

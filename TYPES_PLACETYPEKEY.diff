@@ -1,0 +1,11 @@
+--- a/server/src/services/search/route2/types.ts
++++ b/server/src/services/search/route2/types.ts
+@@ -118,6 +118,8 @@ export interface IntentResult {
+   occasion: 'romantic' | null;
+   /** Cuisine key (canonical identifier) */
+   cuisineKey: string | null;
++  /** Place type key (e.g., "restaurant", "cafe", "bar") */
++  placeTypeKey: string | null;
+ }
+ 
+ // Intent2 specific types (DEPRECATED - will be removed)

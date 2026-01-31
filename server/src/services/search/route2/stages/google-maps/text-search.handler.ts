@@ -18,9 +18,80 @@ import { fetchAllPages } from './pagination-handler.js';
 import { executeRetryStrategy } from './retry-strategy.js';
 import { normalizeTextQuery } from './textquery-normalizer.js';
 import type { RouteLLMMapping, Route2Context } from '../../types.js';
+import { getCuisineSearchTerms, getCuisineRestaurantLabel, type CuisineKey } from '../../shared/cuisine-tokens.js';
 
 // Field mask for Google Places API (New) - includes opening hours data
 const PLACES_FIELD_MASK = 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.priceLevel,places.currentOpeningHours,places.regularOpeningHours,places.utcOffsetMinutes,places.photos,places.types,places.googleMapsUri';
+
+/**
+ * Cuisine-aware textQuery builder
+ * 
+ * If cuisineKey is present, strengthens the textQuery by ensuring cuisine terms are included
+ * This prevents Google from returning non-relevant results (e.g., shawarma when searching for Italian)
+ * 
+ * Rules:
+ * 1. If cuisineKey provided AND textQuery doesn't contain cuisine term → prepend cuisine label
+ * 2. Keep original textQuery if it already contains cuisine term
+ * 3. Never remove cuisine constraints from original query
+ * 
+ * @param originalTextQuery From mapper or fallback
+ * @param cuisineKey Canonical cuisine identifier (e.g., 'italian')
+ * @param searchLanguage Language for Google API (he/en)
+ * @param cityText Optional city name to preserve
+ * @returns Enhanced textQuery with cuisine enforcement
+ */
+function buildCuisineAwareTextQuery(
+  originalTextQuery: string,
+  cuisineKey: CuisineKey | null | undefined,
+  searchLanguage: 'he' | 'en',
+  cityText?: string | null,
+  requestId?: string
+): string {
+  // No cuisine key → return original
+  if (!cuisineKey) {
+    return originalTextQuery;
+  }
+
+  // Get cuisine search terms for this language
+  const cuisineTerms = getCuisineSearchTerms(cuisineKey, searchLanguage);
+  const restaurantLabel = getCuisineRestaurantLabel(cuisineKey, searchLanguage);
+
+  // Check if textQuery already contains any cuisine term (case-insensitive)
+  const queryLower = originalTextQuery.toLowerCase();
+  const hasCuisineTerm = cuisineTerms.some(term =>
+    queryLower.includes(term.toLowerCase())
+  );
+
+  if (hasCuisineTerm) {
+    logger.debug({
+      requestId,
+      event: 'cuisine_textquery_unchanged',
+      originalTextQuery,
+      cuisineKey,
+      reason: 'already_contains_cuisine_term'
+    }, '[CUISINE] TextQuery already contains cuisine term, keeping original');
+    return originalTextQuery;
+  }
+
+  // TextQuery doesn't contain cuisine term → strengthen it
+  // Use restaurant label (e.g., "מסעדה איטלקית") instead of just cuisine
+  const enhancedTextQuery = cityText
+    ? `${restaurantLabel} ${cityText}`.trim()
+    : restaurantLabel;
+
+  logger.info({
+    requestId,
+    event: 'cuisine_textquery_strengthened',
+    originalTextQuery,
+    enhancedTextQuery,
+    cuisineKey,
+    searchLanguage,
+    restaurantLabel,
+    reason: 'cuisine_term_missing'
+  }, '[CUISINE] Enhanced textQuery with cuisine enforcement');
+
+  return enhancedTextQuery;
+}
 
 // City center geocoding cache (in-memory, 1 hour TTL)
 const CITY_GEOCODE_CACHE = new Map<string, { coords: { lat: number; lng: number }; cachedAt: number }>();
@@ -46,18 +117,44 @@ export async function executeTextSearch(
     requestId,
     provider: 'google_places_new',
     method: 'searchText',
-    textQuery: mapping.textQuery,
+    providerTextQuery: mapping.providerTextQuery,
+    providerLanguage: mapping.providerLanguage,
     region: mapping.region,
-    language: mapping.language,
     hasBiasPlanned: !!mapping.bias || !!mapping.cityText,
     biasSource,
+    mode: (mapping as any).mode,
     ...(mapping.cityText && { cityText: mapping.cityText }),
     ...(mapping.bias && {
       biasLat: mapping.bias.center.lat,
       biasLng: mapping.bias.center.lng,
       biasRadiusMeters: mapping.bias.radiusMeters
     })
-  }, '[GOOGLE] Calling Text Search API (New)');
+  }, '[GOOGLE] Calling Text Search API (New) - using providerTextQuery/providerLanguage');
+
+  // ASSERTION: Fail fast if old canonicalTextQuery field is present
+  if ((mapping as any).canonicalTextQuery !== undefined) {
+    logger.error({
+      requestId,
+      provider: 'google_places_new',
+      method: 'searchText',
+      error: 'canonicalTextQuery field found in mapping (should use providerTextQuery)',
+      mapping: JSON.stringify(mapping)
+    }, '[GOOGLE] FATAL: canonicalTextQuery field found - refactor incomplete');
+    throw new Error('canonicalTextQuery field found in mapping - use providerTextQuery instead');
+  }
+
+  // ASSERTION: Require providerTextQuery and providerLanguage
+  if (!mapping.providerTextQuery || !mapping.providerLanguage) {
+    logger.error({
+      requestId,
+      provider: 'google_places_new',
+      method: 'searchText',
+      error: 'providerTextQuery or providerLanguage missing',
+      hasProviderTextQuery: !!mapping.providerTextQuery,
+      hasProviderLanguage: !!mapping.providerLanguage
+    }, '[GOOGLE] FATAL: providerTextQuery/providerLanguage missing');
+    throw new Error('providerTextQuery and providerLanguage are required');
+  }
 
   const apiKey = process.env.GOOGLE_API_KEY;
   if (!apiKey) {
@@ -106,7 +203,7 @@ export async function executeTextSearch(
         // Generate cache key with all request parameters
         const cacheKey = generateTextSearchCacheKey({
           textQuery: mapping.textQuery,
-          languageCode: mapping.language === 'he' ? 'he' : 'en',
+          languageCode: mapToGoogleLanguageCode(mapping.language),
           regionCode: mapping.region,
           bias: mapping.bias ? {
             lat: mapping.bias.center.lat,
@@ -219,10 +316,25 @@ async function executeTextSearchAttempt(
 ): Promise<any[]> {
   const maxResults = 40; // Fetch up to 40 results across pages (2 pages × 20)
 
-  // P0 FIX: Normalize textQuery but PRESERVE city when explicit city exists
-  // Pass cityText to normalizer so it can keep city in the query
-  const { canonicalTextQuery, wasNormalized, reason, keptCity } = normalizeTextQuery(
-    mapping.textQuery,
+  // Use providerTextQuery directly (already deterministically built in mapper)
+  const finalTextQuery = mapping.providerTextQuery;
+  const finalLanguage = mapping.providerLanguage;
+
+  logger.info({
+    requestId,
+    event: 'google_textsearch_using_provider_fields',
+    providerTextQuery: finalTextQuery,
+    providerLanguage: finalLanguage,
+    mode: (mapping as any).mode,
+    source: 'mapper_deterministic_builder'
+  }, '[GOOGLE] Using providerTextQuery/providerLanguage from mapper');
+
+  // CUISINE ENFORCEMENT: Strengthen textQuery if cuisineKey is present
+  // NOTE: This is a FALLBACK - mapper should already handle this in KEYED mode
+  const cuisineEnhancedQuery = buildCuisineAwareTextQuery(
+    finalTextQuery,
+    mapping.cuisineKey as CuisineKey | null | undefined,
+    finalLanguage === 'he' ? 'he' : 'en',
     mapping.cityText,
     requestId
   );
@@ -231,7 +343,7 @@ async function executeTextSearchAttempt(
   // Use smaller radius (10km) for city-center bias instead of 20km default
   let enrichedMapping = {
     ...mapping,
-    textQuery: canonicalTextQuery // Use canonical query
+    textQuery: cuisineEnhancedQuery // Use cuisine-enhanced query (fallback only)
   };
 
   const hasExplicitCity = !!mapping.cityText;
@@ -290,9 +402,13 @@ async function executeTextSearchAttempt(
         biasSource: 'cityCenter'
       }, '[GOOGLE] City center resolved, applying city-center bias');
 
+      // CRITICAL: Mutate the original mapping object so cityCenter is available for ranking
+      // The mapping object is passed by reference from the orchestrator
+      (mapping as any).cityCenter = cityCoords;
+
       enrichedMapping = {
         ...mapping,
-        textQuery: canonicalTextQuery,
+        textQuery: cuisineEnhancedQuery, // Use cuisine-enhanced query
         bias: {
           type: 'locationBias' as const,
           center: cityCoords,
@@ -312,10 +428,10 @@ async function executeTextSearchAttempt(
 
   // Build request body
   const requestBody = buildTextSearchBody(enrichedMapping, requestId);
-  const textQueryNormalized = requestBody.textQuery?.trim().toLowerCase() || '';
+  const providerTextQueryNormalized = requestBody.textQuery?.trim().toLowerCase() || '';
 
   const textQueryHash = createHash('sha256')
-    .update(textQueryNormalized)
+    .update(providerTextQueryNormalized)
     .digest('hex')
     .substring(0, 12);
 
@@ -331,15 +447,15 @@ async function executeTextSearchAttempt(
     }
   }
 
-  // P0 FIX: Enhanced logging with final text query and city preservation status
+  // P0 FIX: Enhanced logging with final text query and mode
   logger.info({
     requestId,
     event: 'textsearch_request_payload',
-    finalTextQuery: requestBody.textQuery,  // P0 FIX: Show actual query sent to Google
+    providerTextQuery: requestBody.textQuery,  // What's actually sent to Google
     textQueryLen: requestBody.textQuery?.length || 0,
     textQueryHash,
-    keptCity: keptCity || false,  // P0 FIX: Show if city was preserved
-    hasExplicitCity: hasExplicitCity,  // P0 FIX: Show if explicit city was detected
+    mode: (mapping as any).mode,
+    hasExplicitCity: !!mapping.cityText,
     languageCode: requestBody.languageCode,
     regionCode: requestBody.regionCode || null,
     regionCodeSent: !!requestBody.regionCode,
@@ -351,7 +467,7 @@ async function executeTextSearchAttempt(
       biasRadiusMeters: requestBody.locationBias.circle.radius
     }),
     maxResultCount: maxResults
-  }, '[GOOGLE] Text Search request payload');
+  }, '[GOOGLE] Text Search request payload (providerTextQuery)');
 
   // NEW: Log when bias is actually applied to Google request
   if (requestBody.locationBias) {
@@ -372,33 +488,55 @@ async function executeTextSearchAttempt(
 }
 
 /**
+ * Map language code to Google Places API format
+ * Google supports many languages, but we normalize to standard BCP-47 codes
+ * 
+ * @param language Language from mapper (he, en, es, ru, ar, fr, other)
+ * @returns BCP-47 language code for Google API (defaults to 'en' for unsupported)
+ */
+function mapToGoogleLanguageCode(language: string): string {
+  // Supported languages (BCP-47 format)
+  const supported = ['he', 'en', 'es', 'ru', 'ar', 'fr'];
+
+  if (supported.includes(language)) {
+    return language;
+  }
+
+  // Fallback to English for unsupported languages
+  return 'en';
+}
+
+/**
  * Build Text Search API request body (New API)
  * 
+ * Uses providerTextQuery and providerLanguage from mapper (deterministically built).
+ * 
  * NOTE: Text Search does NOT support includedTypes field!
- * Use textQuery like "מסעדה בשרית אשקלון" or "pizza restaurant" instead.
- * The LLM mappers already include the place type in the textQuery.
+ * Use textQuery like "Italian restaurant in Gedera" or "מסעדה איטלקית בגדרה" instead.
  */
 function buildTextSearchBody(
   mapping: Extract<RouteLLMMapping, { providerMethod: 'textSearch' }>,
   requestId?: string
 ): any {
-  const languageCode = mapping.language === 'he' ? 'he' : 'en';
-  
-  // Log Google API call language (observability for language separation)
+  // Use providerLanguage (deterministically set in mapper)
+  const languageCode = mapToGoogleLanguageCode(mapping.providerLanguage);
+
+  // CRITICAL: Log Google API call language
   logger.info({
     requestId,
     event: 'google_call_language',
     providerMethod: 'textSearch',
-    searchLanguage: languageCode,
+    languageCode,  // What we're sending to Google
+    providerLanguage: mapping.providerLanguage,  // From mapper
     regionCode: mapping.region,
-    textQuery: mapping.textQuery.substring(0, 50)
-  }, '[GOOGLE] Text Search API call language (from LanguageContext policy)');
-  
+    providerTextQuery: mapping.providerTextQuery?.substring(0, 50),
+    mode: (mapping as any).mode,
+    languageSource: 'mapper_deterministic_builder'
+  }, '[GOOGLE] Text Search API call language (from mapper providerLanguage)');
+
   const body: any = {
-    textQuery: mapping.textQuery,
+    textQuery: mapping.providerTextQuery, // Use providerTextQuery (not textQuery)
     languageCode
-    // NOTE: Do NOT include includedTypes - not supported by searchText endpoint
-    // Rely on textQuery containing place type (e.g., "מסעדה", "restaurant")
   };
 
   // Add region code
@@ -423,12 +561,6 @@ function buildTextSearchBody(
       };
     }
   }
-
-  // Log that we're relying on textQuery for type filtering
-  logger.debug({
-    textQuery: mapping.textQuery,
-    note: 'Text Search relies on textQuery for place type filtering (no includedTypes support)'
-  }, '[GOOGLE] Building Text Search request without includedTypes');
 
   return body;
 }

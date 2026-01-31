@@ -136,18 +136,25 @@ export class AssistantPanelComponent implements OnInit, OnDestroy {
         return;
       }
 
-      // DEBUG LOG (requested by user)
-      console.log('[AssistantPanel][LLM] Valid message received', {
-        requestId,
-        narratorType: narrator.type,
-        message: narrator.message,
-        question: narrator.question,
-        blocksSearch: narrator.blocksSearch
-      });
+      // DEBUG LOG: Enhanced with language and result context
+      const debugInfo = {
+        type: narrator.type,
+        language: narrator.language || 'unknown',
+        requestId: requestId.substring(0, 8),
+        message: narrator.message.substring(0, 60) + '...',
+        blocksSearch: narrator.blocksSearch,
+        timestamp: new Date().toISOString()
+      };
+
+      console.log(`[AssistantPanel][DEBUG] assistant: {type: ${debugInfo.type}, lang: ${debugInfo.language}, req: ${debugInfo.requestId}, blocksSearch: ${debugInfo.blocksSearch}}`, debugInfo);
 
       // Check if this is a new requestId
       if (this.currentRequestId() !== requestId) {
         // New search started - clear old messages
+        console.log('[AssistantPanel] NEW requestId detected - clearing old messages', {
+          oldRequestId: this.currentRequestId(),
+          newRequestId: requestId
+        });
         this.clearMessages();
         this.currentRequestId.set(requestId);
       }
@@ -158,6 +165,7 @@ export class AssistantPanelComponent implements OnInit, OnDestroy {
       // Deduplicate: check if we've already seen this (requestId, seq)
       const messageKey = `${requestId}-${seq}`;
       if (this.seenMessages.has(messageKey)) {
+        console.log('[AssistantPanel] DUPLICATE message ignored', { messageKey });
         return; // Duplicate - ignore
       }
 
@@ -178,7 +186,7 @@ export class AssistantPanelComponent implements OnInit, OnDestroy {
         timestamp: Date.now()
       };
 
-      console.log('[AssistantPanel] Narrator message added:', narrator.type, displayMessage);
+      console.log('[AssistantPanel] Narrator message added:', narrator.type, displayMessage.substring(0, 50));
 
       // Insert message in correct position (sorted by seq)
       const currentMessages = this.allMessages();
@@ -186,11 +194,13 @@ export class AssistantPanelComponent implements OnInit, OnDestroy {
       this.allMessages.set(newMessages);
 
       // DEBUG LOG: Confirm UI will render (signal updated)
-      console.log('[UI] rendered assistant message', {
-        requestId,
+      console.log('[AssistantPanel][RENDER] Signal updated - UI will render', {
+        requestId: requestId.substring(0, 8),
         narratorType: narrator.type,
+        language: narrator.language || 'unknown',
         messageCount: newMessages.length,
-        visibleCount: Math.min(3, newMessages.length)
+        visibleCount: Math.min(3, newMessages.length),
+        displayMessage: displayMessage.substring(0, 60) + '...'
       });
     } catch (error) {
       console.error('[AssistantPanel] Failed to parse narrator message', error, msg);

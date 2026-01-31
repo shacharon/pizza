@@ -1,0 +1,37 @@
+--- a/server/src/services/search/route2/stages/intent/intent.prompt.ts
++++ b/server/src/services/search/route2/stages/intent/intent.prompt.ts
+@@ -87,6 +87,14 @@ These flags drive deterministic weight adjustments for result ordering.
+      * "middle_eastern", "מזרח תיכונית", "shawarma", "שווארמה" → "middle_eastern"
+    - null if no specific cuisine mentioned
+ 
++7. **placeTypeKey** (string | null):
++   - Extract place type if mentioned:
++     * "restaurant", "מסעדה" → "restaurant"
++     * "cafe", "בית קפה", "coffee" → "cafe"
++     * "bar", "בר" → "bar"
++     * "bakery", "מאפייה" → "bakery"
++   - null if no specific place type mentioned
++
+ **CRITICAL:** These flags are language-independent!
+ - "romantic italian" (en) and "איטלקית רומנטית" (he) → SAME flags
+ - "cheap near me" (en) and "זול לידי" (he) → SAME flags
+@@ -123,7 +131,8 @@ export const INTENT_JSON_SCHEMA = {
+       priceIntent: { type: "string", enum: ["cheap", "any"] },
+       qualityIntent: { type: "boolean" },
+       occasion: { type: ["string", "null"], enum: ["romantic", null] },
+-      cuisineKey: { type: ["string", "null"] }
++      cuisineKey: { type: ["string", "null"] },
++      placeTypeKey: { type: ["string", "null"] }
+    },
+    required: [
+       "route",
+@@ -141,7 +150,8 @@ export const INTENT_JSON_SCHEMA = {
+       "priceIntent",
+       "qualityIntent",
+       "occasion",
+-      "cuisineKey"
++      "cuisineKey",
++      "placeTypeKey"
+    ],
+    additionalProperties: false
+ };

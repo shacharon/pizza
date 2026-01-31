@@ -108,6 +108,17 @@ export interface SearchResponseMeta {
     distanceRef: { lat: number; lng: number } | null;  // Reference coordinates
     reordered: boolean;  // Whether ranking was applied (true) or original Google order (false)
   };
+  // Order profile (NEW: deterministic ranking profile)
+  order?: {
+    profile: 'balanced' | 'nearby' | 'quality' | 'budget';  // Deterministic order profile
+    weights: {
+      rating: number;      // 0-100
+      reviews: number;     // 0-100
+      price: number;       // 0-100
+      openNow: number;     // 0-100
+      distance: number;    // 0-100
+    };
+  };
 }
 
 export interface SearchResponse {

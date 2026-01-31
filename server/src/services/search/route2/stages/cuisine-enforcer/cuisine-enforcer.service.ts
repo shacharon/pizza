@@ -75,6 +75,9 @@ export interface CuisineEnforcerInput {
 
 /**
  * Execute cuisine enforcement via LLM
+ * 
+ * P0 FIX: If countIn <= 5 and LLM returns keepCount=0 in STRICT mode,
+ * apply deterministic relax policy to prevent returning 0 results
  */
 export async function executeCuisineEnforcement(
   input: CuisineEnforcerInput,
@@ -158,6 +161,30 @@ export async function executeCuisineEnforcement(
       relaxApplied: response.data.relaxApplied,
       relaxStrategy: response.data.relaxStrategy
     }, '[CUISINE_ENFORCER] LLM enforcement completed');
+
+    // P0 FIX: Apply deterministic relax policy if small sample + 0 results
+    if (places.length <= 5 && response.data.keepPlaceIds.length === 0 && strictness === 'STRICT') {
+      logger.warn({
+        requestId,
+        event: 'enforcement_relax_applied',
+        reason: 'small_sample_zero_results',
+        countIn: places.length,
+        keepCountBeforeRelax: 0,
+        strictness: 'STRICT',
+        relaxStrategy: 'keep_top_n'
+      }, '[CUISINE_ENFORCER] Small sample + 0 results detected - applying deterministic relax (keep top N)');
+
+      // Deterministic fallback: keep top 3 places (or all if < 3)
+      const topN = Math.min(3, places.length);
+      const topPlaceIds = places.slice(0, topN).map(p => p.placeId);
+
+      return {
+        keepPlaceIds: topPlaceIds,
+        relaxApplied: true,
+        relaxStrategy: 'fallback_keep_top_n',
+        enforcementSkipped: false
+      };
+    }
 
     return response.data;
 

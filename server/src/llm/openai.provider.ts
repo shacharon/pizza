@@ -88,6 +88,38 @@ export class OpenAiProvider implements LLMProvider {
             : this.schemaConverter.convert(schema, opts);
 
         const { jsonSchema, schemaHash, schemaVersion } = conversionResult;
+        
+        // DEFENSIVE: Validate that jsonSchema.required exists and includes all properties
+        // V5 SCHEMA: mode is required, textQuery is removed (generated deterministically)
+        if (staticJsonSchema && opts?.stage === 'textsearch_mapper') {
+            const schemaProperties = Object.keys(jsonSchema.properties || {});
+            const schemaRequired = jsonSchema.required || [];
+            const hasMode = schemaRequired.includes('mode');
+            const hasTextQuery = schemaRequired.includes('textQuery'); // Should NOT be present in v5
+            
+            if (!hasMode) {
+                logger.error({
+                    traceId: opts?.traceId,
+                    stage: opts?.stage,
+                    schemaProperties,
+                    schemaRequired,
+                    hasMode,
+                    staticSchemaProvided: !!staticJsonSchema
+                }, '[LLM] CRITICAL: mode missing from required array in final schema!');
+            }
+            
+            if (hasTextQuery) {
+                logger.warn({
+                    traceId: opts?.traceId,
+                    stage: opts?.stage,
+                    schemaProperties,
+                    schemaRequired,
+                    hasTextQuery,
+                    staticSchemaProvided: !!staticJsonSchema
+                }, '[LLM] WARNING: textQuery found in schema - should be removed in v5 (generated deterministically)');
+            }
+        }
+        
         timing.mark('t1');
 
         // Calculate prompt size

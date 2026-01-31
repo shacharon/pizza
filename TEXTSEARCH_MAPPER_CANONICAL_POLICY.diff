@@ -1,0 +1,126 @@
+--- a/server/src/services/search/route2/stages/route-llm/textsearch.mapper.ts
++++ b/server/src/services/search/route2/stages/route-llm/textsearch.mapper.ts
+@@ -10,6 +10,7 @@ import type { Route2Context, IntentResult, FinalSharedFilters } from '../../typ
+ import type { Message } from '../../../../../llm/types.js';
+ import { logger } from '../../../../../lib/logger/structured-logger.js';
+ import { resolveLLM } from '../../../../../lib/llm/index.js';
++import { determineCanonicalMode } from '../../shared/canonical-mode-policy.js';
+ import { TextSearchLLMResponseSchema, type TextSearchMapping } from './schemas.js';
+ import { canonicalizeTextQuery } from '../../../utils/google-query-normalizer.js';
+ import { generateCanonicalQuery } from './canonical-query.generator.js';
+@@ -534,6 +535,19 @@ export async function executeTextSearchMapper(
+     // Using 'as any' because the LLM response structure changed
+     const llmResult = response.data as any;
+ 
++    // DETERMINISTIC CANONICAL MODE POLICY
++    // Override LLM's mode decision with deterministic policy
++    const canonicalDecision = determineCanonicalMode(
++      intent,
++      request,
++      llmResult.cuisineKey,
++      llmResult.placeTypeKey,
++      requestId
++    );
++
++    // Override mode with policy decision (map CLARIFY to FREETEXT for now)
++    llmResult.mode = canonicalDecision.mode === 'CLARIFY' ? 'FREETEXT' : canonicalDecision.mode;
++
+     // CRITICAL: Override LLM's region/language with filters_resolved values (single source of truth)
+     llmResult.region = finalFilters.regionCode;
+     llmResult.language = finalFilters.languageContext?.searchLanguage ?? finalFilters.providerLanguage;
+@@ -605,10 +619,14 @@ export async function executeTextSearchMapper(
+       cuisineKey: llmResult.cuisineKey,
+       cityText: mapping.cityText,
+       providerTextQuery,
+       providerLanguage,
+       source,
+-      strictness: mapping.strictness
++      strictness: mapping.strictness,
++      canonicalModeDecision: canonicalDecision.mode,
++      canonicalModeReason: canonicalDecision.reason,
++      canonicalLocationAnchor: canonicalDecision.locationAnchor,
++      canonicalCategoryKey: canonicalDecision.categoryKey
+     }, '[TEXTSEARCH] Mapper completed successfully');
+ 
+     return mapping as TextSearchMapping;
+ 
+@@ -634,27 +652,36 @@ async function buildDeterministicMapping(
+ ): Promise<TextSearchMapping> {
+   const { requestId } = context;
+   
+-  // Deterministic cuisine detection
++  // Use deterministic policy instead of ad-hoc logic
+   const detectedCuisineKey = detectCuisineKeyword(request.query);
+-  const hasCityText = !!intent.cityText;
++  
++  const canonicalDecision = determineCanonicalMode(
++    intent,
++    request,
++    detectedCuisineKey,
++    null, // placeTypeKey
++    requestId
++  );
+   
+-  let mode: 'KEYED' | 'FREE_TEXT' = 'FREE_TEXT';
++  let mode: 'KEYED' | 'FREE_TEXT' = canonicalDecision.mode === 'CLARIFY' ? 'FREE_TEXT' : canonicalDecision.mode;
+   let cityText: string | null = null;
+   let cuisineKey: CuisineKey | null = null;
+   
+-  // Determine mode based on detection results
+-  if (detectedCuisineKey && hasCityText) {
++  // Apply canonical decision
++  if (canonicalDecision.mode === 'KEYED') {
+     mode = 'KEYED';
+-    cuisineKey = detectedCuisineKey;
+-    cityText = intent.cityText!;
++    cuisineKey = canonicalDecision.cuisineKey as CuisineKey;
++    cityText = intent.cityText || null;
+     
+     logger.info({
+       requestId,
+       stage: 'textsearch_mapper_fallback',
+       event: 'deterministic_mode_keyed',
+       cuisineKey,
+       cityText,
+-      reason: 'cuisine_and_city_detected'
++      reason: canonicalDecision.reason,
++      locationAnchor: canonicalDecision.locationAnchor,
++      categoryKey: canonicalDecision.categoryKey
+     }, '[TEXTSEARCH] Fallback: KEYED mode (cuisine + city detected)');
+-  } else if (detectedCuisineKey) {
+-    mode = 'KEYED';
+-    cuisineKey = detectedCuisineKey;
+-    
+-    logger.info({
+-      requestId,
+-      stage: 'textsearch_mapper_fallback',
+-      event: 'deterministic_mode_keyed',
+-      cuisineKey,
+-      cityText: null,
+-      reason: 'cuisine_only_detected'
+-    }, '[TEXTSEARCH] Fallback: KEYED mode (cuisine only)');
+   } else {
+     logger.info({
+       requestId,
+       stage: 'textsearch_mapper_fallback',
+       event: 'deterministic_mode_freetext',
+-      reason: 'no_cuisine_detected'
++      reason: canonicalDecision.reason,
++      locationAnchor: canonicalDecision.locationAnchor,
++      categoryKey: canonicalDecision.categoryKey
+     }, '[TEXTSEARCH] Fallback: FREE_TEXT mode (no cuisine detected)');
+   }
+   
+@@ -738,7 +765,11 @@ async function buildDeterministicMapping(
+     cityText,
+     providerTextQuery,
+     providerLanguage,
+-    strictness
++    strictness,
++    canonicalModeDecision: canonicalDecision.mode,
++    canonicalModeReason: canonicalDecision.reason,
++    canonicalLocationAnchor: canonicalDecision.locationAnchor,
++    canonicalCategoryKey: canonicalDecision.categoryKey
+   }, '[TEXTSEARCH] Fallback mapping completed');
+ 
+   return mapping;

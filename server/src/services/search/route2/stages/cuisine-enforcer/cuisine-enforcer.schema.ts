@@ -26,13 +26,15 @@ export type PlaceInput = z.infer<typeof PlaceInputSchema>;
 export const CuisineEnforcementResponseSchema = z.object({
   keepPlaceIds: z.array(z.string()),
   relaxApplied: z.boolean(),
-  relaxStrategy: z.enum(['none', 'fallback_preferred', 'drop_required_once'])
+  relaxStrategy: z.enum(['none', 'fallback_preferred', 'drop_required_once', 'google_rerun_broader']),
+  enforcementSkipped: z.boolean().optional() // True when skipped due to small sample
 }).strict();
 
 export type CuisineEnforcementResponse = z.infer<typeof CuisineEnforcementResponseSchema>;
 
 /**
  * Static JSON Schema for OpenAI Structured Output
+ * Updated to support google_rerun_broader strategy
  */
 export const CUISINE_ENFORCEMENT_JSON_SCHEMA = {
   type: 'object',
@@ -48,7 +50,7 @@ export const CUISINE_ENFORCEMENT_JSON_SCHEMA = {
     },
     relaxStrategy: {
       type: 'string',
-      enum: ['none', 'fallback_preferred', 'drop_required_once'],
+      enum: ['none', 'fallback_preferred', 'drop_required_once', 'google_rerun_broader'],
       description: 'Relaxation strategy used'
     }
   },

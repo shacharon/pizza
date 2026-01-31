@@ -13,66 +13,16 @@ import { logger } from '../../../lib/logger/structured-logger.js';
 import { DEFAULT_POST_CONSTRAINTS, DEFAULT_BASE_FILTERS } from './failure-messages.js';
 
 /**
- * Filter keywords that indicate explicit filter intent
- * If present, run base_filters LLM even for generic queries
+ * ==================================================================================
+ * REMOVED (P0 FIX - 2026-01-31): FILTER_KEYWORDS and containsFilterKeywords()
+ * 
+ * Previously used Hebrew/English keyword lists to decide whether to skip base_filters LLM.
+ * This was language-specific and brittle (missed many variations, false positives).
+ * 
+ * Replaced with structural, language-agnostic gating based on route + location context.
+ * See: shouldSkipBaseFiltersLLM() for new logic.
+ * ==================================================================================
  */
-const FILTER_KEYWORDS = [
-  // Open/Hours (Hebrew + English)
-  'פתוח', 'פתוחות', 'סגור', 'סגורות', 'עכשיו',
-  'open', 'closed', 'now', 'hours',
-
-  // Price (Hebrew + English)
-  'זול', 'זולות', 'יקר', 'יקרות', 'יוקרתי', 'בינוני', 'מחיר',
-  'cheap', 'expensive', 'price', 'budget', 'luxury', 'affordable',
-
-  // Rating (Hebrew + English)
-  'דירוג', 'כוכב', 'כוכבים', 'מדורג',
-  'rating', 'star', 'stars', 'rated', 'top',
-
-  // Distance (Hebrew + English)
-  'קרוב', 'רחוק', 'ק"מ', 'מטר',
-  'near', 'close', 'far', 'distance', 'km', 'meter',
-
-  // Reviews (Hebrew + English)
-  'ביקורת', 'ביקורות', 'המלצה', 'המלצות', 'מומלץ',
-  'review', 'reviews', 'recommended', 'popular',
-
-  // Cuisine Types (Hebrew + English) - Deterministic heuristic
-  // Italian
-  'איטלקי', 'איטלקית', 'איטלקיות', 'italian', 'italiano', 'פיצה', 'pizza', 'פסטה', 'pasta',
-  // Asian
-  'סושי', 'sushi', 'סיני', 'סינית', 'chinese', 'יפני', 'יפנית', 'japanese', 'תאילנדי', 'תאילנדית', 'thai',
-  'אסייתי', 'אסייתית', 'asian', 'ראמן', 'ramen', 'נודלס', 'noodles',
-  // Indian
-  'הודי', 'הודית', 'indian', 'קארי', 'curry',
-  // Mexican
-  'מקסיקני', 'מקסיקנית', 'mexican', 'טאקו', 'taco', 'בוריטו', 'burrito',
-  // Mediterranean & Middle Eastern
-  'יווני', 'יוונית', 'greek', 'ים תיכוני', 'mediterranean', 'ערבי', 'ערבית', 'arabic',
-  'מזרח תיכוני', 'middle eastern', 'חומוס', 'hummus', 'פלאפל', 'falafel', 'שווארמה', 'shawarma',
-  // French
-  'צרפתי', 'צרפתית', 'french',
-  // American
-  'אמריקאי', 'אמריקאית', 'american', 'המבורגר', 'burger', 'סטייק', 'steak',
-  // Seafood
-  'פירות ים', 'seafood', 'דגים', 'fish',
-  // Dietary
-  'טבעוני', 'טבעונית', 'vegan', 'צמחוני', 'צמחונית', 'vegetarian',
-  'כשר', 'כשרה', 'kosher', 'חלבי', 'dairy', 'בשרי', 'meat',
-  // Other common cuisines
-  'בר', 'bar', 'פאב', 'pub', 'קפה', 'cafe', 'coffee', 'קפה', 'מאפה', 'bakery', 'מאפיה',
-  'ברגר', 'בורגר', 'גריל', 'grill', 'bbq', 'ברביקיו'
-];
-
-/**
- * Check if query contains explicit filter keywords (including cuisine types)
- * DETERMINISTIC HEURISTIC - No LLM used
- * Ensures base_filters is NOT skipped for queries with cuisine keywords
- */
-function containsFilterKeywords(query: string): boolean {
-  const lowerQuery = query.toLowerCase();
-  return FILTER_KEYWORDS.some(keyword => lowerQuery.includes(keyword.toLowerCase()));
-}
 
 /**
  * Check if query is generic food query (for optimization decisions)
@@ -87,6 +37,34 @@ function isGenericFoodQueryWithLocation(
     !intentDecision.cityText &&
     (intentDecision.route === 'NEARBY' || intentDecision.route === 'TEXTSEARCH') &&
     !!ctx.userLocation // Has location
+  );
+}
+
+/**
+ * Determine if base_filters LLM should be skipped (P0 FIX - Language-Agnostic)
+ * 
+ * NEW RULE (Structural, no query text parsing):
+ * Skip base_filters LLM ONLY when:
+ * 1. Route is NEARBY (location-focused, not text-focused)
+ * 2. User location is available (no need to infer location from query)
+ * 3. No explicit city text (means query is purely location-based, not text-based)
+ * 
+ * Rationale:
+ * - NEARBY + userLocation = GPS-based search, minimal query parsing needed
+ * - TEXTSEARCH = Text-driven search, always parse for filters/constraints
+ * - cityText present = User specified location in text, parse for additional context
+ * - No language/keyword dependencies (works for Hebrew, English, any language)
+ * 
+ * @returns true if base_filters LLM can be safely skipped
+ */
+function shouldSkipBaseFiltersLLM(
+  intentDecision: IntentResult,
+  ctx: Route2Context
+): boolean {
+  return (
+    intentDecision.route === 'NEARBY' &&
+    !!ctx.userLocation &&
+    !intentDecision.cityText
   );
 }
 
@@ -107,7 +85,7 @@ export function fireParallelTasks(
 } {
   const { requestId } = ctx;
   const isGenericWithLocation = isGenericFoodQueryWithLocation(gateResult, intentDecision, ctx);
-  const hasFilterKeywords = containsFilterKeywords(request.query);
+  const skipBaseFilters = shouldSkipBaseFiltersLLM(intentDecision, ctx);
 
   logger.info(
     {
@@ -116,7 +94,9 @@ export function fireParallelTasks(
       event: 'parallel_started',
       route: intentDecision.route,
       isGenericWithLocation,
-      hasFilterKeywords
+      skipBaseFilters,
+      hasUserLocation: !!ctx.userLocation,
+      hasCityText: !!intentDecision.cityText
     },
     '[ROUTE2] Starting parallel tasks (base_filters + post_constraints)'
   );
@@ -149,16 +129,21 @@ export function fireParallelTasks(
       return DEFAULT_POST_CONSTRAINTS;
     });
 
-  // OPTIMIZATION: Skip base_filters for generic queries UNLESS filter keywords present
-  // If generic + location + no filter keywords → use defaults (no LLM call)
-  const baseFiltersPromise = (isGenericWithLocation && !hasFilterKeywords)
+  // OPTIMIZATION (P0 FIX): Skip base_filters using STRUCTURAL rule (language-agnostic)
+  // Skip ONLY when: route=NEARBY + hasUserLocation + no cityText
+  // Rationale: NEARBY with GPS = minimal parsing needed, defaults are safe
+  // Always run LLM for TEXTSEARCH or when cityText present (text-driven queries need parsing)
+  const baseFiltersPromise = skipBaseFilters
     ? Promise.resolve(DEFAULT_BASE_FILTERS).then((defaults) => {
       logger.info({
         requestId,
         pipelineVersion: 'route2',
         event: 'base_filters_skipped',
-        reason: 'generic_query_no_filter_keywords',
-        msg: '[ROUTE2] Skipping base_filters LLM for generic query without filter keywords (deterministic defaults)'
+        reason: 'nearby_with_gps_location',
+        route: intentDecision.route,
+        hasUserLocation: true,
+        hasCityText: false,
+        msg: '[ROUTE2] Skipping base_filters LLM for NEARBY route with GPS location (language-agnostic rule)'
       });
       return defaults;
     })

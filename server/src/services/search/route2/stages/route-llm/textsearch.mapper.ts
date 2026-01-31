@@ -15,57 +15,349 @@ import { canonicalizeTextQuery } from '../../../utils/google-query-normalizer.js
 import { generateCanonicalQuery } from './canonical-query.generator.js';
 import { getCachedCanonicalQuery } from './canonical-query.cache.js';
 
-const TEXTSEARCH_MAPPER_VERSION = 'textsearch_mapper_v3_cuisine_enforcement';
+const TEXTSEARCH_MAPPER_VERSION = 'textsearch_mapper_v4_keyed_freetext';
 
-const TEXTSEARCH_MAPPER_PROMPT = `// Use English comments for code/prompts as requested
-// Context: userLatitude: {{lat}}, userLongitude: {{lng}}, hasUserLocation: {{hasLocation}}
+const TEXTSEARCH_MAPPER_PROMPT = `You are a query analyzer for Google Places Text Search API.
+Your goal is to extract structured intent (cuisine keys, city, place type) from user queries.
 
-You are a query rewriter for Google Places Text Search API.
-Your goal is to transform user input into a highly effective search string for Google AND identify explicit cuisine requirements for post-filtering.
+CRITICAL: DO NOT generate full query sentences. Output ONLY semantic keys and mode.
 
 Output ONLY JSON with these fields:
 {
   "providerMethod": "textSearch",
-  "textQuery": "string",
+  "mode": "KEYED" | "FREE_TEXT",
+  "cuisineKey": "italian" | "asian" | ... | null,
+  "placeTypeKey": "restaurant" | "cafe" | "bar" | null,
+  "cityText": "string" | null,
   "region": "IL|FR|US|etc",
   "language": "he|en|ru|ar|fr|es|other",
-  "locationBias": { "lat": number, "lng": number } | null,
   "reason": "token",
-  "requiredTerms": ["string"],
-  "preferredTerms": ["string"],
+  "requiredTerms": [],
+  "preferredTerms": [],
   "strictness": "STRICT" | "RELAX_IF_EMPTY",
   "typeHint": "restaurant" | "cafe" | "bar" | "any"
 }
 
-Rules:
-1) Preserve the original query structure.
-2) Remove only filler/politeness words.
-3) If the user says "near me" (לידי/בקרבתי) and hasUserLocation is true, DO NOT include "near me" in textQuery. Instead, set the locationBias field with the provided coordinates and keep the textQuery focused on the entity (e.g., "מסעדות").
-4) If place-type is missing (e.g., "dairy in Ashdod"), add "restaurant" (מסעדה) prefix.
-5) Reason must be: "original_preserved", "place_type_added", "filler_removed", or "location_bias_applied".
+Mode Selection Rules:
+1) KEYED mode: Use when query contains EXPLICIT cuisine intent or city mention
+   - Extract cuisineKey (canonical: "italian", "asian", "japanese", etc.)
+   - Extract cityText if explicitly mentioned (e.g., "בגדרה", "Ashdod")
+   - Set strictness = "STRICT" if explicit cuisine detected
+   - Example: "מסעדות איטלקיות בגדרה" → mode="KEYED", cuisineKey="italian", cityText="גדרה"
 
-CUISINE ENFORCEMENT (NO HARDCODED RULES - USE LLM UNDERSTANDING ONLY):
-6) If the query contains EXPLICIT cuisine intent (examples: "איטלקיות", "איטלקי", "Italian", "sushi", "דג", "בשר", "פיצה"):
-   - Set strictness = "STRICT"
-   - Set requiredTerms = [cuisine term(s) from query, e.g., "איטלקית", "איטלקי"]
-   - Set preferredTerms = [related terms if applicable, e.g., "פסטה", "פיצה" for Italian]
-   - Set typeHint based on query context (restaurant/cafe/bar/any)
-   
-7) If no explicit cuisine (generic query like "מסעדות בחיפה", "good restaurants"):
+2) FREE_TEXT mode: Use for generic queries without specific cuisine/city keys
+   - Set cuisineKey = null, cityText = null
    - Set strictness = "RELAX_IF_EMPTY"
-   - Leave requiredTerms = []
-   - Leave preferredTerms = []
-   - Set typeHint = "restaurant"
+   - Example: "מסעדות טובות" → mode="FREE_TEXT"
 
-8) textQuery must be SHORT (<=5 words) and MUST include city if present in original query.
+Cuisine Key Mapping (examples):
+- "איטלקיות", "איטלקי", "Italian", "pasta", "pizza" → cuisineKey="italian"
+- "סושי", "sushi", "יפנית", "Japanese" → cuisineKey="japanese"
+- "בשרים", "בשר", "steak", "meat" → cuisineKey="steakhouse"
+- "דגים", "דג", "fish", "seafood" → cuisineKey="seafood"
+- "חלבי", "חלבית", "dairy" → cuisineKey="dairy"
+- "טבעוני", "vegan" → cuisineKey="vegan"
+
+City Extraction:
+- Extract ONLY if explicitly mentioned in query
+- Keep original form (don't translate): "גדרה" stays "גדרה", "Ashdod" stays "Ashdod"
+- Set cityText = null if no explicit city mention
+
+Important:
+- NEVER generate full query sentences (no "Italian restaurant in Gedera")
+- Output ONLY keys: cuisineKey, placeTypeKey, cityText, mode
+- DO NOT fill requiredTerms/preferredTerms arrays (leave empty, filled by mapper)
+- Reason must be: "keyed_cuisine_city", "keyed_cuisine_only", "freetext_generic", etc.
 `;
+
 
 const TEXTSEARCH_MAPPER_PROMPT_HASH = createHash('sha256')
   .update(TEXTSEARCH_MAPPER_PROMPT, 'utf8')
   .digest('hex');
 
+/**
+ * Build deterministic provider query based on mode
+ * 
+ * KEYED mode: "Italian restaurant in Gedera" (English provider format)
+ * FREE_TEXT mode: clean(originalUserQuery) - no semantic rewrite
+ * 
+ * @param mode KEYED or FREE_TEXT
+ * @param llmResult LLM extraction result (keys, cityText)
+ * @param originalQuery Original user query
+ * @param searchLanguage Language for provider (from filters_resolved)
+ * @returns providerTextQuery and providerLanguage
+ */
+function buildProviderQuery(
+  mode: 'KEYED' | 'FREE_TEXT',
+  llmResult: {
+    cuisineKey: string | null;
+    placeTypeKey: string | null;
+    cityText: string | null;
+  },
+  originalQuery: string,
+  searchLanguage: 'he' | 'en',
+  requestId?: string
+): { providerTextQuery: string; providerLanguage: 'he' | 'en' | 'ru' | 'ar' | 'fr' | 'es' | 'other'; source: string } {
+  
+  if (mode === 'KEYED' && llmResult.cuisineKey && llmResult.cityText) {
+    // KEYED mode with cuisine + city: Build structured English query
+    const cuisineKey = llmResult.cuisineKey as CuisineKey;
+    const restaurantLabel = getCuisineRestaurantLabel(cuisineKey, 'en'); // Always English for provider
+    
+    // P0 FIX: Transliterate city to English for provider query
+    const cityEnglish = transliterateCityToEnglish(llmResult.cityText);
+    const providerTextQuery = `${restaurantLabel} in ${cityEnglish}`;
+    
+    logger.info({
+      requestId,
+      stage: 'textsearch_mapper',
+      event: 'deterministic_builder_keyed',
+      mode: 'KEYED',
+      cuisineKey,
+      cityText: llmResult.cityText,
+      cityEnglish,
+      providerTextQuery,
+      providerLanguage: 'en',
+      source: 'deterministic_builder'
+    }, '[TEXTSEARCH] Built KEYED mode query (cuisine + city) - fully in English');
+    
+    return {
+      providerTextQuery,
+      providerLanguage: 'en', // Provider always uses English for structured queries
+      source: 'deterministic_builder_keyed'
+    };
+  }
+  
+  if (mode === 'KEYED' && llmResult.cuisineKey) {
+    // KEYED mode with cuisine only (no city): Use restaurant label
+    const cuisineKey = llmResult.cuisineKey as CuisineKey;
+    const restaurantLabel = getCuisineRestaurantLabel(cuisineKey, 'en');
+    
+    logger.info({
+      requestId,
+      stage: 'textsearch_mapper',
+      event: 'deterministic_builder_keyed',
+      mode: 'KEYED',
+      cuisineKey,
+      cityText: null,
+      providerTextQuery: restaurantLabel,
+      providerLanguage: 'en',
+      source: 'deterministic_builder'
+    }, '[TEXTSEARCH] Built KEYED mode query (cuisine only)');
+    
+    return {
+      providerTextQuery: restaurantLabel,
+      providerLanguage: 'en',
+      source: 'deterministic_builder_keyed_no_city'
+    };
+  }
+  
+  // FREE_TEXT mode: Clean original query, preserve language
+  const cleanedQuery = originalQuery
+    .trim()
+    .replace(/\s+/g, ' ') // Collapse multiple spaces
+    .replace(/[״""'']/g, '') // Remove quotes
+    .replace(/\?+$/g, ''); // Remove trailing question marks
+  
+  logger.info({
+    requestId,
+    stage: 'textsearch_mapper',
+    event: 'deterministic_builder_freetext',
+    mode: 'FREE_TEXT',
+    originalQuery,
+    cleanedQuery,
+    providerLanguage: searchLanguage,
+    source: 'deterministic_builder'
+  }, '[TEXTSEARCH] Built FREE_TEXT mode query (cleaned original)');
+  
+  return {
+    providerTextQuery: cleanedQuery,
+    providerLanguage: searchLanguage, // Preserve original query language
+    source: 'deterministic_builder_freetext'
+  };
+}
+
+/**
+ * Deterministic cuisine detector
+ * 
+ * Scans query for cuisine keywords and returns cuisineKey if found
+ * This is a FALLBACK when LLM fails - ensures cuisine enforcement always works
+ * 
+ * Priority: Look for exact matches first, then partial matches
+ * 
+ * @param query User query in any language
+ * @returns cuisineKey if detected, null otherwise
+ */
+function detectCuisineKeyword(query: string): CuisineKey | null {
+  const queryLower = query.toLowerCase();
+
+  // Iterate through all cuisines and check if any search term appears in query
+  for (const [cuisineKey, token] of Object.entries(CUISINE_REGISTRY)) {
+    // Check Hebrew terms
+    for (const term of token.searchTerms.he) {
+      if (queryLower.includes(term.toLowerCase())) {
+        return cuisineKey as CuisineKey;
+      }
+    }
+
+    // Check English terms
+    for (const term of token.searchTerms.en) {
+      if (queryLower.includes(term.toLowerCase())) {
+        return cuisineKey as CuisineKey;
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Extract original cuisine word from query
+ * Returns the actual word form used in the query (e.g., "איטלקיות", "איטלקי", "פיצה")
+ * 
+ * @param query Original user query
+ * @param cuisineKey Detected cuisine key
+ * @returns Original cuisine word or null if not found
+ */
+function extractOriginalCuisineWord(query: string, cuisineKey: CuisineKey): string | null {
+  const token = CUISINE_REGISTRY[cuisineKey];
+  if (!token) return null;
+
+  const queryLower = query.toLowerCase();
+
+  // Check Hebrew terms first (more likely for Hebrew queries)
+  for (const term of token.searchTerms.he) {
+    const termLower = term.toLowerCase();
+    const index = queryLower.indexOf(termLower);
+    if (index !== -1) {
+      // Extract the original case from the query
+      return query.substring(index, index + term.length);
+    }
+  }
+
+  // Check English terms
+  for (const term of token.searchTerms.en) {
+    const termLower = term.toLowerCase();
+    const index = queryLower.indexOf(termLower);
+    if (index !== -1) {
+      return query.substring(index, index + term.length);
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Build deterministic textQuery for cuisine + city queries
+ * 
+ * Format (Hebrew): "מסעדה <cuisine-adj> ב<cityText>"
+ * Example: "מסעדה איטלקית בגדרה"
+ * 
+ * This preserves the ORIGINAL cuisine word form from the query
+ * 
+ * @param originalQuery User's original query
+ * @param cuisineWord Original cuisine word extracted from query
+ * @param cityText City name from intent
+ * @returns Formatted textQuery
+ */
+function buildDeterministicCuisineCityQuery(
+  originalQuery: string,
+  cuisineWord: string,
+  cityText: string
+): string {
+  // Format: "מסעדה <cuisine> ב<city>"
+  // Example: "מסעדה איטלקית בגדרה"
+  
+  // Check if query is in Hebrew (contains Hebrew characters)
+  const hasHebrew = /[\u0590-\u05FF]/.test(originalQuery);
+  
+  if (hasHebrew) {
+    // Hebrew format
+    return `מסעדה ${cuisineWord} ${cityText}`;
+  } else {
+    // English format (fallback)
+    return `${cuisineWord} restaurant ${cityText}`;
+  }
+}
+
 // Import the updated static schema (the one without 'bias' fields)
-import { TEXTSEARCH_JSON_SCHEMA, TEXTSEARCH_SCHEMA_HASH } from './static-schemas.js';
+import { TEXTSEARCH_JSON_SCHEMA, TEXTSEARCH_SCHEMA_HASH, assertStrictSchema } from './static-schemas.js';
+import { CUISINE_REGISTRY, type CuisineKey, getCuisineSearchTerms, getCuisinePreferredTerms, getCuisineRestaurantLabel } from '../../shared/cuisine-tokens.js';
+
+/**
+ * City transliteration map (Hebrew → English)
+ * For provider queries (Google API), we need English city names
+ */
+const CITY_TRANSLITERATION_MAP: Record<string, string> = {
+  'תל אביב': 'Tel Aviv',
+  'ירושלים': 'Jerusalem',
+  'חיפה': 'Haifa',
+  'באר שבע': 'Beer Sheva',
+  'ראשון לציון': 'Rishon Lezion',
+  'פתח תקווה': 'Petah Tikva',
+  'אשדוד': 'Ashdod',
+  'נתניה': 'Netanya',
+  'בני ברק': 'Bnei Brak',
+  'רחובות': 'Rehovot',
+  'חולון': 'Holon',
+  'בת ים': 'Bat Yam',
+  'רמת גן': 'Ramat Gan',
+  'אשקלון': 'Ashkelon',
+  'הרצליה': 'Herzliya',
+  'כפר סבא': 'Kfar Saba',
+  'חדרה': 'Hadera',
+  'מודיעין': 'Modiin',
+  'נצרת': 'Nazareth',
+  'לוד': 'Lod',
+  'רמלה': 'Ramla',
+  'נהריה': 'Nahariya',
+  'בית שמש': 'Beit Shemesh',
+  'גדרה': 'Gedera',
+  'יבנה': 'Yavne',
+  'יפו': 'Jaffa',
+  'עכו': 'Acre',
+  'טבריה': 'Tiberias',
+  'צפת': 'Safed',
+  'אילת': 'Eilat',
+  'קריית אתא': 'Kiryat Ata',
+  'קריית גת': 'Kiryat Gat',
+  'קריית מוצקין': 'Kiryat Motzkin',
+  'קריית ביאליק': 'Kiryat Bialik',
+  'קריית אונו': 'Kiryat Ono',
+  'קריית שמונה': 'Kiryat Shmona',
+  'דימונה': 'Dimona',
+  'אור יהודה': 'Or Yehuda',
+  'ערד': 'Arad',
+  'קרית ים': 'Kiryat Yam',
+  'גבעתיים': 'Givatayim',
+  'רעננה': 'Raanana'
+};
+
+/**
+ * Transliterate city name to English for provider queries
+ * Falls back to original if no mapping exists
+ * 
+ * @param cityText Original city text (may be Hebrew or English)
+ * @returns English transliteration
+ */
+function transliterateCityToEnglish(cityText: string): string {
+  // Check if already English (no Hebrew characters)
+  const hasHebrew = /[\u0590-\u05FF]/.test(cityText);
+  if (!hasHebrew) {
+    return cityText; // Already English, return as-is
+  }
+  
+  // Look up transliteration
+  const normalized = cityText.trim();
+  const transliteration = CITY_TRANSLITERATION_MAP[normalized];
+  
+  if (transliteration) {
+    return transliteration;
+  }
+  
+  // Fallback: return original (Google can handle Hebrew too)
+  return cityText;
+}
 
 /**
  * Execute TextSearch Mapper
@@ -92,23 +384,54 @@ export async function executeTextSearchMapper(
       { role: 'user', content: userPrompt }
     ];
 
-    // DIAGNOSTIC: Log schema before OpenAI call
-    // hasBiasCandidate = schema supports locationBias field (LLM can return it)
+    // DIAGNOSTIC: Validate and log schema before OpenAI call
+    // Ensure schema is strict-mode compliant (all properties in required array)
+    const propertyKeys = Object.keys(TEXTSEARCH_JSON_SCHEMA.properties);
+    const requiredArray = TEXTSEARCH_JSON_SCHEMA.required as readonly string[];
+    const missingRequired = propertyKeys.filter(key => !requiredArray.includes(key));
+    const hasModeField = requiredArray.includes('mode');
+    
     logger.info({
       requestId,
       stage: 'textsearch_mapper',
       event: 'schema_check_before_llm',
       schemaId: 'TEXTSEARCH_JSON_SCHEMA',
-      schemaKeys: Object.keys(TEXTSEARCH_JSON_SCHEMA.properties),
-      hasBiasCandidate: Boolean((TEXTSEARCH_JSON_SCHEMA.properties as any).locationBias),
+      schemaProperties: propertyKeys,
+      schemaPropertiesCount: propertyKeys.length,
+      schemaRequired: Array.from(requiredArray),
+      schemaRequiredCount: requiredArray.length,
+      hasModeField,
+      missingRequired: missingRequired.length > 0 ? missingRequired : undefined,
+      schemaValid: missingRequired.length === 0,
       schemaHash: TEXTSEARCH_SCHEMA_HASH
     });
+
+    // Assert schema is valid before OpenAI call (fail fast if invalid)
+    assertStrictSchema(TEXTSEARCH_JSON_SCHEMA, 'TEXTSEARCH_JSON_SCHEMA');
 
     // Resolve model and timeout for routeMapper purpose
     const { model, timeoutMs } = resolveLLM('routeMapper');
 
     let response: any = null;
     let lastError: any = null;
+
+    // FINAL SCHEMA CHECK: Log schema state right before OpenAI call
+    const finalPropertyKeys = Object.keys(TEXTSEARCH_JSON_SCHEMA.properties);
+    const finalRequiredKeys = Array.from(TEXTSEARCH_JSON_SCHEMA.required);
+    const missingRequiredKeys = finalPropertyKeys.filter(key => !finalRequiredKeys.includes(key as any));
+    
+    logger.info({
+      requestId,
+      stage: 'textsearch_mapper',
+      event: 'schema_final_check',
+      schemaType: TEXTSEARCH_JSON_SCHEMA.type,
+      propertyKeys: finalPropertyKeys,
+      requiredKeys: finalRequiredKeys,
+      missingRequiredKeys: missingRequiredKeys.length > 0 ? missingRequiredKeys : undefined,
+      hasModeField: finalRequiredKeys.includes('mode'),
+      additionalProperties: TEXTSEARCH_JSON_SCHEMA.additionalProperties,
+      isValid: missingRequiredKeys.length === 0
+    }, '[TEXTSEARCH] Final schema check before OpenAI call');
 
     // Attempt 1: Initial LLM call
     try {
@@ -148,6 +471,21 @@ export async function executeTextSearchMapper(
 
         // Jittered backoff: 100-200ms (gate2 pattern)
         await new Promise(resolve => setTimeout(resolve, 100 + Math.random() * 100));
+
+        // FINAL SCHEMA CHECK (retry): Log schema state before retry call
+        logger.info({
+          requestId,
+          stage: 'textsearch_mapper',
+          event: 'schema_final_check',
+          attempt: 2,
+          schemaType: TEXTSEARCH_JSON_SCHEMA.type,
+          propertyKeys: finalPropertyKeys,
+          requiredKeys: finalRequiredKeys,
+          missingRequiredKeys: missingRequiredKeys.length > 0 ? missingRequiredKeys : undefined,
+          hasModeField: finalRequiredKeys.includes('mode'),
+          additionalProperties: TEXTSEARCH_JSON_SCHEMA.additionalProperties,
+          isValid: missingRequiredKeys.length === 0
+        }, '[TEXTSEARCH] Final schema check before OpenAI retry call');
 
         // Attempt 2: Retry once
         try {
@@ -193,81 +531,85 @@ export async function executeTextSearchMapper(
       return buildDeterministicMapping(intent, request, finalFilters, context);
     }
 
-    // Using 'as any' because the LLM response doesn't contain 'bias' anymore
-    const mapping = response.data as any;
+    // Using 'as any' because the LLM response structure changed
+    const llmResult = response.data as any;
 
     // CRITICAL: Override LLM's region/language with filters_resolved values (single source of truth)
-    // Use languageContext.searchLanguage (region-based policy) instead of providerLanguage
-    mapping.region = finalFilters.regionCode;
-    mapping.language = finalFilters.languageContext?.searchLanguage ?? finalFilters.providerLanguage;
+    llmResult.region = finalFilters.regionCode;
+    llmResult.language = finalFilters.languageContext?.searchLanguage ?? finalFilters.providerLanguage;
 
-    // CRITICAL: Canonicalize textQuery to avoid chatty conversational queries
-    const canonicalized = canonicalizeTextQuery(mapping.textQuery, requestId);
-    if (canonicalized.normalized) {
-      logger.info({
-        requestId,
-        stage: 'textsearch_mapper',
-        event: 'textquery_canonicalized',
-        originalTextQuery: mapping.textQuery,
-        canonicalTextQuery: canonicalized.canonicalTextQuery,
-        reason: canonicalized.reason
-      }, '[TEXTSEARCH] Canonicalized chatty query');
-      mapping.textQuery = canonicalized.canonicalTextQuery;
-    }
-
-    // CANONICAL QUERY GENERATION (LLM)
-    // Generate Google-optimized canonical query with caching
-    const canonicalResult = await getCachedCanonicalQuery(
-      mapping.textQuery,
-      finalFilters.uiLanguage as 'he' | 'en',
-      finalFilters.regionCode,
-      () => generateCanonicalQuery(
-        mapping.textQuery,
-        intent.cityText || null,
-        {
-          requestId,
-          ...(traceId && { traceId }),
-          ...(sessionId && { sessionId }),
-          llmProvider,
-          uiLanguage: finalFilters.uiLanguage as 'he' | 'en',
-          regionCode: finalFilters.regionCode
-        }
-      ),
+    // DETERMINISTIC QUERY BUILDER: Build providerTextQuery based on mode
+    const { providerTextQuery, providerLanguage, source } = buildProviderQuery(
+      llmResult.mode,
+      {
+        cuisineKey: llmResult.cuisineKey,
+        placeTypeKey: llmResult.placeTypeKey,
+        cityText: llmResult.cityText
+      },
+      request.query,
+      finalFilters.languageContext?.searchLanguage as 'he' | 'en' ?? 'he',
       requestId
     );
 
-    // Use canonical query if it was successfully rewritten
-    if (canonicalResult.wasRewritten) {
+    // Store both textQuery (for logging) and providerTextQuery (for Google)
+    const mapping = {
+      ...llmResult,
+      textQuery: providerTextQuery, // For backwards compatibility
+      providerTextQuery,
+      providerLanguage,
+      source
+    };
+
+    // Generate requiredTerms/preferredTerms from cuisineKey if present
+    if (llmResult.cuisineKey) {
+      const searchLang = finalFilters.languageContext?.searchLanguage as 'he' | 'en' ?? 'he';
+      mapping.requiredTerms = getCuisineSearchTerms(llmResult.cuisineKey as CuisineKey, searchLang);
+      mapping.preferredTerms = getCuisinePreferredTerms(llmResult.cuisineKey as CuisineKey, searchLang);
+      mapping.strictness = 'STRICT';
+      
       logger.info({
         requestId,
         stage: 'textsearch_mapper',
-        event: 'canonical_query_applied',
-        originalTextQuery: mapping.textQuery,
-        canonicalTextQuery: canonicalResult.googleQuery,
-        confidence: canonicalResult.confidence
-      }, '[TEXTSEARCH] Applied LLM-generated canonical query');
-      mapping.textQuery = canonicalResult.googleQuery;
+        event: 'cuisine_terms_generated',
+        cuisineKey: llmResult.cuisineKey,
+        searchLanguage: searchLang,
+        requiredTerms: mapping.requiredTerms,
+        preferredTerms: mapping.preferredTerms
+      }, '[TEXTSEARCH] Generated cuisine terms from cuisineKey');
+    } else {
+      // No cuisine: empty terms, RELAX mode
+      mapping.requiredTerms = [];
+      mapping.preferredTerms = [];
+      mapping.strictness = 'RELAX_IF_EMPTY';
     }
 
-    // CRITICAL: Manually inject 'bias' property as undefined.
-    // This ensures that 'applyLocationBias' function doesn't crash 
-    // and downstream types remain compatible.
-    mapping.bias = undefined;
-
-    // Ensure cuisine enforcement fields have defaults (in case LLM didn't return them)
-    mapping.requiredTerms = mapping.requiredTerms || [];
-    mapping.preferredTerms = mapping.preferredTerms || [];
-    mapping.strictness = mapping.strictness || 'RELAX_IF_EMPTY';
-    mapping.typeHint = mapping.typeHint || 'restaurant';
-
-    // Propagate cityText from intent if present
-    if (intent.cityText) {
+    // Propagate cityText from LLM result if present
+    if (llmResult.cityText) {
+      mapping.cityText = llmResult.cityText;
+    } else if (intent.cityText) {
+      // Fallback to intent cityText if LLM didn't extract it
       mapping.cityText = intent.cityText;
     }
 
-    // Apply your existing location bias logic based on user metadata/intent
+    // CRITICAL: Manually inject 'bias' property as undefined.
+    mapping.bias = undefined;
+
+    // Apply location bias logic based on available anchors
     const biasResult = applyLocationBias(mapping, intent, request, requestId);
     mapping.bias = biasResult.bias;
+
+    logger.info({
+      requestId,
+      stage: 'textsearch_mapper',
+      event: 'mapper_success',
+      mode: llmResult.mode,
+      cuisineKey: llmResult.cuisineKey,
+      cityText: mapping.cityText,
+      providerTextQuery,
+      providerLanguage,
+      source,
+      strictness: mapping.strictness
+    }, '[TEXTSEARCH] Mapper completed successfully');
 
     return mapping as TextSearchMapping;
 
@@ -279,6 +621,10 @@ export async function executeTextSearchMapper(
 /**
  * Build deterministic mapping when LLM fails
  * Uses filters_resolved as single source of truth for region/language
+ * 
+ * Fallback strategy:
+ * 1. Try to detect cuisine + city → KEYED mode
+ * 2. Otherwise → FREE_TEXT mode with cleaned query
  */
 async function buildDeterministicMapping(
   intent: IntentResult,
@@ -286,79 +632,116 @@ async function buildDeterministicMapping(
   finalFilters: FinalSharedFilters,
   context: Route2Context
 ): Promise<TextSearchMapping> {
-  const { requestId, traceId, sessionId, llmProvider } = context;
-  const statusWords = ['פתוחות', 'פתוח', 'סגורות', 'סגור', 'open', 'closed'];
-  let cleanedQuery = request.query;
-  for (const word of statusWords) {
-    cleanedQuery = cleanedQuery.replace(new RegExp(`\\b${word}\\b`, 'gi'), '');
-  }
-  cleanedQuery = cleanedQuery.trim().replace(/\s+/g, ' ');
-
-  // Canonicalize textQuery to avoid chatty conversational queries
-  const canonicalized = canonicalizeTextQuery(cleanedQuery, requestId);
-  if (canonicalized.normalized) {
+  const { requestId } = context;
+  
+  // Deterministic cuisine detection
+  const detectedCuisineKey = detectCuisineKeyword(request.query);
+  const hasCityText = !!intent.cityText;
+  
+  let mode: 'KEYED' | 'FREE_TEXT' = 'FREE_TEXT';
+  let cityText: string | null = null;
+  let cuisineKey: CuisineKey | null = null;
+  
+  // Determine mode based on detection results
+  if (detectedCuisineKey && hasCityText) {
+    mode = 'KEYED';
+    cuisineKey = detectedCuisineKey;
+    cityText = intent.cityText!;
+    
     logger.info({
       requestId,
       stage: 'textsearch_mapper_fallback',
-      event: 'textquery_canonicalized',
-      originalTextQuery: cleanedQuery,
-      canonicalTextQuery: canonicalized.canonicalTextQuery,
-      reason: canonicalized.reason
-    }, '[TEXTSEARCH] Canonicalized chatty query in fallback');
-    cleanedQuery = canonicalized.canonicalTextQuery;
+      event: 'deterministic_mode_keyed',
+      cuisineKey,
+      cityText,
+      reason: 'cuisine_and_city_detected'
+    }, '[TEXTSEARCH] Fallback: KEYED mode (cuisine + city detected)');
+  } else if (detectedCuisineKey) {
+    mode = 'KEYED';
+    cuisineKey = detectedCuisineKey;
+    
+    logger.info({
+      requestId,
+      stage: 'textsearch_mapper_fallback',
+      event: 'deterministic_mode_keyed',
+      cuisineKey,
+      cityText: null,
+      reason: 'cuisine_only_detected'
+    }, '[TEXTSEARCH] Fallback: KEYED mode (cuisine only)');
+  } else {
+    logger.info({
+      requestId,
+      stage: 'textsearch_mapper_fallback',
+      event: 'deterministic_mode_freetext',
+      reason: 'no_cuisine_detected'
+    }, '[TEXTSEARCH] Fallback: FREE_TEXT mode (no cuisine detected)');
   }
-
-  // CANONICAL QUERY GENERATION (LLM) - Also in fallback path
-  const canonicalResult = await getCachedCanonicalQuery(
-    cleanedQuery,
-    finalFilters.uiLanguage as 'he' | 'en',
-    finalFilters.regionCode,
-    () => generateCanonicalQuery(
-      cleanedQuery,
-      intent.cityText || null,
-      {
-        requestId,
-        ...(traceId && { traceId }),
-        ...(sessionId && { sessionId }),
-        llmProvider,
-        uiLanguage: finalFilters.uiLanguage as 'he' | 'en',
-        regionCode: finalFilters.regionCode
-      }
-    ),
+  
+  // Build provider query using deterministic builder
+  const searchLang = finalFilters.languageContext?.searchLanguage as 'he' | 'en' ?? 'he';
+  const { providerTextQuery, providerLanguage, source } = buildProviderQuery(
+    mode,
+    { cuisineKey, placeTypeKey: null, cityText },
+    request.query,
+    searchLang,
     requestId
   );
-
-  // Use canonical query if it was successfully rewritten
-  if (canonicalResult.wasRewritten) {
+  
+  // Generate cuisine terms if cuisineKey detected
+  let requiredTerms: string[] = [];
+  let preferredTerms: string[] = [];
+  let strictness: 'STRICT' | 'RELAX_IF_EMPTY' = 'RELAX_IF_EMPTY';
+  
+  if (cuisineKey) {
+    requiredTerms = getCuisineSearchTerms(cuisineKey, searchLang);
+    preferredTerms = getCuisinePreferredTerms(cuisineKey, searchLang);
+    strictness = 'STRICT';
+    
     logger.info({
       requestId,
       stage: 'textsearch_mapper_fallback',
-      event: 'canonical_query_applied',
-      originalTextQuery: cleanedQuery,
-      canonicalTextQuery: canonicalResult.googleQuery,
-      confidence: canonicalResult.confidence
-    }, '[TEXTSEARCH] Applied LLM-generated canonical query in fallback');
-    cleanedQuery = canonicalResult.googleQuery;
+      event: 'cuisine_terms_generated',
+      cuisineKey,
+      searchLanguage: searchLang,
+      requiredTerms,
+      preferredTerms
+    }, '[TEXTSEARCH] Generated cuisine terms in fallback');
   }
 
   const mapping: TextSearchMapping = {
     providerMethod: 'textSearch',
-    textQuery: cleanedQuery,
-    cuisineKey: null, // No cuisine detected in fallback
+    mode,
+    textQuery: providerTextQuery,
+    providerTextQuery,
+    providerLanguage,
+    cuisineKey,
+    placeTypeKey: null,
+    cityText,
     region: finalFilters.regionCode,
-    language: finalFilters.languageContext?.searchLanguage ?? finalFilters.providerLanguage,
+    language: searchLang,
     bias: undefined,
-    reason: 'deterministic_fallback',
-    requiredTerms: [],  // No cuisine enforcement in fallback
-    preferredTerms: [],
-    strictness: 'RELAX_IF_EMPTY',
-    typeHint: 'restaurant',
-    ...(intent.cityText && { cityText: intent.cityText })
+    reason: source,
+    requiredTerms,
+    preferredTerms,
+    strictness,
+    typeHint: 'restaurant'
   };
 
-  // CRITICAL: Apply location bias in fallback path too
+  // Apply location bias
   const biasResult = applyLocationBias(mapping, intent, request, requestId);
   mapping.bias = biasResult.bias;
+
+  logger.info({
+    requestId,
+    stage: 'textsearch_mapper_fallback',
+    event: 'fallback_mapping_complete',
+    mode,
+    cuisineKey,
+    cityText,
+    providerTextQuery,
+    providerLanguage,
+    strictness
+  }, '[TEXTSEARCH] Fallback mapping completed');
 
   return mapping;
 }

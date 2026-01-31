@@ -11,31 +11,31 @@
 
 .search-header {
   // Top area: STICKY PANEL - Stays at top while results scroll under it
-  
+
   // iOS Safe Area: Account for notch/status bar
   padding-top: calc(1.5rem + env(safe-area-inset-top, 0));
   padding-left: max(1rem, env(safe-area-inset-left, 1rem));
   padding-right: max(1rem, env(safe-area-inset-right, 1rem));
   padding-bottom: 1.25rem;
-  
+
   // Sticky positioning: Stays at top when content scrolls
   position: sticky;
   top: 0;
   z-index: 150;
-  
+
   // Solid background: Prevents results from showing "through"
   background: #ffffff;
-  
+
   // Visual separation: Border + subtle shadow
   border-bottom: 1px solid #e5e7eb;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-  
+
   // Smooth transitions for scroll effects
   transition: box-shadow 0.2s ease;
-  
+
   // CRITICAL: Prevent shrinking - header stays fixed size
   flex: 0 0 auto; // Shorthand for flex-grow: 0, flex-shrink: 0, flex-basis: auto
-  
+
   // CRITICAL: No transform/filter/perspective that breaks sticky
   transform: none;
   filter: none;
@@ -114,7 +114,7 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   overflow: visible;
   padding: 1rem;
-  
+
   // Mobile: Critical - no transform that breaks sticky
   // Parent has sticky positioning, so transform must be none
   transform: none;
@@ -163,20 +163,20 @@
 
 .search-content {
   // Results area: Natural flow layout (window scrolls, not this container)
-  
+
   // Layout: Minimal top padding - results start RIGHT UNDER the sticky header
   padding: 0 1rem calc(1.5rem + env(safe-area-inset-bottom, 0));
   padding-left: max(1rem, env(safe-area-inset-left, 1rem));
   padding-right: max(1rem, env(safe-area-inset-right, 1rem));
-  
+
   // NO overflow: auto - window scrolls instead
   // NO flex - using block layout for natural document flow
-  
+
   // Layout: Match search panel width (700px)
   max-width: 700px;
   margin: 0 auto;
   width: 100%; // Ensure full width for centering
-  
+
   // Background
   background: #f9fafb;
 }
@@ -247,7 +247,7 @@
 
 // NEW: Recent Searches (Phase B)
 .recent-searches {
-  padding: 1rem 0 2rem;  // Reduced top padding
+  padding: 1rem 0 2rem; // Reduced top padding
   max-width: 600px;
   margin: 0 auto;
 
@@ -565,6 +565,18 @@
       color: #111827;
       font-weight: 600;
     }
+
+    .order-debug {
+      color: #9ca3af;
+      font-size: 0.75rem;
+      cursor: help;
+      margin-left: 0.25rem;
+      opacity: 0.7;
+
+      &:hover {
+        opacity: 1;
+      }
+    }
   }
 
   .order-explain-details {
@@ -719,7 +731,7 @@
     padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0));
     padding-left: max(1rem, env(safe-area-inset-left, 1rem));
     padding-right: max(1rem, env(safe-area-inset-right, 1rem));
-    
+
     // NO overflow-y - window scrolls instead
     // NO -webkit-overflow-scrolling - not needed without scroll container
   }
@@ -730,7 +742,7 @@
     bottom: calc(1rem + env(safe-area-inset-bottom, 0));
     max-width: none;
   }
-  
+
   // Mobile: Ensure search card doesn't have transforms
   .search-card {
     transform: none !important;

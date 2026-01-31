@@ -20,20 +20,20 @@ const LocationSchema = z.object({
 
 /**
  * 1. This is for OpenAI (Strict Mode Friendly)
- * NO bias field here to avoid 400 error.
- * INCLUDES cuisine enforcement fields - now extracts canonical cuisineKey instead of raw terms.
+ * NO textQuery field - generated deterministically in mapper based on mode.
  * 
- * LANGUAGE SEPARATION: LLM extracts cuisineKey (language-independent), NOT raw query terms.
- * Terms are generated deterministically from cuisineKey + searchLanguage.
+ * MODE-BASED APPROACH:
+ * - KEYED mode: LLM outputs cuisineKey/placeTypeKey/cityText → mapper builds structured query
+ * - FREE_TEXT mode: LLM signals no keys → mapper uses clean original query
  */
 export const TextSearchLLMResponseSchema = z.object({
   providerMethod: z.literal('textSearch'),
-  // DEPRECATED: textQuery will be generated deterministically (not from LLM)
-  textQuery: z.string().min(1).optional(),
+  // NEW: mode determines query construction strategy
+  mode: z.enum(['KEYED', 'FREE_TEXT']),
   region: z.string().regex(/^[A-Z]{2}$/),
   language: z.enum(['he', 'en', 'ru', 'ar', 'fr', 'es', 'other']),
   reason: z.string().min(1),
-  // Cuisine enforcement fields - NEW: canonical cuisineKey (language-independent)
+  // Cuisine key - canonical language-independent identifier
   cuisineKey: z.enum([
     'italian', 'asian', 'japanese', 'chinese', 'thai', 'indian',
     'mediterranean', 'middle_eastern', 'american', 'mexican', 'french',
@@ -42,7 +42,11 @@ export const TextSearchLLMResponseSchema = z.object({
     'breakfast', 'cafe', 'bakery', 'dessert',
     'fast_food', 'fine_dining', 'casual_dining'
   ]).nullable().default(null),
-  // DEPRECATED: requiredTerms/preferredTerms generated from cuisineKey
+  // Place type key (for future expansion)
+  placeTypeKey: z.string().nullable().default(null),
+  // City text (required if intent reason is explicit_city_mentioned)
+  cityText: z.string().nullable().default(null),
+  // Cuisine enforcement fields (generated from cuisineKey)
   requiredTerms: z.array(z.string()).default([]),
   preferredTerms: z.array(z.string()).default([]),
   strictness: z.enum(['STRICT', 'RELAX_IF_EMPTY']).default('RELAX_IF_EMPTY'),
@@ -51,17 +55,20 @@ export const TextSearchLLMResponseSchema = z.object({
 
 /**
  * 2. This is for your App logic
- * Includes the bias field, cityText, cityCenter, and OVERRIDES textQuery (generated deterministically).
+ * Includes the bias field, cityText, cityCenter, and REQUIRES textQuery/providerTextQuery/providerLanguage.
  * 
- * LANGUAGE SEPARATION:
- * - textQuery: generated from cuisineKey + cityText + searchLanguage (deterministic)
- * - requiredTerms/preferredTerms: generated from cuisineKey + searchLanguage (not query language)
+ * MODE-BASED APPROACH:
+ * - providerTextQuery: the actual query sent to Google (deterministically built)
+ * - providerLanguage: the language sent to Google API (may differ from query language)
+ * - mode: KEYED (structured) or FREE_TEXT (cleaned original)
  */
 export const TextSearchMappingSchema = TextSearchLLMResponseSchema.extend({
-  // Override: textQuery is REQUIRED (generated deterministically, not from LLM)
+  // textQuery: REQUIRED (generated deterministically from mode + keys/original)
   textQuery: z.string().min(1),
+  // NEW: Provider-specific fields (what actually gets sent to Google)
+  providerTextQuery: z.string().min(1),
+  providerLanguage: z.enum(['he', 'en', 'ru', 'ar', 'fr', 'es', 'other']),
   bias: LocationBiasSchema.nullable().optional(),
-  cityText: z.string().min(1).optional(),
   cityCenter: LocationSchema.nullable().optional() // Resolved city center coordinates for ranking
 }).strict();
 

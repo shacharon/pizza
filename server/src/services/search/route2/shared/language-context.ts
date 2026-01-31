@@ -17,20 +17,36 @@
 import { logger } from '../../../../lib/logger/structured-logger.js';
 
 /**
+ * Supported UI languages (limited set for consistency)
+ */
+export type UILanguage = 'he' | 'en';
+
+/**
+ * Supported query languages (what user can type)
+ */
+export type QueryLanguage = 'he' | 'en' | 'es' | 'ru' | 'ar' | 'fr';
+
+/**
  * Language Context - strict separation of concerns
  */
 export interface LanguageContext {
-  /** UI language (client preference) */
-  uiLanguage: 'he' | 'en';
+  /** UI language (client preference) - limited to he/en */
+  uiLanguage: UILanguage;
   
-  /** Query language (deterministic detection) */
-  queryLanguage: 'he' | 'en';
+  /** Query language (deterministic detection) - supports more languages */
+  queryLanguage: QueryLanguage;
   
-  /** Assistant message language (LLM-generated text) */
-  assistantLanguage: 'he' | 'en';
+  /** Intent language (LLM detection - for transparency only) */
+  intentLanguage?: string;
   
-  /** Search/Provider language (Google Places API) */
-  searchLanguage: 'he' | 'en';
+  /** Assistant message language (LLM-generated text) - ALWAYS = queryLanguage */
+  assistantLanguage: QueryLanguage;
+  
+  /** Search/Provider language (Google Places API) - supports Google-compatible languages */
+  searchLanguage: QueryLanguage;
+  
+  /** Provider language (alias for searchLanguage) */
+  providerLanguage: QueryLanguage;
   
   /** Region code (ISO-3166-1 alpha-2) */
   regionCode: string;
@@ -46,8 +62,8 @@ export interface LanguageContext {
  * Input for language context resolution
  */
 export interface LanguageContextInput {
-  uiLanguage: 'he' | 'en';
-  queryLanguage: 'he' | 'en';
+  uiLanguage: UILanguage;
+  queryLanguage: QueryLanguage;
   regionCode: string;
   cityText?: string | null;
   countryCode?: string | null;
@@ -56,12 +72,22 @@ export interface LanguageContextInput {
 }
 
 /**
- * Region-to-language policy map
+ * Feature flag: Provider language policy
+ * - "regionDefault": searchLanguage from region policy (DEPRECATED)
+ * - "queryLanguage": searchLanguage = queryLanguage (ACTIVE - query-driven UX)
+ * 
+ * PRODUCT DECISION: Language follows what user types, not where they're located
+ */
+export const PROVIDER_LANGUAGE_POLICY: 'regionDefault' | 'queryLanguage' = 'queryLanguage';
+
+/**
+ * Region-to-language policy map (DEPRECATED in queryLanguage mode)
  * Defines default searchLanguage for each region
  * 
- * Policy: searchLanguage is ONLY determined by region/location, never by query language
+ * NOTE: Only used when PROVIDER_LANGUAGE_POLICY='regionDefault'
+ * When PROVIDER_LANGUAGE_POLICY='queryLanguage', this map is ignored
  */
-const REGION_LANGUAGE_POLICY: Record<string, 'he' | 'en'> = {
+const REGION_LANGUAGE_POLICY: Record<string, UILanguage> = {
   // Israel & Palestinian Territories
   'IL': 'he',
   'PS': 'he',
@@ -80,21 +106,57 @@ const REGION_LANGUAGE_POLICY: Record<string, 'he' | 'en'> = {
 
 /**
  * Language confidence threshold for LLM detection
- * If intentLanguageConfidence >= threshold, use for assistantLanguage
+ * DEPRECATED: No longer used for assistantLanguage
+ * assistantLanguage now ALWAYS = queryLanguage (deterministic rule)
  */
 const ASSISTANT_LANGUAGE_CONFIDENCE_THRESHOLD = 0.7;
 
 /**
- * Resolve searchLanguage from region/location ONLY
- * NEVER uses queryLanguage or assistantLanguage
+ * Allowed languages for Google Places API
+ * Google supports many languages, but we normalize to this set for simplicity
+ */
+const ALLOWED_GOOGLE_LANGUAGES = ['he', 'en', 'es', 'ru', 'ar', 'fr'] as const;
+type GoogleLanguage = typeof ALLOWED_GOOGLE_LANGUAGES[number];
+
+/**
+ * Check if language is supported by Google Places API
+ */
+function isAllowedGoogleLanguage(lang: string): lang is GoogleLanguage {
+  return ALLOWED_GOOGLE_LANGUAGES.includes(lang as any);
+}
+
+/**
+ * Resolve searchLanguage (providerLanguage) based on feature flag
  * 
- * Policy:
- * 1. If regionCode in policy map -> use policy language
- * 2. Else -> fallback to 'en' (global default)
+ * Policy (controlled by PROVIDER_LANGUAGE_POLICY):
+ * - "regionDefault": Use region policy (DEPRECATED)
+ * - "queryLanguage": Use queryLanguage with fallback to 'en' if unsupported
+ * 
+ * NEW BEHAVIOR (queryLanguage mode):
+ * - Query language drives Google API language
+ * - Fallback to 'en' only if query language not in ALLOWED_GOOGLE_LANGUAGES
  * 
  * @returns { searchLanguage, source }
  */
-function resolveSearchLanguage(input: LanguageContextInput): { searchLanguage: 'he' | 'en'; source: string } {
+function resolveSearchLanguage(input: LanguageContextInput): { searchLanguage: QueryLanguage; source: string } {
+  // Feature flag: queryLanguage mode (ACTIVE)
+  if (PROVIDER_LANGUAGE_POLICY === 'queryLanguage') {
+    // Use query language if allowed by Google
+    if (isAllowedGoogleLanguage(input.queryLanguage)) {
+      return {
+        searchLanguage: input.queryLanguage,
+        source: 'query_language_policy'
+      };
+    }
+    
+    // Fallback to English if query language not supported
+    return {
+      searchLanguage: 'en',
+      source: 'query_language_fallback_unsupported'
+    };
+  }
+  
+  // DEPRECATED: regionDefault mode
   // Check policy map
   const policyLanguage = REGION_LANGUAGE_POLICY[input.regionCode];
   if (policyLanguage) {
@@ -112,33 +174,27 @@ function resolveSearchLanguage(input: LanguageContextInput): { searchLanguage: '
 }
 
 /**
- * Resolve assistantLanguage from LLM detection + confidence
+ * Resolve assistantLanguage - DETERMINISTIC RULE
  * 
- * Rules:
- * 1. If intentLanguage confident (>= 0.7) AND in ['he', 'en'] -> use intentLanguage
- * 2. Else -> use uiLanguage (user preference)
+ * CRITICAL PRODUCT RULE: assistantLanguage MUST ALWAYS = queryLanguage
+ * 
+ * This ensures assistant messages match the language the user typed in,
+ * regardless of UI preferences or LLM confidence.
+ * 
+ * Examples:
+ * - User types Spanish query → assistant responds in Spanish
+ * - User types Hebrew query → assistant responds in Hebrew
+ * - User types English query → assistant responds in English
+ * - User types Russian query → assistant responds in Russian
  * 
  * @returns { assistantLanguage, source }
  */
-function resolveAssistantLanguage(input: LanguageContextInput): { assistantLanguage: 'he' | 'en'; source: string } {
-  // Check LLM detection with confidence
-  if (input.intentLanguage && input.intentLanguageConfidence !== undefined) {
-    if (input.intentLanguageConfidence >= ASSISTANT_LANGUAGE_CONFIDENCE_THRESHOLD) {
-      if (input.intentLanguage === 'he') {
-        return { assistantLanguage: 'he', source: 'llm_confident' };
-      } else if (input.intentLanguage === 'en') {
-        return { assistantLanguage: 'en', source: 'llm_confident' };
-      }
-      // If 'other' (ru/ar/fr/es), fall through to uiLanguage
-    }
-  }
-  
-  // Fallback to uiLanguage (user preference)
+function resolveAssistantLanguage(input: LanguageContextInput): { assistantLanguage: QueryLanguage; source: string } {
+  // DETERMINISTIC: assistantLanguage ALWAYS = queryLanguage
+  // This is a hard product rule for consistent UX
   return {
-    assistantLanguage: input.uiLanguage,
-    source: input.intentLanguageConfidence !== undefined && input.intentLanguageConfidence < ASSISTANT_LANGUAGE_CONFIDENCE_THRESHOLD
-      ? 'uiLanguage_low_confidence'
-      : 'uiLanguage'
+    assistantLanguage: input.queryLanguage,
+    source: 'query_language_deterministic'
   };
 }
 
@@ -167,8 +223,10 @@ export function resolveLanguageContext(
   const context: LanguageContext = {
     uiLanguage: input.uiLanguage,
     queryLanguage: input.queryLanguage,
+    ...(input.intentLanguage && { intentLanguage: input.intentLanguage }),
     assistantLanguage,
     searchLanguage,
+    providerLanguage: searchLanguage, // Alias
     regionCode: input.regionCode,
     sources: {
       assistantLanguage: assistantLanguageSource,
@@ -182,14 +240,18 @@ export function resolveLanguageContext(
       requestId,
       event: 'language_context_resolved',
       uiLanguage: context.uiLanguage,
+      // queryLanguage: Final resolved query language (may come from intentLanguage if confidence high)
       queryLanguage: context.queryLanguage,
+      // intentLanguage: from LLM detection (intent stage, more accurate)
+      intentLanguage: input.intentLanguage || null,
+      intentLanguageConfidence: input.intentLanguageConfidence,
+      // CRITICAL: assistantLanguage ALWAYS = queryLanguage (deterministic rule)
       assistantLanguage: context.assistantLanguage,
       searchLanguage: context.searchLanguage,
+      providerLanguage: context.providerLanguage,
       regionCode: context.regionCode,
       sources: context.sources,
-      intentLanguage: input.intentLanguage,
-      intentLanguageConfidence: input.intentLanguageConfidence,
-      confidenceThreshold: ASSISTANT_LANGUAGE_CONFIDENCE_THRESHOLD
+      providerLanguagePolicy: PROVIDER_LANGUAGE_POLICY
     }, '[LANGUAGE] Language context resolved with strict separation');
   }
   
@@ -206,13 +268,24 @@ export function validateLanguageContext(context: LanguageContext): void {
     throw new Error('Language context missing required fields');
   }
   
-  // Invariant 2: All language fields must be 'he' or 'en'
-  const validLanguages = ['he', 'en'];
-  if (!validLanguages.includes(context.uiLanguage) ||
-      !validLanguages.includes(context.queryLanguage) ||
-      !validLanguages.includes(context.assistantLanguage) ||
-      !validLanguages.includes(context.searchLanguage)) {
-    throw new Error('Language context contains invalid language values');
+  // Invariant 2: Language fields must be valid
+  const validUILanguages = ['he', 'en'];
+  const validQueryLanguages = ['he', 'en', 'es', 'ru', 'ar', 'fr'];
+  
+  if (!validUILanguages.includes(context.uiLanguage)) {
+    throw new Error(`Invalid uiLanguage: ${context.uiLanguage} (must be he or en)`);
+  }
+  
+  if (!validQueryLanguages.includes(context.queryLanguage)) {
+    throw new Error(`Invalid queryLanguage: ${context.queryLanguage}`);
+  }
+  
+  if (!validQueryLanguages.includes(context.assistantLanguage)) {
+    throw new Error(`Invalid assistantLanguage: ${context.assistantLanguage}`);
+  }
+  
+  if (!validQueryLanguages.includes(context.searchLanguage)) {
+    throw new Error(`Invalid searchLanguage: ${context.searchLanguage}`);
   }
   
   // Invariant 3: Sources must be present
@@ -220,17 +293,38 @@ export function validateLanguageContext(context: LanguageContext): void {
     throw new Error('Language context missing source attribution');
   }
   
-  // Invariant 4: searchLanguage source must be region-based (never query/assistant)
-  if (context.sources.searchLanguage.includes('query') ||
-      context.sources.searchLanguage.includes('assistant') ||
-      context.sources.searchLanguage.includes('ui')) {
-    throw new Error(`Invalid searchLanguage source: ${context.sources.searchLanguage} (must be region-based)`);
+  // Invariant 4: searchLanguage source must be region-based OR query_language_policy
+  // When PROVIDER_LANGUAGE_POLICY='queryLanguage', searchLanguage can come from query
+  if (PROVIDER_LANGUAGE_POLICY === 'regionDefault') {
+    if (context.sources.searchLanguage.includes('query') ||
+        context.sources.searchLanguage.includes('assistant') ||
+        context.sources.searchLanguage.includes('ui')) {
+      throw new Error(`Invalid searchLanguage source: ${context.sources.searchLanguage} (must be region-based in regionDefault mode)`);
+    }
+  }
+  
+  // Invariant 5: assistantLanguage must = queryLanguage (deterministic rule)
+  if (context.assistantLanguage !== context.queryLanguage) {
+    throw new Error(`assistantLanguage (${context.assistantLanguage}) must equal queryLanguage (${context.queryLanguage})`);
+  }
+  
+  // Invariant 6: providerLanguage must = searchLanguage (alias)
+  if (context.providerLanguage !== context.searchLanguage) {
+    throw new Error(`providerLanguage (${context.providerLanguage}) must equal searchLanguage (${context.searchLanguage})`);
   }
 }
 
 /**
  * Get region language policy (for testing/docs)
+ * DEPRECATED: Only used when PROVIDER_LANGUAGE_POLICY='regionDefault'
  */
-export function getRegionLanguagePolicy(): Record<string, 'he' | 'en'> {
+export function getRegionLanguagePolicy(): Record<string, UILanguage> {
   return { ...REGION_LANGUAGE_POLICY };
+}
+
+/**
+ * Get allowed Google languages (for testing/docs)
+ */
+export function getAllowedGoogleLanguages(): readonly string[] {
+  return ALLOWED_GOOGLE_LANGUAGES;
 }

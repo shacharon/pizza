@@ -23,12 +23,8 @@
 
     <!-- Search Card: Input + Assistant Line + Contextual Assistant -->
     <div class="search-card">
-      <app-search-bar 
-        [value]="facade.currentQuery()"
-        [loading]="facade.loading()" 
-        [placeholder]="'What are you hungry for?'"
-        (search)="onSearch($event)" 
-        (inputChange)="onInputChange($event)" 
+      <app-search-bar [value]="facade.currentQuery()" [loading]="facade.loading()"
+        [placeholder]="'What are you hungry for?'" (search)="onSearch($event)" (inputChange)="onInputChange($event)"
         (clear)="onClear()" />
 
       <!-- Assistant Line (always shown - includes WS status) -->
@@ -39,12 +35,8 @@
       <!-- CANONICAL ROUTING: Contextual Assistant (inside search-card when bound to requestId) -->
       <!-- Shows ONLY card messages: SUMMARY, CLARIFY, GATE_FAIL -->
       @if (showContextualAssistant()) {
-      <app-assistant-summary 
-        [cardMessages]="contextualCardMessages()"
-        [messages]="contextualMessages()"
-        [text]="asyncAssistantMessage()" 
-        [status]="facade.assistantState()"
-        [error]="facade.assistantError()"
+      <app-assistant-summary [cardMessages]="contextualCardMessages()" [messages]="contextualMessages()"
+        [text]="asyncAssistantMessage()" [status]="facade.assistantState()" [error]="facade.assistantError()"
         [locale]="facade.locale()" />
       }
     </div>
@@ -52,12 +44,8 @@
     <!-- CANONICAL ROUTING: Global/System Assistant (outside search-card, no requestId) -->
     <!-- Shows ONLY card messages: SUMMARY, CLARIFY, GATE_FAIL -->
     @if (showGlobalAssistant()) {
-    <app-assistant-summary 
-      [cardMessages]="globalCardMessages()"
-      [messages]="globalMessages()"
-      [text]="asyncAssistantMessage()" 
-      [status]="facade.assistantState()"
-      [error]="facade.assistantError()"
+    <app-assistant-summary [cardMessages]="globalCardMessages()" [messages]="globalMessages()"
+      [text]="asyncAssistantMessage()" [status]="facade.assistantState()" [error]="facade.assistantError()"
       [locale]="facade.locale()" />
     }
   </header>
@@ -124,50 +112,54 @@
     <section class="results-section">
       <!-- DEDUPE FIX: Removed "Found X restaurants" header -->
       <!-- Assistant SUMMARY message (from WS) is the only result announcement -->
-      
+
       <div class="results-header">
-        <!-- Order Explanation (Ranking Transparency) -->
-        @if (facade.response()?.meta?.order_explain; as orderExplain) {
+        <!-- Order Profile (Deterministic Ranking - NEW) -->
+        <!-- ALWAYS RENDER (P0 Fix): Show order badge even if meta.order missing (fallback to defaults) -->
         <div class="order-explain">
           <div class="order-explain-header">
             <span class="order-label">Order:</span>
-            <span class="order-profile">{{ getProfileDisplayName(orderExplain.profile) }}</span>
+            <span class="order-profile">{{ hybridBadgeText() }}</span>
+            <!-- DEV-ONLY: Debug info -->
+            @if (orderDebugInfo()) {
+            <span class="order-debug"
+              title="Debug: preset={{ orderDebugInfo()!.preset }}, method={{ orderDebugInfo()!.method }}, req={{ orderDebugInfo()!.requestId }}">
+              ⚙️
+            </span>
+            }
           </div>
           <div class="order-explain-details">
             <span class="order-weights">
-              @if (orderExplain.weights.rating > 0) {
-                <span class="weight-item">⭐ {{ (orderExplain.weights.rating * 100) | number:'1.0-0' }}%</span>
+              @if (orderWeights().rating > 0) {
+              <span class="weight-item">⭐ {{ orderWeights().rating }}%</span>
               }
-              @if (orderExplain.weights.reviews > 0) {
-                <span class="weight-item">💬 {{ (orderExplain.weights.reviews * 100) | number:'1.0-0' }}%</span>
+              @if (orderWeights().reviews > 0) {
+              <span class="weight-item">💬 {{ orderWeights().reviews }}%</span>
               }
-              @if (orderExplain.weights.distance > 0) {
-                <span class="weight-item">📍 {{ (orderExplain.weights.distance * 100) | number:'1.0-0' }}%</span>
+              @if (orderWeights().price > 0) {
+              <span class="weight-item">💰 {{ orderWeights().price }}%</span>
               }
-              @if (orderExplain.weights.openBoost > 0) {
-                <span class="weight-item">🟢 {{ (orderExplain.weights.openBoost * 100) | number:'1.0-0' }}%</span>
+              @if (orderWeights().openNow > 0) {
+              <span class="weight-item">🟢 {{ orderWeights().openNow }}%</span>
+              }
+              @if (orderWeights().distance > 0) {
+              <span class="weight-item">📍 {{ orderWeights().distance }}%</span>
               }
             </span>
-            @if (orderExplain.distanceOrigin) {
-              <span class="order-origin">
-                {{ getOriginDisplayText(orderExplain.distanceOrigin) }}
-              </span>
-            }
           </div>
         </div>
-        }
-        
+
         <!-- Applied Filters Chips -->
         <div class="applied-filters">
           @if (closedFilterActive() === 'open') {
-          <span class="filter-chip open-now" 
-                [title]="facade.response()?.query?.language === 'he' ? 'מציג רק מסעדות פתוחות עכשיו' : 'Showing only restaurants open now'">
+          <span class="filter-chip open-now"
+            [title]="facade.response()?.query?.language === 'he' ? 'מציג רק מסעדות פתוחות עכשיו' : 'Showing only restaurants open now'">
             {{ facade.response()?.query?.language === 'he' ? '🟢 פתוח עכשיו' : '🟢 Open now' }}
           </span>
           }
           @if (glutenFreeFilterActive()) {
-          <span class="filter-chip gluten-free" 
-                [title]="facade.response()?.query?.language === 'he' ? 'מבוסס על רמזים בטקסט — לא מובטח' : 'Based on text signals — not guaranteed'">
+          <span class="filter-chip gluten-free"
+            [title]="facade.response()?.query?.language === 'he' ? 'מבוסס על רמזים בטקסט — לא מובטח' : 'Based on text signals — not guaranteed'">
             {{ facade.response()?.query?.language === 'he' ? 'ללא גלוטן (רמזים)' : 'Gluten-free (signals)' }}
           </span>
           }

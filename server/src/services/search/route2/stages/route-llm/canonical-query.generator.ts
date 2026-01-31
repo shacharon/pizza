@@ -56,11 +56,15 @@ STRICT RULES:
 3) NO extra tokens, NO filler words, NO variations
 4) confidence: 0.0-1.0 (how well the query matches a canonical phrase)
 5) If no canonical match → return original query with low confidence (<0.7)
+6) CRITICAL: NEVER remove cuisine keywords from query (e.g., "איטלקית", "italian", "asian")
+7) CRITICAL: NEVER remove city names from query (e.g., "תל אביב", "tel aviv", "גדרה")
+8) CRITICAL: Preserve plural→singular conversions ONLY for "restaurant" word, keep cuisine keywords intact
 
 Examples:
 Input: "italian food tel aviv" → {"googleQuery": "italian restaurant tel aviv", "confidence": 0.95}
 Input: "pizza in haifa" → {"googleQuery": "pizza haifa", "confidence": 0.99}
 Input: "מסעדה איטלקית בתל אביב" → {"googleQuery": "מסעדה איטלקית תל אביב", "confidence": 0.99}
+Input: "מסעדות איטלקיות בגדרה" → {"googleQuery": "מסעדה איטלקית גדרה", "confidence": 0.99}
 Input: "where can I eat sushi" → {"googleQuery": "where can I eat sushi", "confidence": 0.3}
 Input: "best burger place" → {"googleQuery": "best burger place", "confidence": 0.4}`;
 
@@ -173,6 +177,33 @@ export async function generateCanonicalQuery(
       };
     }
 
+    // CRITICAL: Validate preservation of cuisine + city tokens
+    const preservation = validateCanonicalPreservation(
+      originalQuery,
+      result.googleQuery,
+      cityText
+    );
+
+    if (!preservation.valid) {
+      logger.warn({
+        requestId,
+        stage: 'canonical_query_generator',
+        event: 'canonical_query_preservation_failed',
+        reason: preservation.reason,
+        originalQuery,
+        proposedQuery: result.googleQuery,
+        confidence: result.confidence,
+        durationMs
+      }, '[CANONICAL] Preservation check failed, using original query');
+
+      return {
+        googleQuery: originalQuery,
+        wasRewritten: false,
+        confidence: result.confidence,
+        reason: 'canonical_fallback_preservation_failed'
+      };
+    }
+
     // Success: Use canonical query
     logger.info({
       requestId,
@@ -183,6 +214,7 @@ export async function generateCanonicalQuery(
       originalQuery,
       canonicalQuery: result.googleQuery,
       confidence: result.confidence,
+      preservationValid: true,
       durationMs
     }, '[CANONICAL] Generated canonical query');
 
@@ -258,4 +290,74 @@ export function validateCanonicalPhrase(
   }
 
   return false;
+}
+
+/**
+ * Validate that canonical query preserves critical tokens
+ * 
+ * INVARIANTS:
+ * 1. MUST contain "מסעדה" or "מסעדות" (Hebrew) / "restaurant" (English)
+ * 2. If originalQuery contains cuisine keyword → canonical MUST contain it
+ * 3. If cityText provided → canonical MUST contain it
+ * 
+ * @param originalQuery User's original query
+ * @param canonicalQuery LLM-generated canonical query
+ * @param cityText Optional city name
+ * @returns true if valid, false if critical tokens lost
+ */
+export function validateCanonicalPreservation(
+  originalQuery: string,
+  canonicalQuery: string,
+  cityText?: string | null
+): { valid: boolean; reason?: string } {
+  const originalLower = originalQuery.toLowerCase();
+  const canonicalLower = canonicalQuery.toLowerCase();
+
+  // Rule 1: Must contain restaurant word
+  const hasRestaurantWord =
+    canonicalLower.includes('מסעדה') ||
+    canonicalLower.includes('מסעדות') ||
+    canonicalLower.includes('restaurant');
+
+  if (!hasRestaurantWord) {
+    return { valid: false, reason: 'missing_restaurant_word' };
+  }
+
+  // Rule 2: If original has cuisine keyword, canonical must preserve it
+  const cuisineKeywords = [
+    'איטלקי', 'איטלקית', 'איטלקיות',
+    'italian',
+    'פיצה', 'pizza',
+    'סושי', 'sushi',
+    'אסייתי', 'אסייתית', 'asian',
+    'המבורגר', 'burger',
+    'שווארמה', 'shawarma'
+  ];
+
+  for (const keyword of cuisineKeywords) {
+    if (originalLower.includes(keyword.toLowerCase())) {
+      // Find the base form (remove suffix like ות, ית, י)
+      const baseForm = keyword.substring(0, Math.max(4, keyword.length - 2));
+
+      if (!canonicalLower.includes(baseForm.toLowerCase())) {
+        return {
+          valid: false,
+          reason: `lost_cuisine_keyword: ${keyword}`
+        };
+      }
+    }
+  }
+
+  // Rule 3: If cityText provided, canonical must contain it
+  if (cityText) {
+    const cityLower = cityText.toLowerCase();
+    if (!canonicalLower.includes(cityLower)) {
+      return {
+        valid: false,
+        reason: `lost_city: ${cityText}`
+      };
+    }
+  }
+
+  return { valid: true };
 }

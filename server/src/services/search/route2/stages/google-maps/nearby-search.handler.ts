@@ -208,7 +208,9 @@ function buildNearbySearchBody(
     includedTypes = ['restaurant'];
   }
 
-  const languageCode = mapping.language === 'he' ? 'he' : 'en';
+  // Map language to Google API format (supports expanded language set)
+  const supportedLanguages = ['he', 'en', 'es', 'ru', 'ar', 'fr'];
+  const languageCode = supportedLanguages.includes(mapping.language) ? mapping.language : 'en';
   
   // Log Google API call language (observability for language separation)
   if (requestId) {
@@ -216,12 +218,14 @@ function buildNearbySearchBody(
       requestId,
       event: 'google_call_language',
       providerMethod: 'nearbySearch',
-      searchLanguage: languageCode,
+      languageCode,
+      mappingLanguage: mapping.language,
       regionCode: mapping.region,
       cuisineKey: mapping.cuisineKey || null,
       typeKey: mapping.typeKey || null,
-      includedTypes: includedTypes.slice(0, 3) // Log first 3 only
-    }, '[GOOGLE] Nearby Search API call (language-independent includedTypes from cuisineKey)');
+      includedTypes: includedTypes.slice(0, 3), // Log first 3 only
+      languageSource: 'query_language_policy'
+    }, '[GOOGLE] Nearby Search API call (query-driven language policy)');
   }
   
   const body: any = {

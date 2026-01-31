@@ -158,6 +158,7 @@ export async function applyRankingIfEnabled(
       route: intentDecision.route,
       hasUserLocation: !!ctx.userLocation,
       intentReason: intentDecision.reason,
+      cuisineKey: mapping?.cuisineKey ?? null,
       requestId
     });
 

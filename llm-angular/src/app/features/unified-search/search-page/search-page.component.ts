@@ -91,6 +91,100 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   readonly isRecoveryMode = computed(() => this.currentMode() === 'RECOVERY');
   readonly isClarifyMode = computed(() => this.currentMode() === 'CLARIFY');
 
+  // Order Profile (Deterministic Ranking)
+  readonly orderProfile = computed(() => {
+    const order = this.response()?.meta?.order;
+    if (!order) {
+      // No order profile in response - return null (should not happen for valid responses)
+      if (this.response() && this.response()!.results.length > 0) {
+        console.warn('[DEV] Order profile missing in response meta - this should not happen');
+      }
+      return null;
+    }
+    return order;
+  });
+
+  readonly orderProfileName = computed(() => {
+    const profile = this.orderProfile()?.profile;
+    if (!profile) return 'Unknown'; // Show 'Unknown' if missing (shouldn't happen)
+
+    // Map backend profile names to display names
+    const profileDisplayNames: Record<string, string> = {
+      'balanced': 'Balanced',
+      'BALANCED': 'Balanced',
+      'nearby': 'Nearby',
+      'NEARBY': 'Nearby',
+      'quality': 'Quality',
+      'QUALITY': 'Quality',
+      'budget': 'Budget',
+      'BUDGET': 'Budget',
+      'CUISINE': 'Cuisine',
+      'cuisine': 'Cuisine'
+    };
+
+    return profileDisplayNames[profile] || profile;
+  });
+
+  readonly orderWeights = computed(() => {
+    const weights = this.orderProfile()?.weights;
+    if (!weights) {
+      // No weights - return empty (don't show weight chips)
+      return {
+        rating: 0,
+        reviews: 0,
+        price: 0,
+        openNow: 0,
+        distance: 0
+      };
+    }
+    return weights;
+  });
+
+  // DEV-ONLY: Debug info for order preset
+  readonly orderDebugInfo = computed(() => {
+    const response = this.response();
+    if (!response) return null;
+
+    const order = this.orderProfile();
+    const method = response.query?.parsed?.searchMode || 'unknown';
+    const requestId = response.requestId || 'unknown';
+
+    return {
+      preset: order?.profile || 'missing',
+      method,
+      requestId: requestId.substring(0, 8) // First 8 chars
+    };
+  });
+
+  // NEW: Hybrid badge text with reason codes
+  readonly hybridBadgeText = computed(() => {
+    const order = this.orderProfile();
+    if (!order || !order.reasonCodes || order.reasonCodes.length === 0) {
+      return 'Hybrid'; // Fallback if no reason codes
+    }
+
+    // Extract meaningful labels from reason codes
+    const reasonLabels: string[] = [];
+
+    for (const code of order.reasonCodes) {
+      if (code === 'BASE_BALANCED') continue; // Skip base, it's implicit
+
+      // Map reason codes to user-friendly labels
+      if (code === 'RULE_A_DISTANCE') reasonLabels.push('Nearby');
+      else if (code === 'RULE_B_OPEN_NOW') reasonLabels.push('OpenNow');
+      else if (code === 'RULE_C_BUDGET') reasonLabels.push('Budget');
+      else if (code === 'RULE_D_QUALITY') reasonLabels.push('Quality');
+      else reasonLabels.push(code); // Fallback: use raw code
+    }
+
+    // Build badge text: "Hybrid" or "Hybrid · Nearby+OpenNow"
+    if (reasonLabels.length === 0) {
+      return 'Hybrid';
+    } else {
+      return `Hybrid · ${reasonLabels.join('+')}`;
+    }
+  });
+
   // Conditional assistant (UI/UX Contract - only show when needed)
   readonly showAssistant = computed(() => {
     // Show assistant if WebSocket assistant is active
@@ -285,16 +379,16 @@ export class SearchPageComponent implements OnInit, OnDestroy {
     if (!groups) {
       // Fallback: Use flat results if no groups
       let results = this.facade.results();
-      
+
       // Apply openNow filter if active
       const appliedFilters = this.response()?.meta?.appliedFilters || [];
       if (appliedFilters.includes('open_now')) {
         results = results.filter(r => r.openNow === true);
       }
-      
+
       return results;
     }
-    
+
     // Flatten groups, preserving backend order
     let allResults = groups.flatMap(g => g.results);
 
@@ -564,7 +658,7 @@ export class SearchPageComponent implements OnInit, OnDestroy {
     const requestId = this.facade.requestId();
     const sessionId = this.facade.conversationId();
     const queryLanguage = this.facade.response()?.query?.language || 'en';
-    
+
     if (!requestId) return;
 
     const wsConnected = this.wsClient.connectionStatus() === 'connected';
@@ -594,7 +688,7 @@ export class SearchPageComponent implements OnInit, OnDestroy {
       });
 
       const fallbackMessage = await this.getLocalNudgeMessage(requestId, queryLanguage === 'he' ? 'he' : 'en');
-      
+
       if (fallbackMessage) {
         // Inject local assistant message via public facade method
         this.facade.addAssistantMessage(
