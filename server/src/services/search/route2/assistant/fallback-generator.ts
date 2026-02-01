@@ -25,11 +25,13 @@ export interface FallbackResult {
  */
 export function getDeterministicFallback(
   context: AssistantContext,
-  requestedLanguage: 'he' | 'en'
+  requestedLanguage: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es'
 ): FallbackResult {
   if (requestedLanguage === 'he') {
     return getHebrewFallback(context);
   } else {
+    // For now, all non-Hebrew languages use English fallbacks
+    // TODO: Add native fallbacks for ar/ru/fr/es
     return getEnglishFallback(context);
   }
 }

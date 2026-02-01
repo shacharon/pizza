@@ -72,13 +72,6 @@
   }
 }
 
-// RTL support: Reverse icon position for Hebrew
-.assistant-summary.rtl {
-  .error-text {
-    flex-direction: row-reverse;
-  }
-}
-
 // MULTI-MESSAGE: Stack messages vertically with visual separation
 .assistant-summary.multi-message {
   .messages-container {
@@ -134,26 +127,5 @@
         border-left: 3px solid #dc3545;
         background: #fff5f5;
       }
-  }
-  
-  // RTL support: Reverse message layout for Hebrew
-  &.rtl .assistant-message {
-    flex-direction: row-reverse;
-    
-    // Move colored border to right side for RTL
-    &.message-type-clarify {
-      border-left: none;
-      border-right: 3px solid #ffc107;
-    }
-
-    &.message-type-summary {
-      border-left: none;
-      border-right: 3px solid #28a745;
-    }
-
-    &.message-type-gate_fail {
-      border-left: none;
-      border-right: 3px solid #dc3545;
-    }
   }
 }

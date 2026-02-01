@@ -48,19 +48,19 @@ export async function generateAndPublishAssistant(
     const errorMsg = error instanceof Error ? error.message : String(error);
     const isTimeout = errorMsg.toLowerCase().includes('timeout') || errorMsg.toLowerCase().includes('abort');
     const isSchemaError = errorMsg.toLowerCase().includes('schema') || errorMsg.toLowerCase().includes('validation');
-    
+
     const errorCode = isTimeout ? 'LLM_TIMEOUT' : (isSchemaError ? 'SCHEMA_INVALID' : 'LLM_FAILED');
-    
+
     logger.warn({
       requestId,
       event: 'assistant_failed',
       errorCode,
       error: errorMsg
     }, '[ASSISTANT] Failed - publishing error event');
-    
+
     // Publish assistant_error event (no user-facing message in code)
     publishAssistantError(wsManager, requestId, sessionId, errorCode);
-    
+
     // Return fallback for HTTP only (WS clients get error event)
     return fallbackHttpMessage;
   }
@@ -73,6 +73,9 @@ export async function generateAndPublishAssistant(
  * Publishes to WebSocket when ready, or logs error if failed
  * 
  * Use this for SUMMARY messages to avoid blocking pipeline completion
+ * 
+ * CRITICAL: Captures langCtx snapshot to ensure language context is preserved
+ * through async execution (fixes missing langCtx bug in deferred flow)
  */
 export function generateAndPublishAssistantDeferred(
   ctx: Route2Context,
@@ -81,6 +84,14 @@ export function generateAndPublishAssistantDeferred(
   context: AssistantContext,
   wsManager: WebSocketManager
 ): void {
+  // CRITICAL FIX: Capture langCtx and uiLanguage NOW (before async closure)
+  // This ensures language context is preserved even if ctx mutates later
+  const langCtxSnapshot = ctx.langCtx;
+  const uiLanguageSnapshot = ctx.uiLanguage;
+  const traceId = ctx.traceId;
+  const sessionIdFromCtx = ctx.sessionId;
+  const llmProvider = ctx.llmProvider;
+
   // Fire and forget - don't await
   (async () => {
     const startTime = Date.now();
@@ -89,15 +100,16 @@ export function generateAndPublishAssistantDeferred(
       requestId,
       assistantType: context.type,
       sessionIdPresent: !!sessionId,
+      langCtxPresent: !!langCtxSnapshot,
       event: 'assistant_deferred_start'
     }, '[ASSISTANT] Deferred generation started (non-blocking)');
 
     try {
       const opts: any = {};
-      if (ctx.traceId) opts.traceId = ctx.traceId;
-      if (ctx.sessionId) opts.sessionId = ctx.sessionId;
+      if (traceId) opts.traceId = traceId;
+      if (sessionIdFromCtx) opts.sessionId = sessionIdFromCtx;
 
-      const assistant = await generateAssistantMessage(context, ctx.llmProvider, requestId, opts);
+      const assistant = await generateAssistantMessage(context, llmProvider, requestId, opts);
 
       const durationMs = Date.now() - startTime;
       logger.info({
@@ -107,8 +119,8 @@ export function generateAndPublishAssistantDeferred(
         event: 'assistant_deferred_done'
       }, '[ASSISTANT] Deferred generation completed');
 
-      // Publish to WebSocket
-      publishAssistantMessage(wsManager, requestId, sessionId, assistant, ctx.langCtx, ctx.uiLanguage);
+      // Publish to WebSocket with captured langCtx snapshot
+      publishAssistantMessage(wsManager, requestId, sessionId, assistant, langCtxSnapshot, uiLanguageSnapshot);
     } catch (error) {
       const durationMs = Date.now() - startTime;
       const errorMsg = error instanceof Error ? error.message : String(error);
@@ -213,14 +225,14 @@ export async function publishSearchFailedAssistant(
     const errorMsg = assistErr instanceof Error ? assistErr.message : String(assistErr);
     const isTimeout = errorMsg.toLowerCase().includes('timeout') || errorMsg.toLowerCase().includes('abort');
     const errorCode = isTimeout ? 'LLM_TIMEOUT' : 'LLM_FAILED';
-    
+
     logger.warn({
       requestId,
       event: 'search_failed_assistant_error',
       errorCode,
       error: errorMsg
     }, '[ASSISTANT] Failed to generate SEARCH_FAILED message - publishing error event');
-    
+
     publishAssistantError(wsManager, requestId, ctx.sessionId, errorCode);
   }
 }

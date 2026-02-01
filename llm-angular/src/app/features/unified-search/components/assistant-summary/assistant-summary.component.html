@@ -1,56 +1,52 @@
 @if (hasContent()) {
-  <div class="assistant-summary" 
-       [class.streaming]="isStreaming()"
-       [class.completed]="isCompleted()"
-       [class.failed]="isFailed()"
-       [class.multi-message]="useMultiMessage()"
-       [class.rtl]="isRTL()"
-       [attr.dir]="isRTL() ? 'rtl' : 'ltr'">
-    
-    <!-- MULTI-MESSAGE MODE: Render all card messages in timestamp order -->
-    @if (useMultiMessage()) {
-      <div class="messages-container">
-        @for (msg of displayMessages(); track msg.id) {
-          <div class="assistant-message" [ngClass]="getMessageClass(msg.type)">
-            <span class="message-icon">{{ getMessageIcon(msg.type) }}</span>
-            <div class="message-content">
-              <div class="message-text">{{ msg.message }}</div>
-              @if (msg.question && msg.question !== msg.message) {
-                <div class="message-question">{{ msg.question }}</div>
-              }
-            </div>
-          </div>
+<div class="assistant-summary" [class.streaming]="isStreaming()" [class.completed]="isCompleted()"
+  [class.failed]="isFailed()" [class.multi-message]="useMultiMessage()"
+  dir="ltr">
+
+  <!-- MULTI-MESSAGE MODE: Render all card messages in timestamp order -->
+  @if (useMultiMessage()) {
+  <div class="messages-container">
+    @for (msg of displayMessages(); track msg.id) {
+    <div class="assistant-message" [ngClass]="getMessageClass(msg.type)">
+      <span class="message-icon">{{ getMessageIcon(msg.type) }}</span>
+      <div class="message-content">
+        <div class="message-text">{{ msg.message }}</div>
+        @if (msg.question && msg.question !== msg.message) {
+        <div class="message-question">{{ msg.question }}</div>
         }
       </div>
-    }
-    
-    <!-- LEGACY MODE: Single message display -->
-    @if (!useMultiMessage()) {
-      @if (isPending()) {
-        <div class="status-pending">
-          <span class="spinner"></span>
-          <span class="text">{{ t(uiLanguage(), 'assistant.preparing') }}</span>
-        </div>
-      }
-      
-      @if (isStreaming()) {
-        <div class="streaming-text">
-          {{ text() }}<span class="cursor-blink">▌</span>
-        </div>
-      }
-      
-      @if (isCompleted()) {
-        <div class="completed-text">
-          {{ text() }}
-        </div>
-      }
-      
-      @if (isFailed()) {
-        <div class="error-text">
-          <span class="icon">⚠️</span>
-          <span>{{ error() || t(uiLanguage(), 'assistant.unavailable') }}</span>
-        </div>
-      }
+    </div>
     }
   </div>
+  }
+
+  <!-- LEGACY MODE: Single message display -->
+  @if (!useMultiMessage()) {
+  @if (isPending()) {
+  <div class="status-pending">
+    <span class="spinner"></span>
+    <span class="text">{{ t(uiLanguage(), 'assistant.preparing') }}</span>
+  </div>
+  }
+
+  @if (isStreaming()) {
+  <div class="streaming-text">
+    {{ text() }}<span class="cursor-blink">▌</span>
+  </div>
+  }
+
+  @if (isCompleted()) {
+  <div class="completed-text">
+    {{ text() }}
+  </div>
+  }
+
+  @if (isFailed()) {
+  <div class="error-text">
+    <span class="icon">⚠️</span>
+    <span>{{ error() || t(uiLanguage(), 'assistant.unavailable') }}</span>
+  </div>
+  }
+  }
+</div>
 }

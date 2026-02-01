@@ -23,10 +23,10 @@ export class RankedResultsComponent {
   @Input() loading = false;
   @Input() showReasonLabels = true; // Top result gets reason label
   @Input() uiLanguage: Lang = 'en'; // UI language for i18n
-  
+
   // Expose t function for template
   readonly t = t;
-  
+
   @Output() restaurantClick = new EventEmitter<Restaurant>();
 
   /**

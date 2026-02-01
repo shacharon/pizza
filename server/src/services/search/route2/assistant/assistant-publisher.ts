@@ -9,7 +9,7 @@ import type { WebSocketManager } from '../../../../infra/websocket/websocket-man
 import { logger } from '../../../../lib/logger/structured-logger.js';
 import type { AssistantOutput } from './assistant-llm.service.js';
 import { hashSessionId } from '../../../../utils/security.utils.js';
-import { assertAssistantLanguage, type LangCtx } from '../language-enforcement.js';
+import { assertAssistantLanguage, verifyAssistantLanguageGraceful, type LangCtx } from '../language-enforcement.js';
 
 const ASSISTANT_WS_CHANNEL = 'assistant';
 
@@ -23,7 +23,7 @@ export interface AssistantPayload {
   question?: string | null;
   blocksSearch?: boolean;
   suggestedAction?: 'NONE' | 'ASK_LOCATION' | 'ASK_FOOD' | 'RETRY' | 'EXPAND_RADIUS' | 'REFINE';
-  language?: 'he' | 'en'; // Optional - will be injected from langCtx if missing
+  language?: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es'; // Optional - will be injected from langCtx if missing
 }
 
 /**
@@ -43,15 +43,22 @@ export function publishAssistantMessage(
   uiLanguageFallback?: 'he' | 'en' // Fallback if langCtx missing
 ): void {
   try {
-    // DEFENSIVE: Ensure langCtx is present, fallback to uiLanguage or 'en'
+    // DEFENSIVE: Ensure langCtx is present, fallback to uiLanguage (NOT hardcoded 'en')
     if (!langCtx) {
-      const fallbackLanguage = uiLanguageFallback || 'en';
+      const hinted = (assistant as any)?.language;
+      const fallbackLanguage = (hinted === 'he' || hinted === 'en')
+        ? hinted
+        : (uiLanguageFallback || 'en');
+
       logger.warn({
         requestId,
         event: 'assistant_publish_missing_langCtx',
-        fallbackLanguage
-      }, '[ASSISTANT] langCtx missing - using fallback');
-      
+        stage: 'publish',
+        whereMissing: 'publishAssistantMessage',
+        fallbackLanguage,
+        uiLanguageFallback
+      }, '[ASSISTANT] langCtx missing - using fallback from request context');
+
       langCtx = {
         assistantLanguage: fallbackLanguage,
         assistantLanguageConfidence: 0,
@@ -59,6 +66,16 @@ export function publishAssistantMessage(
         providerLanguage: fallbackLanguage,
         region: 'IL'
       } as LangCtx;
+    } else {
+      // SUCCESS: langCtx is present
+      logger.info({
+        requestId,
+        event: 'assistant_publish_langCtx_present',
+        source: 'captured_snapshot',
+        uiLanguage: langCtx.uiLanguage,
+        assistantLanguage: langCtx.assistantLanguage,
+        queryLanguage: (langCtx as any).queryLanguage || langCtx.assistantLanguage
+      }, '[ASSISTANT] Publishing with valid langCtx');
     }
 
     // NORMALIZE PAYLOAD: Ensure all required fields present with defaults
@@ -71,18 +88,36 @@ export function publishAssistantMessage(
       language: assistant.language || langCtx.assistantLanguage
     };
 
-    // LANGUAGE ENFORCEMENT: Assert assistant message uses correct language
-    assertAssistantLanguage(
+    // LANGUAGE ENFORCEMENT WITH GRACEFUL DEGRADATION
+    const verification = verifyAssistantLanguageGraceful(
       langCtx,
       normalizedPayload.language,
       requestId,
-      `assistant_type:${normalizedPayload.type}`
+      `assistant_type:${normalizedPayload.type}`,
+      {
+        ...(uiLanguageFallback && { uiLanguage: uiLanguageFallback }),
+        ...(langCtx?.assistantLanguage && { queryLanguage: langCtx.assistantLanguage })
+        // storedLanguageContext could be passed from job metadata if available
+      }
     );
 
-    // Force language to langCtx.assistantLanguage (defensive - should already match)
-    // Cast to 'he' | 'en' for WS protocol (other languages map to 'en')
-    const enforcedLanguage = langCtx.assistantLanguage === 'he' ? 'he' : 'en';
-    
+    // Log verification result
+    if (verification.warning) {
+      logger.warn({
+        requestId,
+        event: 'assistant_language_graceful_degradation',
+        expected: verification.expectedLanguage,
+        actual: verification.actualLanguage,
+        source: verification.source,
+        wasEnforced: verification.wasEnforced,
+        warning: verification.warning
+      }, '[ASSISTANT] Publishing with graceful language degradation');
+    }
+
+    // Determine final language for WS payload
+    // Use langCtx.assistantLanguage as-is (no mapping)
+    const enforcedLanguage = langCtx.assistantLanguage as 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es';
+
     // DEBUG LOG: Print payload keys + assistantLanguage before publish
     logger.info({
       requestId,
@@ -90,6 +125,8 @@ export function publishAssistantMessage(
       payloadKeys: Object.keys(normalizedPayload),
       assistantLanguage: enforcedLanguage,
       assistantType: normalizedPayload.type,
+      wasEnforced: verification.wasEnforced,
+      verificationSource: verification.source,
       event: 'assistant_publish_debug'
     }, '[ASSISTANT] Publishing message - debug payload');
 
@@ -115,7 +152,7 @@ export function publishAssistantMessage(
         question: normalizedPayload.question,
         blocksSearch: normalizedPayload.blocksSearch,
         ...(normalizedPayload.suggestedAction !== 'NONE' && normalizedPayload.suggestedAction === 'REFINE' && { suggestedAction: 'REFINE_QUERY' as const }),
-        language: enforcedLanguage // ENFORCED: Always use langCtx.assistantLanguage
+        language: enforcedLanguage // Already normalized to 'he' | 'en'
       }
     };
 

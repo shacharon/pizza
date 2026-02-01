@@ -68,20 +68,20 @@ import { t, type Lang } from '../../../i18n/search-narration.i18n';
 })
 export class WsStatusBannerComponent {
   private wsClient = inject(WsClientService);
-  
+
   // Expose t function for template
   readonly t = t;
-  
+
   readonly status = this.wsClient.connectionStatus;
   readonly showBanner = signal(false);
-  
+
   private disconnectTimer?: number;
 
   constructor() {
     // Only show banner after 30s of being disconnected/reconnecting
     effect(() => {
       const currentStatus = this.status();
-      
+
       if (currentStatus === 'connected') {
         // Clear timer and hide banner immediately on connect
         if (this.disconnectTimer) {

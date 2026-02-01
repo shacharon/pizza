@@ -78,10 +78,10 @@ export function shouldDebugStop(ctx: Route2Context, stopAfter: DebugStage): bool
 
 /**
  * Convert language to assistant-supported language
- * Maps detected language to he/en/other for LLM-generated messages
+ * Maps detected language to he/en/ar/ru/fr/es for LLM-generated messages
  * Internal helper - not exported
  */
-function toAssistantLanguage(lang: unknown): 'he' | 'en' | 'other' {
+function toAssistantLanguage(lang: unknown): 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es' | 'other' {
   if (!lang || typeof lang !== 'string') {
     return 'en';
   }
@@ -96,7 +96,23 @@ function toAssistantLanguage(lang: unknown): 'he' | 'en' | 'other' {
     return 'en';
   }
 
-  // Map ru/ar/fr/es to 'other' (LLM will respond in English)
+  if (normalized === 'ar') {
+    return 'ar';
+  }
+
+  if (normalized === 'ru') {
+    return 'ru';
+  }
+
+  if (normalized === 'fr') {
+    return 'fr';
+  }
+
+  if (normalized === 'es') {
+    return 'es';
+  }
+
+  // Map unsupported languages to 'other'
   return 'other';
 }
 
@@ -123,7 +139,7 @@ function decideAssistantLanguage(
   request?: SearchRequest,
   detectedLanguage?: unknown,
   languageConfidence?: number
-): { language: 'he' | 'en'; source: string; confidence?: number } {
+): { language: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es'; source: string; confidence?: number } {
   // Priority 1: LLM-detected language with confidence check
   if (detectedLanguage && languageConfidence !== undefined) {
     const normalized = toAssistantLanguage(detectedLanguage);
@@ -134,8 +150,16 @@ function decideAssistantLanguage(
         return { language: 'he', source: 'llm_confident', confidence: languageConfidence };
       } else if (normalized === 'en') {
         return { language: 'en', source: 'llm_confident', confidence: languageConfidence };
+      } else if (normalized === 'ar') {
+        return { language: 'ar', source: 'llm_confident', confidence: languageConfidence };
+      } else if (normalized === 'ru') {
+        return { language: 'ru', source: 'llm_confident', confidence: languageConfidence };
+      } else if (normalized === 'fr') {
+        return { language: 'fr', source: 'llm_confident', confidence: languageConfidence };
+      } else if (normalized === 'es') {
+        return { language: 'es', source: 'llm_confident', confidence: languageConfidence };
       }
-      // If 'other' (ru/ar/fr/es), fall through to uiLanguage
+      // If 'other' (unsupported language), fall through to uiLanguage
     } else {
       // Low confidence - fall through to uiLanguage
     }
@@ -146,10 +170,10 @@ function decideAssistantLanguage(
   if (detectedLanguage === 'other' && request?.query) {
     const deterministicLanguage = detectQueryLanguage(request.query);
     if (deterministicLanguage === 'he') {
-      return { 
-        language: 'he', 
-        source: 'deterministic_hebrew', 
-        confidence: 0.95 
+      return {
+        language: 'he',
+        source: 'deterministic_hebrew',
+        confidence: 0.95
       };
     }
   }
@@ -185,14 +209,14 @@ function decideAssistantLanguage(
  * 
  * CRITICAL: Language comes from LLM only (no deterministic detection)
  * 
- * @returns 'he' | 'en' only (never 'other' - assistant must be decisive)
+ * @returns 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es' (never 'other' - assistant must be decisive)
  */
 export function resolveAssistantLanguage(
   ctx: Route2Context,
   request?: SearchRequest,
   detectedLanguage?: unknown,
   languageConfidence?: number
-): 'he' | 'en' {
+): 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es' {
   const { language, source, confidence } = decideAssistantLanguage(ctx, request, detectedLanguage, languageConfidence);
 
   // Log language resolution (observability only)
@@ -202,6 +226,7 @@ export function resolveAssistantLanguage(
       event: 'assistant_language_resolved',
       assistantLanguage: language,
       source,
+
       detectedLanguage: detectedLanguage ? String(detectedLanguage) : undefined,
       languageConfidence: confidence,
       confidenceThreshold: LANGUAGE_CONFIDENCE_THRESHOLD,

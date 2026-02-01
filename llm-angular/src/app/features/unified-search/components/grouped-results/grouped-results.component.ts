@@ -27,10 +27,10 @@ export class GroupedResultsComponent {
   @Input() groups: ResultGroup[] = [];
   @Input() loading = false;
   @Input() uiLanguage: Lang = 'en'; // UI language for i18n
-  
+
   // Expose t function for template
   readonly t = t;
-  
+
   @Output() restaurantClick = new EventEmitter<RestaurantResult>();
   @Output() actionClick = new EventEmitter<ActionClickEvent>();
 

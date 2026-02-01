@@ -12,16 +12,16 @@ The debug STOP-after-stage feature allows developers to force the Route2 pipelin
 
 ## Supported Stages
 
-| Stage          | Description                                  | Artifacts Included                                    |
-|----------------|----------------------------------------------|-------------------------------------------------------|
-| `gate2`        | After gate2 validation (food signal)         | Full gate result                                      |
-| `intent`       | After intent routing decision                | Gate + intent results                                 |
-| `route_llm`    | After route-LLM mapping                      | Gate + intent + mapping summary                       |
-| `google`       | After Google Maps API results                | + Google count, duration, first 5 placeIds            |
-| `cuisine`      | After cuisine enforcement                    | + Cuisine flags, counts, scores indicator             |
-| `post_filters` | After post-constraints filters               | + Post-filter stats, applied filters, relaxation info |
-| `ranking`      | After ranking/reordering                     | + Ranking applied flag, counts, order explanation     |
-| `response`     | Before final response building               | All summary artifacts (lightweight)                   |
+| Stage          | Description                          | Artifacts Included                                    |
+| -------------- | ------------------------------------ | ----------------------------------------------------- |
+| `gate2`        | After gate2 validation (food signal) | Full gate result                                      |
+| `intent`       | After intent routing decision        | Gate + intent results                                 |
+| `route_llm`    | After route-LLM mapping              | Gate + intent + mapping summary                       |
+| `google`       | After Google Maps API results        | + Google count, duration, first 5 placeIds            |
+| `cuisine`      | After cuisine enforcement            | + Cuisine flags, counts, scores indicator             |
+| `post_filters` | After post-constraints filters       | + Post-filter stats, applied filters, relaxation info |
+| `ranking`      | After ranking/reordering             | + Ranking applied flag, counts, order explanation     |
+| `response`     | Before final response building       | All summary artifacts (lightweight)                   |
 
 ## Usage
 
@@ -88,26 +88,30 @@ Content-Type: application/json
 ### Data Flow
 
 1. **Request → Controller**
+
    ```typescript
    // search.controller.ts
    const route2Context: Route2Context = {
      // ... other fields
-     ...(queryData.debug && typeof queryData.debug === 'object' && queryData.debug.stopAfter && { 
-       debug: { stopAfter: queryData.debug.stopAfter } 
-     })
+     ...(queryData.debug &&
+       typeof queryData.debug === "object" &&
+       queryData.debug.stopAfter && {
+         debug: { stopAfter: queryData.debug.stopAfter },
+       }),
    };
    ```
 
 2. **Context → Orchestrator**
+
    ```typescript
    // route2.orchestrator.ts
    async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context) {
      // ... stage execution
-     
+
      if (shouldDebugStop(ctx, 'google')) {
        return buildDebugResponse(...);
      }
-     
+
      // ... continue pipeline
    }
    ```
@@ -115,7 +119,10 @@ Content-Type: application/json
 3. **Helper Check**
    ```typescript
    // orchestrator.helpers.ts
-   export function shouldDebugStop(ctx: Route2Context, stopAfter: DebugStage): boolean {
+   export function shouldDebugStop(
+     ctx: Route2Context,
+     stopAfter: DebugStage
+   ): boolean {
      return ctx.debug?.stopAfter === stopAfter;
    }
    ```
@@ -223,13 +230,13 @@ curl -X POST http://localhost:3000/api/v1/search \
 
 ## Code Locations
 
-| File                                | Purpose                                      |
-|-------------------------------------|----------------------------------------------|
-| `search-request.dto.ts`             | Zod schema for `debug` field                 |
-| `types.ts`                          | Route2Context interface with debug field     |
-| `orchestrator.helpers.ts`           | `shouldDebugStop()` helper + documentation   |
-| `route2.orchestrator.ts`            | All 8 debug stop points                      |
-| `search.controller.ts`              | Request → Context debug field mapping        |
+| File                      | Purpose                                    |
+| ------------------------- | ------------------------------------------ |
+| `search-request.dto.ts`   | Zod schema for `debug` field               |
+| `types.ts`                | Route2Context interface with debug field   |
+| `orchestrator.helpers.ts` | `shouldDebugStop()` helper + documentation |
+| `route2.orchestrator.ts`  | All 8 debug stop points                    |
+| `search.controller.ts`    | Request → Context debug field mapping      |
 
 ## Testing
 

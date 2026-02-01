@@ -1,40 +1,37 @@
 <div class="grouped-results">
   @if (loading) {
-    <div class="loading-state">
-      <div class="spinner"></div>
-      <p>{{ t(uiLanguage, 'results.searching') }}</p>
-    </div>
+  <div class="loading-state">
+    <div class="spinner"></div>
+    <p>{{ t(uiLanguage, 'results.searching') }}</p>
+  </div>
   } @else if (hasAnyResults) {
-    <!-- Iterate through groups -->
-    @for (group of groups; track trackByKind($index, group)) {
-      @if (group.results.length > 0) {
-        <section class="result-group" [ngClass]="getGroupClass(group.kind)" [attr.data-kind]="group.kind">
-          <header class="group-header">
-            <div class="header-content">
-              <h3 class="group-label">{{ group.label }}</h3>
-              @if (group.distanceLabel) {
-                <span class="distance-label">{{ group.distanceLabel }}</span>
-              }
-            </div>
-            <span class="count-badge">{{ group.results.length }}</span>
-          </header>
-          
-          <div class="results-list">
-            @for (result of group.results; track trackById($index, result)) {
-              <app-restaurant-card
-                [restaurant]="result"
-                (click)="onRestaurantClick(result)"
-              />
-            }
-          </div>
-        </section>
+  <!-- Iterate through groups -->
+  @for (group of groups; track trackByKind($index, group)) {
+  @if (group.results.length > 0) {
+  <section class="result-group" [ngClass]="getGroupClass(group.kind)" [attr.data-kind]="group.kind">
+    <header class="group-header">
+      <div class="header-content">
+        <h3 class="group-label">{{ group.label }}</h3>
+        @if (group.distanceLabel) {
+        <span class="distance-label">{{ group.distanceLabel }}</span>
+        }
+      </div>
+      <span class="count-badge">{{ group.results.length }}</span>
+    </header>
+
+    <div class="results-list">
+      @for (result of group.results; track trackById($index, result)) {
+      <app-restaurant-card [restaurant]="result" (click)="onRestaurantClick(result)" />
       }
-    }
-  } @else {
-    <div class="empty-state">
-      <div class="empty-icon">🔍</div>
-      <h3>{{ t(uiLanguage, 'results.noResults') }}</h3>
-      <p>{{ t(uiLanguage, 'error.retry') }}</p>
     </div>
+  </section>
+  }
+  }
+  } @else {
+  <div class="empty-state">
+    <div class="empty-icon">🔍</div>
+    <h3>{{ t(uiLanguage, 'results.noResults') }}</h3>
+    <p>{{ t(uiLanguage, 'error.retry') }}</p>
+  </div>
   }
 </div>

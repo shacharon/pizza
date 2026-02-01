@@ -116,6 +116,7 @@ export interface IntentResult {
   reason: string;
   language: Gate2Language;
   languageConfidence: number;
+  assistantLanguage: 'he' | 'en' | 'ru' | 'ar' | 'fr' | 'es'; // REQUIRED: For CLARIFY paths (normalized from language, no 'other')
   regionCandidate: string | null; // ISO-3166-1 alpha-2 candidate (e.g., "IL", "GZ", "FR") or null if invalid - NOT final, must be validated by filters_resolved
   regionConfidence: number;
   regionReason: string;
@@ -134,6 +135,16 @@ export interface IntentResult {
   occasion: 'romantic' | null;
   /** Cuisine key (canonical identifier) */
   cuisineKey: string | null;
+
+  // ===== CLARIFY Payload (Optional) =====
+  /** CLARIFY content from Intent LLM - single source of truth for CLARIFY messages */
+  clarify?: {
+    reason: 'MISSING_LOCATION' | 'MISSING_FOOD' | 'AMBIGUOUS';
+    message: string;
+    question: string;
+    blocksSearch: true;
+    suggestedAction: 'ASK_LOCATION' | 'ASK_FOOD' | 'REFINE';
+  };
 }
 
 // Intent2 specific types (DEPRECATED - will be removed)

@@ -23,7 +23,7 @@ import { WsClientService } from '../../../core/services/ws-client.service';
 import type { Restaurant, ClarificationChoice, Coordinates } from '../../../domain/types/search.types';
 import type { ActionType, ActionLevel } from '../../../domain/types/action.types';
 import { mapChipToSortKey } from '../../../domain/mappers/chip.mapper';
-import { t, normalizeLang, isRTL, type Lang } from '../../../i18n/search-narration.i18n';
+import { t, normalizeLang, type Lang } from '../../../i18n/search-narration.i18n';
 // DEV: Import dev tools for testing (auto-loaded)
 import '../../../facades/assistant-dev-tools';
 
@@ -74,8 +74,6 @@ export class SearchPageComponent implements OnInit, OnDestroy {
     const queryLang = response?.query?.language;
     return normalizeLang(langCtx?.uiLanguage || queryLang || 'en');
   });
-
-  readonly isRTLLanguage = computed(() => isRTL(this.uiLanguage()));
 
   // Phase 5: Mode indicators
   readonly response = this.facade.response;

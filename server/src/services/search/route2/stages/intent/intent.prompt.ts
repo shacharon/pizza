@@ -71,6 +71,18 @@ RULES:
 - occasion="romantic" if romantic/date/anniversary intent else null
 - cuisineKey if cuisine mentioned else null
 
+7) clarify (optional):
+- If route implies CLARIFY (e.g., NEARBY intent but missing userLocation context), you MUST output clarify with:
+  * message and question written in assistantLanguage
+  * message ≤ 2 sentences (clear, friendly, actionable)
+  * question exactly 1 short question
+  * blocksSearch: true (hard rule)
+  * reason and suggestedAction set appropriately:
+    - NEARBY without location → MISSING_LOCATION + ASK_LOCATION
+    - Ambiguous food → MISSING_FOOD + ASK_FOOD
+    - Unclear intent → AMBIGUOUS + REFINE
+- Do NOT re-detect assistantLanguage (keep propagating from Gate).
+
 STRICT:
 - Output JSON only. No explanations.
 
@@ -94,6 +106,7 @@ export const INTENT_JSON_SCHEMA = {
       regionConfidence: { type: "number", minimum: 0, maximum: 1 },
       regionReason: { type: "string", minLength: 1 },
       cityText: { type: ["string", "null"], minLength: 1 },
+      assistantLanguage: { type: "string", enum: ["he", "en", "ru", "ar", "fr", "es"] }, // REQUIRED: For CLARIFY paths
 
       // NEW: Hybrid ordering intent flags (language-agnostic)
       distanceIntent: { type: "boolean" },
@@ -101,7 +114,21 @@ export const INTENT_JSON_SCHEMA = {
       priceIntent: { type: "string", enum: ["cheap", "any"] },
       qualityIntent: { type: "boolean" },
       occasion: { type: ["string", "null"], enum: ["romantic", null] },
-      cuisineKey: { type: ["string", "null"] }
+      cuisineKey: { type: ["string", "null"] },
+
+      // CLARIFY Payload (optional)
+      clarify: {
+         type: "object",
+         properties: {
+            reason: { type: "string", enum: ["MISSING_LOCATION", "MISSING_FOOD", "AMBIGUOUS"] },
+            message: { type: "string", minLength: 1, maxLength: 300 },
+            question: { type: "string", minLength: 1, maxLength: 150 },
+            blocksSearch: { type: "boolean", const: true },
+            suggestedAction: { type: "string", enum: ["ASK_LOCATION", "ASK_FOOD", "REFINE"] }
+         },
+         required: ["reason", "message", "question", "blocksSearch", "suggestedAction"],
+         additionalProperties: false
+      }
    },
    required: [
       "route",
@@ -113,6 +140,7 @@ export const INTENT_JSON_SCHEMA = {
       "regionConfidence",
       "regionReason",
       "cityText",
+      "assistantLanguage", // REQUIRED: For CLARIFY paths
       // NEW: Required hybrid ordering flags
       "distanceIntent",
       "openNowRequested",

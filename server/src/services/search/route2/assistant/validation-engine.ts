@@ -32,7 +32,7 @@ export class AssistantValidationEngine {
    */
   validateAndCorrect(
     output: AssistantOutput,
-    requestedLanguage: 'he' | 'en',
+    requestedLanguage: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es',
     context: AssistantContext,
     requestId: string
   ): AssistantOutput {

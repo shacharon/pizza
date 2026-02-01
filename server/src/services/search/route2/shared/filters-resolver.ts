@@ -54,7 +54,7 @@ export async function resolveFilters(params: ResolveFiltersParams): Promise<Fina
     
     // 2. NEW POLICY: UI language = query language (what user types drives UX)
     // Limit uiLanguage to he/en for now (UI only supports these two)
-    const uiLanguage: 'he' | 'en' = ['he', 'en'].includes(queryLanguage) ? queryLanguage : 'en';
+    const uiLanguage: 'he' | 'en' = (['he', 'en'].includes(queryLanguage) ? queryLanguage : 'en') as 'he' | 'en';
 
     // 3. Resolve provider language [DEPRECATED - use languageContext.searchLanguage]
     // Keep for backward compatibility but will be phased out

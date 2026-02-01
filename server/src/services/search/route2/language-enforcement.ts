@@ -26,16 +26,16 @@ export type LangCode = 'he' | 'en' | 'ru' | 'ar' | 'fr' | 'es' | 'other';
 export interface LangCtx {
   /** Language for LLM-generated assistant messages - SET ONCE by Gate2, NEVER changed */
   assistantLanguage: LangCode;
-  
+
   /** Confidence of assistantLanguage detection - SET ONCE by Gate2, NEVER changed */
   assistantLanguageConfidence: number;
-  
+
   /** UI display language (client preference) - can be set by Intent stage */
   uiLanguage: LangCode;
-  
+
   /** Provider/search language (Google Places API) - can be set by Intent stage */
   providerLanguage: LangCode;
-  
+
   /** Region code (ISO-3166-1 alpha-2) - can be set by Intent stage */
   region: string;
 }
@@ -117,7 +117,7 @@ export function assertLangCtxImmutable(
     const error = new Error(
       `[LANG_ENFORCEMENT_VIOLATION] Stage ${stage} attempted to change assistantLanguage: ${original.assistantLanguage} → ${received.assistantLanguage}`
     );
-    
+
     logger.error({
       requestId,
       stage,
@@ -134,7 +134,7 @@ export function assertLangCtxImmutable(
     const error = new Error(
       `[LANG_ENFORCEMENT_VIOLATION] Stage ${stage} attempted to change assistantLanguageConfidence: ${original.assistantLanguageConfidence} → ${received.assistantLanguageConfidence}`
     );
-    
+
     logger.error({
       requestId,
       stage,
@@ -151,6 +151,9 @@ export function assertLangCtxImmutable(
 /**
  * Assert WS assistant payload language matches langCtx.assistantLanguage
  * Call before publishing to WebSocket
+ * 
+ * GRACEFUL DEGRADATION: If langCtx is missing, returns derived expected language
+ * instead of throwing, allowing caller to decide whether to enforce or warn.
  */
 export function assertAssistantLanguage(
   langCtx: LangCtx,
@@ -175,6 +178,148 @@ export function assertAssistantLanguage(
     }, '[LANG_ENFORCEMENT] CRITICAL: Assistant message language mismatch');
 
     throw error;
+  }
+}
+
+/**
+ * Verify assistant language with graceful degradation
+ * 
+ * Behavior:
+ * - If langCtx present: strict enforcement (throws on mismatch)
+ * - If langCtx missing: attempt to derive expected language from fallback sources
+ *   - Returns { allowed: true, expectedLanguage, source } for graceful degradation
+ * 
+ * @returns { allowed: boolean, expectedLanguage: LangCode | 'unknown', source: string, wasEnforced: boolean }
+ */
+export function verifyAssistantLanguageGraceful(
+  langCtx: LangCtx | undefined,
+  payloadLanguage: LangCode | string | undefined,
+  requestId: string,
+  context: string = 'unknown',
+  fallbackSources?: {
+    uiLanguage?: 'he' | 'en';
+    queryLanguage?: LangCode;
+    storedLanguageContext?: any;
+  }
+): {
+  allowed: boolean;
+  expectedLanguage: LangCode | 'unknown';
+  actualLanguage: LangCode;
+  source: string;
+  wasEnforced: boolean;
+  warning?: string;
+} {
+  const actualLanguage = normalizePayloadLanguage(payloadLanguage);
+
+  // CASE 1: langCtx is present - STRICT ENFORCEMENT
+  if (langCtx) {
+    if (actualLanguage !== langCtx.assistantLanguage) {
+      const error = new Error(
+        `[LANG_ENFORCEMENT_VIOLATION] Assistant message language mismatch: expected ${langCtx.assistantLanguage}, got ${actualLanguage} (context: ${context})`
+      );
+
+      logger.error({
+        requestId,
+        event: 'assistant_language_violation',
+        expected: langCtx.assistantLanguage,
+        actual: actualLanguage,
+        context,
+        error: error.message
+      }, '[LANG_ENFORCEMENT] CRITICAL: Assistant message language mismatch');
+
+      throw error;
+    }
+
+    // Match - strict enforcement passed
+    return {
+      allowed: true,
+      expectedLanguage: langCtx.assistantLanguage,
+      actualLanguage,
+      source: 'langCtx_strict',
+      wasEnforced: true
+    };
+  }
+
+  // CASE 2: langCtx is MISSING - GRACEFUL DEGRADATION
+  // Try to derive expected language from fallback sources
+  let derivedExpected: LangCode | 'unknown' = 'unknown';
+  let source = 'none';
+
+  // Priority 1: Try stored language_context_resolved (from job metadata)
+  if (fallbackSources?.storedLanguageContext?.assistantLanguage) {
+    derivedExpected = fallbackSources.storedLanguageContext.assistantLanguage as LangCode;
+    source = 'stored_context';
+  }
+  // Priority 2: Try queryLanguage (from request)
+  else if (fallbackSources?.queryLanguage) {
+    derivedExpected = fallbackSources.queryLanguage;
+    source = 'query_language';
+  }
+  // Priority 3: Try uiLanguage (from request/client)
+  else if (fallbackSources?.uiLanguage) {
+    derivedExpected = fallbackSources.uiLanguage;
+    source = 'ui_language';
+  }
+
+  // Check if derived matches actual
+  const matches = derivedExpected !== 'unknown' && derivedExpected === actualLanguage;
+
+  if (derivedExpected === 'unknown') {
+    // Could not derive - allow publish with warning
+    logger.warn({
+      requestId,
+      event: 'assistant_language_unverified',
+      actual: actualLanguage,
+      expected: 'unknown',
+      context,
+      source: 'no_fallback_sources'
+    }, '[LANG_ENFORCEMENT] Could not verify language - langCtx missing, no fallback sources');
+
+    return {
+      allowed: true,
+      expectedLanguage: 'unknown',
+      actualLanguage,
+      source: 'no_fallback_sources',
+      wasEnforced: false,
+      warning: 'Could not derive expected language - publishing with unknown'
+    };
+  } else if (matches) {
+    // Derived matches actual - allow with info log
+    logger.info({
+      requestId,
+      event: 'assistant_language_derived_match',
+      expected: derivedExpected,
+      actual: actualLanguage,
+      context,
+      source
+    }, '[LANG_ENFORCEMENT] Language verified via fallback source (langCtx missing)');
+
+    return {
+      allowed: true,
+      expectedLanguage: derivedExpected,
+      actualLanguage,
+      source,
+      wasEnforced: false
+    };
+  } else {
+    // Derived does NOT match actual - allow with warning
+    logger.warn({
+      requestId,
+      event: 'assistant_language_derived_mismatch',
+      expected: derivedExpected,
+      actual: actualLanguage,
+      context,
+      source
+    }, '[LANG_ENFORCEMENT] Language mismatch via fallback source (langCtx missing) - allowing publish');
+
+    return {
+      allowed: true,
+      expectedLanguage: derivedExpected,
+      actualLanguage,
+      source,
+      wasEnforced: false,
+      warning: `Derived expected=${derivedExpected} but got actual=${actualLanguage}`
+    };
   }
 }
 
@@ -218,9 +363,9 @@ function normalizePayloadLanguage(language: LangCode | string | undefined): Lang
   }
 
   const normalized = language.toLowerCase().substring(0, 2);
-  
+
   const validLangCodes: LangCode[] = ['he', 'en', 'ru', 'ar', 'fr', 'es', 'other'];
-  
+
   if (validLangCodes.includes(normalized as LangCode)) {
     return normalized as LangCode;
   }
@@ -245,7 +390,7 @@ export function validateLangCtx(langCtx: LangCtx, requestId: string): void {
 
   // Check language codes are valid
   const validCodes: LangCode[] = ['he', 'en', 'ru', 'ar', 'fr', 'es', 'other'];
-  
+
   if (!validCodes.includes(langCtx.assistantLanguage)) {
     throw new Error(`[LANG_ENFORCEMENT] Invalid assistantLanguage: ${langCtx.assistantLanguage}`);
   }
@@ -287,7 +432,7 @@ export function serializeLangCtx(langCtx: LangCtx): Record<string, any> {
 export function gate2LanguageToLangCode(gate2Lang: string): LangCode {
   const normalized = gate2Lang.toLowerCase() as LangCode;
   const validCodes: LangCode[] = ['he', 'en', 'ru', 'ar', 'fr', 'es', 'other'];
-  
+
   if (validCodes.includes(normalized)) {
     return normalized;
   }

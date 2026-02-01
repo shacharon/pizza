@@ -18,6 +18,7 @@ export const IntentLLMSchema = z.object({
   regionConfidence: z.number().min(0).max(1),
   regionReason: z.string().min(1),
   cityText: z.string().min(1).nullable().optional(), // City name for location bias (e.g., "גדרה", "אשקלון") - can be null or undefined
+  assistantLanguage: z.enum(['he', 'en', 'ru', 'ar', 'fr', 'es']), // REQUIRED: For CLARIFY paths
 
   // ===== NEW: Hybrid Ordering Intent Flags (Language-Agnostic) =====
   // These flags drive deterministic weight adjustments in hybrid ordering
@@ -39,6 +40,16 @@ export const IntentLLMSchema = z.object({
 
   /** Cuisine key (canonical identifier, e.g., "italian", "japanese") */
   cuisineKey: z.string().nullable(),
+
+  // ===== CLARIFY Payload (Optional) =====
+  /** CLARIFY content - MUST be present if route implies early-exit clarification */
+  clarify: z.object({
+    reason: z.enum(['MISSING_LOCATION', 'MISSING_FOOD', 'AMBIGUOUS']),
+    message: z.string().min(1).max(300), // Max 2 sentences
+    question: z.string().min(1).max(150), // Exactly 1 question
+    blocksSearch: z.literal(true), // Hard rule: must be true
+    suggestedAction: z.enum(['ASK_LOCATION', 'ASK_FOOD', 'REFINE'])
+  }).optional()
 }).strict();
 
 export type IntentLLM = z.infer<typeof IntentLLMSchema>;

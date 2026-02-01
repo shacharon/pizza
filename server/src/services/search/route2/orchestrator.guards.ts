@@ -51,12 +51,24 @@ export async function handleGateStop(
     '[ROUTE2] Pipeline stopped - not food related'
   );
 
+  // Initialize langCtx before generateAndPublishAssistant
+  const assistantLanguage = resolveAssistantLanguage(ctx, request, gateResult.gate.language, gateResult.gate.confidence);
+  if (!ctx.langCtx) {
+    ctx.langCtx = {
+      assistantLanguage,
+      assistantLanguageConfidence: gateResult.gate.confidence || 0,
+      uiLanguage: assistantLanguage,
+      providerLanguage: assistantLanguage,
+      region: 'IL'
+    };
+  }
+
   const fallbackHttpMessage = "זה לא נראה כמו חיפוש אוכל/מסעדות. נסה למשל: 'פיצה בתל אביב'.";
   const assistantContext: AssistantGateContext = {
     type: 'GATE_FAIL',
     reason: 'NO_FOOD',
     query: request.query,
-    language: resolveAssistantLanguage(ctx, request, gateResult.gate.language, undefined)
+    language: assistantLanguage
   };
 
   const assistMessage = await generateAndPublishAssistant(
@@ -128,6 +140,18 @@ export async function handleGateClarify(
     '[ROUTE2] Pipeline asking for clarification'
   );
 
+  // Initialize langCtx before generateAndPublishAssistant
+  const assistantLanguage = resolveAssistantLanguage(ctx, request, gateResult.gate.language, gateResult.gate.confidence);
+  if (!ctx.langCtx) {
+    ctx.langCtx = {
+      assistantLanguage,
+      assistantLanguageConfidence: gateResult.gate.confidence || 0,
+      uiLanguage: assistantLanguage,
+      providerLanguage: assistantLanguage,
+      region: 'IL'
+    };
+  }
+
   const fallbackHttpMessage =
     "כדי לחפש טוב צריך 2 דברים: מה אוכלים + איפה. לדוגמה: 'סושי באשקלון' או 'פיצה ליד הבית'.";
 
@@ -135,7 +159,7 @@ export async function handleGateClarify(
     type: 'CLARIFY',
     reason: 'MISSING_FOOD',
     query: request.query,
-    language: resolveAssistantLanguage(ctx, request, gateResult.gate.language, undefined)
+    language: assistantLanguage
   };
 
   const assistMessage = await generateAndPublishAssistant(
@@ -191,6 +215,18 @@ export async function handleNearbyLocationGuard(
     '[ROUTE2] Missing userLocation for nearbySearch - asking to clarify'
   );
 
+  // Initialize langCtx before generateAndPublishAssistant
+  const assistantLanguage = resolveAssistantLanguage(ctx, request, mapping.language, undefined);
+  if (!ctx.langCtx) {
+    ctx.langCtx = {
+      assistantLanguage,
+      assistantLanguageConfidence: 0,
+      uiLanguage: assistantLanguage,
+      providerLanguage: assistantLanguage,
+      region: 'IL'
+    };
+  }
+
   const fallbackHttpMessage =
     "כדי לחפש 'לידי' אני צריך את המיקום שלך. אפשר לאשר מיקום או לכתוב עיר/אזור (למשל: 'פיצה בגדרה').";
 
@@ -198,7 +234,7 @@ export async function handleNearbyLocationGuard(
     type: 'CLARIFY',
     reason: 'MISSING_LOCATION',
     query: request.query,
-    language: resolveAssistantLanguage(ctx, request, mapping.language, undefined)
+    language: assistantLanguage
   };
 
   const assistMessage = await generateAndPublishAssistant(
@@ -317,9 +353,20 @@ export async function handleGenericQueryGuard(
     '[ROUTE2] Blocking generic food query without location anchor'
   );
 
+  // Initialize langCtx before generateAndPublishAssistant
+  const assistantLanguage = resolveAssistantLanguage(ctx, request, gateResult.gate.language, gateResult.gate.confidence);
+  if (!ctx.langCtx) {
+    ctx.langCtx = {
+      assistantLanguage,
+      assistantLanguageConfidence: gateResult.gate.confidence || 0,
+      uiLanguage: assistantLanguage,
+      providerLanguage: assistantLanguage,
+      region: 'IL'
+    };
+  }
+
   // Determine which question to ask based on language
-  const language = resolveAssistantLanguage(ctx, request, gateResult.gate.language, undefined);
-  const fallbackHttpMessage = language === 'he'
+  const fallbackHttpMessage = assistantLanguage === 'he'
     ? "כדי לעזור לך למצוא מסעדה טובה, אני צריך לדעת: באיזה אזור אתה מחפש? (למשל: 'פיצה בתל אביב')"
     : "To help you find a good restaurant, I need to know: which area are you searching in? (e.g., 'pizza in Tel Aviv')";
 
@@ -327,7 +374,7 @@ export async function handleGenericQueryGuard(
     type: 'CLARIFY',
     reason: 'MISSING_LOCATION',
     query: request.query,
-    language
+    language: assistantLanguage
   };
 
   const assistMessage = await generateAndPublishAssistant(
@@ -362,20 +409,125 @@ export async function handleIntentClarify(
   if (intentDecision.route !== 'CLARIFY') return null;
 
   const sessionId = resolveSessionId(request, ctx);
+  const enforcedLanguage = intentDecision.assistantLanguage;
 
-  // Publish CLARIFY assistant message (UNIFIED)
+  // Check if Intent provided clarify payload (single source of truth)
+  if (intentDecision.clarify) {
+    // USE INTENT CLARIFY PAYLOAD (no LLM generation)
+    logger.info({
+      requestId: ctx.requestId,
+      event: 'intent_clarify_payload_from_intent',
+      assistantLanguage: enforcedLanguage,
+      reason: intentDecision.clarify.reason,
+      hasClarify: true
+    }, '[ROUTE2] CLARIFY path - using payload from Intent LLM');
+
+    publishAssistantMessage(
+      wsManager,
+      ctx.requestId,
+      sessionId,
+      {
+        type: 'CLARIFY',
+        message: intentDecision.clarify.message,
+        question: intentDecision.clarify.question,
+        blocksSearch: intentDecision.clarify.blocksSearch,
+        suggestedAction: intentDecision.clarify.suggestedAction,
+        language: enforcedLanguage
+      },
+      {
+        assistantLanguage: enforcedLanguage,
+        assistantLanguageConfidence: intentDecision.languageConfidence,
+        uiLanguage: enforcedLanguage,
+        providerLanguage: enforcedLanguage,
+        region: 'IL'
+      },
+      undefined
+    );
+
+    return {
+      requestId: ctx.requestId,
+      sessionId,
+      query: {
+        original: request.query,
+        parsed: null as any,
+        language: intentDecision.language
+      },
+      results: [],
+      chips: [],
+      assist: {
+        type: 'clarify' as const,
+        message: intentDecision.clarify.message
+      },
+      meta: {
+        tookMs: Date.now() - ctx.startTime,
+        mode: 'textsearch' as const,
+        appliedFilters: [],
+        confidence: intentDecision.confidence,
+        source: 'intent_clarify',
+        failureReason: 'LOW_CONFIDENCE' as const
+      }
+    };
+  }
+
+  // FALLBACK: Intent failed or didn't provide clarify - use deterministic fallback
+  logger.warn({
+    requestId: ctx.requestId,
+    event: 'intent_clarify_fallback_used',
+    errorType: 'missing_clarify_payload',
+    assistantLanguage: enforcedLanguage,
+    reason: intentDecision.reason
+  }, '[ROUTE2] CLARIFY fallback - Intent did not provide clarify payload');
+
+  // Deterministic fallback messages (localized by assistantLanguage)
+  const fallbackMessages: Record<typeof enforcedLanguage, { message: string; question: string }> = {
+    he: {
+      message: 'כדי לחפש מסעדות קרובות אני צריך את המיקום שלך.',
+      question: 'באיזו עיר אתה נמצא (או תשתף מיקום)?'
+    },
+    en: {
+      message: 'I need your location to find places near you.',
+      question: 'What city are you in (or can you share location)?'
+    },
+    ar: {
+      message: 'أحتاج موقعك للعثور على أماكن قريبة منك.',
+      question: 'في أي مدينة أنت (أو يمكنك مشاركة الموقع)?'
+    },
+    ru: {
+      message: 'Мне нужно ваше местоположение, чтобы найти места рядом с вами.',
+      question: 'В каком городе вы находитесь (или можете поделиться местоположением)?'
+    },
+    fr: {
+      message: 'J\'ai besoin de votre position pour trouver des lieux près de vous.',
+      question: 'Dans quelle ville êtes-vous (ou pouvez-vous partager votre position)?'
+    },
+    es: {
+      message: 'Necesito tu ubicación para encontrar lugares cerca de ti.',
+      question: '¿En qué ciudad estás (o puedes compartir tu ubicación)?'
+    }
+  };
+
+  const fallback = fallbackMessages[enforcedLanguage];
+
   publishAssistantMessage(
     wsManager,
     ctx.requestId,
     sessionId,
     {
       type: 'CLARIFY',
-      message: intentDecision.reason || 'Please provide more information',
-      question: null,
-      blocksSearch: true
+      message: fallback.message,
+      question: fallback.question,
+      blocksSearch: true,
+      suggestedAction: 'ASK_LOCATION',
+      language: enforcedLanguage
     },
-    ctx.langCtx,
-    ctx.uiLanguage
+    {
+      assistantLanguage: enforcedLanguage,
+      assistantLanguageConfidence: intentDecision.languageConfidence,
+      uiLanguage: enforcedLanguage,
+      providerLanguage: enforcedLanguage,
+      region: 'IL'
+    },
+    undefined
   );
 
   return {
@@ -390,7 +542,7 @@ export async function handleIntentClarify(
     chips: [],
     assist: {
       type: 'clarify' as const,
-      message: intentDecision.reason
+      message: fallback.message
     },
     meta: {
       tookMs: Date.now() - ctx.startTime,

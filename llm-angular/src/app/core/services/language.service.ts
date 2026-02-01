@@ -52,18 +52,19 @@ export class LanguageService {
   
   /**
    * Set application language and update text direction
+   * NOTE: UI is ALWAYS LTR - direction does not change based on language
    */
   setLanguage(lang: SupportedLang): void {
     this.currentLang.set(lang);
     
-    // Determine text direction
-    const direction: TextDirection = (lang === 'he' || lang === 'ar') ? 'rtl' : 'ltr';
+    // ALWAYS LTR - UI never flips to RTL regardless of assistant language
+    const direction: TextDirection = 'ltr';
     this.textDirection.set(direction);
     
     // Update HTML attributes
     this.updateHtmlAttributes(lang, direction);
     
-    console.log(`[LanguageService] Language set to: ${lang} (${direction})`);
+    console.log(`[LanguageService] Language set to: ${lang} (direction: ltr - always)`);
   }
   
   /**

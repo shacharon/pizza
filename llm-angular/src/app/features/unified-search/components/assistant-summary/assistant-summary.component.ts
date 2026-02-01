@@ -12,7 +12,7 @@ import { CommonModule } from '@angular/common';
 import type { AssistantStatus } from '../../../../core/models/ws-protocol.types';
 import type { AssistantMessage } from '../../../../facades/search-assistant.facade';
 import type { AssistantCardMessage } from '../../../../facades/assistant-routing.types';
-import { t, normalizeLang, isRTL, type Lang } from '../../../../i18n/search-narration.i18n';
+import { t, normalizeLang, type Lang } from '../../../../i18n/search-narration.i18n';
 
 @Component({
   selector: 'app-assistant-summary',
@@ -67,9 +67,6 @@ export class AssistantSummaryComponent {
     }
     return !this.isIdle() && (this.text().length > 0 || this.isFailed());
   });
-  
-  // RTL support: Hebrew and Arabic languages
-  readonly isRTL = computed(() => isRTL(this.uiLanguage()));
   
   /**
    * Get icon for message type

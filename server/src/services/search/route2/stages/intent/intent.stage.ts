@@ -38,12 +38,14 @@ function resolveFallbackLanguage(query: string): 'he' | 'en' {
 }
 
 function createFallbackResult(query: string, isTimeout: boolean): IntentResult {
+  const fallbackLanguage = resolveFallbackLanguage(query);
   return {
     route: 'TEXTSEARCH',
     confidence: 0.3,
     reason: isTimeout ? 'fallback_timeout' : 'fallback',
-    language: resolveFallbackLanguage(query),
+    language: fallbackLanguage,
     languageConfidence: 0.5, // Moderate confidence for fallback
+    assistantLanguage: fallbackLanguage as 'he' | 'en', // Normalize to assistant language
     regionCandidate: 'IL',
     regionConfidence: 0.1,
     regionReason: 'fallback_default',
@@ -184,9 +186,19 @@ export async function executeIntentStage(
         event: 'nearby_missing_location',
         originalReason: llmResult.reason
       }, '[ROUTE2] Intent NEARBY but userLocation missing');
-
+      
       // Normalize null to undefined for cityText
       const cityText = llmResult.cityText ?? undefined;
+
+      // Normalize assistantLanguage: filter out 'other', fallback to 'en'
+      const assistantLanguage = (llmResult.assistantLanguage === 'he' || 
+                                  llmResult.assistantLanguage === 'en' || 
+                                  llmResult.assistantLanguage === 'ru' || 
+                                  llmResult.assistantLanguage === 'ar' || 
+                                  llmResult.assistantLanguage === 'fr' || 
+                                  llmResult.assistantLanguage === 'es')
+        ? llmResult.assistantLanguage
+        : 'en';
 
       return {
         route: 'CLARIFY',
@@ -194,11 +206,13 @@ export async function executeIntentStage(
         reason: 'missing_user_location',
         language: llmResult.language,
         languageConfidence: llmResult.languageConfidence,
+        assistantLanguage, // REQUIRED: For CLARIFY paths
         regionCandidate: llmResult.regionCandidate,
         regionConfidence: llmResult.regionConfidence,
         regionReason: llmResult.regionReason,
         ...(cityText && { cityText }),
-
+        ...(llmResult.clarify && { clarify: llmResult.clarify }), // Pass clarify if present
+  
         // flags נשארים (נוח ל-UX וללוגים)
         distanceIntent: true, // או llmResult.distanceIntent
         openNowRequested: llmResult.openNowRequested,
@@ -237,16 +251,28 @@ export async function executeIntentStage(
     // Normalize null to undefined for cityText
     const cityText = llmResult.cityText ?? undefined;
 
+    // Normalize assistantLanguage: filter out 'other', fallback to 'en'
+    const assistantLanguage = (llmResult.assistantLanguage === 'he' || 
+                                llmResult.assistantLanguage === 'en' || 
+                                llmResult.assistantLanguage === 'ru' || 
+                                llmResult.assistantLanguage === 'ar' || 
+                                llmResult.assistantLanguage === 'fr' || 
+                                llmResult.assistantLanguage === 'es')
+      ? llmResult.assistantLanguage
+      : 'en';
+
     return {
       route: llmResult.route,
       confidence: llmResult.confidence,
       reason: llmResult.reason,
       language: llmResult.language,
       languageConfidence: llmResult.languageConfidence,
+      assistantLanguage, // REQUIRED: For CLARIFY paths
       regionCandidate: validatedRegionCandidate,
       regionConfidence: llmResult.regionConfidence,
       regionReason: llmResult.regionReason,
       ...(cityText && { cityText }),
+      ...(llmResult.clarify && { clarify: llmResult.clarify }), // Pass clarify if present
       // NEW: Hybrid ordering intent flags
       distanceIntent: llmResult.distanceIntent,
       openNowRequested: llmResult.openNowRequested,

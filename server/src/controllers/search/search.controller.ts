@@ -116,13 +116,14 @@ router.post('/', async (req: Request, res: Response) => {
       startTime: Date.now(),
       llmProvider: llm,
       userLocation: queryData.userLocation ?? null,
+      debug: { stopAfter: 'intent' },   // 👈 זו השורה
       // Fix: Only include optional properties if they actually have a value
       ...(req.traceId && { traceId: req.traceId }),
       ...(authenticatedSessionId && { sessionId: authenticatedSessionId }),
       ...(queryData.uiLanguage && { uiLanguage: queryData.uiLanguage }),
       // Copy debug config from request to context (safe: only in non-prod or behind guard if needed)
-      ...(queryData.debug && typeof queryData.debug === 'object' && queryData.debug.stopAfter && { 
-        debug: { stopAfter: queryData.debug.stopAfter } 
+      ...(queryData.debug && typeof queryData.debug === 'object' && queryData.debug.stopAfter && {
+        debug: { stopAfter: queryData.debug.stopAfter }
       })
     };
 

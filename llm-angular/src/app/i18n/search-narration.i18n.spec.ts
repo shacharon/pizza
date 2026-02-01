@@ -169,7 +169,7 @@ describe('SearchNarration i18n', () => {
 
       supportedLanguages.forEach(lang => {
         const langKeys = Object.keys(MESSAGES[lang]);
-        
+
         // Check that language has same number of keys as English
         expect(langKeys.length).toBe(englishKeys.length);
 
@@ -185,7 +185,7 @@ describe('SearchNarration i18n', () => {
       supportedLanguages.forEach(lang => {
         const messages = Object.values(MESSAGES[lang]);
         const uniqueMessages = new Set(messages);
-        
+
         // Allow some duplicates (e.g., common words like "Close", "Clear")
         // But flag if too many duplicates exist
         const duplicateRatio = (messages.length - uniqueMessages.size) / messages.length;
@@ -211,7 +211,7 @@ describe('SearchNarration i18n', () => {
   describe('Message quality checks', () => {
     it('should not have HTML tags in messages', () => {
       const htmlRegex = /<[^>]+>/;
-      
+
       Object.values(MESSAGES).forEach(langMessages => {
         Object.values(langMessages).forEach(message => {
           expect(message).not.toMatch(htmlRegex);
@@ -256,7 +256,7 @@ describe('SearchNarration i18n', () => {
     it('should handle backend language codes', () => {
       // Simulate backend returning various language codes
       const backendCodes = ['en', 'he', 'en-US', 'he-IL', 'iw', 'unknown'];
-      
+
       backendCodes.forEach(code => {
         const normalized = normalizeLang(code);
         expect(normalized).toBeTruthy();
