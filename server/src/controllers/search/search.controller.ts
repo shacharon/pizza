@@ -116,7 +116,7 @@ router.post('/', async (req: Request, res: Response) => {
       startTime: Date.now(),
       llmProvider: llm,
       userLocation: queryData.userLocation ?? null,
-      debug: { stopAfter: 'intent' },   // 👈 זו השורה
+      //  debug: { stopAfter: 'intent' },   // 👈 זו השורה
       // Fix: Only include optional properties if they actually have a value
       ...(req.traceId && { traceId: req.traceId }),
       ...(authenticatedSessionId && { sessionId: authenticatedSessionId }),

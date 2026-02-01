@@ -96,20 +96,20 @@ export type NearbyMapping = z.infer<typeof NearbyMappingSchema>;
 export const LandmarkMappingSchema = z.object({
   providerMethod: z.literal('landmarkPlan'),
   geocodeQuery: z.string().min(1).max(120),
-  afterGeocode: z.enum(['nearbySearch', 'textSearch']),
+  afterGeocode: z.enum(['nearbySearch', 'textSearchWithBias']),
   radiusMeters: z.number().int().min(1).max(50000),
-  keyword: z.string().min(1).max(80),
+  keyword: z.string().nullable(),
   region: z.string().regex(/^[A-Z]{2}$/),
   language: z.enum(['he', 'en', 'ru', 'ar', 'fr', 'es', 'other']),
   reason: z.string().min(1),
-  // NEW: Canonical keys for language independence
-  landmarkId: z.string().optional(),      // Canonical landmark ID (resolved post-LLM)
-  cuisineKey: z.string().optional(),      // Canonical cuisine key
-  typeKey: z.string().optional(),         // Type key for non-cuisine searches
+  // NEW: Canonical keys for language independence (nullable to match JSON schema)
+  landmarkId: z.string().nullable(),      // Canonical landmark ID (resolved post-LLM)
+  cuisineKey: z.string().nullable(),      // Canonical cuisine key
+  typeKey: z.string().nullable(),         // Type key for non-cuisine searches
   resolvedLatLng: z.object({              // Resolved coordinates (post-geocode)
     lat: z.number(),
     lng: z.number()
-  }).optional()
+  }).strict().nullable()
 }).strict();
 
 export type LandmarkMapping = z.infer<typeof LandmarkMappingSchema>;

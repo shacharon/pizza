@@ -7,7 +7,7 @@
  * - Never shows: PRESENCE, WS_STATUS, PROGRESS (those are line types)
  */
 
-import { Component, input, computed } from '@angular/core';
+import { Component, input, computed, isDevMode } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import type { AssistantStatus } from '../../../../core/models/ws-protocol.types';
 import type { AssistantMessage } from '../../../../facades/search-assistant.facade';
@@ -49,7 +49,7 @@ export class AssistantSummaryComponent {
   readonly isFailed = computed(() => this.status() === 'failed');
   
   // ROUTING: Prefer card messages (new routing system)
-  readonly displayMessages = computed(() => {
+  readonly displayMessages = computed<Array<AssistantCardMessage | AssistantMessage>>(() => {
     const cards = this.cardMessages();
     if (cards.length > 0) {
       return cards;
@@ -67,6 +67,32 @@ export class AssistantSummaryComponent {
     }
     return !this.isIdle() && (this.text().length > 0 || this.isFailed());
   });
+  
+  // Dev mode flag
+  readonly isDevMode = isDevMode();
+  
+  /**
+   * Get message language with fallback
+   * Priority: payload.language > uiLanguage > 'en'
+   */
+  getMessageLanguage(msg: AssistantCardMessage): string {
+    return msg.language || this.locale() || 'en';
+  }
+  
+  /**
+   * Check if language should use RTL
+   */
+  isRTL(language: string): boolean {
+    return language === 'he' || language === 'ar';
+  }
+  
+  /**
+   * Get text direction for message
+   */
+  getTextDirection(msg: AssistantCardMessage): 'rtl' | 'ltr' {
+    const lang = this.getMessageLanguage(msg);
+    return this.isRTL(lang) ? 'rtl' : 'ltr';
+  }
   
   /**
    * Get icon for message type

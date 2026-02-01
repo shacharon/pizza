@@ -37,6 +37,7 @@ export interface AssistantMessage {
   blocksSearch: boolean;
   requestId: string;
   timestamp: number;        // Epoch ms for ordering
+  language?: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es';  // Language from payload (optional)
 }
 
 @Injectable()

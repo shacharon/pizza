@@ -117,6 +117,7 @@ export const NEARBY_SCHEMA_HASH = createHash('sha256')
 // Landmark JSON Schema
 // OpenAI strict mode: ALL properties in required array (including nullable)
 // NOTE: Removed 'as const' on root to allow schema-converter modifications
+// CRITICAL: Use anyOf for nullable objects to satisfy OpenAI strict mode requirements
 export const LANDMARK_JSON_SCHEMA = {
     type: 'object' as const,
     properties: {
@@ -124,7 +125,7 @@ export const LANDMARK_JSON_SCHEMA = {
         geocodeQuery: { type: 'string' as const, minLength: 1, maxLength: 120 },
         afterGeocode: { type: 'string' as const, enum: ['nearbySearch', 'textSearchWithBias'] as const },
         radiusMeters: { type: 'integer' as const, minimum: 1, maximum: 50000 },
-        keyword: { type: 'string' as const, minLength: 1, maxLength: 80 },
+        keyword: { type: ['string', 'null'] as const },
         region: { type: 'string' as const, pattern: '^[A-Z]{2}$' },
         language: { type: 'string' as const, enum: ['he', 'en', 'ru', 'ar', 'fr', 'es', 'other'] as const },
         reason: { type: 'string' as const, minLength: 1 },
@@ -132,13 +133,21 @@ export const LANDMARK_JSON_SCHEMA = {
         landmarkId: { type: ['string', 'null'] as const },
         cuisineKey: { type: ['string', 'null'] as const },
         typeKey: { type: ['string', 'null'] as const },
+        // FIXED: Use anyOf for nullable object to satisfy OpenAI strict mode
+        // OpenAI requires additionalProperties at the object type level, not in the union
         resolvedLatLng: {
-            type: ['object', 'null'] as const,
-            properties: {
-                lat: { type: 'number' as const },
-                lng: { type: 'number' as const }
-            },
-            required: ['lat', 'lng']
+            anyOf: [
+                {
+                    type: 'object' as const,
+                    properties: {
+                        lat: { type: 'number' as const },
+                        lng: { type: 'number' as const }
+                    },
+                    required: ['lat', 'lng'],
+                    additionalProperties: false
+                },
+                { type: 'null' as const }
+            ]
         }
     },
     // ALL properties in required array per OpenAI strict mode

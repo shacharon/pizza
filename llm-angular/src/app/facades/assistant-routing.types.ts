@@ -81,6 +81,7 @@ export interface AssistantCardMessage {
   blocksSearch: boolean;
   requestId: string;
   timestamp: number;
+  language?: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es'; // Message language from backend (for RTL support)
 }
 
 /**

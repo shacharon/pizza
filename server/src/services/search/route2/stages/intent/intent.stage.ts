@@ -23,6 +23,7 @@ import {
 import { startStage, endStage } from '../../../../../lib/telemetry/stage-timer.js';
 import { sanitizeQuery } from '../../../../../lib/telemetry/query-sanitizer.js';
 import { isValidRegionCode } from '../../utils/region-code-validator.js';
+import { buildClarifyText } from '../../assistant/clarify-text-generator.js';
 
 /**
  * Create fallback result when LLM fails
@@ -147,7 +148,7 @@ export async function executeIntentStage(
     // CLARIFY injection: If NEARBY without userLocation, ensure clarify is set
     if (llmResult.route === 'NEARBY' && !userLocation) {
       if (!llmResult.clarify) {
-        // LLM failed to provide clarify - inject deterministic fallback
+        // LLM failed to provide clarify - inject deterministic fallback with message/question
         logger.warn({
           requestId,
           pipelineVersion: 'route2',
@@ -156,11 +157,15 @@ export async function executeIntentStage(
           assistantLanguage: gateAssistantLanguage
         }, '[ROUTE2] NEARBY without location - injecting clarify fallback');
 
-        // NOTE: message/question will be generated deterministically at publish time
+        // Generate deterministic fallback text
+        const { message, question } = buildClarifyText('MISSING_LOCATION', gateAssistantLanguage as 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es');
+
         llmResult.clarify = {
           reason: 'MISSING_LOCATION',
           blocksSearch: true,
-          suggestedAction: 'ASK_LOCATION'
+          suggestedAction: 'ASK_LOCATION',
+          message,
+          question
         };
       }
     }

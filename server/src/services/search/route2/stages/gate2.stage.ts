@@ -24,7 +24,15 @@ const Gate2LLMSchema = z.object({
   foodSignal: z.enum(['NO', 'UNCERTAIN', 'YES']),
   confidence: z.number().min(0).max(1),
   assistantLanguage: z.enum(['he', 'en', 'ru', 'ar', 'fr', 'es', 'other']),
-  assistantLanguageConfidence: z.number().min(0).max(1)
+  assistantLanguageConfidence: z.number().min(0).max(1),
+  stop: z.object({
+    type: z.enum(['GATE_FAIL', 'CLARIFY']),
+    reason: z.enum(['NO_FOOD', 'UNCERTAIN_DOMAIN', 'MISSING_LOCATION']),
+    blocksSearch: z.literal(true),
+    suggestedAction: z.enum(['ASK_FOOD', 'ASK_DOMAIN', 'ASK_LOCATION']),
+    message: z.string(),
+    question: z.string()
+  }).nullable()
 }).strict();
 
 // Static JSON Schema for OpenAI (zod-to-json-schema library is broken with Zod v4)
@@ -48,9 +56,38 @@ const GATE2_JSON_SCHEMA = {
       type: 'number',
       minimum: 0,
       maximum: 1
+    },
+    stop: {
+      type: ['object', 'null'],
+      properties: {
+        type: {
+          type: 'string',
+          enum: ['GATE_FAIL', 'CLARIFY']
+        },
+        reason: {
+          type: 'string',
+          enum: ['NO_FOOD', 'UNCERTAIN_DOMAIN', 'MISSING_LOCATION']
+        },
+        blocksSearch: {
+          type: 'boolean',
+          const: true
+        },
+        suggestedAction: {
+          type: 'string',
+          enum: ['ASK_FOOD', 'ASK_DOMAIN', 'ASK_LOCATION']
+        },
+        message: {
+          type: 'string'
+        },
+        question: {
+          type: 'string'
+        }
+      },
+      required: ['type', 'reason', 'blocksSearch', 'suggestedAction', 'message', 'question'],
+      additionalProperties: false
     }
   },
-  required: ['foodSignal', 'confidence', 'assistantLanguage', 'assistantLanguageConfidence'],
+  required: ['foodSignal', 'confidence', 'assistantLanguage', 'assistantLanguageConfidence', 'stop'],
   additionalProperties: false
 } as const;
 
@@ -59,79 +96,54 @@ const GATE2_SCHEMA_HASH = createHash('sha256')
   .digest('hex')
   .substring(0, 12);
 
-const GATE2_PROMPT_VERSION = 'gate2_v5';
-const GATE2_SYSTEM_PROMPT = `SYSTEM: You are Gate2 for FOOD SEARCH.
+const GATE2_PROMPT_VERSION = 'gate2_v8';
+const GATE2_SYSTEM_PROMPT = `SYSTEM: You are Gate2 for FOOD SEARCH. Return ONLY strict JSON.
 
 INPUT:
 - userQuery (string)
 
-OUTPUT: JSON ONLY, matching exactly:
+OUTPUT (JSON only, no extra fields):
 {
-  "foodSignal": "YES" | "NO" | "UNCERTAIN",
-  "confidence": number,                    // 0..1
-  "assistantLanguage": "he"|"en"|"ru"|"ar"|"fr"|"es"|"other",
-  "assistantLanguageConfidence": number    // 0..1
+  "foodSignal":"YES"|"NO"|"UNCERTAIN",
+  "confidence":0..1,
+  "assistantLanguage":"he"|"en"|"ru"|"ar"|"fr"|"es"|"other",
+  "assistantLanguageConfidence":0..1,
+  "stop": {
+    "type":"GATE_FAIL"|"CLARIFY",
+    "reason":"NO_FOOD"|"UNCERTAIN_DOMAIN",
+    "blocksSearch":true,
+    "suggestedAction":"ASK_DOMAIN"|"ASK_FOOD",
+    "message": string,
+    "question": string
+  } | null
 }
 
-TASK:
-Classify whether the query is about food AND detect the language for assistant UX text.
+RULES:
+- Detect assistantLanguage from script/words in userQuery only (no region guesses).
+- foodSignal YES if user wants food/restaurant/cuisine/eat/order/delivery/hungry OR contains "restaurant/מסעדות/مطعم" etc.
+- UNCERTAIN if generic place intent with no food signal.
+- NO if clearly non-food (weather/news/services) or gibberish/profanity-only.
+- If foodSignal="YES" => stop=null.
+- If foodSignal!="YES" => stop object:
+  - NO => type="GATE_FAIL", reason="NO_FOOD", suggestedAction="ASK_DOMAIN"
+  - UNCERTAIN => type="CLARIFY", reason="UNCERTAIN_DOMAIN", suggestedAction="ASK_FOOD"
+- message: ≤2 sentences, in assistantLanguage.
+- question: exactly 1 question, in assistantLanguage.
+- NEVER output English text unless assistantLanguage="en".
 
-FOOD SIGNAL RULES:
-YES →
-- Food, restaurant, cuisine, eating, ordering, delivery, hunger
-- CRITICAL: Queries with "restaurants"/"מסעדות" + proximity ("near me"/"מסביבי"/"לידי") = YES (NOT UNCERTAIN)
+LANG DETECT:
+- Hebrew chars => he
+- Arabic chars => ar
+- Cyrillic => ru
+- Latin => choose en/fr/es if obvious; else other
+- Confidence: clear script multi-word 0.9+, short but clear 0.7-0.9, mixed 0.4-0.7.
 
-UNCERTAIN →
-- Generic place intent with no food signal
-  Examples: "near me", "open now", "what's around"
-
-NO →
-- Clearly non-food intent (news, weather, travel, services)
-- Profanity with no food meaning
-
-FOOD EXAMPLES:
-"מסעדות פתוחות מסביבי" → YES
-"restaurants near me open now" → YES
-"pizza near me" → YES
-"near me" → UNCERTAIN
-"weather today" → NO
-
-CONFIDENCE:
-- YES / NO clear → 0.9–1.0
-- UNCERTAIN → 0.45–0.65
-
-LANGUAGE DETECTION (assistantLanguage):
-- Detect from script and words ONLY (Hebrew, Arabic, Cyrillic, Latin, etc.)
-- NEVER infer language from region or food signal
-- Confidence guide:
-  - 0.9–1.0: clear multi-word + clear script
-  - 0.7–0.9: short but clear
-  - 0.4–0.7: mixed / ambiguous
-  - 0.1–0.4: very uncertain
-
-STRICT:
-- Output JSON only
-- No explanations
-- No extra fields
-- No text outside JSON
-
-
-
+EXAMPLES:
+"מסעדות מסביבי" => {"foodSignal":"YES","confidence":0.95,"assistantLanguage":"he","assistantLanguageConfidence":0.95,"stop":null}
+"ماذا هناك" => {"foodSignal":"UNCERTAIN","confidence":0.5,"assistantLanguage":"ar","assistantLanguageConfidence":0.85,"stop":{"type":"CLARIFY","reason":"UNCERTAIN_DOMAIN","blocksSearch":true,"suggestedAction":"ASK_FOOD","message":"لست متأكداً مما تبحث عنه.","question":"ما نوع الطعام الذي تريده؟"}}
+"weather" => {"foodSignal":"NO","confidence":0.95,"assistantLanguage":"en","assistantLanguageConfidence":0.9,"stop":{"type":"GATE_FAIL","reason":"NO_FOOD","blocksSearch":true,"suggestedAction":"ASK_DOMAIN","message":"This doesn't look like a food search.","question":"Are you looking for restaurants or something else?"}}
 `;
-/*
-//Return ONLY JSON.
 
-foodSignal:
-NO = not food/restaurants
-UNCERTAIN = unclear
-YES = food/cuisine/eating
-
-If unsure: UNCERTAIN.
-
-{"foodSignal":"NO|UNCERTAIN|YES","confidence":0-1}
-
-//
-*/
 const GATE2_PROMPT_HASH = createHash('sha256')
   .update(GATE2_SYSTEM_PROMPT, 'utf8')
   .digest('hex');
@@ -146,7 +158,8 @@ function createTimeoutErrorResult(): Gate2Result {
     language: 'other',
     languageConfidence: 0.1,
     route: 'STOP',
-    confidence: 0.1 // Very low confidence indicates error, not genuine NO
+    confidence: 0.1, // Very low confidence indicates error, not genuine NO
+    stop: null // No stop payload on timeout - handled by orchestrator
   };
 }
 
@@ -170,7 +183,8 @@ function applyDeterministicRouting(llmResult: z.infer<typeof Gate2LLMSchema>): G
     language: llmResult.assistantLanguage,
     languageConfidence: llmResult.assistantLanguageConfidence,
     route,
-    confidence: llmResult.confidence
+    confidence: llmResult.confidence,
+    stop: llmResult.stop // Pass through stop payload from LLM (null if not stopping)
   };
 }
 

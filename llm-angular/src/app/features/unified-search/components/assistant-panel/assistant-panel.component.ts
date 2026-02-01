@@ -4,10 +4,12 @@
  * UX-only narration (no chips/filters/state changes)
  */
 
-import { Component, OnInit, OnDestroy, ChangeDetectionStrategy, signal, computed } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectionStrategy, signal, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { WsClientService } from '../../../../core/services/ws-client.service';
 import { Subscription } from 'rxjs';
+import { SearchFacade } from '../../../../facades/search.facade';
+import { environment } from '../../../../../environments/environment';
 
 /**
  * Assistant message interface
@@ -18,6 +20,7 @@ interface AssistantMessage {
   message: string;
   type: 'assistant_progress' | 'assistant_suggestion';
   timestamp: number;
+  language?: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es';  // Language from payload
 }
 
 @Component({
@@ -46,6 +49,12 @@ export class AssistantPanelComponent implements OnInit, OnDestroy {
 
   // WebSocket subscription
   private wsSubscription?: Subscription;
+
+  // Inject search facade for uiLanguage
+  private searchFacade = inject(SearchFacade);
+
+  // Dev mode check
+  readonly isDev = computed(() => !environment.production);
 
   constructor(private wsClient: WsClientService) { }
 
@@ -130,7 +139,7 @@ export class AssistantPanelComponent implements OnInit, OnDestroy {
 
       // DEDUP FIX: Strict type validation - only LLM assistant messages
       // System notifications MUST NOT render as assistant messages
-      const validTypes = ['CLARIFY', 'SUMMARY', 'GATE_FAIL'];
+      const validTypes = ['CLARIFY', 'SUMMARY', 'GATE_FAIL', 'SEARCH_FAILED'];
       if (!narrator.type || !validTypes.includes(narrator.type)) {
         console.log('[AssistantPanel] Ignoring non-LLM message:', narrator.type || 'unknown');
         return;
@@ -159,8 +168,8 @@ export class AssistantPanelComponent implements OnInit, OnDestroy {
         this.currentRequestId.set(requestId);
       }
 
-      // Generate seq based on narrator type (GATE_FAIL=1, CLARIFY=2, SUMMARY=3)
-      const seq = narrator.type === 'GATE_FAIL' ? 1 : narrator.type === 'CLARIFY' ? 2 : 3;
+      // Generate seq based on narrator type (GATE_FAIL=1, CLARIFY=2, SUMMARY=3, SEARCH_FAILED=4)
+      const seq = narrator.type === 'GATE_FAIL' ? 1 : narrator.type === 'CLARIFY' ? 2 : narrator.type === 'SEARCH_FAILED' ? 4 : 3;
 
       // Deduplicate: check if we've already seen this (requestId, seq)
       const messageKey = `${requestId}-${seq}`;
@@ -172,7 +181,7 @@ export class AssistantPanelComponent implements OnInit, OnDestroy {
       // Add message
       this.seenMessages.add(messageKey);
 
-      // Determine type: SUMMARY -> suggestion, others -> progress
+      // Determine type: SUMMARY -> suggestion, SEARCH_FAILED -> progress, others -> progress
       const type = narrator.type === 'SUMMARY' ? 'assistant_suggestion' : 'assistant_progress';
 
       // Prefer question over message for CLARIFY
@@ -183,7 +192,8 @@ export class AssistantPanelComponent implements OnInit, OnDestroy {
         seq,
         message: displayMessage,
         type: type as 'assistant_progress' | 'assistant_suggestion',
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        language: narrator.language  // Capture language from payload
       };
 
       console.log('[AssistantPanel] Narrator message added:', narrator.type, displayMessage.substring(0, 50));
@@ -227,5 +237,36 @@ export class AssistantPanelComponent implements OnInit, OnDestroy {
       default:
         return '📝';
     }
+  }
+
+  /**
+   * Check if language is RTL (Hebrew or Arabic)
+   */
+  isRTL(msg: AssistantMessage): boolean {
+    const lang = msg.language || this.getFallbackLanguage();
+    return lang === 'he' || lang === 'ar';
+  }
+
+  /**
+   * Get effective language (with fallback)
+   */
+  getEffectiveLanguage(msg: AssistantMessage): string {
+    return msg.language || this.getFallbackLanguage();
+  }
+
+  /**
+   * Get fallback language (uiLanguage or 'en')
+   */
+  private getFallbackLanguage(): string {
+    const request = this.searchFacade.searchRequest();
+    return request?.uiLanguage || 'en';
+  }
+
+  /**
+   * Get uiLanguage for debug display
+   */
+  getUILanguage(): string {
+    const request = this.searchFacade.searchRequest();
+    return request?.uiLanguage || 'n/a';
   }
 }

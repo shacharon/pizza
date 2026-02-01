@@ -26,6 +26,7 @@
       background: white;
       border-radius: 8px;
       border: 1px solid #e5e7eb;
+      flex-wrap: wrap;
 
       .assistant-icon {
         font-size: 1.5rem;
@@ -37,6 +38,32 @@
         font-size: 0.95rem;
         line-height: 1.5;
         color: #374151;
+        flex: 1;
+        min-width: 0;
+      }
+
+      .message-debug {
+        flex-shrink: 0;
+        font-size: 0.625rem;
+        color: #9ca3af;
+        font-family: 'Courier New', monospace;
+        margin-inline-start: 0.5rem;
+        opacity: 0.6;
+        align-self: flex-end;
+      }
+
+      // RTL support
+      &[dir="rtl"] {
+        .assistant-icon {
+          order: 2;
+        }
+        p {
+          order: 1;
+          text-align: right;
+        }
+        .message-debug {
+          order: 0;
+        }
       }
     }
 

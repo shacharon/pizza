@@ -25,6 +25,7 @@ export interface AssistantMessageModel {
   blocksSearch: boolean;
   requestId: string;
   timestamp: number;
+  language?: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es'; // Message language from backend (for RTL support)
 }
 
 /**
@@ -95,7 +96,8 @@ export function extractAssistantMessage(
     question: payload.question || null,
     blocksSearch: payload.blocksSearch || false,
     requestId,
-    timestamp
+    timestamp,
+    language: payload.language // Pass through language from backend
   };
 }
 

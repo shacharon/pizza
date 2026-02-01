@@ -25,6 +25,20 @@
   &:not(:last-child) {
     border-bottom: 1px solid #f3f4f6;
   }
+
+  // RTL support
+  &[dir="rtl"] {
+    .message-icon {
+      order: 2;
+    }
+    .message-text {
+      order: 1;
+      text-align: right;
+    }
+    .message-debug {
+      order: 0;
+    }
+  }
 }
 
 .message-icon {
@@ -44,6 +58,15 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.message-debug {
+  flex-shrink: 0;
+  font-size: 0.625rem;
+  color: #9ca3af;
+  font-family: 'Courier New', monospace;
+  margin-inline-start: 0.5rem;
+  opacity: 0.6;
 }
 
 .clear-button {

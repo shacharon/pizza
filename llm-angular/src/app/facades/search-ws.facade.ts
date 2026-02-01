@@ -120,7 +120,7 @@ export class SearchWsHandler {
     // Only messages with type='assistant' AND valid payload.type should be processed
     if ((msg as any).type === 'assistant' && 'payload' in (msg as any)) {
       const payload = (msg as any).payload;
-      const validTypes = ['CLARIFY', 'SUMMARY', 'GATE_FAIL', 'NUDGE_REFINE'];
+      const validTypes = ['CLARIFY', 'SUMMARY', 'GATE_FAIL', 'NUDGE_REFINE', 'SEARCH_FAILED'];
 
       // Validate payload has proper assistant type
       if (payload && payload.type && validTypes.includes(payload.type)) {
@@ -136,7 +136,7 @@ export class SearchWsHandler {
     // Handle assistant channel messages (legacy with channel field)
     if ('channel' in (msg as any) && (msg as any).channel === 'assistant') {
       const payload = (msg as any).payload;
-      const validTypes = ['CLARIFY', 'SUMMARY', 'GATE_FAIL', 'NUDGE_REFINE'];
+      const validTypes = ['CLARIFY', 'SUMMARY', 'GATE_FAIL', 'NUDGE_REFINE', 'SEARCH_FAILED'];
 
       // Validate legacy format also has proper type
       if (payload && payload.type && validTypes.includes(payload.type)) {
@@ -206,7 +206,10 @@ export class SearchWsHandler {
       case 'error':
         console.error('[SearchWsHandler] WS search error:', event.code, event.message);
         cancelPolling();
-        handlers.onError(event.message);
+        // SECURITY: Never display raw error.message from backend
+        // Use generic user-facing message to prevent provider error leakage
+        const userMessage = 'Something went wrong. Please try again.';
+        handlers.onError(userMessage);
         break;
     }
   }

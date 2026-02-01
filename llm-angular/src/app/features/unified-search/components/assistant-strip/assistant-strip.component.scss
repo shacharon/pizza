@@ -35,6 +35,21 @@
   display: flex;
   align-items: flex-start;
   gap: 0.75rem;
+  flex-wrap: wrap;
+
+  // RTL support
+  &[dir="rtl"] {
+    .assistant-icon {
+      order: 2;
+    }
+    .message-text {
+      order: 1;
+      text-align: right;
+    }
+    .message-debug {
+      order: 0;
+    }
+  }
 }
 
 .assistant-icon {
@@ -50,6 +65,17 @@
   line-height: 1.5;
   color: #0f172a;
   font-weight: 500;
+  min-width: 0;
+}
+
+.message-debug {
+  flex-shrink: 0;
+  font-size: 0.625rem;
+  color: #94a3b8;
+  font-family: 'Courier New', monospace;
+  margin-inline-start: 0.5rem;
+  opacity: 0.7;
+  align-self: flex-end;
 }
 
 .assistant-actions {

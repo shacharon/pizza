@@ -11,8 +11,8 @@ import { logger } from '../../../lib/logger/structured-logger.js';
 import { generateAndPublishAssistant } from './assistant/assistant-integration.js';
 import { publishAssistantMessage } from './assistant/assistant-publisher.js';
 import { buildClarifyText } from './assistant/clarify-text-generator.js';
-import type { AssistantGateContext, AssistantClarifyContext, AssistantGenericQueryNarrationContext } from './assistant/assistant-llm.service.js';
-import { resolveAssistantLanguage, resolveSessionId } from './orchestrator.helpers.js';
+import type { AssistantClarifyContext, AssistantGenericQueryNarrationContext } from './assistant/assistant-llm.service.js';
+import { resolveAssistantLanguage, lockAssistantLanguageToGate2, resolveSessionId } from './orchestrator.helpers.js';
 import type { WebSocketManager } from '../../../infra/websocket/websocket-manager.js';
 import { buildEarlyExitResponse } from './orchestrator.response.js';
 
@@ -27,6 +27,8 @@ function narrowLanguageForResponse(language: Gate2Language): 'he' | 'en' {
 /**
  * Handle GATE2 STOP (not food related)
  * Returns SearchResponse if should stop, null if should continue
+ * 
+ * ENFORCED: Uses Gate2 LLM-generated stop text directly (no additional LLM calls)
  */
 export async function handleGateStop(
   request: SearchRequest,
@@ -41,18 +43,7 @@ export async function handleGateStop(
   const { requestId, startTime } = ctx;
   const sessionId = resolveSessionId(request, ctx);
 
-  logger.info(
-    {
-      requestId,
-      pipelineVersion: 'route2',
-      event: 'pipeline_stopped',
-      reason: 'not_food_related',
-      foodSignal: gateResult.gate.foodSignal
-    },
-    '[ROUTE2] Pipeline stopped - not food related'
-  );
-
-  // Initialize langCtx before generateAndPublishAssistant
+  // Initialize langCtx before publishing assistant
   const assistantLanguage = resolveAssistantLanguage(ctx, request, gateResult.gate.language, gateResult.gate.confidence);
   if (!ctx.langCtx) {
     ctx.langCtx = {
@@ -64,23 +55,104 @@ export async function handleGateStop(
     };
   }
 
-  const fallbackHttpMessage = "זה לא נראה כמו חיפוש אוכל/מסעדות. נסה למשל: 'פיצה בתל אביב'.";
-  const assistantContext: AssistantGateContext = {
-    type: 'GATE_FAIL',
-    reason: 'NO_FOOD',
-    query: request.query,
-    language: assistantLanguage
-  };
+  // CRITICAL: Gate2 stop field MUST be present (enforced by v7+ prompt)
+  if (!gateResult.gate.stop) {
+    // This should never happen with v7+ prompt, but handle gracefully
+    logger.error({
+      requestId,
+      event: 'gate_stop_missing',
+      foodSignal: gateResult.gate.foodSignal,
+      route: gateResult.gate.route
+    }, '[ROUTE2] CRITICAL: Gate2 stop field missing despite STOP route');
 
-  const assistMessage = await generateAndPublishAssistant(
-    ctx,
+    // Return minimal error response
+    return {
+      requestId,
+      sessionId,
+      query: {
+        original: request.query,
+        parsed: {
+          query: request.query,
+          searchMode: 'textsearch' as const,
+          filters: {},
+          languageContext: {
+            uiLanguage: 'he' as const,
+            requestLanguage: 'he' as const,
+            googleLanguage: 'he' as const
+          },
+          originalQuery: request.query
+        },
+        language: gateResult.gate.language
+      },
+      results: [],
+      chips: [],
+      assist: { type: 'guide' as const, message: 'Unable to process request' },
+      meta: {
+        tookMs: Date.now() - startTime,
+        mode: 'textsearch' as const,
+        appliedFilters: [],
+        confidence: gateResult.gate.confidence,
+        source: 'route2_gate_stop_error',
+        failureReason: 'LOW_CONFIDENCE' as const
+      }
+    };
+  }
+
+  // ENFORCEMENT: Use Gate2 LLM-generated stop text (no additional LLM calls)
+  const { stop } = gateResult.gate;
+
+  // Log early return with full context (source: gate2)
+  logger.info({
+    requestId,
+    pipelineVersion: 'route2',
+    event: 'gate_stop_early',
+    reason: stop.reason,
+    assistantLanguage,
+    assistantLanguageSource: 'gate2',
+    type: stop.type,
+    foodSignal: gateResult.gate.foodSignal,
+    confidence: gateResult.gate.confidence,
+    gate2Language: gateResult.gate.language
+  }, '[ROUTE2] Gate2 stop - early return (no intent/route/google)');
+
+  // Map Gate2 suggestedAction to AssistantPayload suggestedAction
+  let mappedAction: 'NONE' | 'ASK_LOCATION' | 'ASK_FOOD' | 'RETRY' | 'EXPAND_RADIUS' | 'REFINE';
+  if (stop.suggestedAction === 'ASK_DOMAIN') {
+    mappedAction = 'NONE'; // ASK_DOMAIN maps to NONE (general guidance)
+  } else {
+    mappedAction = stop.suggestedAction; // ASK_FOOD passes through
+  }
+
+  // Publish Gate2 LLM-generated text directly to WS
+  publishAssistantMessage(
+    wsManager,
     requestId,
     sessionId,
-    assistantContext,
-    fallbackHttpMessage,
-    wsManager
+    {
+      type: stop.type,
+      message: stop.message,
+      question: stop.question,
+      blocksSearch: stop.blocksSearch,
+      suggestedAction: mappedAction,
+      language: assistantLanguage
+    },
+    ctx.langCtx,
+    request.uiLanguage
   );
 
+  // Log assistant publish source
+  logger.info({
+    requestId,
+    event: 'assistant_publish_source',
+    source: 'gate2',
+    stopType: stop.type,
+    stopReason: stop.reason,
+    assistantLanguage,
+    gate2Language: gateResult.gate.language,
+    gate2Confidence: gateResult.gate.confidence
+  }, '[ROUTE2] Published Gate2 LLM-generated assistant text (locked to Gate2 output)');
+
+  // Return early response (no search results, terminal state)
   return {
     requestId,
     sessionId,
@@ -91,9 +163,9 @@ export async function handleGateStop(
         searchMode: 'textsearch' as const,
         filters: {},
         languageContext: {
-          uiLanguage: 'he' as const,
-          requestLanguage: 'he' as const,
-          googleLanguage: 'he' as const
+          uiLanguage: narrowLanguageForResponse(gateResult.gate.language),
+          requestLanguage: narrowLanguageForResponse(gateResult.gate.language),
+          googleLanguage: narrowLanguageForResponse(gateResult.gate.language)
         },
         originalQuery: request.query
       },
@@ -101,7 +173,7 @@ export async function handleGateStop(
     },
     results: [],
     chips: [],
-    assist: { type: 'guide' as const, message: assistMessage },
+    assist: { type: 'guide' as const, message: stop.message },
     meta: {
       tookMs: Date.now() - startTime,
       mode: 'textsearch' as const,
@@ -116,6 +188,8 @@ export async function handleGateStop(
 /**
  * Handle GATE2 ASK_CLARIFY (uncertain query)
  * Returns SearchResponse if should stop, null if should continue
+ * 
+ * ENFORCED: Uses Gate2 LLM-generated clarify text directly (no additional LLM calls)
  */
 export async function handleGateClarify(
   request: SearchRequest,
@@ -130,19 +204,8 @@ export async function handleGateClarify(
   const { requestId, startTime } = ctx;
   const sessionId = resolveSessionId(request, ctx);
 
-  logger.info(
-    {
-      requestId,
-      pipelineVersion: 'route2',
-      event: 'pipeline_clarify',
-      reason: 'uncertain_query',
-      foodSignal: gateResult.gate.foodSignal
-    },
-    '[ROUTE2] Pipeline asking for clarification'
-  );
-
-  // Initialize langCtx before generateAndPublishAssistant
-  const assistantLanguage = resolveAssistantLanguage(ctx, request, gateResult.gate.language, gateResult.gate.confidence);
+  // LOCKED: Use Gate2 language directly (no threshold, no fallback)
+  const assistantLanguage = lockAssistantLanguageToGate2(gateResult.gate.language, request.query);
   if (!ctx.langCtx) {
     ctx.langCtx = {
       assistantLanguage,
@@ -153,25 +216,86 @@ export async function handleGateClarify(
     };
   }
 
-  const fallbackHttpMessage =
-    "כדי לחפש טוב צריך 2 דברים: מה אוכלים + איפה. לדוגמה: 'סושי באשקלון' או 'פיצה ליד הבית'.";
+  // CRITICAL: Gate2 stop field MUST be present (enforced by v7+ prompt)
+  if (!gateResult.gate.stop) {
+    // This should never happen with v7+ prompt, but handle gracefully
+    logger.error({
+      requestId,
+      event: 'gate_clarify_stop_missing',
+      foodSignal: gateResult.gate.foodSignal,
+      route: gateResult.gate.route
+    }, '[ROUTE2] CRITICAL: Gate2 stop field missing despite ASK_CLARIFY route');
 
-  const assistantContext: AssistantClarifyContext = {
-    type: 'CLARIFY',
-    reason: 'MISSING_FOOD',
-    query: request.query,
-    language: assistantLanguage
-  };
+    // Return minimal error response
+    return buildEarlyExitResponse({
+      requestId,
+      sessionId,
+      query: request.query,
+      language: narrowLanguageForResponse(gateResult.gate.language),
+      confidence: gateResult.gate.confidence,
+      assistType: 'clarify',
+      assistMessage: 'Unable to process request',
+      source: 'route2_gate_clarify_error',
+      failureReason: 'LOW_CONFIDENCE' as const,
+      startTime
+    });
+  }
 
-  const assistMessage = await generateAndPublishAssistant(
-    ctx,
+  // ENFORCEMENT: Use Gate2 LLM-generated clarify text (no additional LLM calls)
+  const { stop } = gateResult.gate;
+
+  // Log early return with full context (source: gate2)
+  logger.info({
+    requestId,
+    pipelineVersion: 'route2',
+    event: 'gate_stop_early',
+    reason: stop.reason,
+    assistantLanguage,
+    assistantLanguageSource: 'gate2',
+    type: stop.type,
+    foodSignal: gateResult.gate.foodSignal,
+    confidence: gateResult.gate.confidence,
+    gate2Language: gateResult.gate.language
+  }, '[ROUTE2] Gate2 clarify - early return (no intent/route/google)');
+
+  // Map Gate2 suggestedAction to AssistantPayload suggestedAction
+  let mappedAction: 'NONE' | 'ASK_LOCATION' | 'ASK_FOOD' | 'RETRY' | 'EXPAND_RADIUS' | 'REFINE';
+  if (stop.suggestedAction === 'ASK_DOMAIN') {
+    mappedAction = 'NONE'; // ASK_DOMAIN maps to NONE (general guidance)
+  } else {
+    mappedAction = stop.suggestedAction; // ASK_FOOD passes through
+  }
+
+  // Publish Gate2 LLM-generated text directly to WS
+  publishAssistantMessage(
+    wsManager,
     requestId,
     sessionId,
-    assistantContext,
-    fallbackHttpMessage,
-    wsManager
+    {
+      type: stop.type,
+      message: stop.message,
+      question: stop.question,
+      blocksSearch: stop.blocksSearch,
+      suggestedAction: mappedAction,
+      language: assistantLanguage
+    },
+    ctx.langCtx,
+    request.uiLanguage
   );
 
+  // Log assistant publish source
+  logger.info({
+    requestId,
+    event: 'assistant_publish_source',
+    source: 'gate2',
+    stopType: stop.type,
+    stopReason: stop.reason,
+    assistantLanguage,
+    gate2Language: gateResult.gate.language,
+    gate2Confidence: gateResult.gate.confidence
+  }, '[ROUTE2] Published Gate2 LLM-generated assistant text (locked to Gate2 output)');
+
+  // Return early response (no search results, terminal state)
   return buildEarlyExitResponse({
     requestId,
     sessionId,
@@ -179,7 +303,7 @@ export async function handleGateClarify(
     language: narrowLanguageForResponse(gateResult.gate.language),
     confidence: gateResult.gate.confidence,
     assistType: 'clarify',
-    assistMessage,
+    assistMessage: stop.message,
     source: 'route2_gate_clarify',
     failureReason: 'LOW_CONFIDENCE',
     startTime
@@ -416,19 +540,45 @@ export async function handleIntentClarify(
   // FIXED: Use intentDecision.assistantLanguage (from Gate2) instead of uiLanguage
   const enforcedLanguage = intentDecision.assistantLanguage ?? ctx.langCtx?.assistantLanguage ?? 'en';
 
-  // Generate message/question deterministically based on reason + language
-  const { message, question } = buildClarifyText(
-    intentDecision.clarify.reason,
-    enforcedLanguage as 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es'
-  );
+  // NEW v7: Use Intent LLM-generated message/question (with deterministic fallback)
+  const clarify = intentDecision.clarify;
+  let message: string;
+  let question: string;
+  let source: 'intent_llm' | 'intent_fallback';
 
-  logger.info({
-    requestId: ctx.requestId,
-    event: 'intent_clarify_deterministic',
-    assistantLanguage: enforcedLanguage,
-    reason: intentDecision.clarify.reason,
-    hasClarify: true
-  }, '[ROUTE2] CLARIFY path - generating text deterministically');
+  if ('message' in clarify && 'question' in clarify && clarify.message && clarify.question) {
+    // Intent LLM provided message/question - use it
+    message = clarify.message;
+    question = clarify.question;
+    source = 'intent_llm';
+
+    logger.info({
+      requestId: ctx.requestId,
+      event: 'intent_clarify_llm',
+      assistantLanguage: enforcedLanguage,
+      reason: clarify.reason,
+      hasClarify: true,
+      source: 'intent_llm'
+    }, '[ROUTE2] CLARIFY path - using Intent LLM-generated text');
+  } else {
+    // Fallback: Intent LLM failed to provide message/question (should rarely happen)
+    const clarifyText = buildClarifyText(
+      clarify.reason,
+      enforcedLanguage as 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es'
+    );
+    message = clarifyText.message;
+    question = clarifyText.question;
+    source = 'intent_fallback';
+
+    logger.warn({
+      requestId: ctx.requestId,
+      event: 'intent_clarify_deterministic',
+      assistantLanguage: enforcedLanguage,
+      reason: clarify.reason,
+      hasClarify: true,
+      source: 'fallback'
+    }, '[ROUTE2] CLARIFY path - Intent LLM missing message/question, using deterministic fallback');
+  }
 
   publishAssistantMessage(
     wsManager,
@@ -451,6 +601,15 @@ export async function handleIntentClarify(
     },
     undefined
   );
+
+  // Log assistant publish source
+  logger.info({
+    requestId: ctx.requestId,
+    event: 'assistant_publish_source',
+    source,
+    clarifyReason: intentDecision.clarify.reason,
+    assistantLanguage: enforcedLanguage
+  }, `[ROUTE2] Published Intent CLARIFY text (source: ${source})`);
 
   return {
     requestId: ctx.requestId,

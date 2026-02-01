@@ -238,6 +238,40 @@ export function resolveAssistantLanguage(
 }
 
 /**
+ * Lock assistant language to Gate2 output (NO threshold, NO fallback)
+ * Used ONLY for Gate stop paths (STOP, ASK_CLARIFY)
+ * 
+ * Rules:
+ * 1. Use gate2Language as-is if it's a supported language (he/en/ar/ru/fr/es)
+ * 2. If gate2Language is 'other', use deterministic Hebrew detection
+ * 3. Final fallback: 'en' (should rarely happen)
+ * 
+ * @param gate2Language - Language from Gate2 LLM
+ * @param query - Original query for deterministic detection
+ * @returns Locked assistant language (never 'other')
+ */
+export function lockAssistantLanguageToGate2(
+  gate2Language: 'he' | 'en' | 'ru' | 'ar' | 'fr' | 'es' | 'other',
+  query?: string
+): 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es' {
+  // If Gate2 returned a supported language, use it directly
+  if (gate2Language !== 'other') {
+    return gate2Language;
+  }
+
+  // If 'other', try deterministic Hebrew detection
+  if (query) {
+    const deterministicLanguage = detectQueryLanguage(query);
+    if (deterministicLanguage === 'he') {
+      return 'he';
+    }
+  }
+
+  // Final fallback: 'en'
+  return 'en';
+}
+
+/**
  * Resolve session ID from request or context
  * CRITICAL: ctx.sessionId (JWT) takes precedence over request.sessionId (client payload)
  * This ensures consistent sessionHash in subscribe vs publish logs

@@ -324,7 +324,11 @@ describe('ROUTE_LLM Schemas', () => {
         keyword: 'restaurant',
         region: 'IL',
         language: 'he',
-        reason: 'landmark_detected'
+        reason: 'landmark_detected',
+        landmarkId: null,
+        cuisineKey: null,
+        typeKey: null,
+        resolvedLatLng: null
       };
       assert.doesNotThrow(() => LandmarkMappingSchema.parse(valid));
     });
@@ -338,7 +342,11 @@ describe('ROUTE_LLM Schemas', () => {
         keyword: 'pizza',
         region: 'IL',
         // language missing
-        reason: 'test'
+        reason: 'test',
+        landmarkId: null,
+        cuisineKey: null,
+        typeKey: null,
+        resolvedLatLng: null
       };
       assert.throws(() => LandmarkMappingSchema.parse(invalid));
     });
@@ -352,7 +360,11 @@ describe('ROUTE_LLM Schemas', () => {
         keyword: 'pizza',
         // region missing
         language: 'he',
-        reason: 'test'
+        reason: 'test',
+        landmarkId: null,
+        cuisineKey: null,
+        typeKey: null,
+        resolvedLatLng: null
       };
       assert.throws(() => LandmarkMappingSchema.parse(invalid));
     });
@@ -366,7 +378,11 @@ describe('ROUTE_LLM Schemas', () => {
         keyword: 'cafe',
         region: 'IL',
         language: 'he',
-        reason: 'landmark_with_bias'
+        reason: 'landmark_with_bias',
+        landmarkId: null,
+        cuisineKey: null,
+        typeKey: null,
+        resolvedLatLng: null
       };
       assert.doesNotThrow(() => LandmarkMappingSchema.parse(valid));
     });
@@ -381,6 +397,10 @@ describe('ROUTE_LLM Schemas', () => {
         region: 'IL',
         language: 'he',
         reason: 'test',
+        landmarkId: null,
+        cuisineKey: null,
+        typeKey: null,
+        resolvedLatLng: null,
         notAllowed: true // <-- should fail
       };
       assert.throws(() => LandmarkMappingSchema.parse(invalid));
@@ -409,7 +429,11 @@ describe('ROUTE_LLM Schemas', () => {
         keyword: 'pizza',
         region: 'IL',
         language: 'he',
-        reason: 'test'
+        reason: 'test',
+        landmarkId: null,
+        cuisineKey: null,
+        typeKey: null,
+        resolvedLatLng: null
       };
       assert.throws(() => LandmarkMappingSchema.parse(invalid));
     });
@@ -437,9 +461,49 @@ describe('ROUTE_LLM Schemas', () => {
         keyword: 'pizza',
         region: 'IL',
         language: 'he',
-        reason: 'test'
+        reason: 'test',
+        landmarkId: null,
+        cuisineKey: null,
+        typeKey: null,
+        resolvedLatLng: null
       };
       assert.throws(() => LandmarkMappingSchema.parse(invalid));
+    });
+
+    it('accepts null values for nullable fields', () => {
+      const valid = {
+        providerMethod: 'landmarkPlan',
+        geocodeQuery: 'Big Ben',
+        afterGeocode: 'nearbySearch',
+        radiusMeters: 500,
+        keyword: null, // null is valid
+        region: 'GB',
+        language: 'en',
+        reason: 'landmark_search',
+        landmarkId: null, // null is valid
+        cuisineKey: null, // null is valid
+        typeKey: null, // null is valid
+        resolvedLatLng: null // null is valid
+      };
+      assert.doesNotThrow(() => LandmarkMappingSchema.parse(valid));
+    });
+
+    it('accepts non-null values for nullable fields', () => {
+      const valid = {
+        providerMethod: 'landmarkPlan',
+        geocodeQuery: 'Eiffel Tower',
+        afterGeocode: 'nearbySearch',
+        radiusMeters: 800,
+        keyword: 'restaurant',
+        region: 'FR',
+        language: 'fr',
+        reason: 'landmark_search',
+        landmarkId: 'eiffel_tower_paris',
+        cuisineKey: 'french',
+        typeKey: 'restaurant',
+        resolvedLatLng: { lat: 48.8584, lng: 2.2945 }
+      };
+      assert.doesNotThrow(() => LandmarkMappingSchema.parse(valid));
     });
   });
 
@@ -476,7 +540,11 @@ describe('ROUTE_LLM Schemas', () => {
         keyword: 'pizza',
         region: 'IL',
         language: 'he',
-        reason: 'test'
+        reason: 'test',
+        landmarkId: null,
+        cuisineKey: null,
+        typeKey: null,
+        resolvedLatLng: null
       };
 
       assert.doesNotThrow(() => RouteLLMMappingSchema.parse(textSearch));

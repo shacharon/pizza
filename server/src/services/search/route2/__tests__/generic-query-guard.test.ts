@@ -26,8 +26,10 @@ describe('Generic Query Guard - Hebrew Patterns', () => {
       gate: {
         foodSignal: 'YES',
         language: 'he',
+        languageConfidence: 0.9,
         route: 'CONTINUE',
-        confidence: 0.9
+        confidence: 0.9,
+        stop: null
       }
     };
 
@@ -67,8 +69,10 @@ describe('Generic Query Guard - Hebrew Patterns', () => {
       gate: {
         foodSignal: 'YES',
         language: 'he',
+        languageConfidence: 0.9,
         route: 'CONTINUE',
-        confidence: 0.9
+        confidence: 0.9,
+        stop: null
       }
     };
 
@@ -105,8 +109,10 @@ describe('Generic Query Guard - Hebrew Patterns', () => {
       gate: {
         foodSignal: 'YES',
         language: 'he',
+        languageConfidence: 0.85,
         route: 'CONTINUE',
-        confidence: 0.85
+        confidence: 0.85,
+        stop: null
       }
     };
 
@@ -183,8 +189,10 @@ describe('Generic Query Guard - English Patterns', () => {
       gate: {
         foodSignal: 'YES',
         language: 'en',
+        languageConfidence: 0.9,
         route: 'CONTINUE',
-        confidence: 0.9
+        confidence: 0.9,
+        stop: null
       }
     };
 
@@ -261,8 +269,10 @@ describe('Generic Query Guard - English Patterns', () => {
       gate: {
         foodSignal: 'YES',
         language: 'en',
+        languageConfidence: 0.8,
         route: 'CONTINUE',
-        confidence: 0.8
+        confidence: 0.8,
+        stop: null
       }
     };
 
@@ -304,8 +314,10 @@ describe('Generic Query Guard - With Location Anchors (Should Continue)', () => 
       gate: {
         foodSignal: 'YES',
         language: 'he',
+        languageConfidence: 0.9,
         route: 'CONTINUE',
-        confidence: 0.9
+        confidence: 0.9,
+        stop: null
       }
     };
 
@@ -342,8 +354,10 @@ describe('Generic Query Guard - With Location Anchors (Should Continue)', () => 
       gate: {
         foodSignal: 'YES',
         language: 'he',
+        languageConfidence: 0.9,
         route: 'CONTINUE',
-        confidence: 0.9
+        confidence: 0.9,
+        stop: null
       }
     };
 
@@ -383,8 +397,10 @@ describe('Generic Query Guard - With Location Anchors (Should Continue)', () => 
       gate: {
         foodSignal: 'YES',
         language: 'he',
+        languageConfidence: 0.9,
         route: 'CONTINUE',
-        confidence: 0.9
+        confidence: 0.9,
+        stop: null
       }
     };
 
@@ -461,8 +477,10 @@ describe('Generic Query Guard - Non-Generic Queries (Should Continue)', () => {
       gate: {
         foodSignal: 'YES',
         language: 'he',
+        languageConfidence: 0.9,
         route: 'CONTINUE',
-        confidence: 0.9
+        confidence: 0.9,
+        stop: null
       }
     };
 
@@ -499,8 +517,10 @@ describe('Generic Query Guard - Non-Generic Queries (Should Continue)', () => {
       gate: {
         foodSignal: 'YES',
         language: 'he',
+        languageConfidence: 0.9,
         route: 'CONTINUE',
-        confidence: 0.9
+        confidence: 0.9,
+        stop: null
       }
     };
 
@@ -537,8 +557,10 @@ describe('Generic Query Guard - Non-Generic Queries (Should Continue)', () => {
       gate: {
         foodSignal: 'YES',
         language: 'he',
+        languageConfidence: 0.9,
         route: 'CONTINUE',
-        confidence: 0.9
+        confidence: 0.9,
+        stop: null
       }
     };
 
@@ -577,8 +599,10 @@ describe('Generic Query Guard - Non-Food Queries (Should Continue)', () => {
       gate: {
         foodSignal: 'UNCERTAIN',
         language: 'he',
+        languageConfidence: 0.6,
         route: 'CONTINUE',
-        confidence: 0.6
+        confidence: 0.6,
+        stop: null
       }
     };
 
@@ -633,8 +657,10 @@ describe('Generic Query Guard - Regression Tests (Order & Invariant Fix)', () =>
       gate: {
         foodSignal: 'YES',
         language: 'he',
+        languageConfidence: 0.9,
         route: 'CONTINUE',
-        confidence: 0.9
+        confidence: 0.9,
+        stop: null
       }
     };
 

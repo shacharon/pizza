@@ -39,8 +39,10 @@ describe('Parallel Tasks - Generic Query Optimization', () => {
       gate: {
         foodSignal: 'YES',
         language: 'he',
+        languageConfidence: 0.9,
         route: 'CONTINUE',
-        confidence: 0.9
+        confidence: 0.9,
+        stop: null
       }
     };
 
@@ -125,8 +127,10 @@ describe('Parallel Tasks - Generic Query Optimization', () => {
       gate: {
         foodSignal: 'YES',
         language: 'he',
+        languageConfidence: 0.9,
         route: 'CONTINUE',
-        confidence: 0.9
+        confidence: 0.9,
+        stop: null
       }
     };
 
@@ -228,8 +232,10 @@ describe('Parallel Tasks - Generic Query Optimization', () => {
       gate: {
         foodSignal: 'YES',
         language: 'he',
+        languageConfidence: 0.95,
         route: 'CONTINUE',
-        confidence: 0.95
+        confidence: 0.95,
+        stop: null
       }
     };
 
@@ -308,8 +314,10 @@ describe('Parallel Tasks - Generic Query Optimization', () => {
       gate: {
         foodSignal: 'YES',
         language: 'he',
+        languageConfidence: 0.9,
         route: 'CONTINUE',
-        confidence: 0.9
+        confidence: 0.9,
+        stop: null
       }
     };
 
@@ -369,8 +377,10 @@ describe('Parallel Tasks - Generic Query Optimization', () => {
       gate: {
         foodSignal: 'YES',
         language: 'he',
+        languageConfidence: 0.9,
         route: 'CONTINUE',
-        confidence: 0.9
+        confidence: 0.9,
+        stop: null
       }
     };
 
@@ -409,8 +419,10 @@ describe('Parallel Tasks - Generic Query Optimization', () => {
       gate: {
         foodSignal: 'YES',
         language: 'en',
+        languageConfidence: 0.9,
         route: 'CONTINUE',
-        confidence: 0.9
+        confidence: 0.9,
+        stop: null
       }
     };
 
@@ -507,8 +519,10 @@ describe('Parallel Tasks - Route Passing Fix', () => {
       gate: {
         foodSignal: 'YES',
         language: 'he',
+        languageConfidence: 0.9,
         route: 'CONTINUE',
-        confidence: 0.9
+        confidence: 0.9,
+        stop: null
       }
     };
 
@@ -588,8 +602,10 @@ describe('Parallel Tasks - Route Passing Fix', () => {
       gate: {
         foodSignal: 'YES',
         language: 'he',
+        languageConfidence: 0.95,
         route: 'CONTINUE',
-        confidence: 0.95
+        confidence: 0.95,
+        stop: null
       }
     };
 

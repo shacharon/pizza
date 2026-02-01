@@ -159,6 +159,9 @@ export interface AssistPayload {
   mode?: 'NORMAL' | 'RECOVERY' | 'CLARIFY';  // Phase 5: Added CLARIFY mode
   message: string;  // LLM-generated, multilingual
 
+  // NEW: Language of the message (from Gate2/Intent/Assistant LLM)
+  language?: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es';
+
   // NEW: Reference chip IDs instead of inline actions
   primaryActionId?: string;     // Highlighted chip
   secondaryActionIds?: string[]; // Up to 4 additional chips (optional for backward compat)

@@ -89,6 +89,15 @@
     border-radius: 4px;
     transition: background 0.2s;
 
+    // RTL support
+    &[dir="rtl"] {
+      text-align: right;
+      
+      .message-content {
+        text-align: right;
+      }
+    }
+
     &:hover {
       background: #f0f0f0;
     }
@@ -111,6 +120,20 @@
         font-style: italic;
         color: #666;
         font-size: 0.9rem;
+      }
+
+      // DEV MODE: Language debug view
+      .language-debug {
+        margin-top: 0.5rem;
+        padding: 0.25rem 0.5rem;
+        background: #fff3cd;
+        border-radius: 3px;
+        font-family: monospace;
+        
+        small {
+          color: #856404;
+          font-size: 0.7rem;
+        }
       }
     }
 

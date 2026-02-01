@@ -1,8 +1,13 @@
 <div class="assistant-strip" [class.recovery]="assist().mode === 'RECOVERY'">
   <div class="assistant-content">
-    <div class="assistant-message">
+    <div class="assistant-message" [attr.dir]="isRTL() ? 'rtl' : 'ltr'">
       <span class="assistant-icon">🤖</span>
       <p class="message-text">{{ assist().message }}</p>
+      @if (isDev()) {
+        <span class="message-debug">
+          ({{ getEffectiveLanguage() }}/{{ getUILanguage() }})
+        </span>
+      }
     </div>
     
     <div class="assistant-actions">

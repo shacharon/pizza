@@ -211,13 +211,28 @@ export async function executeBackgroundSearch(params: BackgroundParams): Promise
     }
 
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Internal error';
+    const rawMessage = err instanceof Error ? err.message : 'Internal error';
     const isAborted = abortController.signal.aborted;
     let errorCode = isAborted ? 'TIMEOUT' : 'SEARCH_FAILED';
 
-    // P0 Fix: Non-fatal Redis writes
+    // Classify error and sanitize message for client
+    const { classifyPipelineError, sanitizeErrorMessage, PipelineErrorKind } = await import('../../../services/search/route2/pipeline-error-kinds.js');
+    const { kind } = classifyPipelineError(err, undefined);
+    const sanitizedMessage = sanitizeErrorMessage(kind, rawMessage);
+
+    // Log raw error for debugging (NOT sent to client)
+    logger.error({
+      requestId,
+      errorCode,
+      errorKind: kind,
+      rawError: rawMessage,
+      sanitizedMessage,
+      event: 'search_failed_error_sanitized'
+    }, '[SEARCH] Error sanitized for client');
+
+    // P0 Fix: Non-fatal Redis writes (use sanitized message)
     try {
-      await searchJobStore.setError(requestId, errorCode, message, 'SEARCH_FAILED');
+      await searchJobStore.setError(requestId, errorCode, sanitizedMessage, 'SEARCH_FAILED');
     } catch (redisErr) {
       logger.error({
         requestId,
@@ -238,7 +253,7 @@ export async function executeBackgroundSearch(params: BackgroundParams): Promise
       }, 'Redis JobStore write failed (non-fatal) - status not persisted');
     }
 
-    // GUARDRAIL: WS publish is optional - never blocks error handling
+    // GUARDRAIL: WS publish is optional - never blocks error handling (use sanitized message)
     try {
       publishSearchEvent(requestId, {
         channel: 'search',
@@ -248,7 +263,7 @@ export async function executeBackgroundSearch(params: BackgroundParams): Promise
         ts: new Date().toISOString(),
         stage: 'done',
         code: errorCode as any,
-        message
+        message: sanitizedMessage
       });
     } catch (wsErr) {
       logger.warn({

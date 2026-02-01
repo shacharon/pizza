@@ -221,3 +221,52 @@ export function isRetryableError(kind: PipelineErrorKind): boolean {
   
   return retryable.has(kind);
 }
+
+/**
+ * Sanitize error message for client consumption
+ * Prevents provider error details from leaking to UI
+ * 
+ * @param kind Error kind (already classified)
+ * @param rawMessage Raw error message (logged but NOT sent to client)
+ * @returns User-safe error message
+ */
+export function sanitizeErrorMessage(kind: PipelineErrorKind, rawMessage: string): string {
+  // For INTERNAL_ERROR and unclassified provider errors, use generic message
+  // Raw error message is logged but NOT exposed to client
+  if (kind === PipelineErrorKind.INTERNAL_ERROR ||
+      kind === PipelineErrorKind.PARSE_ERROR ||
+      kind === PipelineErrorKind.VALIDATION_ERROR ||
+      kind === PipelineErrorKind.GATE_LLM_ERROR ||
+      kind === PipelineErrorKind.INTENT_LLM_ERROR ||
+      kind === PipelineErrorKind.GOOGLE_API_ERROR ||
+      kind === PipelineErrorKind.LLM_PROVIDER_UNAVAILABLE) {
+    return 'An internal error occurred';
+  }
+  
+  // For specific classified errors, return the safe classified message
+  // This uses the kind's standard message, not the raw error message
+  const errorMap: Record<PipelineErrorKind, string> = {
+    [PipelineErrorKind.GATE_LLM_TIMEOUT]: 'Gate analysis timed out',
+    [PipelineErrorKind.INTENT_LLM_TIMEOUT]: 'Intent routing timed out',
+    [PipelineErrorKind.GOOGLE_TIMEOUT]: 'Google API request timed out',
+    [PipelineErrorKind.GOOGLE_QUOTA_EXCEEDED]: 'Google API quota exceeded',
+    [PipelineErrorKind.GOOGLE_NETWORK_ERROR]: 'Network error connecting to Google API',
+    [PipelineErrorKind.GOOGLE_DNS_FAIL]: 'Failed to resolve Google API hostname',
+    [PipelineErrorKind.NEARME_NO_LOCATION]: 'Location required for nearby search',
+    [PipelineErrorKind.NEARME_INVALID_LOCATION]: 'Invalid location provided',
+    [PipelineErrorKind.PIPELINE_TIMEOUT]: 'Pipeline exceeded maximum execution time',
+    [PipelineErrorKind.OPENAI_API_KEY_MISSING]: 'OpenAI API key not configured',
+    [PipelineErrorKind.GOOGLE_API_KEY_MISSING]: 'Google API key not configured',
+    [PipelineErrorKind.GATE_INVALID_INPUT]: 'Invalid input for gate analysis',
+    // Internal errors (already handled above)
+    [PipelineErrorKind.INTERNAL_ERROR]: 'An internal error occurred',
+    [PipelineErrorKind.PARSE_ERROR]: 'An internal error occurred',
+    [PipelineErrorKind.VALIDATION_ERROR]: 'An internal error occurred',
+    [PipelineErrorKind.GATE_LLM_ERROR]: 'An internal error occurred',
+    [PipelineErrorKind.INTENT_LLM_ERROR]: 'An internal error occurred',
+    [PipelineErrorKind.GOOGLE_API_ERROR]: 'An internal error occurred',
+    [PipelineErrorKind.LLM_PROVIDER_UNAVAILABLE]: 'An internal error occurred'
+  };
+  
+  return errorMap[kind] || 'An internal error occurred';
+}

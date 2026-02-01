@@ -2,9 +2,14 @@
 @if (messages().length > 0) {
 <div class="assistant-panel">
   @for (msg of messages(); track msg.requestId + '-' + msg.seq) {
-  <div class="assistant-message">
+  <div class="assistant-message" [attr.dir]="isRTL(msg) ? 'rtl' : 'ltr'">
     <span class="message-icon">{{ getIcon(msg.type) }}</span>
     <span class="message-text">{{ msg.message }}</span>
+    @if (isDev()) {
+      <span class="message-debug">
+        ({{ getEffectiveLanguage(msg) }}/{{ getUILanguage() }})
+      </span>
+    }
   </div>
   }
   <button class="clear-button" (click)="clearMessages()" type="button" aria-label="Clear messages">

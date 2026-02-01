@@ -3,9 +3,11 @@
  * Displays AI-generated guidance with recommended next actions
  */
 
-import { Component, input, output, ChangeDetectionStrategy } from '@angular/core';
+import { Component, input, output, ChangeDetectionStrategy, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import type { AssistPayload, RefinementChip } from '../../../../domain/types/search.types';
+import { SearchFacade } from '../../../../facades/search.facade';
+import { environment } from '../../../../../environments/environment';
 
 @Component({
   selector: 'app-assistant-strip',
@@ -22,6 +24,12 @@ export class AssistantStripComponent {
   
   // Outputs
   readonly actionClick = output<string>();
+
+  // Inject search facade for uiLanguage
+  private searchFacade = inject(SearchFacade);
+
+  // Dev mode check
+  readonly isDev = computed(() => !environment.production);
   
   /**
    * Get primary chip to highlight
@@ -53,9 +61,36 @@ export class AssistantStripComponent {
   trackByChipId(_index: number, chip: RefinementChip): string {
     return chip.id;
   }
+
+  /**
+   * Check if assistant message language is RTL (Hebrew or Arabic)
+   */
+  isRTL(): boolean {
+    const lang = this.getEffectiveLanguage();
+    return lang === 'he' || lang === 'ar';
+  }
+
+  /**
+   * Get effective language (with fallback)
+   */
+  getEffectiveLanguage(): string {
+    return this.assist().language || this.getFallbackLanguage();
+  }
+
+  /**
+   * Get fallback language (uiLanguage or 'en')
+   */
+  private getFallbackLanguage(): string {
+    const request = this.searchFacade.searchRequest();
+    return request?.uiLanguage || 'en';
+  }
+
+  /**
+   * Get uiLanguage for debug display
+   */
+  getUILanguage(): string {
+    const request = this.searchFacade.searchRequest();
+    return request?.uiLanguage || 'n/a';
+  }
 }
-
-
-
-
 
