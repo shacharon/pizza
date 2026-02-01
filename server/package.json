@@ -24,7 +24,8 @@
     "test:all": "npm test && npm run test:resolvers && npm run test:integration && npm run test:unified",
     "qa": "tsx src/services/search/qa/run-qa.ts",
     "qa:watch": "tsx watch src/services/search/qa/run-qa.ts",
-    "verify:prod-contracts": "node scripts/verify-prod-contracts.js"
+    "verify:prod-contracts": "node scripts/verify-prod-contracts.js",
+    "test:lang-propagation": "tsx test-language-propagation.ts"
   },
   "keywords": [],
   "author": "",

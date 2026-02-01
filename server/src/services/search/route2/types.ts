@@ -137,11 +137,11 @@ export interface IntentResult {
   cuisineKey: string | null;
 
   // ===== CLARIFY Payload (Required, nullable) =====
-  /** CLARIFY content from Intent LLM - null when not clarifying, object when clarifying */
+  /** CLARIFY content from Intent LLM - null when not clarifying, object when clarifying
+   * NOTE: message/question generated deterministically at publish time
+   */
   clarify: {
     reason: 'MISSING_LOCATION' | 'MISSING_FOOD' | 'AMBIGUOUS';
-    message: string;
-    question: string;
     blocksSearch: true;
     suggestedAction: 'ASK_LOCATION' | 'ASK_FOOD' | 'REFINE';
   } | null;

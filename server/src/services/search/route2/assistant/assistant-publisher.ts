@@ -118,6 +118,22 @@ export function publishAssistantMessage(
     // Use langCtx.assistantLanguage as-is (no mapping)
     const enforcedLanguage = langCtx.assistantLanguage as 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es';
 
+    // DEBUG LOG B: Assistant publish language snapshot (right before WS publish)
+    logger.debug({
+      requestId,
+      traceId: (langCtx as any).traceId,
+      sessionId: (langCtx as any).sessionId,
+      event: 'assistant_publish_lang_snapshot',
+      assistantType: normalizedPayload.type,
+      langCtx_uiLanguage: langCtx.uiLanguage,
+      langCtx_assistantLanguage: langCtx.assistantLanguage,
+      langCtx_queryLanguage: (langCtx as any).queryLanguage || langCtx.assistantLanguage,
+      enforcedLanguage,
+      verificationSource: verification.source,
+      hasClarify: normalizedPayload.type === 'CLARIFY',
+      clarify_reason: normalizedPayload.type === 'CLARIFY' ? (normalizedPayload as any).reason : undefined
+    }, '[ASSISTANT] Publishing assistant message - language snapshot');
+
     // DEBUG LOG: Print payload keys + assistantLanguage before publish
     logger.info({
       requestId,

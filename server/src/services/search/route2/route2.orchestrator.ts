@@ -90,6 +90,36 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
     // STAGE 1: GATE2
     const gateResult = await executeGate2Stage(request, ctx);
 
+    // Initialize langCtx from Gate2 result IMMEDIATELY (before guards/intent)
+    // This ensures language context is available for all downstream stages
+    if (gateResult.gate && !ctx.langCtx) {
+      const { resolveAssistantLanguage } = await import('./orchestrator.helpers.js');
+      const assistantLanguage = resolveAssistantLanguage(ctx, request, gateResult.gate.language, gateResult.gate.confidence);
+      ctx.langCtx = {
+        assistantLanguage,
+        assistantLanguageConfidence: gateResult.gate.confidence || 0,
+        uiLanguage: assistantLanguage,
+        providerLanguage: assistantLanguage,
+        region: 'IL'
+      };
+    }
+
+    // DEBUG LOG A: Gate2 language snapshot (after storing langCtx)
+    logger.debug({
+      requestId,
+      traceId: ctx.traceId,
+      sessionId: ctx.sessionId,
+      event: 'gate2_lang_snapshot',
+      queryHash,
+      queryLen,
+      foodSignal: gateResult.gate.foodSignal,
+      confidence: gateResult.gate.confidence,
+      gateAssistantLanguage: gateResult.gate.language,
+      gateAssistantLanguageConfidence: gateResult.gate.confidence,
+      uiLanguageHint: request.uiLanguage || null,
+      source: 'gate2_result'
+    }, '[ROUTE2] Gate2 language snapshot captured');
+
     // MILESTONE: GATE_DONE (25%)
     try {
       await searchJobStore.setStatus(requestId, 'RUNNING', JOB_MILESTONES.GATE_DONE);

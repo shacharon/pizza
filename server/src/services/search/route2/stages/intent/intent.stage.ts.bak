@@ -156,6 +156,16 @@ export async function executeIntentStage(
           assistantLanguage: gateAssistantLanguage
         }, '[ROUTE2] NEARBY without location - injecting clarify fallback');
 
+        const clarifyMessages: Record<string, { message: string; question: string }> = {
+          he: { message: 'כדי לחפש מסעדות קרובות אני צריך את המיקום שלך.', question: 'באיזו עיר אתה נמצא (או תשתף מיקום)?' },
+          en: { message: 'I need your location to find places near you.', question: 'What city are you in (or can you share location)?' },
+          ar: { message: 'أحتاج موقעך للعثור على أماكن قريبة منך.', question: 'في أي مدينة أنت (أو يمكنك مشاركة الموقع)?' },
+          ru: { message: 'Мне нужно ваше местоположение.', question: 'В каком городе вы находитесь?' },
+          fr: { message: 'J\'ai besoin de votre position.', question: 'Dans quelle ville êtes-vous?' },
+          es: { message: 'Necesito tu ubicación.', question: '¿En qué ciudad estás?' }
+        };
+        const fallback = clarifyMessages[gateAssistantLanguage] || clarifyMessages['en'];
+        
         // NOTE: message/question will be generated deterministically at publish time
         llmResult.clarify = {
           reason: 'MISSING_LOCATION',

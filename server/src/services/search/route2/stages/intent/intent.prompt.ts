@@ -5,91 +5,28 @@
 
 import { createHash } from 'crypto';
 
-export const INTENT_PROMPT_VERSION = 'intent_v4';
+export const INTENT_PROMPT_VERSION = 'intent_v6';
 
-export const INTENT_SYSTEM_PROMPT = `SYSTEM: You are a routing classifier for restaurant search.
+export const INTENT_SYSTEM_PROMPT = `Route classifier for restaurant search. JSON only.
 
-INPUT:
-- userQuery (string)
-- gateAssistantLanguage (required: "he"|"en"|"ru"|"ar"|"fr"|"es"|"other")
-- gateAssistantLanguageConfidence (required: number 0..1)
-- uiLanguageHint (optional: "he"|"en"|"ru"|"ar"|"fr"|"es"|null)
-
-OUTPUT: JSON only:
-{
-  "route": "TEXTSEARCH"|"NEARBY"|"LANDMARK",
-  "assistantLanguage": "he"|"en"|"ru"|"ar"|"fr"|"es"|"other",
-  "assistantLanguageConfidence": number,     // 0..1
-  "uiLanguage": "he"|"en"|"ru"|"ar"|"fr"|"es"|"other",
-  "providerLanguage": "he"|"en"|"ru"|"ar"|"fr"|"es"|"other",
-  "region": string,                          // ISO-3166-1 alpha-2 (e.g. "IL","FR","US") default "IL" if unknown
-  "cityText": string|null,
-  "reason": "explicit_city_mentioned"|"default_textsearch"|"near_me_phrase"|"explicit_distance_from_me"|"landmark_detected"|"ambiguous",
-  "distanceIntent": boolean,
-  "openNowRequested": boolean,
-  "priceIntent": "cheap"|"any",
-  "qualityIntent": boolean,
-  "occasion": "romantic"|null,
-  "cuisineKey": string|null
-}
+INPUT: { userQuery, gateAssistantLanguage, hasUserLocation }
 
 RULES:
-0) assistantLanguage MUST be propagated from Gate:
-- assistantLanguage = gateAssistantLanguage
-- assistantLanguageConfidence = gateAssistantLanguageConfidence
-- NEVER re-detect or change assistantLanguage in this stage.
-
 1) route:
-- TEXTSEARCH if explicit city/area present (e.g. “בתל אביב”, “in New York”)
-- NEARBY if “near me / לידי / בקרבתי / close by / nearby / מרחק ממני”
-- LANDMARK if specific landmark mentioned (“ליד איכילוב”, “near Eiffel Tower”)
-- If unclear → TEXTSEARCH + reason="ambiguous"
+   - NEARBY only if intent is “near me / around me / nearby” AND NOT “near <named place>”
+   - LANDMARK only if query is “near <specific place>” (POI / street / mall / landmark), NOT a city/area
+   - TEXTSEARCH if query contains a city/area/region (e.g., “בגדרה/ת״א/אשקלון”) or any explicit area text
+   - default TEXTSEARCH
 
-2) uiLanguage:
-- If uiLanguageHint provided and not null → use it.
-- Else uiLanguage = assistantLanguage.
+2) assistantLanguage: copy gateAssistantLanguage (never detect)
 
-3) providerLanguage (language used for Google/provider requests):
-- providerLanguage = "en" unless the query includes a strong cuisine/city/landmark term in another language that would be harmed by translation.
-- If unsure → "en".
-- NEVER set providerLanguage based on uiLanguage or assistantLanguage.
-
-4) region:
-- Extract ONLY from explicit country/city/area mentions or strong location clues.
-- If city/country implies a country, set region accordingly.
-- If unsure → "IL".
-- NEVER set region based on assistantLanguage.
-
-5) cityText:
-- Extract ONLY if explicitly present; else null.
-
-6) intent flags (language-agnostic semantics):
-- distanceIntent = true if route=NEARBY
-- openNowRequested = true if “open now/פתוח עכשיו”
-- priceIntent = "cheap" if cheap/budget intent else "any"
-- qualityIntent = true if best/top rated/recommended OR romantic/special occasion/fine dining
-- occasion="romantic" if romantic/date/anniversary intent else null
-- cuisineKey if cuisine mentioned else null
-
-7) clarify (REQUIRED field):
-- If route implies CLARIFY (e.g., NEARBY intent but missing userLocation context), output clarify object with:
-  * message and question written in assistantLanguage
-  * message ≤ 2 sentences (clear, friendly, actionable)
-  * question exactly 1 short question
-  * blocksSearch: true (hard rule)
-  * reason and suggestedAction set appropriately:
-    - NEARBY without location → MISSING_LOCATION + ASK_LOCATION
-    - Ambiguous food → MISSING_FOOD + ASK_FOOD
-    - Unclear intent → AMBIGUOUS + REFINE
-- If NOT clarifying, output: "clarify": null
-- Do NOT re-detect assistantLanguage (keep propagating from Gate).
-
-STRICT:
-- Output JSON only. No explanations.
-
+3) clarify (REQUIRED):
+   - if route=NEARBY and hasUserLocation=false -> { reason:"MISSING_LOCATION", blocksSearch:true, suggestedAction:"ASK_LOCATION" }
+   - else null
 
 
 `;
+
 
 /**
  * Manually define the JSON Schema to avoid circular dependency issues 
@@ -98,7 +35,7 @@ STRICT:
 export const INTENT_JSON_SCHEMA = {
    type: "object",
    properties: {
-      route: { type: "string", enum: ["TEXTSEARCH", "NEARBY", "LANDMARK", "CLARIFY"] },
+      route: { type: "string", enum: ["TEXTSEARCH", "NEARBY", "LANDMARK"] },
       confidence: { type: "number", minimum: 0, maximum: 1 },
       reason: { type: "string", minLength: 1 },
       language: { type: "string", enum: ["he", "en", "ru", "ar", "fr", "es", "other"] },
@@ -107,9 +44,9 @@ export const INTENT_JSON_SCHEMA = {
       regionConfidence: { type: "number", minimum: 0, maximum: 1 },
       regionReason: { type: "string", minLength: 1 },
       cityText: { type: ["string", "null"], minLength: 1 },
-      assistantLanguage: { type: "string", enum: ["he", "en", "ru", "ar", "fr", "es"] }, // REQUIRED: For CLARIFY paths
+      assistantLanguage: { type: "string", enum: ["he", "en", "ru", "ar", "fr", "es"] },
 
-      // NEW: Hybrid ordering intent flags (language-agnostic)
+      // Hybrid ordering intent flags
       distanceIntent: { type: "boolean" },
       openNowRequested: { type: "boolean" },
       priceIntent: { type: "string", enum: ["cheap", "any"] },
@@ -117,17 +54,16 @@ export const INTENT_JSON_SCHEMA = {
       occasion: { type: ["string", "null"], enum: ["romantic", null] },
       cuisineKey: { type: ["string", "null"] },
 
-      // CLARIFY Payload (required field, null when not clarifying)
+      // CLARIFY Payload (required, nullable)
+      // NOTE: message/question generated deterministically at publish time
       clarify: {
          type: ["object", "null"],
          properties: {
             reason: { type: "string", enum: ["MISSING_LOCATION", "MISSING_FOOD", "AMBIGUOUS"] },
-            message: { type: "string", minLength: 1, maxLength: 300 },
-            question: { type: "string", minLength: 1, maxLength: 150 },
             blocksSearch: { type: "boolean", const: true },
             suggestedAction: { type: "string", enum: ["ASK_LOCATION", "ASK_FOOD", "REFINE"] }
          },
-         required: ["reason", "message", "question", "blocksSearch", "suggestedAction"],
+         required: ["reason", "blocksSearch", "suggestedAction"],
          additionalProperties: false
       }
    },
@@ -141,15 +77,14 @@ export const INTENT_JSON_SCHEMA = {
       "regionConfidence",
       "regionReason",
       "cityText",
-      "assistantLanguage", // REQUIRED: For CLARIFY paths
-      // NEW: Required hybrid ordering flags
+      "assistantLanguage",
       "distanceIntent",
       "openNowRequested",
       "priceIntent",
       "qualityIntent",
       "occasion",
       "cuisineKey",
-      "clarify" // REQUIRED: null when not clarifying, object when clarifying
+      "clarify"
    ],
    additionalProperties: false
 };

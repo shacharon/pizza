@@ -10,6 +10,7 @@ import type { RouteLLMMapping } from './stages/route-llm/schemas.js';
 import { logger } from '../../../lib/logger/structured-logger.js';
 import { generateAndPublishAssistant } from './assistant/assistant-integration.js';
 import { publishAssistantMessage } from './assistant/assistant-publisher.js';
+import { buildClarifyText } from './assistant/clarify-text-generator.js';
 import type { AssistantGateContext, AssistantClarifyContext, AssistantGenericQueryNarrationContext } from './assistant/assistant-llm.service.js';
 import { resolveAssistantLanguage, resolveSessionId } from './orchestrator.helpers.js';
 import type { WebSocketManager } from '../../../infra/websocket/websocket-manager.js';
@@ -406,107 +407,28 @@ export async function handleIntentClarify(
   ctx: Route2Context,
   wsManager: any
 ): Promise<SearchResponse | null> {
-  if (intentDecision.route !== 'CLARIFY') return null;
-
-  const sessionId = resolveSessionId(request, ctx);
-  const enforcedLanguage = intentDecision.assistantLanguage;
-
-  // Check if Intent provided clarify payload (single source of truth)
-  if (intentDecision.clarify) {
-    // USE INTENT CLARIFY PAYLOAD (no LLM generation)
-    logger.info({
-      requestId: ctx.requestId,
-      event: 'intent_clarify_payload_from_intent',
-      assistantLanguage: enforcedLanguage,
-      reason: intentDecision.clarify.reason,
-      hasClarify: true
-    }, '[ROUTE2] CLARIFY path - using payload from Intent LLM');
-
-    publishAssistantMessage(
-      wsManager,
-      ctx.requestId,
-      sessionId,
-      {
-        type: 'CLARIFY',
-        message: intentDecision.clarify.message,
-        question: intentDecision.clarify.question,
-        blocksSearch: intentDecision.clarify.blocksSearch,
-        suggestedAction: intentDecision.clarify.suggestedAction,
-        language: enforcedLanguage
-      },
-      {
-        assistantLanguage: enforcedLanguage,
-        assistantLanguageConfidence: intentDecision.languageConfidence,
-        uiLanguage: enforcedLanguage,
-        providerLanguage: enforcedLanguage,
-        region: 'IL'
-      },
-      undefined
-    );
-
-    return {
-      requestId: ctx.requestId,
-      sessionId,
-      query: {
-        original: request.query,
-        parsed: null as any,
-        language: intentDecision.language
-      },
-      results: [],
-      chips: [],
-      assist: {
-        type: 'clarify' as const,
-        message: intentDecision.clarify.message
-      },
-      meta: {
-        tookMs: Date.now() - ctx.startTime,
-        mode: 'textsearch' as const,
-        appliedFilters: [],
-        confidence: intentDecision.confidence,
-        source: 'intent_clarify',
-        failureReason: 'LOW_CONFIDENCE' as const
-      }
-    };
+  // Check if clarify.blocksSearch is true (STOP condition)
+  if (!intentDecision.clarify || !intentDecision.clarify.blocksSearch) {
+    return null; // Continue
   }
 
-  // FALLBACK: Intent failed or didn't provide clarify - use deterministic fallback
-  logger.warn({
+  const sessionId = resolveSessionId(request, ctx);
+  // FIXED: Use intentDecision.assistantLanguage (from Gate2) instead of uiLanguage
+  const enforcedLanguage = intentDecision.assistantLanguage ?? ctx.langCtx?.assistantLanguage ?? 'en';
+
+  // Generate message/question deterministically based on reason + language
+  const { message, question } = buildClarifyText(
+    intentDecision.clarify.reason,
+    enforcedLanguage as 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es'
+  );
+
+  logger.info({
     requestId: ctx.requestId,
-    event: 'intent_clarify_fallback_used',
-    errorType: 'missing_clarify_payload',
+    event: 'intent_clarify_deterministic',
     assistantLanguage: enforcedLanguage,
-    reason: intentDecision.reason
-  }, '[ROUTE2] CLARIFY fallback - Intent did not provide clarify payload');
-
-  // Deterministic fallback messages (localized by assistantLanguage)
-  const fallbackMessages: Record<typeof enforcedLanguage, { message: string; question: string }> = {
-    he: {
-      message: 'כדי לחפש מסעדות קרובות אני צריך את המיקום שלך.',
-      question: 'באיזו עיר אתה נמצא (או תשתף מיקום)?'
-    },
-    en: {
-      message: 'I need your location to find places near you.',
-      question: 'What city are you in (or can you share location)?'
-    },
-    ar: {
-      message: 'أحتاج موقعك للعثور على أماكن قريبة منك.',
-      question: 'في أي مدينة أنت (أو يمكنك مشاركة الموقع)?'
-    },
-    ru: {
-      message: 'Мне нужно ваше местоположение, чтобы найти места рядом с вами.',
-      question: 'В каком городе вы находитесь (или можете поделиться местоположением)?'
-    },
-    fr: {
-      message: 'J\'ai besoin de votre position pour trouver des lieux près de vous.',
-      question: 'Dans quelle ville êtes-vous (ou pouvez-vous partager votre position)?'
-    },
-    es: {
-      message: 'Necesito tu ubicación para encontrar lugares cerca de ti.',
-      question: '¿En qué ciudad estás (o puedes compartir tu ubicación)?'
-    }
-  };
-
-  const fallback = fallbackMessages[enforcedLanguage];
+    reason: intentDecision.clarify.reason,
+    hasClarify: true
+  }, '[ROUTE2] CLARIFY path - generating text deterministically');
 
   publishAssistantMessage(
     wsManager,
@@ -514,10 +436,10 @@ export async function handleIntentClarify(
     sessionId,
     {
       type: 'CLARIFY',
-      message: fallback.message,
-      question: fallback.question,
-      blocksSearch: true,
-      suggestedAction: 'ASK_LOCATION',
+      message,
+      question,
+      blocksSearch: intentDecision.clarify.blocksSearch,
+      suggestedAction: intentDecision.clarify.suggestedAction,
       language: enforcedLanguage
     },
     {
@@ -542,7 +464,7 @@ export async function handleIntentClarify(
     chips: [],
     assist: {
       type: 'clarify' as const,
-      message: fallback.message
+      message
     },
     meta: {
       tookMs: Date.now() - ctx.startTime,

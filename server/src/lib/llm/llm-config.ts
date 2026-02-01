@@ -30,7 +30,7 @@ const DEFAULT_TIMEOUTS: Record<LLMPurpose, number> = {
   routeMapper: 3500,   // Query mapping, more complex
   filterEnforcer: 4000, // Cuisine enforcement filtering, medium priority
   ranking_profile: 2500, // Ranking profile selection, similar to intent
-  assistant: 3000      // Assistant messages (GATE_FAIL, CLARIFY, SUMMARY, SEARCH_FAILED)
+  assistant: 4000      // Assistant messages (GATE_FAIL, CLARIFY, SUMMARY, SEARCH_FAILED) - increased to reduce timeouts
 };
 
 /**

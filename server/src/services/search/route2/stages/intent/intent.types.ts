@@ -42,11 +42,11 @@ export const IntentLLMSchema = z.object({
   cuisineKey: z.string().nullable(),
 
   // ===== CLARIFY Payload (Required, nullable) =====
-  /** CLARIFY content - null when not clarifying, object when clarifying */
+  /** CLARIFY content - null when not clarifying, object when clarifying 
+   * NOTE: message/question generated deterministically at publish time
+   */
   clarify: z.object({
     reason: z.enum(['MISSING_LOCATION', 'MISSING_FOOD', 'AMBIGUOUS']),
-    message: z.string().min(1).max(300), // Max 2 sentences
-    question: z.string().min(1).max(150), // Exactly 1 question
     blocksSearch: z.literal(true), // Hard rule: must be true
     suggestedAction: z.enum(['ASK_LOCATION', 'ASK_FOOD', 'REFINE'])
   }).nullable()
