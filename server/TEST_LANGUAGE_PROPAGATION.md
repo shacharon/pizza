@@ -7,9 +7,11 @@ Validates language propagation fixes for Route2 pipeline by running 3 fixed quer
 ## Test Cases
 
 1. **Arabic CLARIFY** - `"🇸🇦 مطعم قريب مني"` (no userLocation)
+
    - Assert: `status=DONE_STOPPED`, `assistantType=CLARIFY`, `language=ar`
 
 2. **Hebrew GATE_FAIL** - `"'יwhat is the wehaerjer usfiond"` (not food)
+
    - Assert: `status=DONE_STOPPED`, `assistantType=GATE_FAIL`, `language=he`, no `abort_timeout`
 
 3. **Short Arabic Snapshot** - `"ب مني 🇸🇦"`
@@ -36,6 +38,7 @@ tsx server/test-language-propagation.ts
 ## Output
 
 The test will:
+
 1. Run 3 queries sequentially
 2. Poll for results (max 15s per query)
 3. Parse logs to extract:
@@ -66,17 +69,20 @@ LANGUAGE PROPAGATION REGRESSION TEST SUMMARY
 ## What It Validates
 
 ### Test 1: Arabic CLARIFY
+
 - ✅ Gate2 detects Arabic (`gate2_lang_snapshot.gateAssistantLanguage=ar`)
 - ✅ Intent stage receives Arabic from Gate2 (`intent_clarify_payload_from_intent.assistantLanguage=ar`)
 - ✅ Assistant publishes with enforced Arabic (`assistant_publish_lang_snapshot.enforcedLanguage=ar`)
 - ✅ CLARIFY message in WebSocket has `language=ar`
 
 ### Test 2: Hebrew GATE_FAIL + Timeout Fix
+
 - ✅ Gate2 detects Hebrew (`gate2_lang_snapshot.gateAssistantLanguage=he`)
 - ✅ Assistant timeout increased to 4000ms prevents `abort_timeout`
 - ✅ GATE_FAIL message in WebSocket has `language=he`
 
 ### Test 3: Short Arabic (Snapshot)
+
 - Records Gate2 decision (foodSignal, language) for manual review
 - Does not fail test - used to verify edge case behavior
 
@@ -90,11 +96,13 @@ LANGUAGE PROPAGATION REGRESSION TEST SUMMARY
 If tests fail, check:
 
 1. **Server logs** (`server/logs/server.log`) for:
+
    - `gate2_lang_snapshot` - Did Gate2 detect correct language?
    - `assistant_publish_lang_snapshot` - Was correct language enforced at publish time?
    - `abort_timeout` - Did assistant LLM timeout?
 
 2. **Result JSON** via API:
+
    ```bash
    curl http://localhost:3000/api/v1/result/{requestId} \
      -H "x-session-id: test-session-123"

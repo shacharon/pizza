@@ -7,7 +7,7 @@
  */
 
 // Supported language codes
-export type Lang = 'he' | 'en' | 'ru' | 'ar' | 'fr' | 'es' | 'other';
+export type Lang = 'he' | 'en' | 'ru' | 'ar' | 'fr' | 'es' | 'it' | 'ja' | 'other';
 
 // All message keys in the app
 export type MsgKey =
@@ -84,7 +84,64 @@ export type MsgKey =
   // Generic messages
   | 'common.close'
   | 'common.clear'
-  | 'common.retry';
+  | 'common.retry'
+
+  // Restaurant card
+  | 'card.viewDetails'
+  | 'card.photoAlt'
+  | 'card.photoPlaceholder'
+  | 'card.rating'
+  | 'card.priceLevel'
+  | 'card.reviews'
+  | 'card.navigate'
+  | 'card.navigateTo'
+  | 'card.locationNotAvailable'
+  | 'card.call'
+  | 'card.callRestaurant'
+  | 'card.phoneNotAvailable'
+  | 'card.save'
+  | 'card.saveToFavorites'
+  | 'card.openNow'
+  | 'card.closed'
+  | 'card.hoursUnverified'
+  | 'card.glutenFree'
+  | 'card.maybeGlutenFree'
+  | 'card.glutenFreeTooltip'
+  | 'card.restaurantFallback'
+  | 'card.locationFallback'
+
+  // Reason labels
+  | 'reason.bestMatch'
+  | 'reason.closestOption'
+
+  // Search bar
+  | 'searchBar.ariaLabel'
+  | 'searchBar.loading'
+  | 'searchBar.clearSearch'
+
+  // Assistant
+  | 'assistant.quickPicks'
+  | 'assistant.refine'
+  | 'assistant.clearMessages'
+  | 'assistant.primaryAction'
+  | 'assistant.action'
+
+  // Actions (executors)
+  | 'action.openedMaps'
+  | 'action.failedToOpenMaps'
+  | 'action.openedDialer'
+  | 'action.noPhoneNumber'
+  | 'action.phoneNotAvailable'
+  | 'action.failedToOpenDialer'
+  | 'action.openedWebsite'
+  | 'action.openedSearchResults'
+  | 'action.failedToOpenWebsite'
+  | 'action.shareText'
+  | 'action.sharedSuccessfully'
+  | 'action.copiedToClipboard'
+  | 'action.failedToShare'
+  | 'action.savedToFavorites'
+  | 'action.failedToSaveFavorite';
 
 // Message dictionary: all languages with all keys
 export const MESSAGES: Record<Lang, Record<MsgKey, string>> = {
@@ -544,6 +601,158 @@ export const MESSAGES: Record<Lang, Record<MsgKey, string>> = {
     'common.retry': 'Reintentar',
   },
 
+  // Italian (Italiano)
+  it: {
+    // Hero
+    'hero.title': 'Cerca cibo come pensi',
+    'hero.subtitle': 'Cerca cibo in modo naturale, in qualsiasi lingua. Dì semplicemente cosa ti va.',
+
+    // Location
+    'location.using': '📍 Usa la tua posizione',
+    'location.getting': '⏳ Ottenimento posizione...',
+    'location.denied': '🚫 Accesso alla posizione negato',
+    'location.unavailable': '⚠️ Posizione non disponibile',
+    'location.enable': 'Attiva la posizione per risultati migliori',
+
+    // Search
+    'search.placeholder': 'Cosa ti va di mangiare?',
+    'search.loading': 'Caricamento',
+
+    // Recent
+    'recent.title': 'Ricerche recenti',
+    'recent.clearAll': 'Cancella tutto',
+
+    // Errors
+    'error.title': 'Ops! Qualcosa è andato storto',
+    'error.retry': 'Riprova',
+
+    // Modes
+    'mode.recovery': 'Modalità ripristino - perfezionamento ricerca',
+    'mode.clarify': 'Servono più informazioni',
+
+    // Order
+    'order.label': 'Ordine:',
+    'order.hybrid': 'Ibrido',
+    'order.balanced': 'Equilibrato',
+    'order.nearby': 'Vicino',
+    'order.quality': 'Qualità',
+    'order.budget': 'Budget',
+    'order.cuisine': 'Cucina',
+
+    // Filters
+    'filter.openNow': '🟢 Aperto ora',
+    'filter.openNowTooltip': 'Mostrando solo ristoranti aperti ora',
+    'filter.glutenFree': 'Senza glutine (segnali)',
+    'filter.glutenFreeTooltip': 'Basato su segnali testuali — non garantito',
+
+    // Pagination
+    'pagination.loadMore': 'Carica altro',
+
+    // Actions
+    'actions.pendingTitle': 'Approvazioni in attesa',
+    'actions.approve': '✓ Approva',
+    'actions.reject': '✗ Rifiuta',
+
+    // Assistant
+    'assistant.preparing': 'Preparazione assistente...',
+    'assistant.unavailable': 'Assistente non disponibile. I risultati sono comunque mostrati sotto.',
+    'assistant.clarify': 'Chiarimento necessario',
+    'assistant.summary': 'Riepilogo',
+    'assistant.gateFail': 'Non correlato al cibo',
+    'assistant.nudgeRefine': 'Affina ricerca',
+
+    // WebSocket
+    'ws.connecting': 'Connessione...',
+    'ws.reconnecting': 'Problema di connessione - riconnessione...',
+    'ws.connected': 'Connesso',
+    'ws.disconnected': 'Disconnesso',
+
+    // Results
+    'results.searching': 'Ricerca...',
+    'results.noResults': 'Nessun risultato trovato',
+
+    // Common
+    'common.close': 'Chiudi',
+    'common.clear': 'Cancella',
+    'common.retry': 'Riprova',
+  },
+
+  // Japanese (日本語)
+  ja: {
+    // Hero
+    'hero.title': '思いのままに食事を検索',
+    'hero.subtitle': '自然な言葉で食事を検索。何が食べたいか言うだけ。',
+
+    // Location
+    'location.using': '📍 現在地を使用中',
+    'location.getting': '⏳ 位置情報取得中...',
+    'location.denied': '🚫 位置情報へのアクセスが拒否されました',
+    'location.unavailable': '⚠️ 位置情報が利用できません',
+    'location.enable': '位置情報を有効にするとより良い結果が得られます',
+
+    // Search
+    'search.placeholder': '何が食べたいですか？',
+    'search.loading': '読み込み中',
+
+    // Recent
+    'recent.title': '最近の検索',
+    'recent.clearAll': 'すべてクリア',
+
+    // Errors
+    'error.title': 'エラーが発生しました',
+    'error.retry': '再試行',
+
+    // Modes
+    'mode.recovery': 'リカバリーモード - 検索を改善中',
+    'mode.clarify': '追加情報が必要',
+
+    // Order
+    'order.label': '並び順:',
+    'order.hybrid': 'ハイブリッド',
+    'order.balanced': 'バランス',
+    'order.nearby': '近い順',
+    'order.quality': '評価順',
+    'order.budget': '価格順',
+    'order.cuisine': '料理順',
+
+    // Filters
+    'filter.openNow': '🟢 営業中',
+    'filter.openNowTooltip': '営業中のレストランのみ表示',
+    'filter.glutenFree': 'グルテンフリー（推測）',
+    'filter.glutenFreeTooltip': 'テキスト信号に基づく — 保証なし',
+
+    // Pagination
+    'pagination.loadMore': 'もっと見る',
+
+    // Actions
+    'actions.pendingTitle': '承認待ち',
+    'actions.approve': '✓ 承認',
+    'actions.reject': '✗ 拒否',
+
+    // Assistant
+    'assistant.preparing': 'アシスタント準備中...',
+    'assistant.unavailable': 'アシスタントは利用できません。結果は下に表示されています。',
+    'assistant.clarify': '明確化が必要',
+    'assistant.summary': '要約',
+    'assistant.gateFail': '食事に関連していません',
+    'assistant.nudgeRefine': '検索を絞り込む',
+
+    // WebSocket
+    'ws.connecting': '接続中...',
+    'ws.reconnecting': '接続問題 - 再接続中...',
+    'ws.connected': '接続済み',
+    'ws.disconnected': '切断済み',
+
+    // Results
+    'results.searching': '検索中...',
+    'results.noResults': '結果が見つかりませんでした',
+
+    // Common
+    'common.close': '閉じる',
+    'common.clear': 'クリア',
+    'common.retry': '再試行',
+  },
+
   // Other/Unknown (fallback to English)
   other: {
     // Hero
@@ -663,7 +872,7 @@ export function t(lang: Lang, key: MsgKey, vars?: Record<string, string | number
  * Check if a language is supported
  */
 export function isLangSupported(lang: string): lang is Lang {
-  return ['he', 'en', 'ru', 'ar', 'fr', 'es', 'other'].includes(lang);
+  return ['he', 'en', 'ru', 'ar', 'fr', 'es', 'it', 'ja', 'other'].includes(lang);
 }
 
 /**
@@ -697,6 +906,10 @@ export function normalizeLang(langCode: string | undefined): Lang {
       return 'fr';
     case 'es':
       return 'es';
+    case 'it':
+      return 'it';
+    case 'ja':
+      return 'ja';
     default:
       return 'other';
   }

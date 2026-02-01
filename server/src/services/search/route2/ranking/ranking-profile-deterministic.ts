@@ -44,7 +44,7 @@ export interface DeterministicRankingContext {
  * Each profile has fixed, normalized weights (sum = 1.0)
  * cuisineMatch weight added for score-only cuisine filtering
  */
-const PROFILE_WEIGHTS = {
+export const PROFILE_WEIGHTS = {
   /**
    * DISTANCE_HEAVY: For proximity searches
    * Used when: route=NEARBY or intentReason indicates proximity
@@ -162,7 +162,7 @@ export function selectRankingProfileDeterministic(
         requestId,
         event: 'ranking_profile_selected',
         profile: 'NO_LOCATION',
-        weights: PROFILE_WEIGHTS.NO_LOCATION,
+        baseWeights: PROFILE_WEIGHTS.NO_LOCATION,
         reason: 'no_user_location',
         cuisineKey: cuisineKey ?? null,
         route,
@@ -171,7 +171,7 @@ export function selectRankingProfileDeterministic(
     }
 
     return {
-      profile: 'BALANCED',  // Use BALANCED as profile name (for compatibility)
+      profile: 'NO_LOCATION',
       weights: PROFILE_WEIGHTS.NO_LOCATION
     };
   }
@@ -183,7 +183,7 @@ export function selectRankingProfileDeterministic(
         requestId,
         event: 'ranking_profile_selected',
         profile: 'NEARBY',
-        weights: PROFILE_WEIGHTS.DISTANCE_HEAVY,
+        baseWeights: PROFILE_WEIGHTS.DISTANCE_HEAVY,
         reason: 'route_nearby',
         cuisineKey: cuisineKey ?? null,
         route,
@@ -204,7 +204,7 @@ export function selectRankingProfileDeterministic(
         requestId,
         event: 'ranking_profile_selected',
         profile: 'NEARBY',
-        weights: PROFILE_WEIGHTS.DISTANCE_HEAVY,
+        baseWeights: PROFILE_WEIGHTS.DISTANCE_HEAVY,
         reason: 'proximity_intent',
         intentReason,
         cuisineKey: cuisineKey ?? null,
@@ -226,7 +226,7 @@ export function selectRankingProfileDeterministic(
         requestId,
         event: 'ranking_profile_selected',
         profile: 'QUALITY',
-        weights: PROFILE_WEIGHTS.QUALITY_FOCUSED,
+        baseWeights: PROFILE_WEIGHTS.QUALITY_FOCUSED,
         reason: 'quality_cuisine',
         cuisineKey: cuisineKey ?? null,
         route,
@@ -247,7 +247,7 @@ export function selectRankingProfileDeterministic(
         requestId,
         event: 'ranking_profile_selected',
         profile: 'CUISINE',
-        weights: PROFILE_WEIGHTS.CUISINE_FOCUSED,
+        baseWeights: PROFILE_WEIGHTS.CUISINE_FOCUSED,
         reason: 'cuisine_detected',
         cuisineKey,
         route,
@@ -267,7 +267,7 @@ export function selectRankingProfileDeterministic(
       requestId,
       event: 'ranking_profile_selected',
       profile: 'BALANCED',
-      weights: PROFILE_WEIGHTS.BALANCED,
+      baseWeights: PROFILE_WEIGHTS.BALANCED,
       reason: 'default',
       cuisineKey: null,
       route,

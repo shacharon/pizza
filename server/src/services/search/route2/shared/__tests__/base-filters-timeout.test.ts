@@ -66,13 +66,14 @@ describe('Base Filters LLM - Timeout Reliability', () => {
     });
 
     // Assert: Should succeed (no fallback to defaults)
-    assert.strictEqual(result.language, 'he', 'Should return LLM language (not fallback "auto")');
+    // NOTE: language is always 'auto' (ignored from LLM, comes from upstream only)
+    assert.strictEqual(result.language, 'auto', 'Language always "auto" - comes from upstream only');
     assert.strictEqual(result.openState, 'OPEN_NOW', 'Should return LLM openState (not fallback null)');
     assert.strictEqual(result.regionHint, 'IL', 'Should return LLM regionHint (not fallback null)');
 
     // Verify we didn't fall back to default filters
-    // Fallback would have: language='auto', openState=null, regionHint=null
-    assert.notStrictEqual(result.language, 'auto', 'Should NOT fall back to default language');
+    // Success is indicated by non-null openState and regionHint (language is always 'auto')
+    assert.notStrictEqual(result.openState, null, 'Should NOT fall back to default openState');
   });
 
   it('should fall back gracefully on actual timeout (>3200ms)', async () => {
@@ -140,7 +141,8 @@ describe('Base Filters LLM - Timeout Reliability', () => {
     });
 
     // Assert: Should succeed with correct filters
-    assert.strictEqual(result.language, 'en');
+    // NOTE: language is always 'auto' (ignored from LLM, comes from upstream only)
+    assert.strictEqual(result.language, 'auto', 'Language always "auto" - comes from upstream only');
     assert.strictEqual(result.regionHint, 'US');
     assert.strictEqual(result.priceIntent, 'CHEAP');
     assert.strictEqual(result.minRatingBucket, 'R40');

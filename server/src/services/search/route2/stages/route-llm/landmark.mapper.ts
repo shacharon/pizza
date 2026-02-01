@@ -74,6 +74,76 @@ export async function executeLandmarkMapper(
   }, '[ROUTE2] landmark_mapper started (using filters_resolved region)');
 
   try {
+    // OPTIMIZATION: Try to resolve landmark from cache BEFORE calling LLM
+    // If landmark is known with coordinates, skip LLM and build mapping deterministically
+    const cachedLandmark = normalizeLandmark(request.query, finalFilters.regionCode);
+    
+    if (cachedLandmark && cachedLandmark.knownLatLng) {
+      // Landmark resolved from registry with known coordinates - SKIP LLM
+      const durationMs = Date.now() - startTime;
+      
+      logger.info({
+        requestId,
+        pipelineVersion: 'route2',
+        stage: 'landmark_mapper',
+        event: 'landmark_cache_hit',
+        landmarkId: cachedLandmark.landmarkId,
+        primaryName: cachedLandmark.primaryName,
+        knownLatLng: cachedLandmark.knownLatLng,
+        durationMs,
+        llmSkipped: true
+      }, '[ROUTE2] landmark_mapper: resolved from cache, skipping LLM');
+
+      // Build deterministic mapping (no LLM needed)
+      const cuisineKey = extractCuisineKeyFromQuery(request.query);
+      const typeKey = cuisineKey ? null : extractTypeKeyFromQuery(request.query);
+      
+      const mapping: LandmarkMapping = {
+        providerMethod: 'landmarkPlan',
+        geocodeQuery: cachedLandmark.primaryName, // Use canonical name
+        afterGeocode: 'nearbySearch', // Use nearbySearch for POI landmarks with known coords
+        radiusMeters: 1000, // Default radius for cached landmarks
+        keyword: null, // Will be handled by cuisine/type keys
+        region: finalFilters.regionCode,
+        language: finalFilters.languageContext?.searchLanguage ?? finalFilters.providerLanguage,
+        reason: 'landmark_cache_hit',
+        landmarkId: cachedLandmark.landmarkId,
+        cuisineKey: cuisineKey,
+        typeKey: typeKey,
+        resolvedLatLng: cachedLandmark.knownLatLng
+      };
+
+      logger.info({
+        requestId,
+        pipelineVersion: 'route2',
+        stage: 'landmark_mapper',
+        event: 'stage_completed',
+        durationMs,
+        geocodeQuery: mapping.geocodeQuery,
+        landmarkId: mapping.landmarkId,
+        cuisineKey: mapping.cuisineKey || null,
+        typeKey: mapping.typeKey || null,
+        afterGeocode: mapping.afterGeocode,
+        radiusMeters: mapping.radiusMeters,
+        keyword: mapping.keyword,
+        region: mapping.region,
+        language: mapping.language,
+        reason: mapping.reason,
+        llmSkipped: true
+      }, '[ROUTE2] landmark_mapper completed (cache hit, no LLM)');
+
+      return mapping;
+    }
+
+    // Landmark NOT in cache or no known coordinates - proceed with LLM
+    logger.info({
+      requestId,
+      stage: 'landmark_mapper',
+      event: 'landmark_cache_miss',
+      cacheChecked: !!cachedLandmark,
+      hasKnownLatLng: cachedLandmark?.knownLatLng ? true : false
+    }, '[ROUTE2] landmark_mapper: cache miss, calling LLM');
+
     // Build context-aware prompt
     const userPrompt = buildUserPrompt(request.query, finalFilters);
 

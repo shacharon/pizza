@@ -5,7 +5,7 @@
 
 import { createHash } from 'crypto';
 
-export const INTENT_PROMPT_VERSION = 'intent_v7';
+export const INTENT_PROMPT_VERSION = 'intent_v8';
 
 export const INTENT_SYSTEM_PROMPT = `Route classifier for restaurant search. JSON only.
 
@@ -20,7 +20,21 @@ RULES:
 
 2) assistantLanguage: copy gateAssistantLanguage (never detect)
 
-3) clarify (REQUIRED):
+3) regionCode (REQUIRED, nullable):
+   - Infer geographic region/country from query semantics (NOT device location)
+   - If query mentions a well-known city/landmark that implies a country, output ISO-3166-1 alpha-2 code
+   - Examples:
+     * "Рестораны рядом с Big Ben" → regionCode="GB" (Big Ben is in London, UK)
+     * "מסעדות ליד מגדל אייפל" → regionCode="FR" (Eiffel Tower is in Paris, France)
+     * "pizza near Colosseum" → regionCode="IT" (Colosseum is in Rome, Italy)
+     * "sushi near Times Square" → regionCode="US" (Times Square is in New York, USA)
+     * "מסעדות לידי" → regionCode=null (no geographic clue, use device fallback)
+     * "pizza in Tel Aviv" → regionCode="IL" (Tel Aviv is in Israel)
+   - If query has NO geographic clues (city/landmark/country), set regionCode=null
+   - ONLY use well-known landmarks/cities with high confidence
+   - DO NOT guess or use device location - be conservative
+
+4) clarify (REQUIRED):
    - if route=NEARBY and hasUserLocation=false:
      { 
        reason: "MISSING_LOCATION",
@@ -58,6 +72,7 @@ export const INTENT_JSON_SCHEMA = {
       regionCandidate: { type: "string", pattern: "^[A-Z]{2}$" },
       regionConfidence: { type: "number", minimum: 0, maximum: 1 },
       regionReason: { type: "string", minLength: 1 },
+      regionCode: { type: ["string", "null"], pattern: "^[A-Z]{2}$" },
       cityText: { type: ["string", "null"], minLength: 1 },
       assistantLanguage: { type: "string", enum: ["he", "en", "ru", "ar", "fr", "es"] },
 
@@ -93,6 +108,7 @@ export const INTENT_JSON_SCHEMA = {
       "regionCandidate",
       "regionConfidence",
       "regionReason",
+      "regionCode",
       "cityText",
       "assistantLanguage",
       "distanceIntent",

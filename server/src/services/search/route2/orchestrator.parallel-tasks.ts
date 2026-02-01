@@ -41,6 +41,20 @@ function isGenericFoodQueryWithLocation(
 }
 
 /**
+ * Deterministic guard: Check if any constraints are active in base filters
+ * Returns true if post_constraints should run, false if it can be skipped
+ */
+function canRunPostConstraints(baseFilters: PreGoogleBaseFilters): boolean {
+  // Check if ANY constraint is active
+  return (
+    baseFilters.openState !== null ||
+    baseFilters.priceIntent !== null ||
+    baseFilters.minRatingBucket !== null ||
+    baseFilters.minReviewCountBucket !== null
+  );
+}
+
+/**
  * Determine if base_filters LLM should be skipped (P0 FIX - Language-Agnostic)
  * 
  * NEW RULE (Structural, no query text parsing):
@@ -112,34 +126,7 @@ export function fireParallelTasks(
     '[ROUTE2] Starting parallel tasks (base_filters + post_constraints)'
   );
 
-  // OPTIMIZATION: Skip post_constraints for generic queries with location
-  // User has location, query is generic ("what to eat") → no complex constraints needed
-  const postConstraintsPromise = isGenericWithLocation
-    ? Promise.resolve(DEFAULT_POST_CONSTRAINTS).then((defaults) => {
-      logger.info({
-        requestId,
-        pipelineVersion: 'route2',
-        event: 'post_constraints_skipped',
-        reason: 'generic_query_with_location',
-        msg: '[ROUTE2] Skipping post_constraints LLM for generic query with location (deterministic defaults)'
-      });
-      return defaults;
-    })
-    : executePostConstraintsStage(request, ctx).catch((err) => {
-      logger.warn(
-        {
-          requestId,
-          pipelineVersion: 'route2',
-          stage: 'post_constraints',
-          event: 'stage_failed',
-          error: err instanceof Error ? err.message : String(err),
-          fallback: 'default_post_constraints'
-        },
-        '[ROUTE2] Post-constraints extraction failed, using defaults'
-      );
-      return DEFAULT_POST_CONSTRAINTS;
-    });
-
+  // STEP 1: Start base_filters (define it first so post_constraints can reference it)
   // OPTIMIZATION (P0 FIX): Skip base_filters using STRUCTURAL rule (language-agnostic)
   // Skip ONLY when: route=NEARBY + hasUserLocation + no cityText
   // Rationale: NEARBY with GPS = minimal parsing needed, defaults are safe
@@ -178,6 +165,62 @@ export function fireParallelTasks(
         '[ROUTE2] Base filters extraction failed, using defaults'
       );
       return DEFAULT_BASE_FILTERS;
+    });
+
+  // STEP 2: Start post_constraints (smart execution based on base_filters result)
+  // OPTIMIZATION: Smart post_constraints execution based on base_filters result
+  // Strategy:
+  // 1. If generic query with location → skip immediately (no parsing needed)
+  // 2. Otherwise, await base_filters first, then check if any constraints are active
+  // 3. If no active constraints → skip post_constraints (no filtering needed)
+  // 4. If constraints exist → run post_constraints LLM
+  const postConstraintsPromise = isGenericWithLocation
+    ? Promise.resolve(DEFAULT_POST_CONSTRAINTS).then((defaults) => {
+      logger.info({
+        requestId,
+        pipelineVersion: 'route2',
+        event: 'post_constraints_skipped',
+        reason: 'generic_query_with_location',
+        msg: '[ROUTE2] Skipping post_constraints LLM for generic query with location (deterministic defaults)'
+      });
+      return defaults;
+    })
+    : baseFiltersPromise.then(async (baseFilters) => {
+      // Deterministic guard: Skip post_constraints if no active constraints
+      if (!canRunPostConstraints(baseFilters)) {
+        logger.info({
+          requestId,
+          pipelineVersion: 'route2',
+          event: 'post_constraints_skipped',
+          reason: 'no_constraints',
+          baseFilters: {
+            openState: baseFilters.openState,
+            priceIntent: baseFilters.priceIntent,
+            minRatingBucket: baseFilters.minRatingBucket,
+            minReviewCountBucket: baseFilters.minReviewCountBucket
+          },
+          msg: '[ROUTE2] Skipping post_constraints LLM - no active constraints detected in base_filters'
+        });
+        return DEFAULT_POST_CONSTRAINTS;
+      }
+
+      // Active constraints detected, run post_constraints LLM
+      try {
+        return await executePostConstraintsStage(request, ctx);
+      } catch (err) {
+        logger.warn(
+          {
+            requestId,
+            pipelineVersion: 'route2',
+            stage: 'post_constraints',
+            event: 'stage_failed',
+            error: err instanceof Error ? err.message : String(err),
+            fallback: 'default_post_constraints'
+          },
+          '[ROUTE2] Post-constraints extraction failed, using defaults'
+        );
+        return DEFAULT_POST_CONSTRAINTS;
+      }
     });
 
   return { baseFiltersPromise, postConstraintsPromise };

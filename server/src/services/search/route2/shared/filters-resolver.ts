@@ -63,16 +63,46 @@ export async function resolveFilters(params: ResolveFiltersParams): Promise<Fina
             ? intent.language as any
             : queryLanguage; // fallback to query language
 
-    // 4. Resolve region code (intent candidate > device > default)
-    const rawRegionCode = intent.regionCandidate || deviceRegionCode || 'IL';
+    // 4. Resolve region code (NEW PRIORITY: intent.regionCode > intent.regionCandidate > device > default)
+    // LLM-FIRST: Query semantics drive region selection
+    const intentRegionCode = (intent as any).regionCode; // Type assertion for new field
+    let rawRegionCode: string;
+    let regionSource: 'intent_query' | 'intent_candidate' | 'device' | 'default';
+    
+    if (intentRegionCode) {
+        rawRegionCode = intentRegionCode;
+        regionSource = 'intent_query';
+    } else if (intent.regionCandidate) {
+        rawRegionCode = intent.regionCandidate;
+        regionSource = 'intent_candidate';
+    } else if (deviceRegionCode) {
+        rawRegionCode = deviceRegionCode;
+        regionSource = 'device';
+    } else {
+        rawRegionCode = 'IL';
+        regionSource = 'default';
+    }
 
     // 5. Sanitize region code (validate against CLDR, handle 'GZ' special case)
     const sanitizedRegionCode = sanitizeRegionCode(rawRegionCode, userLocation);
 
-    // 6. Log if region was sanitized/rejected
+    // 6. Log region resolution (NEW: Includes query-inferred region)
+    if (intentRegionCode) {
+        logger.info({
+            requestId,
+            pipelineVersion: 'route2',
+            event: 'region_resolved_from_intent',
+            regionCode: intentRegionCode,
+            sanitized: sanitizedRegionCode || 'null',
+            source: 'intent_query',
+            query: query?.substring(0, 50) || 'n/a'
+        }, '[ROUTE2] Region inferred from query semantics (LLM)');
+    }
+
+    // 7. Log if region was sanitized/rejected
     // NOISE FIX: Only log when sanitization actually changed the value
     // Skip logging if intent.regionCandidate was null (no candidate to validate)
-    const shouldLogSanitization = sanitizedRegionCode !== rawRegionCode && intent.regionCandidate !== null;
+    const shouldLogSanitization = sanitizedRegionCode !== rawRegionCode && intent.regionCandidate !== null && !intentRegionCode;
     
     if (shouldLogSanitization) {
         const fallback = sanitizedRegionCode || getFallbackRegion(rawRegionCode, userLocation);
@@ -83,7 +113,7 @@ export async function resolveFilters(params: ResolveFiltersParams): Promise<Fina
             event: 'region_sanitized',
             regionCode: rawRegionCode,
             sanitized: fallback || 'null',
-            source: intent.regionCandidate ? 'intent_candidate' : (deviceRegionCode ? 'device' : 'default')
+            source: regionSource
         };
 
         if (isKnownUnsupportedRegion(rawRegionCode)) {
@@ -105,7 +135,7 @@ export async function resolveFilters(params: ResolveFiltersParams): Promise<Fina
         intentLanguageConfidence: intent.languageConfidence
     }, requestId);
 
-    // 8. Pass through openState + time filters + priceIntent + minRatingBucket + minReviewCountBucket (NO MODIFICATION)
+    // 9. Pass through openState + time filters + priceIntent + minRatingBucket + minReviewCountBucket (NO MODIFICATION)
     const openState = base.openState;
     const openAt = base.openAt;
     const openBetween = base.openBetween;

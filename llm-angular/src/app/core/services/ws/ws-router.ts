@@ -25,8 +25,30 @@ export class WSRouter {
    * Parses, validates, logs specific types, and emits
    */
   handleMessage(event: MessageEvent): void {
+    // INSTRUMENTATION: Raw WS in log (track assistantLanguage)
+    const rawData = event.data;
+    const rawLen = typeof rawData === 'string' ? rawData.length : 0;
+    const rawPreview = rawLen > 2000 ? rawData.slice(0, 2000) + '...' : rawData;
+
     try {
       const data = JSON.parse(event.data);
+
+      // INSTRUMENTATION: Log parsed message structure
+      if (data.type === 'assistant') {
+        const msg = data as any;
+        console.log('[WS IN] Raw assistant message received', {
+          event: 'ui_ws_raw_in',
+          rawLen,
+          rawPreview,
+          channel: msg.channel || 'assistant',
+          type: msg.type,
+          payloadType: msg.payload?.type || null,
+          assistantLanguage: msg.payload?.assistantLanguage ?? msg.assistantLanguage ?? null,
+          uiLanguage: msg.payload?.uiLanguage ?? null,
+          envelopeKeys: Object.keys(msg),
+          payloadKeys: msg.payload ? Object.keys(msg.payload) : []
+        });
+      }
 
       // Validate message format
       if (!isWSServerMessage(data)) {

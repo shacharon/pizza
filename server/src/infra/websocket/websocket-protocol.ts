@@ -137,17 +137,18 @@ export interface WSServerAssistantSuggestion {
 
 /**
  * Assistant message (LLM-generated guidance)
+ * ENFORCED: assistantLanguage MUST be present on all assistant messages
  */
 export interface WSServerAssistant {
   type: 'assistant';
   requestId: string;
+  assistantLanguage: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es';
   payload: {
     type: 'GATE_FAIL' | 'CLARIFY' | 'SUMMARY' | 'SEARCH_FAILED' | 'GENERIC_QUERY_NARRATION' | 'NUDGE_REFINE';
     message: string;
     question: string | null;
     blocksSearch: boolean;
     suggestedAction?: 'REFINE_QUERY';
-    uiLanguage?: 'he' | 'en';
   };
 }
 

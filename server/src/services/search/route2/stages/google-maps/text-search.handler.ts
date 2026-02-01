@@ -214,7 +214,8 @@ export async function executeTextSearch(
           fieldMask: PLACES_FIELD_MASK,
           pipelineVersion: 'route2'
         });
-        const ttl = cache.getTTL(mapping.providerTextQuery || mapping.textQuery);
+        // Defensive: ensure we never pass undefined to getTTL
+        const ttl = cache.getTTL(mapping.providerTextQuery || mapping.textQuery || null);
 
         logger.info({
           requestId,

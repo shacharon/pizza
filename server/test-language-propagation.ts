@@ -95,7 +95,7 @@ async function runSearch(query: string, sessionId: string): Promise<{ requestId:
 
 async function pollResult(requestId: string, sessionId: string): Promise<any> {
   const startTime = Date.now();
-  
+
   while (Date.now() - startTime < MAX_POLL_TIME_MS) {
     const response = await fetch(`${SERVER_URL}/api/v1/result/${requestId}`, {
       headers: {
@@ -108,7 +108,7 @@ async function pollResult(requestId: string, sessionId: string): Promise<any> {
     }
 
     const data = await response.json() as any;
-    
+
     if (data.status.startsWith('DONE_') || data.status === 'FAILED') {
       return data;
     }
@@ -142,7 +142,7 @@ function parseLogsForRequest(requestId: string): {
   for (const line of lines) {
     try {
       const log = JSON.parse(line);
-      
+
       if (log.requestId !== requestId) continue;
 
       // Gate2 completion
@@ -199,14 +199,14 @@ async function runTest(testCase: TestCase): Promise<TestResult> {
 
     // Parse logs
     const logData = parseLogsForRequest(requestId);
-    
+
     // Snapshot-only test (no assertions)
     if (testCase.snapshotOnly) {
       console.log(`  [SNAPSHOT] Gate2 foodSignal: ${logData.gate2FoodSignal}`);
       console.log(`  [SNAPSHOT] Gate2 language: ${logData.gate2Language}`);
       console.log(`  [SNAPSHOT] Assistant type: ${logData.assistantType}`);
       console.log(`  [SNAPSHOT] Assistant language: ${logData.assistantLanguage}`);
-      
+
       return {
         testCase,
         passed: true, // Snapshot tests always pass
@@ -240,7 +240,7 @@ async function runTest(testCase: TestCase): Promise<TestResult> {
     }
 
     const passed = errors.length === 0;
-    
+
     if (passed) {
       console.log(`  ✓ PASSED`);
     } else {
@@ -263,7 +263,7 @@ async function runTest(testCase: TestCase): Promise<TestResult> {
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     console.log(`  ✗ FAILED: ${errorMsg}`);
-    
+
     return {
       testCase,
       passed: false,
@@ -279,11 +279,11 @@ function printSummaryTable(results: TestResult[]): void {
 
   // Header
   console.log(
-    '| Test | Name'.padEnd(35) + 
-    '| Status'.padEnd(17) + 
-    '| AssistantType'.padEnd(16) + 
-    '| Language'.padEnd(11) + 
-    '| Result'.padEnd(8) + 
+    '| Test | Name'.padEnd(35) +
+    '| Status'.padEnd(17) +
+    '| AssistantType'.padEnd(16) +
+    '| Language'.padEnd(11) +
+    '| Result'.padEnd(8) +
     '|'
   );
   console.log('|' + '-'.repeat(118) + '|');
@@ -295,7 +295,7 @@ function printSummaryTable(results: TestResult[]): void {
     const status = (result.status || 'N/A').padEnd(14);
     const assistantType = (result.assistantType || 'N/A').padEnd(13);
     const language = (result.language || 'N/A').padEnd(8);
-    const resultStr = result.testCase.snapshotOnly 
+    const resultStr = result.testCase.snapshotOnly
       ? 'SNAPSHOT'
       : (result.passed ? '✓ PASS' : '✗ FAIL');
     const resultPadded = resultStr.padEnd(5);
@@ -356,7 +356,7 @@ async function main() {
   for (const testCase of TEST_CASES) {
     const result = await runTest(testCase);
     results.push(result);
-    
+
     // Small delay between tests
     await new Promise(resolve => setTimeout(resolve, 1000));
   }
@@ -367,7 +367,7 @@ async function main() {
   // Exit code: 0 only if all non-snapshot tests passed
   const assertionTests = results.filter(r => !r.testCase.snapshotOnly);
   const allPassed = assertionTests.every(r => r.passed);
-  
+
   process.exit(allPassed ? 0 : 1);
 }
 

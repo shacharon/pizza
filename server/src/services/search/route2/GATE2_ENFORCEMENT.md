@@ -1,6 +1,7 @@
 # Gate2 Stop Path Enforcement - Implementation Summary
 
 ## Overview
+
 Enforced Gate2 stop path to use LLM-generated stop text directly without any additional assistant LLM calls.
 
 ## Changes Made
@@ -10,11 +11,13 @@ Enforced Gate2 stop path to use LLM-generated stop text directly without any add
 #### 1. **`handleGateStop()` - Complete Rewrite**
 
 **Before:**
+
 - Had fallback logic calling `generateAndPublishAssistant()` when `gate.stop` was missing
 - Used conditional branching with optional assistant LLM fallback
 - Less explicit logging
 
 **After:**
+
 - **ENFORCED**: Gate2 stop field MUST be present (enforced by v7+ prompt)
 - **DELETED**: All fallback assistant LLM generation code
 - **ADDED**: Critical error handling if stop field missing (logs error, returns minimal response)
@@ -25,10 +28,12 @@ Enforced Gate2 stop path to use LLM-generated stop text directly without any add
 #### 2. **`handleGateClarify()` - Complete Rewrite**
 
 **Before:**
+
 - Had fallback logic calling `generateAndPublishAssistant()` when `gate.stop` was missing
 - Used conditional branching with optional assistant LLM fallback
 
 **After:**
+
 - **ENFORCED**: Gate2 stop field MUST be present
 - **DELETED**: All fallback assistant LLM generation code
 - **ADDED**: Critical error handling if stop field missing
@@ -72,6 +77,7 @@ Enforced Gate2 stop path to use LLM-generated stop text directly without any add
 ### Early Return Points
 
 **Point 1: `handleGateStop()` (line ~169 in orchestrator)**
+
 ```typescript
 // In route2.orchestrator.ts
 const stopResponse = await handleGateStop(request, gateResult, ctx, wsManager);
@@ -79,9 +85,15 @@ if (stopResponse) return stopResponse; // ← EARLY RETURN (no intent/route/goog
 ```
 
 **Point 2: `handleGateClarify()` (line ~173 in orchestrator)**
+
 ```typescript
 // In route2.orchestrator.ts
-const clarifyResponse = await handleGateClarify(request, gateResult, ctx, wsManager);
+const clarifyResponse = await handleGateClarify(
+  request,
+  gateResult,
+  ctx,
+  wsManager
+);
 if (clarifyResponse) return clarifyResponse; // ← EARLY RETURN (no intent/route/google)
 ```
 
@@ -90,6 +102,7 @@ if (clarifyResponse) return clarifyResponse; // ← EARLY RETURN (no intent/rout
 ### Deleted Code Paths
 
 1. **`handleGateStop()` Fallback Block (DELETED)**
+
 ```typescript
 // DELETED: Fallback assistant LLM generation
 } else {
@@ -100,11 +113,11 @@ if (clarifyResponse) return clarifyResponse; // ← EARLY RETURN (no intent/rout
     query: request.query,
     language: assistantLanguage
   };
-  
+
   assistMessage = await generateAndPublishAssistant(
     ctx, requestId, sessionId, assistantContext, fallbackHttpMessage, wsManager
   );
-  
+
   logger.warn({
     requestId,
     event: 'gate_stop_fallback_used'
@@ -113,22 +126,23 @@ if (clarifyResponse) return clarifyResponse; // ← EARLY RETURN (no intent/rout
 ```
 
 2. **`handleGateClarify()` Fallback Block (DELETED)**
+
 ```typescript
 // DELETED: Fallback assistant LLM generation
 } else {
   const fallbackHttpMessage = "כדי לחפש טוב צריך 2 דברים: מה אוכלים + איפה. לדוגמה: 'סושי באשקלון' או 'פיצה ליד הבית'.";
-  
+
   const assistantContext: AssistantClarifyContext = {
     type: 'CLARIFY',
     reason: 'MISSING_FOOD',
     query: request.query,
     language: assistantLanguage
   };
-  
+
   assistMessage = await generateAndPublishAssistant(
     ctx, requestId, sessionId, assistantContext, fallbackHttpMessage, wsManager
   );
-  
+
   logger.warn({
     requestId,
     event: 'gate_clarify_fallback_used'
@@ -137,6 +151,7 @@ if (clarifyResponse) return clarifyResponse; // ← EARLY RETURN (no intent/rout
 ```
 
 ### What Was Deleted
+
 - ❌ All calls to `generateAndPublishAssistant()` in Gate2 guards
 - ❌ Fallback hardcoded messages (Hebrew)
 - ❌ Assistant context creation for fallback
@@ -144,15 +159,18 @@ if (clarifyResponse) return clarifyResponse; // ← EARLY RETURN (no intent/rout
 - ❌ Fallback warning logs
 
 ### What Remains (Critical Error Path Only)
+
 - ✅ Error handling if stop field missing (logs error, returns minimal response)
 - ✅ This should NEVER happen with v7+ prompt but handled defensively
 
 ## New Logging Events
 
 ### 1. `gate_stop_early`
+
 **When:** Gate2 blocks search (STOP or ASK_CLARIFY)  
 **Purpose:** Track early returns before Intent/Route/Google stages  
 **Fields:**
+
 ```typescript
 {
   requestId: string,
@@ -167,9 +185,11 @@ if (clarifyResponse) return clarifyResponse; // ← EARLY RETURN (no intent/rout
 ```
 
 ### 2. `assistant_publish_source`
+
 **When:** Assistant text published to WS  
 **Purpose:** Track where assistant text originated (Gate2 LLM vs other sources)  
 **Fields:**
+
 ```typescript
 {
   requestId: string,
@@ -182,9 +202,11 @@ if (clarifyResponse) return clarifyResponse; // ← EARLY RETURN (no intent/rout
 ```
 
 ### 3. `gate_stop_missing` (Critical Error)
+
 **When:** Gate2 returns STOP/ASK_CLARIFY but stop field is null  
 **Purpose:** Alert on v7+ prompt violation  
 **Fields:**
+
 ```typescript
 {
   requestId: string,
@@ -197,6 +219,7 @@ if (clarifyResponse) return clarifyResponse; // ← EARLY RETURN (no intent/rout
 ## Response Structure
 
 ### Terminal Response (Gate2 Block)
+
 ```typescript
 {
   requestId: string,
@@ -228,6 +251,7 @@ if (clarifyResponse) return clarifyResponse; // ← EARLY RETURN (no intent/rout
 ### Success Criteria
 
 1. ✅ **Gate2 STOP (NO food)**
+
    - Query: "weather" (en) or "מזג אוויר" (he) or "أخبار" (ar)
    - Expected:
      - `gate_stop_early` log with `reason="NO_FOOD"`, `type="GATE_FAIL"`
@@ -237,6 +261,7 @@ if (clarifyResponse) return clarifyResponse; // ← EARLY RETURN (no intent/rout
      - Response: results=[], assist.type='guide'
 
 2. ✅ **Gate2 ASK_CLARIFY (UNCERTAIN)**
+
    - Query: "מה יש" (he) or "ماذا هناك" (ar) or "что есть" (ru)
    - Expected:
      - `gate_stop_early` log with `reason="UNCERTAIN_DOMAIN"`, `type="CLARIFY"`
@@ -273,16 +298,19 @@ if (clarifyResponse) return clarifyResponse; // ← EARLY RETURN (no intent/rout
 ## Risks & Mitigations
 
 ### Risk 1: Gate2 LLM fails to include stop field
+
 - **Mitigation**: v7+ prompt enforces stop as REQUIRED field
 - **Fallback**: Error path logs critical error, returns minimal response
 - **Monitoring**: Track `gate_stop_missing` events (should be 0%)
 
 ### Risk 2: Gate2 generates poor quality text
+
 - **Mitigation**: v7+ prompt includes comprehensive language templates
 - **Monitoring**: Review WS messages for quality issues
 - **Escape Hatch**: Can roll back prompt version if needed
 
 ### Risk 3: Language mismatch (English text when ar/he detected)
+
 - **Mitigation**: v7+ prompt explicitly forbids English unless assistantLanguage="en"
 - **Validation**: Log `assistantLanguage` with every publish
 - **Monitoring**: Track mismatches in production logs

@@ -12,8 +12,16 @@
  * Get TTL for a query based on time-sensitivity
  * Time-sensitive queries (e.g., "open now") get shorter TTL (5 min)
  * General queries get longer TTL (15 min)
+ * 
+ * @param query Query string (can be null/undefined for landmark queries)
+ * @returns TTL in seconds
  */
-export function getTTLForQuery(query: string): number {
+export function getTTLForQuery(query: string | null | undefined): number {
+  // Defensive: handle null/undefined gracefully
+  if (!query || typeof query !== 'string') {
+    return 900; // Default to 15 min for non-string queries (e.g., landmark)
+  }
+
   const timeKeywords = ['open', 'now', 'פתוח', 'עכשיו'];
   const normalized = query.toLowerCase();
   const isTimeSensitive = timeKeywords.some(k => normalized.includes(k));

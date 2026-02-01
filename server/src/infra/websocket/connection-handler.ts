@@ -5,7 +5,7 @@
 
 import { WebSocket } from 'ws';
 import { logger } from '../../lib/logger/structured-logger.js';
-import { SOFT_CLOSE_REASONS } from './ws-close-reasons.js';
+import { wsClose, CloseSource, getCloseParams } from './ws-close-reasons.js';
 import type { WebSocketContext } from './websocket.types.js';
 import { hashSessionId } from '../../utils/security.utils.js';
 
@@ -77,11 +77,12 @@ export function setupConnection(
   const armIdle = () => {
     if (idleTimer) clearTimeout(idleTimer);
     idleTimer = setTimeout(() => {
-      try {
-        ws.close(1000, SOFT_CLOSE_REASONS.IDLE_TIMEOUT);
-      } catch {
-        // ignore
-      }
+      const params = getCloseParams(CloseSource.IDLE_TIMEOUT);
+      wsClose(ws, {
+        ...params,
+        closeSource: CloseSource.IDLE_TIMEOUT,
+        clientId
+      });
     }, 15 * 60 * 1000);
   };
   armIdle();
@@ -112,16 +113,39 @@ export function handleClose(
 ): void {
   cleanup(ws);
 
-  const reason = reasonBuffer?.toString() || '';
+  let reason = reasonBuffer?.toString()?.trim() || '';
   const wasClean = code === 1000 || code === 1001;
+  
+  // Extract closeSource if tagged (by wsClose helper)
+  const closeSource = (ws as any).closeSource || 'UNKNOWN';
+  const taggedReason = (ws as any).closeReason;
+
+  // Use tagged reason if available (from wsClose), otherwise use buffer
+  if (taggedReason && !reason) {
+    reason = taggedReason;
+  }
+
+  // INVARIANT: code=1001 MUST have meaningful reason (not empty or "none")
+  if (code === 1001 && (!reason || reason === 'none')) {
+    logger.warn({
+      clientId,
+      code,
+      originalReason: reason || 'empty',
+      closeSource,
+      event: 'ws_close_reason_missing'
+    }, '[WS] Close(1001) with empty/none reason - logging as SERVER_CLOSE');
+    reason = 'SERVER_CLOSE';
+  }
 
   logger.info({
     clientId,
     code,
     reason: reason || 'none',
+    closeSource,
     wasClean,
-    ...(((ws as any).terminatedBy) && { terminatedBy: (ws as any).terminatedBy })
-  }, 'websocket_disconnected');
+    ...(((ws as any).terminatedBy) && { terminatedBy: (ws as any).terminatedBy }),
+    event: 'websocket_disconnected'
+  }, `WebSocket disconnected: ${closeSource}`);
 }
 
 /**
@@ -152,12 +176,15 @@ export function executeHeartbeat(
       // Mark termination source for disconnect logging
       ws.terminatedBy = 'server_heartbeat';
       cleanup(ws);
+      
       // Close with structured reason before terminate
-      try {
-        ws.close(1000, SOFT_CLOSE_REASONS.HEARTBEAT_TIMEOUT);
-      } catch {
-        // If close fails, proceed with terminate
-      }
+      const params = getCloseParams(CloseSource.IDLE_TIMEOUT, 'HEARTBEAT_TIMEOUT');
+      wsClose(ws, {
+        ...params,
+        closeSource: CloseSource.IDLE_TIMEOUT,
+        clientId: ws.clientId
+      });
+      
       ws.terminate();
       terminatedCount++;
 
@@ -165,7 +192,8 @@ export function executeHeartbeat(
       if (ws.clientId) {
         logger.info({
           clientId: ws.clientId,
-          reason: 'heartbeat_timeout'
+          reason: 'heartbeat_timeout',
+          closeSource: CloseSource.IDLE_TIMEOUT
         }, 'WebSocket heartbeat: terminating unresponsive connection');
       }
       return;

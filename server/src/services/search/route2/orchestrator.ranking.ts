@@ -9,6 +9,7 @@ import type { Route2Context, IntentResult, RouteLLMMapping } from './types.js';
 import type { FinalSharedFilters } from './shared/shared-filters.types.js';
 import { getRankingLLMConfig } from '../config/ranking.config.js';
 import { selectRankingProfileDeterministic } from './ranking/ranking-profile-deterministic.js';
+import { PROFILE_WEIGHTS } from './ranking/ranking-profile-deterministic.js';
 import { rankResults, computeScoreBreakdown } from './ranking/results-ranker.js';
 import { buildRankingSignals, type RankingSignals, type RelaxationApplied, type OpenUnknownStats } from './ranking/ranking-signals.js';
 import { logger } from '../../../lib/logger/structured-logger.js';
@@ -90,7 +91,7 @@ export async function applyRankingIfEnabled(
     const signals = buildRankingSignals({
       query: ctx.query ?? '',
       profile: 'BALANCED',
-      weights: { rating: 0.25, reviews: 0.25, distance: 0.25, openBoost: 0.25 },
+      weights: { rating: 0.25, reviews: 0.25, distance: 0.25, openBoost: 0.25, cuisineMatch: 0 },
       hasUserLocation: !!ctx.userLocation,
       resultsBeforeFilters,
       resultsAfterFilters: finalResults.length,
@@ -101,7 +102,7 @@ export async function applyRankingIfEnabled(
     // Build order explanation (ranking disabled - Google order)
     const orderExplain = {
       profile: 'GOOGLE_ORDER',
-      weights: { rating: 0, reviews: 0, distance: 0, openBoost: 0 },
+      weights: { rating: 0, reviews: 0, distance: 0, openBoost: 0, cuisineMatch: 0 },
       distanceOrigin: 'NONE' as const,
       distanceRef: null,
       reordered: false
@@ -208,10 +209,47 @@ export async function applyRankingIfEnabled(
       }, '[RANKING] Distance scoring disabled (no anchor)');
     }
 
-    // Step 4: Deterministically score and sort results
+    // Step 4: Apply invariants ONCE (single choke point)
+    // Check if any results have cuisine scores
+    const hasCuisineScores = finalResults.some(r => r.cuisineScore !== undefined && r.cuisineScore !== null);
+    
+    // Import enforceRankingInvariants from results-ranker
+    const { enforceRankingInvariants } = await import('./ranking/results-ranker.js');
+    
+    // Apply invariants with logging enabled (ONLY logs once per request)
+    const finalWeights = enforceRankingInvariants(
+      effectiveWeights,
+      !!distanceDecision.refLatLng,
+      mapping?.cuisineKey ?? null,
+      finalFilters.openState !== null,
+      hasCuisineScores,
+      requestId,
+      true // shouldLog = true (ONLY TIME invariants are logged)
+    );
+
+    // Log finalWeights if different from baseWeights (after ALL adjustments)
+    const weightsChanged = JSON.stringify(selection.weights) !== JSON.stringify(finalWeights);
+    if (weightsChanged) {
+      logger.info({
+        requestId,
+        event: 'ranking_weights_final',
+        profile: selection.profile,
+        baseWeights: selection.weights,
+        finalWeights,
+        adjustments: {
+          distanceOriginNone: distanceDecision.origin === 'NONE',
+          invariantsApplied: true
+        }
+      }, '[RANKING] Final weights after all adjustments');
+    }
+
+    // Step 5: Deterministically score and sort results
     const rankedResults = rankResults(finalResults, {
-      weights: effectiveWeights,
-      userLocation: distanceDecision.refLatLng
+      weights: finalWeights, // Use FINAL weights (after invariants)
+      userLocation: distanceDecision.refLatLng,
+      cuisineKey: mapping?.cuisineKey ?? null,
+      openNowRequested: finalFilters.openState !== null,
+      requestId
     });
 
     // Log AFTER ordering - first 10 placeIds after ranking
@@ -232,15 +270,38 @@ export async function applyRankingIfEnabled(
     }, '[RANKING] Output order (ranked)');
 
     // Log score breakdown for top 10 results
-    // Use the resolved distance origin coordinates (not ctx.userLocation)
+    // Use finalWeights (after invariants) - already adjusted
     const scoreBreakdowns = rankedResults.slice(0, 10).map(r =>
-      computeScoreBreakdown(r, effectiveWeights, distanceDecision.refLatLng)
+      computeScoreBreakdown(
+        r,
+        finalWeights, // Use FINAL weights (same as scoring)
+        distanceDecision.refLatLng,
+        mapping?.cuisineKey ?? null,
+        finalFilters.openState !== null,
+        requestId
+      )
     );
+
+    // Runtime check: Verify profile matches the weights used for scoring
+    const actualProfileForWeights = Object.keys(PROFILE_WEIGHTS).find(
+      key => PROFILE_WEIGHTS[key as keyof typeof PROFILE_WEIGHTS] === selection.weights
+    );
+    
+    if (actualProfileForWeights && actualProfileForWeights !== selection.profile) {
+      logger.warn({
+        requestId,
+        event: 'ranking_profile_mismatch',
+        selectedProfile: selection.profile,
+        actualProfileForWeights,
+        weights: finalWeights
+      }, `[RANKING] Profile mismatch detected: selected=${selection.profile} but weights match ${actualProfileForWeights}`);
+    }
 
     logger.info({
       requestId,
       event: 'ranking_score_breakdown',
       profile: selection.profile,
+      weights: finalWeights, // Use FINAL weights (after invariants)
       top10: scoreBreakdowns
     }, '[RANKING] Score breakdown for top 10 results');
 
@@ -249,7 +310,7 @@ export async function applyRankingIfEnabled(
       requestId,
       event: 'post_rank_applied',
       profile: selection.profile,
-      weights: selection.weights,
+      weights: finalWeights, // Use FINAL weights (after invariants)
       resultCount: rankedResults.length,
       hadUserLocation: !!ctx.userLocation,
       mode: 'LLM_SCORE',
@@ -261,7 +322,7 @@ export async function applyRankingIfEnabled(
     const signals = buildRankingSignals({
       query: ctx.query ?? '',
       profile: selection.profile,
-      weights: selection.weights,
+      weights: finalWeights, // Use FINAL weights (after invariants)
       hasUserLocation: !!ctx.userLocation,
       resultsBeforeFilters,
       resultsAfterFilters: rankedResults.length,
@@ -272,7 +333,7 @@ export async function applyRankingIfEnabled(
     // Build order explanation for frontend transparency
     const orderExplain = {
       profile: selection.profile,
-      weights: effectiveWeights,
+      weights: finalWeights, // Use FINAL weights (after invariants)
       distanceOrigin: distanceDecision.origin,
       distanceRef: distanceDecision.refLatLng,
       reordered: true
@@ -294,7 +355,7 @@ export async function applyRankingIfEnabled(
     const signals = buildRankingSignals({
       query: ctx.query ?? '',
       profile: 'BALANCED',
-      weights: { rating: 0.25, reviews: 0.25, distance: 0.25, openBoost: 0.25 },
+      weights: { rating: 0.25, reviews: 0.25, distance: 0.25, openBoost: 0.25, cuisineMatch: 0 },
       hasUserLocation: !!ctx.userLocation,
       resultsBeforeFilters,
       resultsAfterFilters: finalResults.length,
@@ -305,7 +366,7 @@ export async function applyRankingIfEnabled(
     // Build order explanation (ranking failed - Google order)
     const orderExplain = {
       profile: 'GOOGLE_ORDER',
-      weights: { rating: 0, reviews: 0, distance: 0, openBoost: 0 },
+      weights: { rating: 0, reviews: 0, distance: 0, openBoost: 0, cuisineMatch: 0 },
       distanceOrigin: 'NONE' as const,
       distanceRef: null,
       reordered: false

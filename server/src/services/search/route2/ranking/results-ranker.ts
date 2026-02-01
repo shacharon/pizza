@@ -6,6 +6,7 @@
  */
 
 import type { RankingWeights } from './ranking-profile.schema.js';
+import { logger } from '../../../../lib/logger/structured-logger.js';
 
 /**
  * User Location for Distance Calculation
@@ -21,6 +22,9 @@ export interface UserLocation {
 export interface RankingOptions {
   weights: RankingWeights;
   userLocation?: UserLocation | null;
+  cuisineKey?: string | null;
+  openNowRequested?: boolean | null;
+  requestId?: string;
 }
 
 /**
@@ -47,6 +51,77 @@ interface ScoredResult extends RankableResult {
 }
 
 /**
+ * Enforce ranking invariants: missing intent => no scoring component
+ * 
+ * Policy B: If a signal is not present, its weight must be 0.
+ * 
+ * @param weights - Original weights from profile selection
+ * @param hasUserLocation - Whether user location is available
+ * @param cuisineKey - Cuisine intent (null if no cuisine filter)
+ * @param openNowRequested - Whether open-now filter is active
+ * @param hasCuisineScores - Whether any results have cuisineScore
+ * @param requestId - Request ID for logging
+ * @param shouldLog - Whether to log invariant application (default: false, controlled by caller)
+ * @returns Adjusted weights with invariants enforced
+ */
+export function enforceRankingInvariants(
+  weights: RankingWeights,
+  hasUserLocation: boolean,
+  cuisineKey: string | null | undefined,
+  openNowRequested: boolean | null | undefined,
+  hasCuisineScores: boolean,
+  requestId?: string,
+  shouldLog?: boolean
+): RankingWeights {
+  const adjusted = { ...weights };
+  const appliedRules: Array<{ rule: string; component: string; oldWeight: number }> = [];
+
+  // Invariant 1: No cuisineKey OR no cuisineScores => cuisineMatch weight = 0
+  if ((!cuisineKey || !hasCuisineScores) && adjusted.cuisineMatch && adjusted.cuisineMatch > 0) {
+    const reason = !cuisineKey ? 'NO_CUISINE_INTENT' : 'NO_CUISINE_SCORES';
+    appliedRules.push({
+      rule: reason,
+      component: 'cuisineMatch',
+      oldWeight: adjusted.cuisineMatch
+    });
+    adjusted.cuisineMatch = 0;
+  }
+
+  // Invariant 2: No user location => distance weight = 0
+  if (!hasUserLocation && adjusted.distance > 0) {
+    appliedRules.push({
+      rule: 'NO_USER_LOCATION',
+      component: 'distance',
+      oldWeight: adjusted.distance
+    });
+    adjusted.distance = 0;
+  }
+
+  // Invariant 3: No openNow request => openBoost weight = 0
+  if (!openNowRequested && adjusted.openBoost > 0) {
+    appliedRules.push({
+      rule: 'NO_OPEN_NOW_REQUESTED',
+      component: 'openBoost',
+      oldWeight: adjusted.openBoost
+    });
+    adjusted.openBoost = 0;
+  }
+
+  // Log when invariants are applied (ONLY if shouldLog is true)
+  if (appliedRules.length > 0 && requestId && shouldLog) {
+    logger.info({
+      requestId,
+      event: 'ranking_invariant_applied',
+      rules: appliedRules,
+      baseWeights: weights,
+      finalWeights: adjusted
+    }, `[RANKING] Invariants applied: ${appliedRules.map(r => `${r.rule} (${r.component})`).join(', ')}`);
+  }
+
+  return adjusted;
+}
+
+/**
  * Rank restaurant results deterministically
  * 
  * @param results - Array of restaurant results from Google
@@ -57,7 +132,11 @@ export function rankResults(
   results: RankableResult[],
   options: RankingOptions
 ): RankableResult[] {
-  const { weights, userLocation } = options;
+  const { weights, userLocation, cuisineKey, openNowRequested, requestId } = options;
+
+  // CRITICAL: Invariants are now enforced by CALLER (orchestrator.ranking.ts)
+  // This function receives ALREADY-ADJUSTED weights (effectiveWeights)
+  // NO invariant enforcement here to avoid duplicate logging
 
   // Capture original Google index for stable tie-breaking
   const scoredResults: ScoredResult[] = results.map((result, index) => ({
@@ -122,13 +201,22 @@ export interface ScoreBreakdown {
  * @param result - Restaurant result
  * @param weights - Ranking weights
  * @param userLocation - User location for distance calculation
+ * @param cuisineKey - Cuisine intent (for invariant enforcement)
+ * @param openNowRequested - Whether open-now filter is active (for invariant enforcement)
  * @returns Score breakdown with all components
  */
 export function computeScoreBreakdown(
   result: RankableResult,
   weights: RankingWeights,
-  userLocation?: UserLocation | null
+  userLocation?: UserLocation | null,
+  cuisineKey?: string | null,
+  openNowRequested?: boolean | null,
+  requestId?: string
 ): ScoreBreakdown {
+  // CRITICAL: Weights are now ALREADY-ADJUSTED by caller (orchestrator.ranking.ts)
+  // NO invariant enforcement here to avoid duplicate logging
+  const effectiveWeights = weights;
+
   // Rating normalized (0-1)
   const ratingNorm = clamp((result.rating ?? 0) / 5, 0, 1);
 
@@ -158,14 +246,17 @@ export function computeScoreBreakdown(
   }
 
   // Cuisine match normalized (0-1, already normalized from enforcer)
-  const cuisineNorm = result.cuisineScore ?? 0.5; // Default 0.5 if no score
+  // Check if result has cuisine score
+  const hasCuisineScore = result.cuisineScore !== undefined && result.cuisineScore !== null;
+  // If no cuisineKey OR no cuisineScore => force cuisineNorm to 0 (invariant already enforced by caller)
+  const cuisineNorm = (cuisineKey && hasCuisineScore) ? (result.cuisineScore ?? 0) : 0;
 
   // Compute component scores (weighted)
-  const ratingScore = weights.rating * ratingNorm;
-  const reviewsScore = weights.reviews * reviewsNorm;
-  const distanceScore = weights.distance * distanceNorm;
-  const openBoostScore = weights.openBoost * openNorm;
-  const cuisineMatchScore = (weights.cuisineMatch || 0) * cuisineNorm;
+  const ratingScore = effectiveWeights.rating * ratingNorm;
+  const reviewsScore = effectiveWeights.reviews * reviewsNorm;
+  const distanceScore = effectiveWeights.distance * distanceNorm;
+  const openBoostScore = effectiveWeights.openBoost * openNorm;
+  const cuisineMatchScore = (effectiveWeights.cuisineMatch || 0) * cuisineNorm;
 
   // Total score
   const totalScore = ratingScore + reviewsScore + distanceScore + openBoostScore + cuisineMatchScore;
@@ -177,7 +268,7 @@ export function computeScoreBreakdown(
     distanceMeters,
     openNow: result.openNow ?? null,
     cuisineScore: result.cuisineScore ?? null,
-    weights,
+    weights: effectiveWeights,
     components: {
       ratingScore: Math.round(ratingScore * 1000) / 1000, // 3 decimals
       reviewsScore: Math.round(reviewsScore * 1000) / 1000,

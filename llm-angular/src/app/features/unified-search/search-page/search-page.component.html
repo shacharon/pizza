@@ -1,52 +1,54 @@
 <div class="search-page" dir="ltr">
   <header class="search-header">
-    <div class="hero-section">
-      <h1 class="page-title">{{ t(uiLanguage(), 'hero.title') }}</h1>
-      <p class="page-subtitle">{{ t(uiLanguage(), 'hero.subtitle') }}</p>
+    <div class="search-header-inner">
+      <div class="hero-section">
+        <h1 class="page-title">{{ t(uiLanguage(), 'hero.title') }}</h1>
+        <p class="page-subtitle">{{ t(uiLanguage(), 'hero.subtitle') }}</p>
 
-      <!-- Location Status (automatic, inline) -->
-      <div class="location-status">
-        @if (locationState() === 'ON') {
-        <span class="location-text">{{ t(uiLanguage(), 'location.using') }}</span>
-        } @else if (locationState() === 'REQUESTING') {
-        <span class="location-text">{{ t(uiLanguage(), 'location.getting') }}</span>
-        } @else if (locationState() === 'DENIED') {
-        <span class="location-text location-error">{{ t(uiLanguage(), 'location.denied') }}</span>
-        } @else if (locationState() === 'ERROR') {
-        <span class="location-text location-error">{{ t(uiLanguage(), 'location.unavailable') }}</span>
-        } @else {
-        <button class="location-link" (click)="onLocationToggle()">{{ t(uiLanguage(), 'location.enable') }}</button>
+        <!-- Location Status (automatic, inline) -->
+        <div class="location-status">
+          @if (locationState() === 'ON') {
+          <span class="location-text">{{ t(uiLanguage(), 'location.using') }}</span>
+          } @else if (locationState() === 'REQUESTING') {
+          <span class="location-text">{{ t(uiLanguage(), 'location.getting') }}</span>
+          } @else if (locationState() === 'DENIED') {
+          <span class="location-text location-error">{{ t(uiLanguage(), 'location.denied') }}</span>
+          } @else if (locationState() === 'ERROR') {
+          <span class="location-text location-error">{{ t(uiLanguage(), 'location.unavailable') }}</span>
+          } @else {
+          <button class="location-link" (click)="onLocationToggle()">{{ t(uiLanguage(), 'location.enable') }}</button>
+          }
+        </div>
+      </div>
+
+      <!-- Search Card: Input + Assistant Line + Contextual Assistant -->
+      <div class="search-card">
+        <app-search-bar [value]="facade.currentQuery()" [loading]="facade.loading()"
+          [placeholder]="t(uiLanguage(), 'search.placeholder')" (search)="onSearch($event)" (inputChange)="onInputChange($event)"
+          (clear)="onClear()" />
+
+        <!-- Assistant Line (always shown - includes WS status) -->
+        <div class="search-meta-row">
+          <app-assistant-line />
+        </div>
+
+        <!-- CANONICAL ROUTING: Contextual Assistant (inside search-card when bound to requestId) -->
+        <!-- Shows ONLY card messages: SUMMARY, CLARIFY, GATE_FAIL -->
+        @if (showContextualAssistant()) {
+        <app-assistant-summary [cardMessages]="contextualCardMessages()" [messages]="contextualMessages()"
+          [text]="asyncAssistantMessage()" [status]="facade.assistantState()" [error]="facade.assistantError()"
+          [locale]="uiLanguage()" />
         }
       </div>
-    </div>
 
-    <!-- Search Card: Input + Assistant Line + Contextual Assistant -->
-    <div class="search-card">
-      <app-search-bar [value]="facade.currentQuery()" [loading]="facade.loading()"
-        [placeholder]="t(uiLanguage(), 'search.placeholder')" (search)="onSearch($event)" (inputChange)="onInputChange($event)"
-        (clear)="onClear()" />
-
-      <!-- Assistant Line (always shown - includes WS status) -->
-      <div class="search-meta-row">
-        <app-assistant-line />
-      </div>
-
-      <!-- CANONICAL ROUTING: Contextual Assistant (inside search-card when bound to requestId) -->
+      <!-- CANONICAL ROUTING: Global/System Assistant (outside search-card, no requestId) -->
       <!-- Shows ONLY card messages: SUMMARY, CLARIFY, GATE_FAIL -->
-      @if (showContextualAssistant()) {
-      <app-assistant-summary [cardMessages]="contextualCardMessages()" [messages]="contextualMessages()"
+      @if (showGlobalAssistant()) {
+      <app-assistant-summary [cardMessages]="globalCardMessages()" [messages]="globalMessages()"
         [text]="asyncAssistantMessage()" [status]="facade.assistantState()" [error]="facade.assistantError()"
         [locale]="uiLanguage()" />
       }
     </div>
-
-    <!-- CANONICAL ROUTING: Global/System Assistant (outside search-card, no requestId) -->
-    <!-- Shows ONLY card messages: SUMMARY, CLARIFY, GATE_FAIL -->
-    @if (showGlobalAssistant()) {
-    <app-assistant-summary [cardMessages]="globalCardMessages()" [messages]="globalMessages()"
-      [text]="asyncAssistantMessage()" [status]="facade.assistantState()" [error]="facade.assistantError()"
-      [locale]="uiLanguage()" />
-    }
   </header>
 
   <main class="search-content">

@@ -17,6 +17,8 @@ export const IntentLLMSchema = z.object({
   regionCandidate: z.string().regex(/^[A-Z]{2}$/), // ISO-3166-1 alpha-2 CANDIDATE (will be validated by filters_resolved)
   regionConfidence: z.number().min(0).max(1),
   regionReason: z.string().min(1),
+  // NEW: Region inferred from query text (LLM-first, not device-based)
+  regionCode: z.string().regex(/^[A-Z]{2}$/).nullable(), // ISO-3166-1 alpha-2 inferred from query semantics (e.g., "Big Ben" → "GB")
   cityText: z.string().min(1).nullable().optional(), // City name for location bias (e.g., "גדרה", "אשקלון") - can be null or undefined
   assistantLanguage: z.enum(['he', 'en', 'ru', 'ar', 'fr', 'es']), // REQUIRED: For CLARIFY paths
 

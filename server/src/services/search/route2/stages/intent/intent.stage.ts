@@ -50,6 +50,7 @@ function createFallbackResult(query: string, isTimeout: boolean): IntentResult {
     regionCandidate: 'IL',
     regionConfidence: 0.1,
     regionReason: 'fallback_default',
+    regionCode: null, // No query-inferred region in fallback
     clarify: null, // Not clarifying in fallback
     // NEW: Default hybrid ordering flags for fallback
     distanceIntent: false,
@@ -206,6 +207,7 @@ export async function executeIntentStage(
       regionCandidate: validatedRegionCandidate,
       regionConfidence: llmResult.regionConfidence,
       regionReason: llmResult.regionReason,
+      regionCode: llmResult.regionCode, // LLM-inferred region from query text
       ...(cityText && { cityText }),
       clarify: llmResult.clarify, // null or object
       // Hybrid ordering intent flags

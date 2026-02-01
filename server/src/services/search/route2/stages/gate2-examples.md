@@ -5,6 +5,7 @@
 **Input Query:** `"طعام"`
 
 **Expected Output:**
+
 ```json
 {
   "foodSignal": "YES",
@@ -16,6 +17,7 @@
 ```
 
 **Explanation:**
+
 - `foodSignal = YES`: "طعام" means "food" in Arabic
 - `assistantLanguage = ar`: Arabic script detected
 - `stop = null`: Food query, no blocking needed
@@ -27,6 +29,7 @@
 **Input Query:** `"מסעדות מסביבי"`
 
 **Expected Output:**
+
 ```json
 {
   "foodSignal": "YES",
@@ -38,6 +41,7 @@
 ```
 
 **Explanation:**
+
 - `foodSignal = YES`: "restaurants near me" in Hebrew
 - `assistantLanguage = he`: Hebrew script detected
 - `stop = null`: Food query, no blocking needed
@@ -49,6 +53,7 @@
 **Input Query:** `"מה יש"`
 
 **Expected Output:**
+
 ```json
 {
   "foodSignal": "UNCERTAIN",
@@ -67,6 +72,7 @@
 ```
 
 **Explanation:**
+
 - `foodSignal = UNCERTAIN`: "what is there" - too vague
 - `assistantLanguage = he`: Hebrew script detected
 - `stop` object: Blocks search, asks for clarification in Hebrew
@@ -80,6 +86,7 @@
 **Input Query:** `"ماذا هناك"`
 
 **Expected Output:**
+
 ```json
 {
   "foodSignal": "UNCERTAIN",
@@ -98,6 +105,7 @@
 ```
 
 **Explanation:**
+
 - `foodSignal = UNCERTAIN`: "what is there" in Arabic - too vague
 - `assistantLanguage = ar`: Arabic script detected
 - Message in Arabic: "I'm not sure what you're looking for."
@@ -110,6 +118,7 @@
 **Input Query:** `"weather today"`
 
 **Expected Output:**
+
 ```json
 {
   "foodSignal": "NO",
@@ -128,6 +137,7 @@
 ```
 
 **Explanation:**
+
 - `foodSignal = NO`: Weather is not food-related
 - `assistantLanguage = en`: English words detected
 - `stop` object: Blocks search, explains this is food search only
@@ -141,6 +151,7 @@
 **Input Query:** `"أخبار"`
 
 **Expected Output:**
+
 ```json
 {
   "foodSignal": "NO",
@@ -159,6 +170,7 @@
 ```
 
 **Explanation:**
+
 - `foodSignal = NO`: "news" in Arabic - not food-related
 - `assistantLanguage = ar`: Arabic script detected
 - Message in Arabic: "This doesn't look like a food search."
@@ -171,6 +183,7 @@
 **Input Query:** `"что есть"`
 
 **Expected Output:**
+
 ```json
 {
   "foodSignal": "UNCERTAIN",
@@ -189,6 +202,7 @@
 ```
 
 **Explanation:**
+
 - `foodSignal = UNCERTAIN`: "what is there" in Russian - ambiguous
 - `assistantLanguage = ru`: Cyrillic script detected
 - Message in Russian: "I'm not sure what you're looking for."
@@ -201,6 +215,7 @@
 **Input Query:** `"pizza בתל אביב"`
 
 **Expected Output:**
+
 ```json
 {
   "foodSignal": "YES",
@@ -212,6 +227,7 @@
 ```
 
 **Explanation:**
+
 - `foodSignal = YES`: Pizza is food, location is in Hebrew
 - `assistantLanguage = he`: Hebrew script dominates (despite "pizza" being Latin)
 - `assistantLanguageConfidence = 0.7`: Lower confidence due to mixed script
@@ -222,14 +238,17 @@
 ## Key Validation Rules
 
 1. **Language Consistency:**
+
    - `message` and `question` MUST be in the detected `assistantLanguage`
    - NEVER output English unless `assistantLanguage = "en"`
 
 2. **Text Length:**
+
    - `message`: ≤ 2 sentences
    - `question`: Exactly 1 question
 
 3. **Stop Field Logic:**
+
    - `foodSignal = YES` → `stop = null` (always)
    - `foodSignal = UNCERTAIN` → `stop.type = "CLARIFY"`, `reason = "UNCERTAIN_DOMAIN"`, `suggestedAction = "ASK_FOOD"`
    - `foodSignal = NO` → `stop.type = "GATE_FAIL"`, `reason = "NO_FOOD"`, `suggestedAction = "ASK_DOMAIN"`

@@ -27,34 +27,38 @@ export interface Route2Context {
   startTime: number;
   debug?: { stopAfter?: 'gate2' | 'intent' | 'route_llm' | 'google' | 'cuisine' | 'post_filters' | 'ranking' | 'response' };
 
-  jobCreatedAt?: number; // Timestamp when search job was created (for queueDelayMs)
-  sessionService?: any; // Optional session service for region caching
+  jobCreatedAt?: number;
+  sessionService?: any;
   llmProvider: LLMProvider;
-  query?: string; // Original user query (for assistant context on failures)
+  query?: string;
   userLocation?: {
     lat: number;
     lng: number;
   } | null;
   
-  // LANGUAGE ENFORCEMENT: Single source of truth for all language decisions
-  // Set once by Gate2, flows through entire pipeline
+  /**
+   * LANGUAGE ENFORCEMENT: Single source of truth for all language decisions
+   * Set once by Gate2 (or Intent if Gate2 skips), flows through entire pipeline
+   * CRITICAL: langCtx.assistantLanguage MUST be present before any assistant WS publish
+   */
   langCtx?: LangCtx;
   
-  // DEPRECATED: Use langCtx.uiLanguage instead
-  // UI language (from client, for assistant messages ONLY)
-  // Backend owns searchLanguage policy; uiLanguage is for display only
+  /**
+   * @deprecated Use langCtx.uiLanguage instead
+   * UI language (from client, for display only)
+   */
   uiLanguage?: 'he' | 'en';
   
-  // Region tracking: user (device) vs query (LLM-detected)
   userRegionCode?: 'IL' | 'OTHER';
   queryRegionCode?: 'IL' | 'OTHER';
   regionCodeFinal?: 'IL' | 'OTHER';
-  // Shared filters: Pre-Google (base) and Final (tightened)
   sharedFilters?: {
     preGoogle?: PreGoogleBaseFilters;
     final?: FinalSharedFilters;
   };
-  // Stage timing tracking for duration decomposition
+  google?: {
+    servedFrom?: 'cache' | 'google_api';
+  };
   timings?: {
     gate2Ms?: number;
     intentMs?: number;
@@ -134,6 +138,7 @@ export interface IntentResult {
   regionCandidate: string | null; // ISO-3166-1 alpha-2 candidate (e.g., "IL", "GZ", "FR") or null if invalid - NOT final, must be validated by filters_resolved
   regionConfidence: number;
   regionReason: string;
+  regionCode: string | null; // NEW: Region inferred from query text (LLM-first, e.g., "Big Ben" → "GB") - ISO-3166-1 alpha-2 or null
   cityText?: string; // Optional city name for location bias (e.g., "גדרה", "אשקלון")
 
   // ===== NEW: Hybrid Ordering Intent Flags (Language-Agnostic) =====
@@ -208,4 +213,5 @@ export interface GoogleMapsResult {
   results: any[];
   providerMethod: 'textSearch' | 'nearbySearch' | 'landmarkPlan';
   durationMs: number;
+  servedFrom?: 'cache' | 'google_api'; // Added for cache guard
 }

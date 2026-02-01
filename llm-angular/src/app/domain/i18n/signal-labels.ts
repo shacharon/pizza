@@ -13,7 +13,7 @@
 
 import { CardSignalType } from '../types/search.types';
 
-export type SupportedLanguage = 'he' | 'en';
+export type SupportedLanguage = 'he' | 'en' | 'fr' | 'es' | 'ru' | 'ar' | 'it' | 'ja';
 
 /**
  * Signal label map by language
@@ -23,46 +23,94 @@ export const SIGNAL_LABELS: Record<CardSignalType, Record<SupportedLanguage, str
   // Priority 1: Open/Closed
   OPEN_NOW: {
     he: 'פתוח עכשיו',
-    en: 'Open now'
+    en: 'Open now',
+    fr: 'Ouvert maintenant',
+    es: 'Abierto ahora',
+    ru: 'Открыто сейчас',
+    ar: 'مفتوح الآن',
+    it: 'Aperto ora',
+    ja: '営業中'
   },
   
   CLOSED_NOW: {
     he: 'סגור עכשיו',
-    en: 'Closed now'
+    en: 'Closed now',
+    fr: 'Fermé',
+    es: 'Cerrado',
+    ru: 'Закрыто',
+    ar: 'مغلق',
+    it: 'Chiuso',
+    ja: '閉店'
   },
   
   // Priority 2: Price
   PRICE_CHEAP: {
     he: 'זול',
-    en: 'Cheap'
+    en: 'Cheap',
+    fr: 'Bon marché',
+    es: 'Económico',
+    ru: 'Недорого',
+    ar: 'رخيص',
+    it: 'Economico',
+    ja: '安い'
   },
   
   PRICE_MID: {
     he: 'בינוני',
-    en: 'Mid-price'
+    en: 'Mid-price',
+    fr: 'Prix moyen',
+    es: 'Precio medio',
+    ru: 'Средняя цена',
+    ar: 'سعر متوسط',
+    it: 'Prezzo medio',
+    ja: '中価格'
   },
   
   PRICE_EXPENSIVE: {
     he: 'יקר',
-    en: 'Expensive'
+    en: 'Expensive',
+    fr: 'Cher',
+    es: 'Caro',
+    ru: 'Дорого',
+    ar: 'غالي',
+    it: 'Costoso',
+    ja: '高い'
   },
   
   // Priority 3: Distance
   NEARBY: {
     he: 'קרוב',
-    en: 'Nearby'
+    en: 'Nearby',
+    fr: 'Proche',
+    es: 'Cercano',
+    ru: 'Рядом',
+    ar: 'قريب',
+    it: 'Vicino',
+    ja: '近い'
   },
   
   // Priority 4: Intent match
   INTENT_MATCH: {
     he: 'מתאים',
-    en: 'Good match'
+    en: 'Good match',
+    fr: 'Bonne option',
+    es: 'Buena opción',
+    ru: 'Подходит',
+    ar: 'تطابق جيد',
+    it: 'Buona opzione',
+    ja: '最適'
   },
   
   // Priority 5: Popularity
   POPULAR: {
     he: 'פופולרי',
-    en: 'Popular'
+    en: 'Popular',
+    fr: 'Populaire',
+    es: 'Popular',
+    ru: 'Популярно',
+    ar: 'شائع',
+    it: 'Popolare',
+    ja: '人気'
   }
 };
 
@@ -74,96 +122,204 @@ export const INTENT_LABELS: Record<string, Record<SupportedLanguage, string>> = 
   // Meal times
   breakfast: {
     he: 'טוב לארוחת בוקר',
-    en: 'Good for breakfast'
+    en: 'Good for breakfast',
+    fr: 'Bon pour petit-déjeuner',
+    es: 'Bueno para desayuno',
+    ru: 'Подходит для завтрака',
+    ar: 'مناسب للإفطار',
+    it: 'Buono per colazione',
+    ja: '朝食に最適'
   },
   
   lunch: {
     he: 'טוב לארוחת צהריים',
-    en: 'Good for lunch'
+    en: 'Good for lunch',
+    fr: 'Bon pour déjeuner',
+    es: 'Bueno para almuerzo',
+    ru: 'Подходит для обеда',
+    ar: 'مناسب للغداء',
+    it: 'Buono per pranzo',
+    ja: '昼食に最適'
   },
   
   dinner: {
     he: 'טוב לארוחת ערב',
-    en: 'Good for dinner'
+    en: 'Good for dinner',
+    fr: 'Bon pour dîner',
+    es: 'Bueno para cena',
+    ru: 'Подходит для ужина',
+    ar: 'مناسب للعشاء',
+    it: 'Buono per cena',
+    ja: '夕食に最適'
   },
   
   brunch: {
     he: 'טוב לברנץ\'',
-    en: 'Good for brunch'
+    en: 'Good for brunch',
+    fr: 'Bon pour brunch',
+    es: 'Bueno para brunch',
+    ru: 'Подходит для бранча',
+    ar: 'مناسب للبرانش',
+    it: 'Buono per brunch',
+    ja: 'ブランチに最適'
   },
   
   // Occasions
   date: {
     he: 'רומנטי',
-    en: 'Romantic'
+    en: 'Romantic',
+    fr: 'Romantique',
+    es: 'Romántico',
+    ru: 'Романтично',
+    ar: 'رومانسي',
+    it: 'Romantico',
+    ja: 'ロマンチック'
   },
   
   family: {
     he: 'משפחתי',
-    en: 'Family-friendly'
+    en: 'Family-friendly',
+    fr: 'Familial',
+    es: 'Familiar',
+    ru: 'Семейный',
+    ar: 'عائلي',
+    it: 'Per famiglie',
+    ja: '家族向け'
   },
   
   group: {
     he: 'טוב לקבוצות',
-    en: 'Good for groups'
+    en: 'Good for groups',
+    fr: 'Bon pour groupes',
+    es: 'Bueno para grupos',
+    ru: 'Для групп',
+    ar: 'مناسب للمجموعات',
+    it: 'Buono per gruppi',
+    ja: 'グループ向け'
   },
   
   business: {
     he: 'עסקי',
-    en: 'Business dining'
+    en: 'Business dining',
+    fr: 'Affaires',
+    es: 'De negocios',
+    ru: 'Деловой',
+    ar: 'عمل',
+    it: 'Business',
+    ja: 'ビジネス'
   },
   
   // Atmosphere
   casual: {
     he: 'נינוח',
-    en: 'Casual'
+    en: 'Casual',
+    fr: 'Décontracté',
+    es: 'Casual',
+    ru: 'Повседневный',
+    ar: 'غير رسمي',
+    it: 'Informale',
+    ja: 'カジュアル'
   },
   
   fancy: {
     he: 'מפואר',
-    en: 'Fine dining'
+    en: 'Fine dining',
+    fr: 'Gastronomique',
+    es: 'Elegante',
+    ru: 'Изысканный',
+    ar: 'راقي',
+    it: 'Raffinato',
+    ja: '高級'
   },
   
   cozy: {
     he: 'אינטימי',
-    en: 'Cozy'
+    en: 'Cozy',
+    fr: 'Confortable',
+    es: 'Acogedor',
+    ru: 'Уютный',
+    ar: 'مريح',
+    it: 'Accogliente',
+    ja: '居心地の良い'
   },
   
   trendy: {
     he: 'טרנדי',
-    en: 'Trendy'
+    en: 'Trendy',
+    fr: 'Branché',
+    es: 'De moda',
+    ru: 'Модный',
+    ar: 'عصري',
+    it: 'Alla moda',
+    ja: 'トレンディ'
   },
   
   // Service
   takeout: {
     he: 'טייק אווי',
-    en: 'Takeout'
+    en: 'Takeout',
+    fr: 'À emporter',
+    es: 'Para llevar',
+    ru: 'Навынос',
+    ar: 'سفري',
+    it: 'Da asporto',
+    ja: 'テイクアウト'
   },
   
   delivery: {
     he: 'משלוחים',
-    en: 'Delivery'
+    en: 'Delivery',
+    fr: 'Livraison',
+    es: 'A domicilio',
+    ru: 'Доставка',
+    ar: 'توصيل',
+    it: 'Consegna',
+    ja: '配達'
   },
   
   outdoor: {
     he: 'ישיבה בחוץ',
-    en: 'Outdoor seating'
+    en: 'Outdoor seating',
+    fr: 'Terrasse',
+    es: 'Terraza',
+    ru: 'Открытая веранда',
+    ar: 'جلسات خارجية',
+    it: 'Posti all\'aperto',
+    ja: '屋外席'
   },
   
   // Quality
   highly_rated: {
     he: 'מדורג גבוה',
-    en: 'Highly rated'
+    en: 'Highly rated',
+    fr: 'Très bien noté',
+    es: 'Muy valorado',
+    ru: 'Высокий рейтинг',
+    ar: 'تقييم عالي',
+    it: 'Altamente valutato',
+    ja: '高評価'
   },
   
   popular: {
     he: 'פופולרי',
-    en: 'Popular'
+    en: 'Popular',
+    fr: 'Populaire',
+    es: 'Popular',
+    ru: 'Популярный',
+    ar: 'مشهور',
+    it: 'Popolare',
+    ja: '人気'
   },
   
   hidden_gem: {
     he: 'אבן חן מוסתרת',
-    en: 'Hidden gem'
+    en: 'Hidden gem',
+    fr: 'Perle cachée',
+    es: 'Joya escondida',
+    ru: 'Скрытая жемчужина',
+    ar: 'جوهرة مخفية',
+    it: 'Gemma nascosta',
+    ja: '隠れた名店'
   }
 };
 
@@ -174,27 +330,57 @@ export const INTENT_LABELS: Record<string, Record<SupportedLanguage, string>> = 
 export const DISTANCE_LABELS: Record<string, Record<SupportedLanguage, string>> = {
   very_close: {
     he: 'קרוב מאוד',
-    en: 'Very close'
+    en: 'Very close',
+    fr: 'Très proche',
+    es: 'Muy cerca',
+    ru: 'Очень близко',
+    ar: 'قريب جداً',
+    it: 'Molto vicino',
+    ja: '非常に近い'
   },
   
   nearby: {
     he: 'קרוב',
-    en: 'Nearby'
+    en: 'Nearby',
+    fr: 'Proche',
+    es: 'Cerca',
+    ru: 'Рядом',
+    ar: 'قريب',
+    it: 'Vicino',
+    ja: '近く'
   },
   
   walkable: {
     he: 'הליכה קצרה',
-    en: 'Short walk'
+    en: 'Short walk',
+    fr: 'Courte marche',
+    es: 'Corta caminata',
+    ru: 'Короткая прогулка',
+    ar: 'مسافة قصيرة سيراً',
+    it: 'Breve passeggiata',
+    ja: '徒歩圏内'
   },
   
   moderate: {
     he: 'מרחק בינוני',
-    en: 'Moderate distance'
+    en: 'Moderate distance',
+    fr: 'Distance modérée',
+    es: 'Distancia moderada',
+    ru: 'Среднее расстояние',
+    ar: 'مسافة متوسطة',
+    it: 'Distanza moderata',
+    ja: '中距離'
   },
   
   far: {
     he: 'רחוק',
-    en: 'Far'
+    en: 'Far',
+    fr: 'Loin',
+    es: 'Lejos',
+    ru: 'Далеко',
+    ar: 'بعيد',
+    it: 'Lontano',
+    ja: '遠い'
   }
 };
 

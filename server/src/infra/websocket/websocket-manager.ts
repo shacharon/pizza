@@ -12,7 +12,7 @@ import type { WSClientMessage, WSServerMessage, WSChannel } from './websocket-pr
 import { isWSClientMessage } from './websocket-protocol.js';
 import type Redis from 'ioredis';
 import { RedisService } from '../redis/redis.service.js';
-import { SOFT_CLOSE_REASONS } from './ws-close-reasons.js';
+import { wsClose, CloseSource, getCloseParams, HARD_CLOSE_REASONS } from './ws-close-reasons.js';
 
 // Configuration and auth
 import { resolveWebSocketConfig, validateRedisForAuth } from './websocket.config.js';
@@ -181,7 +181,12 @@ export class WebSocketManager {
       if (validation.reason === 'legacy_rejected') {
         const rejection = this.messageValidator.handleLegacyRejection(ws, clientId);
         if (rejection.shouldClose) {
-          ws.close(rejection.closeCode, rejection.closeReason);
+          wsClose(ws, {
+            code: rejection.closeCode,
+            reason: rejection.closeReason,
+            closeSource: CloseSource.POLICY,
+            clientId
+          });
         }
         return;
       }
@@ -244,7 +249,14 @@ export class WebSocketManager {
 
     // Handle close if requested
     if (result.shouldClose && result.closeCode && result.closeReason) {
-      ws.close(result.closeCode, result.closeReason);
+      // Determine closeSource based on code
+      const closeSource = result.closeCode === 1008 ? CloseSource.POLICY : CloseSource.ERROR;
+      wsClose(ws, {
+        code: result.closeCode,
+        reason: result.closeReason,
+        closeSource,
+        clientId: (ws as any).clientId
+      });
     }
   }
 
@@ -370,13 +382,13 @@ export class WebSocketManager {
     const assistantMessage: WSServerMessage = {
       type: 'assistant',
       requestId,
+      assistantLanguage: uiLanguage, // Top-level field, not in payload
       payload: {
         type: 'NUDGE_REFINE',
         message: messageData.text,
         question: null,
         blocksSearch: messageData.blocksSearch,
-        suggestedAction: messageData.suggestedAction,
-        uiLanguage
+        suggestedAction: messageData.suggestedAction
       }
     };
 
@@ -562,16 +574,20 @@ export class WebSocketManager {
       uiLanguage?: 'he' | 'en';
     }
   ): PublishSummary {
+    // Extract assistantLanguage from payload (fallback to 'en')
+    const assistantLanguage: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es' = 
+      (payload.uiLanguage as 'he' | 'en') || 'en';
+
     const message: WSServerMessage = {
       type: 'assistant',
       requestId,
+      assistantLanguage, // Top-level field
       payload: {
         type: payload.type,
         message: payload.message || '',
         question: payload.question || null,
         blocksSearch: payload.blocksSearch ?? false,
-        ...(payload.suggestedAction && { suggestedAction: payload.suggestedAction as 'REFINE_QUERY' }),
-        ...(payload.uiLanguage && { uiLanguage: payload.uiLanguage })
+        ...(payload.suggestedAction && { suggestedAction: payload.suggestedAction as 'REFINE_QUERY' })
       }
     };
 
@@ -618,7 +634,12 @@ export class WebSocketManager {
 
     this.wss.clients.forEach(ws => {
       this.cleanup(ws);
-      ws.close(1001, SOFT_CLOSE_REASONS.SERVER_SHUTDOWN);
+      const params = getCloseParams(CloseSource.SERVER_SHUTDOWN);
+      wsClose(ws, {
+        ...params,
+        closeSource: CloseSource.SERVER_SHUTDOWN,
+        clientId: (ws as any).clientId
+      });
     });
 
     this.wss.close();

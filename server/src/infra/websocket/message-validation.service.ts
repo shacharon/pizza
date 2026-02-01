@@ -142,8 +142,19 @@ export class MessageValidationService {
 
     let message = parseResult.message;
 
-    // Step 2: Log message structure in dev
-    this.logMessageStructure(message, clientId);
+    // Step 1.5: Log raw message as-is (BEFORE any normalization/mapping)
+    // Purpose: Track if assistantLanguage arrives from WS or gets added later
+    logger.info({
+      clientId,
+      event: 'ws_assistant_raw_received',
+      rawMessage: message,
+      'rawMessage.type': message?.type,
+      'rawMessage.assistantLanguage': message?.assistantLanguage,
+      'rawMessage.payload?.type': message?.payload?.type,
+      'rawMessage.payload?.assistantLanguage': message?.payload?.assistantLanguage,
+      'rawMessage.payload?.language': message?.payload?.language,
+      uiLanguage: message?.uiLanguage || message?.payload?.uiLanguage
+    }, '[WS] Raw message received (pre-normalization)');
 
     // Step 3: Normalize legacy message format
     message = this.normalizeLegacy(message, clientId);

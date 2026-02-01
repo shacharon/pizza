@@ -79,8 +79,8 @@ describe('Ranking Profile Selection - Deterministic', () => {
         intentReason: 'explicit_city_mentioned'
       });
       
-      // Profile name is BALANCED (for compatibility) but weights are NO_LOCATION
-      assert.strictEqual(selection.profile, 'BALANCED');
+      // Profile name is NO_LOCATION (fixed from BALANCED)
+      assert.strictEqual(selection.profile, 'NO_LOCATION');
       assert.strictEqual(selection.weights.distance, 0, 'Distance weight must be 0 (no location)');
       assert.strictEqual(selection.weights.rating, 0.45);
       assert.strictEqual(selection.weights.reviews, 0.45);

@@ -46,8 +46,8 @@
 // Hero Section (title + subtitle + location)
 .hero-section {
   text-align: center;
-  margin: 0 auto 1rem;
-  max-width: 700px;
+  margin: 0 0 1rem 0;
+  // Remove max-width - let container control width
 }
 
 .page-title {
@@ -106,8 +106,6 @@
 
 // Search Card: Unified container for input + assistant line
 .search-card {
-  max-width: 700px;
-  margin: 0 auto;
   background: white;
   border: 2px solid #e5e7eb;
   border-radius: 12px;
@@ -121,7 +119,7 @@
   will-change: auto; // Don't force GPU acceleration here
 
   &:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
     border-color: #d1d5db;
     // Mobile: No transform on hover (breaks sticky)
     transform: none;
@@ -164,18 +162,18 @@
 .search-content {
   // Results area: Natural flow layout (window scrolls, not this container)
 
+  // UNIFIED CONTAINER: Match search header width exactly
+  max-width: 750px;
+  margin: 0 auto;
+  width: 100%;
+
   // Layout: Minimal top padding - results start RIGHT UNDER the sticky header
-  padding: 0 1rem calc(1.5rem + env(safe-area-inset-bottom, 0));
+  padding: 0.5rem 1rem calc(1.5rem + env(safe-area-inset-bottom, 0));
   padding-left: max(1rem, env(safe-area-inset-left, 1rem));
   padding-right: max(1rem, env(safe-area-inset-right, 1rem));
 
   // NO overflow: auto - window scrolls instead
   // NO flex - using block layout for natural document flow
-
-  // Layout: Match search panel width (700px)
-  max-width: 700px;
-  margin: 0 auto;
-  width: 100%; // Ensure full width for centering
 
   // Background
   background: #f9fafb;
@@ -708,9 +706,11 @@
   }
 
   .search-header {
-    // Mobile: Adjust padding (safe-area already handled above)
-    padding-top: calc(1.25rem + env(safe-area-inset-top, 0));
-    padding-bottom: 1rem;
+    // Mobile: Adjust padding (safe-area already handled in inner container)
+    .search-header-inner {
+      padding-top: calc(1.25rem + env(safe-area-inset-top, 0));
+      padding-bottom: 1rem;
+    }
   }
 
   .page-title {

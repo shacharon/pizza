@@ -76,6 +76,27 @@ export class PublisherService {
       if (client.readyState === WebSocket.OPEN) {
         attempted++;
         try {
+          // INSTRUMENTATION: Raw WS out log (track assistantLanguage)
+          if (channel === 'assistant') {
+            const envelope = message as any;
+            const payload = envelope.payload || {};
+            const rawJson = data;
+            
+            logger.info({
+              event: 'ws_assistant_out_raw',
+              requestId,
+              clientId: (client as any).clientId || 'unknown',
+              channel,
+              payloadType: payload.type || null,
+              assistantLanguage: payload.assistantLanguage || payload.language || envelope.assistantLanguage || null,
+              uiLanguage: payload.uiLanguage || null,
+              envelopeKeys: Object.keys(envelope),
+              payloadKeys: Object.keys(payload),
+              rawJsonLen: rawJson.length,
+              rawJsonPreview: rawJson.length > 2000 ? rawJson.slice(0, 2000) + '...' : rawJson
+            }, '[WS OUT] Raw assistant message before send');
+          }
+
           client.send(data);
           sent++;
           this.backlogManager.incrementSent();

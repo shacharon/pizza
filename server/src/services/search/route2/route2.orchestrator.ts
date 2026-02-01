@@ -90,8 +90,8 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
     // STAGE 1: GATE2
     const gateResult = await executeGate2Stage(request, ctx);
 
-    // Initialize langCtx from Gate2 result IMMEDIATELY (before guards/intent)
-    // This ensures language context is available for all downstream stages
+    // CRITICAL: Initialize langCtx from Gate2 result IMMEDIATELY (before any guards/publishes)
+    // This ensures assistantLanguage is available for all downstream stages and WS publishes
     if (gateResult.gate && !ctx.langCtx) {
       const { resolveAssistantLanguage } = await import('./orchestrator.helpers.js');
       const assistantLanguage = resolveAssistantLanguage(ctx, request, gateResult.gate.language, gateResult.gate.confidence);
@@ -102,6 +102,14 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
         providerLanguage: assistantLanguage,
         region: 'IL'
       };
+
+      logger.info({
+        requestId,
+        event: 'langCtx_initialized',
+        source: 'gate2',
+        assistantLanguage,
+        confidence: gateResult.gate.confidence
+      }, '[ROUTE2] langCtx initialized from Gate2 - assistantLanguage set');
     }
 
     // DEBUG LOG A: Gate2 language snapshot (after storing langCtx)

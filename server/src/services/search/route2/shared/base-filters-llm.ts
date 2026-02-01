@@ -173,6 +173,44 @@ function createFallbackFilters(): PreGoogleBaseFilters {
 }
 
 /**
+ * Deterministic guard: Check if query contains any constraints that require LLM inference
+ * Returns true if LLM should run, false if we can skip it
+ */
+function canRunBaseFilters(query: string): boolean {
+    const normalized = query.toLowerCase();
+
+    // Check for opening hours / time constraints
+    const hasTimeConstraints =
+        // Hebrew time patterns
+        /פתוח|סגור|עכשיו|ב-\d{2}:\d{2}|בין \d/.test(normalized) ||
+        // English time patterns
+        /\bopen|\bclosed|\bnow\b|at \d|\d\s*(am|pm)|between \d/.test(normalized);
+
+    // Check for price intent
+    const hasPriceIntent =
+        // Hebrew price patterns
+        /זול|יקר|בתקציב|מחיר|יוקר/.test(normalized) ||
+        // English price patterns
+        /\bcheap|\bexpensive|\bbudget|\baffordable|\bluxury|\bupscale|\bhigh-end/.test(normalized);
+
+    // Check for rating / review constraints
+    const hasRatingConstraints =
+        // Hebrew rating patterns
+        /דירוג|כוכב|ביקור|מומלץ|הכי טוב|מצוין/.test(normalized) ||
+        // English rating patterns
+        /\brating|\bstar|\breview|\brecommended|\bbest\b|\btop rated|\bexcellent|\bhigh rated/.test(normalized);
+
+    // Check for explicit region hints (country names, not cities)
+    // This is a basic check - complex region inference still needs LLM
+    const hasExplicitRegion =
+        // Common country patterns (not exhaustive)
+        /\bin israel|\bin france|\bin italy|\bin spain|\bin uk\b|\bin usa\b|\bin japan/.test(normalized) ||
+        /בישראל|בצרפת|באיטליה|בספרד|ביפן/.test(normalized);
+
+    return hasTimeConstraints || hasPriceIntent || hasRatingConstraints || hasExplicitRegion;
+}
+
+/**
  * Validate and sanitize regionHint
  * Only accept valid 2-letter uppercase country codes
  */
@@ -214,6 +252,32 @@ export async function resolveBaseFiltersLLM(params: {
 }): Promise<PreGoogleBaseFilters> {
     const { query, route, llmProvider, requestId, traceId, sessionId } = params;
     const startTime = Date.now();
+
+    // Deterministic guard: Skip LLM if query has no constraints to infer
+    if (!canRunBaseFilters(query)) {
+        logger.info(
+            {
+                requestId,
+                pipelineVersion: 'route2',
+                event: 'base_filters_skipped',
+                reason: 'no_constraints',
+                query,
+                route
+            },
+            '[ROUTE2] Base filters LLM skipped - no constraints detected in query'
+        );
+
+        return {
+            language: 'auto',
+            openState: null,
+            openAt: null,
+            openBetween: null,
+            regionHint: null,
+            priceIntent: null,
+            minRatingBucket: null,
+            minReviewCountBucket: null
+        };
+    }
 
     logger.info(
         {
@@ -257,8 +321,10 @@ export async function resolveBaseFiltersLLM(params: {
         const result = response.data;
         const validatedRegionHint = validateRegionHint(result.regionHint, requestId);
 
+        // CRITICAL: IGNORE language from LLM - language MUST come from upstream (Gate2/Intent) ONLY
+        // base_filters_llm should NEVER influence language decisions
         const validatedResult: PreGoogleBaseFilters = {
-            language: result.language,
+            language: 'auto', // Always 'auto' - real language comes from filters_resolved
             openState: result.openState,
             openAt: result.openAt,
             openBetween: result.openBetween,
@@ -276,7 +342,9 @@ export async function resolveBaseFiltersLLM(params: {
                 pipelineVersion: 'route2',
                 event: 'base_filters_llm_completed',
                 durationMs,
-                language: validatedResult.language,
+                language: validatedResult.language, // Always 'auto' - real language from upstream
+                languageIgnored: true, // Language from LLM is ignored
+                llmLanguage: result.language, // What LLM returned (for debugging only)
                 openState: validatedResult.openState,
                 openAt: validatedResult.openAt,
                 openBetween: validatedResult.openBetween,
@@ -295,7 +363,7 @@ export async function resolveBaseFiltersLLM(params: {
                     ...(response.model !== undefined && { model: response.model })
                 }
             },
-            '[ROUTE2] Base filters LLM completed'
+            '[ROUTE2] Base filters LLM completed (language ignored - from upstream only)'
         );
 
         return validatedResult;

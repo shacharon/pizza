@@ -25,9 +25,9 @@ export interface LLMConfig {
  */
 const DEFAULT_TIMEOUTS: Record<LLMPurpose, number> = {
   gate: 3500,          // Fast classification (increased from 2500ms to reduce borderline timeouts)
-  intent: 3500,        // Route decision, medium priority (increased from 2500ms for reliability with retry)
+  intent: 4000,        // Route decision, medium priority (increased from 2500ms for reliability with retry)
   baseFilters: 4500,   // Simple extraction (increased from 3200ms for more headroom)
-  routeMapper: 3500,   // Query mapping, more complex
+  routeMapper: 4000,   // Query mapping, more complex
   filterEnforcer: 4000, // Cuisine enforcement filtering, medium priority
   ranking_profile: 2500, // Ranking profile selection, similar to intent
   assistant: 4000      // Assistant messages (GATE_FAIL, CLARIFY, SUMMARY, SEARCH_FAILED) - increased to reduce timeouts

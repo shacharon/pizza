@@ -116,7 +116,8 @@ export async function executeNearbySearch(
         }
 
         const cacheKey = generateSearchCacheKey(cacheKeyParams);
-        const ttl = cache.getTTL(mapping.keyword);
+        // Defensive: keyword can be null, getTTL handles this gracefully
+        const ttl = cache.getTTL(mapping.keyword || null);
 
         logger.debug({
           requestId,

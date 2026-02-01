@@ -20,6 +20,9 @@ import type { SearchRequest } from '../../types/search-request.dto.js';
 import type { Route2Context, RouteLLMMapping, GoogleMapsResult } from '../types.js';
 import { logger } from '../../../../lib/logger/structured-logger.js';
 
+// Import cache guard
+import { checkGoogleCache } from './google-maps/cache-guard.js';
+
 // Import handlers
 import { executeTextSearch } from './google-maps/text-search.handler.js';
 import { executeNearbySearch } from './google-maps/nearby-search.handler.js';
@@ -54,25 +57,58 @@ export async function executeGoogleMapsStage(
 
   try {
     let results: any[] = [];
+    let servedFrom: 'cache' | 'google_api' = 'google_api';
 
-    // Dispatch to correct Google API handler based on providerMethod
-    switch (mapping.providerMethod) {
-      case 'textSearch':
-        results = await executeTextSearch(mapping, ctx);
-        break;
+    // CACHE GUARD: Check cache before executing handler
+    const cachedResults = await checkGoogleCache(mapping, requestId);
+    
+    if (cachedResults !== null) {
+      // Cache hit - skip handler execution
+      results = cachedResults;
+      servedFrom = 'cache';
+      
+      // Update context to mark as served from cache
+      if (ctx.google) {
+        ctx.google.servedFrom = 'cache';
+      } else {
+        ctx.google = { servedFrom: 'cache' };
+      }
+    } else {
+      // Cache miss - execute handler (which will fetch from Google API and cache)
+      switch (mapping.providerMethod) {
+        case 'textSearch':
+          results = await executeTextSearch(mapping, ctx);
+          break;
 
-      case 'nearbySearch':
-        results = await executeNearbySearch(mapping, ctx);
-        break;
+        case 'nearbySearch':
+          results = await executeNearbySearch(mapping, ctx);
+          break;
 
-      case 'landmarkPlan':
-        results = await executeLandmarkPlan(mapping, ctx);
-        break;
+        case 'landmarkPlan':
+          results = await executeLandmarkPlan(mapping, ctx);
+          break;
 
-      default:
-        // Exhaustiveness check
-        const _exhaustive: never = mapping;
-        throw new Error(`Unknown providerMethod: ${(_exhaustive as any).providerMethod}`);
+        default:
+          // Exhaustiveness check
+          const _exhaustive: never = mapping;
+          throw new Error(`Unknown providerMethod: ${(_exhaustive as any).providerMethod}`);
+      }
+
+      // Mark as served from Google API
+      if (ctx.google) {
+        ctx.google.servedFrom = 'google_api';
+      } else {
+        ctx.google = { servedFrom: 'google_api' };
+      }
+
+      logger.info({
+        requestId,
+        pipelineVersion: 'route2',
+        event: 'google_stage_executed',
+        servedFrom: 'google_api',
+        providerMethod: mapping.providerMethod,
+        resultCount: results.length
+      }, '[ROUTE2] Google stage executed via API');
     }
 
     const durationMs = Date.now() - startTime;
@@ -86,6 +122,7 @@ export async function executeGoogleMapsStage(
       durationMs,
       providerMethod: mapping.providerMethod,
       resultCount: results.length,
+      servedFrom,
       region: mapping.region,
       language: mapping.language
     }, '[ROUTE2] google_maps completed');
@@ -93,7 +130,8 @@ export async function executeGoogleMapsStage(
     return {
       results,
       providerMethod: mapping.providerMethod,
-      durationMs
+      durationMs,
+      servedFrom
     };
 
   } catch (error) {

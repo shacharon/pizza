@@ -257,8 +257,20 @@ export class GoogleCacheService {
 
     /**
      * Get TTL for query (delegated to cache-policy)
+     * Defensive wrapper: never throws on null/undefined
      */
-    getTTL(query: string): number {
-        return getTTLForQuery(query);
+    getTTL(query: string | null | undefined): number {
+        try {
+            return getTTLForQuery(query);
+        } catch (error) {
+            // Defensive fallback: if getTTLForQuery somehow throws, return safe default
+            this.logger.warn({
+                event: 'CACHE_TTL_ERROR',
+                query,
+                error: error instanceof Error ? error.message : String(error),
+                msg: 'getTTL failed, using default TTL (900s)'
+            });
+            return 900; // 15 minutes default
+        }
     }
 }

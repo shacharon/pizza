@@ -1,6 +1,6 @@
 <article class="restaurant-card" [class.selected]="selected()" [class.top-result]="isTopResult()"
   [class.compact]="compact()" [class.closed]="getOpenStatus() === 'closed'" role="button" tabindex="0"
-  [attr.aria-label]="'View details for ' + restaurant().name">
+  [attr.aria-label]="i18n.tUi('card.viewDetails') + ' ' + restaurant().name">
   @if (showReasonLabel() && isTopResult()) {
   <app-reason-label [restaurant]="restaurant()" />
   }
@@ -8,17 +8,17 @@
   <!-- P0 Security: Secure photo loading via backend proxy -->
   <!-- Non-blocking: Show placeholder first, load photo after initial render -->
   @if (shouldLoadPhoto() && photoSrc() && !photoError()) {
-  <img class="restaurant-photo" [src]="getCurrentPhotoSrc()" [alt]="restaurant().name + ' restaurant photo'"
+  <img class="restaurant-photo" [src]="getCurrentPhotoSrc()" [alt]="restaurant().name + ' ' + i18n.tUi('card.photoAlt')"
     loading="lazy" (error)="onPhotoError()" [attr.aria-label]="'Photo of ' + restaurant().name" />
   } @else {
-  <div class="restaurant-photo-placeholder" role="img" [attr.aria-label]="'Placeholder image for ' + restaurant().name">
+  <div class="restaurant-photo-placeholder" role="img" [attr.aria-label]="i18n.tUi('card.photoPlaceholder') + ' ' + restaurant().name">
     🍽️
   </div>
   }
 
   <div class="restaurant-info" (click)="onCardClick()">
     <div class="restaurant-name-row">
-      <h3 class="restaurant-name clickable">{{ restaurant().name }}</h3>
+      <h3 class="restaurant-name clickable" dir="auto">{{ restaurant().name }}</h3>
 
       @if (glutenFreeBadge()) {
       <span class="dietary-badge gluten-free" [class.high]="glutenFreeBadge()!.level === 'high'"
@@ -34,23 +34,23 @@
     <div class="restaurant-meta">
       @if (restaurant().rating) {
       <span class="rating" [attr.data-low-reviews]="isLowReviewCount() ? 'true' : 'false'"
-        [attr.aria-label]="'Rating: ' + restaurant().rating">
+        [attr.aria-label]="i18n.tUi('card.rating') + ' ' + restaurant().rating">
         ⭐ {{ restaurant().rating }}
         @if (restaurant().userRatingsTotal) {
-        <span class="rating-reviews"> · {{ formatReviewCount(restaurant().userRatingsTotal!) }} ביקורות</span>
+        <span class="rating-reviews"> · {{ formatReviewCount(restaurant().userRatingsTotal!) }} {{ i18n.tUi('card.reviews') }}</span>
         }
       </span>
       }
 
       @if (restaurant().priceLevel) {
-      <span class="price-level" [attr.aria-label]="'Price level: ' + restaurant().priceLevel">
+      <span class="price-level" [attr.aria-label]="i18n.tUi('card.priceLevel') + ' ' + restaurant().priceLevel">
         {{ getPriceLevel(restaurant().priceLevel) }}
       </span>
       }
     </div>
 
     <!-- NEW: Compact city + distance -->
-    <p class="restaurant-address-compact">{{ getCompactAddress() }}</p>
+    <p class="restaurant-address-compact" dir="auto">{{ getCompactAddress() }}</p>
 
     <!-- UX SIGNALS: Canonical card signal (priority-based) -->
     @if (cardSignal()) {
@@ -68,23 +68,23 @@
   <div class="action-bar" (click)="$event.stopPropagation()">
     <button type="button" class="action-button" (click)="onAction($event, 'GET_DIRECTIONS')"
       [disabled]="!isActionAvailable('GET_DIRECTIONS')"
-      [title]="isActionAvailable('GET_DIRECTIONS') ? 'Navigate to restaurant' : 'Location not available'"
-      [attr.aria-label]="isActionAvailable('GET_DIRECTIONS') ? 'Navigate to ' + restaurant().name : 'Location not available'">
+      [title]="isActionAvailable('GET_DIRECTIONS') ? i18n.tUi('card.navigate') : i18n.tUi('card.locationNotAvailable')"
+      [attr.aria-label]="isActionAvailable('GET_DIRECTIONS') ? (i18n.tUi('card.navigateTo') + ' ' + restaurant().name) : i18n.tUi('card.locationNotAvailable')">
       <span class="action-icon">📍</span>
-      <span class="action-label">Navigate</span>
+      <span class="action-label">{{ i18n.tUi('card.navigate') }}</span>
     </button>
     <button type="button" class="action-button" (click)="onAction($event, 'CALL_RESTAURANT')"
       [disabled]="!isActionAvailable('CALL_RESTAURANT')"
-      [title]="isActionAvailable('CALL_RESTAURANT') ? 'Call restaurant' : 'Phone number not available'"
-      [attr.aria-label]="isActionAvailable('CALL_RESTAURANT') ? 'Call ' + restaurant().name : 'Phone number not available'">
+      [title]="isActionAvailable('CALL_RESTAURANT') ? i18n.tUi('card.call') : i18n.tUi('card.phoneNotAvailable')"
+      [attr.aria-label]="isActionAvailable('CALL_RESTAURANT') ? (i18n.tUi('card.callRestaurant') + ' ' + restaurant().name) : i18n.tUi('card.phoneNotAvailable')">
       <span class="action-icon">📞</span>
-      <span class="action-label">Call</span>
+      <span class="action-label">{{ i18n.tUi('card.call') }}</span>
     </button>
     <button type="button" class="action-button" (click)="onAction($event, 'SAVE_FAVORITE')"
-      [disabled]="!isActionAvailable('SAVE_FAVORITE')" title="Save to favorites"
-      [attr.aria-label]="'Save ' + restaurant().name + ' to favorites'">
+      [disabled]="!isActionAvailable('SAVE_FAVORITE')" [title]="i18n.tUi('card.saveToFavorites')"
+      [attr.aria-label]="i18n.tUi('card.save') + ' ' + restaurant().name + ' ' + i18n.tUi('card.saveToFavorites')">
       <span class="action-icon">❤️</span>
-      <span class="action-label">Save</span>
+      <span class="action-label">{{ i18n.tUi('card.save') }}</span>
     </button>
   </div>
 </article>

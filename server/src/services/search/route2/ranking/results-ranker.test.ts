@@ -131,7 +131,10 @@ describe('rankResults', () => {
       openBoost: 0.5
     };
 
-    const ranked = rankResults(results, { weights });
+    const ranked = rankResults(results, { 
+      weights,
+      openNowRequested: true // Must set this to preserve openBoost weight
+    });
 
     assert.strictEqual(ranked[0].id, 'open');
     assert.strictEqual(ranked[1].id, 'unknown');

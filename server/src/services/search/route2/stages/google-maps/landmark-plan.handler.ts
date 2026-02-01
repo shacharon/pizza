@@ -230,12 +230,12 @@ export async function executeLandmarkPlan(
           ? createLandmarkSearchCacheKey(
               mapping.landmarkId,
               mapping.radiusMeters,
-              mapping.cuisineKey,
-              mapping.typeKey,
+              mapping.cuisineKey || undefined,
+              mapping.typeKey || undefined,
               mapping.region
             )
           : generateSearchCacheKey({
-              category: mapping.cuisineKey || mapping.typeKey || mapping.keyword,
+              category: mapping.cuisineKey || mapping.typeKey || mapping.keyword || '',
               locationText: mapping.geocodeQuery,
               lat: geocodeResult.lat,
               lng: geocodeResult.lng,
@@ -244,7 +244,8 @@ export async function executeLandmarkPlan(
               language: mapping.language
             });
         
-        const ttl = cache.getTTL(mapping.keyword);
+        // Defensive: keyword can be null for landmark queries, getTTL handles this gracefully
+        const ttl = cache.getTTL(mapping.keyword || mapping.geocodeQuery || undefined);
 
         logger.debug({
           requestId,

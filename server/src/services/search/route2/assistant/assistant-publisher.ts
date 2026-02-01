@@ -2,14 +2,15 @@
  * Assistant Publisher Service
  * Publishes assistant messages via WebSocket
  * 
- * LANGUAGE ENFORCEMENT: All assistant messages MUST use ctx.langCtx.assistantLanguage
+ * LANGUAGE ENFORCEMENT: All assistant messages MUST include assistantLanguage
+ * Single source of truth for assistant WS publishing
  */
 
 import type { WebSocketManager } from '../../../../infra/websocket/websocket-manager.js';
 import { logger } from '../../../../lib/logger/structured-logger.js';
 import type { AssistantOutput } from './assistant-llm.service.js';
 import { hashSessionId } from '../../../../utils/security.utils.js';
-import { assertAssistantLanguage, verifyAssistantLanguageGraceful, type LangCtx } from '../language-enforcement.js';
+import type { LangCtx } from '../language-enforcement.js';
 
 const ASSISTANT_WS_CHANNEL = 'assistant';
 
@@ -23,12 +24,77 @@ export interface AssistantPayload {
   question?: string | null;
   blocksSearch?: boolean;
   suggestedAction?: 'NONE' | 'ASK_LOCATION' | 'ASK_FOOD' | 'RETRY' | 'EXPAND_RADIUS' | 'REFINE';
-  language?: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es'; // Optional - will be injected from langCtx if missing
+  language?: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es';
+}
+
+/**
+ * Resolve assistantLanguage from context hierarchy (UNIFIED FUNCTION)
+ * Priority: langCtx.assistantLanguage > payload.language > uiLanguageFallback > 'en'
+ * LOGS WARNING if assistantLanguage is missing from expected source
+ */
+function resolveAssistantLanguage(
+  requestId: string,
+  langCtx: LangCtx | undefined,
+  payload: AssistantOutput | AssistantPayload,
+  uiLanguageFallback?: 'he' | 'en',
+  stage?: string
+): 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es' {
+  // Priority 1: langCtx.assistantLanguage (authoritative)
+  if (langCtx?.assistantLanguage) {
+    // Guard: Filter out 'other' - fallback to 'en' if invalid
+    const validLanguages: Array<'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es'> = ['he', 'en', 'ar', 'ru', 'fr', 'es'];
+    if (validLanguages.includes(langCtx.assistantLanguage as any)) {
+      return langCtx.assistantLanguage as 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es';
+    }
+    // Invalid language code (e.g., 'other') - log and fallback
+    logger.warn({
+      requestId,
+      event: 'assistant_language_invalid',
+      invalidLanguage: langCtx.assistantLanguage,
+      fallbackLanguage: 'en',
+      stage: stage || 'unknown'
+    }, '[ASSISTANT] Invalid assistantLanguage in langCtx, falling back to en');
+  }
+
+  // Priority 2: payload.language (legacy path)
+  if (payload.language) {
+    logger.warn({
+      requestId,
+      event: 'assistant_language_from_payload',
+      stage: stage || 'unknown',
+      payloadLanguage: payload.language,
+      reason: 'langCtx_missing'
+    }, '[ASSISTANT] Using payload.language (langCtx missing)');
+    return payload.language;
+  }
+
+  // Priority 3: uiLanguageFallback (request context)
+  if (uiLanguageFallback) {
+    logger.warn({
+      requestId,
+      event: 'assistant_language_from_ui_fallback',
+      stage: stage || 'unknown',
+      fallbackLanguage: uiLanguageFallback,
+      reason: 'langCtx_and_payload_missing'
+    }, '[ASSISTANT] Using uiLanguageFallback (langCtx and payload.language missing)');
+    return uiLanguageFallback;
+  }
+
+  // Priority 4: Hard fallback to 'en'
+  logger.warn({
+    requestId,
+    event: 'assistant_language_hard_fallback',
+    stage: stage || 'unknown',
+    fallbackLanguage: 'en',
+    reason: 'all_sources_missing'
+  }, '[ASSISTANT] WARN - assistantLanguage missing at publish time, using hard fallback to en');
+
+  return 'en';
 }
 
 /**
  * Publish assistant message to WebSocket (UNIFIED FUNCTION)
- * ENFORCES: payload.language === langCtx.assistantLanguage
+ * ENFORCES: assistantLanguage field is present on all messages
  * 
  * Accepts either:
  * 1. AssistantOutput (from LLM generation)
@@ -39,44 +105,18 @@ export function publishAssistantMessage(
   requestId: string,
   sessionId: string | undefined,
   assistant: AssistantOutput | AssistantPayload,
-  langCtx: LangCtx | undefined, // REQUIRED: Language context for enforcement
-  uiLanguageFallback?: 'he' | 'en' // Fallback if langCtx missing
+  langCtx: LangCtx | undefined,
+  uiLanguageFallback?: 'he' | 'en'
 ): void {
   try {
-    // DEFENSIVE: Ensure langCtx is present, fallback to uiLanguage (NOT hardcoded 'en')
-    if (!langCtx) {
-      const hinted = (assistant as any)?.language;
-      const fallbackLanguage = (hinted === 'he' || hinted === 'en')
-        ? hinted
-        : (uiLanguageFallback || 'en');
-
-      logger.warn({
-        requestId,
-        event: 'assistant_publish_missing_langCtx',
-        stage: 'publish',
-        whereMissing: 'publishAssistantMessage',
-        fallbackLanguage,
-        uiLanguageFallback
-      }, '[ASSISTANT] langCtx missing - using fallback from request context');
-
-      langCtx = {
-        assistantLanguage: fallbackLanguage,
-        assistantLanguageConfidence: 0,
-        uiLanguage: fallbackLanguage,
-        providerLanguage: fallbackLanguage,
-        region: 'IL'
-      } as LangCtx;
-    } else {
-      // SUCCESS: langCtx is present
-      logger.info({
-        requestId,
-        event: 'assistant_publish_langCtx_present',
-        source: 'captured_snapshot',
-        uiLanguage: langCtx.uiLanguage,
-        assistantLanguage: langCtx.assistantLanguage,
-        queryLanguage: (langCtx as any).queryLanguage || langCtx.assistantLanguage
-      }, '[ASSISTANT] Publishing with valid langCtx');
-    }
+    // Resolve assistantLanguage from context hierarchy
+    const assistantLanguage = resolveAssistantLanguage(
+      requestId,
+      langCtx,
+      assistant,
+      uiLanguageFallback,
+      `assistant_type:${assistant.type}`
+    );
 
     // NORMALIZE PAYLOAD: Ensure all required fields present with defaults
     const normalizedPayload = {
@@ -84,69 +124,10 @@ export function publishAssistantMessage(
       message: assistant.message || '',
       question: assistant.question ?? null,
       blocksSearch: assistant.blocksSearch ?? false,
-      suggestedAction: ('suggestedAction' in assistant) ? assistant.suggestedAction : 'NONE',
-      language: assistant.language || langCtx.assistantLanguage
+      suggestedAction: ('suggestedAction' in assistant) ? assistant.suggestedAction : 'NONE'
     };
 
-    // LANGUAGE ENFORCEMENT WITH GRACEFUL DEGRADATION
-    const verification = verifyAssistantLanguageGraceful(
-      langCtx,
-      normalizedPayload.language,
-      requestId,
-      `assistant_type:${normalizedPayload.type}`,
-      {
-        ...(uiLanguageFallback && { uiLanguage: uiLanguageFallback }),
-        ...(langCtx?.assistantLanguage && { queryLanguage: langCtx.assistantLanguage })
-        // storedLanguageContext could be passed from job metadata if available
-      }
-    );
-
-    // Log verification result
-    if (verification.warning) {
-      logger.warn({
-        requestId,
-        event: 'assistant_language_graceful_degradation',
-        expected: verification.expectedLanguage,
-        actual: verification.actualLanguage,
-        source: verification.source,
-        wasEnforced: verification.wasEnforced,
-        warning: verification.warning
-      }, '[ASSISTANT] Publishing with graceful language degradation');
-    }
-
-    // Determine final language for WS payload
-    // Use langCtx.assistantLanguage as-is (no mapping)
-    const enforcedLanguage = langCtx.assistantLanguage as 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es';
-
-    // DEBUG LOG B: Assistant publish language snapshot (right before WS publish)
-    logger.debug({
-      requestId,
-      traceId: (langCtx as any).traceId,
-      sessionId: (langCtx as any).sessionId,
-      event: 'assistant_publish_lang_snapshot',
-      assistantType: normalizedPayload.type,
-      langCtx_uiLanguage: langCtx.uiLanguage,
-      langCtx_assistantLanguage: langCtx.assistantLanguage,
-      langCtx_queryLanguage: (langCtx as any).queryLanguage || langCtx.assistantLanguage,
-      enforcedLanguage,
-      verificationSource: verification.source,
-      hasClarify: normalizedPayload.type === 'CLARIFY',
-      clarify_reason: normalizedPayload.type === 'CLARIFY' ? (normalizedPayload as any).reason : undefined
-    }, '[ASSISTANT] Publishing assistant message - language snapshot');
-
-    // DEBUG LOG: Print payload keys + assistantLanguage before publish
-    logger.info({
-      requestId,
-      channel: 'assistant',
-      payloadKeys: Object.keys(normalizedPayload),
-      assistantLanguage: enforcedLanguage,
-      assistantType: normalizedPayload.type,
-      wasEnforced: verification.wasEnforced,
-      verificationSource: verification.source,
-      event: 'assistant_publish_debug'
-    }, '[ASSISTANT] Publishing message - debug payload');
-
-    // SESSIONHASH FIX: Use shared utility for consistent hashing
+    // SESSIONHASH: Use shared utility for consistent hashing
     const sessionHash = hashSessionId(sessionId);
 
     logger.info({
@@ -154,21 +135,21 @@ export function publishAssistantMessage(
       requestId,
       sessionHash,
       payloadType: 'assistant',
-      assistantLanguage: enforcedLanguage,
-      languageConfidence: langCtx.assistantLanguageConfidence,
+      assistantLanguage,
+      assistantType: normalizedPayload.type,
       event: 'assistant_ws_publish'
-    }, '[ASSISTANT] Publishing to WebSocket with enforced language');
+    }, '[ASSISTANT] Publishing to WebSocket with assistantLanguage');
 
     const message = {
       type: 'assistant' as const,
       requestId,
+      assistantLanguage,
       payload: {
         type: normalizedPayload.type,
         message: normalizedPayload.message,
         question: normalizedPayload.question,
         blocksSearch: normalizedPayload.blocksSearch,
-        ...(normalizedPayload.suggestedAction !== 'NONE' && normalizedPayload.suggestedAction === 'REFINE' && { suggestedAction: 'REFINE_QUERY' as const }),
-        language: enforcedLanguage // Already normalized to 'he' | 'en'
+        ...(normalizedPayload.suggestedAction === 'REFINE' && { suggestedAction: 'REFINE_QUERY' as const })
       }
     };
 
@@ -177,12 +158,10 @@ export function publishAssistantMessage(
     logger.info({
       requestId,
       channel: ASSISTANT_WS_CHANNEL,
-      payloadType: 'assistant',
       event: 'assistant_published',
+      assistantLanguage,
       assistantType: normalizedPayload.type,
-      blocksSearch: normalizedPayload.blocksSearch,
-      suggestedAction: normalizedPayload.suggestedAction,
-      enforcedLanguage
+      blocksSearch: normalizedPayload.blocksSearch
     }, '[ASSISTANT] Published to WebSocket');
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
@@ -194,10 +173,7 @@ export function publishAssistantMessage(
       error: errorMsg
     }, '[ASSISTANT] Failed to publish');
 
-    // Re-throw language enforcement violations
-    if (errorMsg.includes('LANG_ENFORCEMENT_VIOLATION')) {
-      throw error;
-    }
+    throw error;
   }
 }
 
@@ -212,7 +188,6 @@ export function publishAssistantError(
   errorCode: 'LLM_TIMEOUT' | 'LLM_FAILED' | 'SCHEMA_INVALID'
 ): void {
   try {
-    // SESSIONHASH FIX: Use shared utility for consistent hashing
     const sessionHash = hashSessionId(sessionId);
 
     logger.warn({

@@ -6,13 +6,14 @@
  * Non-blocking rendering: Defers photo loading to avoid blocking list rendering
  */
 
-import { Component, input, output, ChangeDetectionStrategy, computed, signal, effect, AfterViewInit } from '@angular/core';
+import { Component, input, output, ChangeDetectionStrategy, computed, signal, effect, AfterViewInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReasonLabelComponent } from '../reason-label/reason-label.component';
 import type { Restaurant, CardSignal } from '../../../../domain/types/search.types';
 import type { ActionType, ActionLevel } from '../../../../domain/types/action.types';
 import { buildPhotoSrc, getPhotoPlaceholder } from '../../../../utils/photo-src.util';
 import { computeCardSignal, getSignalColor, isSignalEmphasized } from '../../../../domain/utils/card-signal.util';
+import { I18nService } from '../../../../services/i18n.service';
 
 @Component({
   selector: 'app-restaurant-card',
@@ -23,6 +24,9 @@ import { computeCardSignal, getSignalColor, isSignalEmphasized } from '../../../
   styleUrl: './restaurant-card.component.scss'
 })
 export class RestaurantCardComponent implements AfterViewInit {
+  // Services (expose i18n for template access)
+  readonly i18n = inject(I18nService);
+
   // Inputs
   readonly restaurant = input.required<Restaurant>();
   readonly selected = input(false);
@@ -161,30 +165,24 @@ export class RestaurantCardComponent implements AfterViewInit {
   }
 
   /**
-   * Get label for open status
+   * Get label for open status (i18n-ready)
    */
   getOpenStatusLabel(): string {
     const status = this.getOpenStatus();
     switch (status) {
-      case 'open': return 'Open now';
-      case 'closed': return 'Closed';
-      case 'unknown': return 'Hours unverified';
+      case 'open': return this.i18n.tUi('card.openNow');
+      case 'closed': return this.i18n.tUi('card.closed');
+      case 'unknown': return this.i18n.tUi('card.hoursUnverified');
       default: return '';
     }
   }
 
   /**
-   * Get calm open status text (UX polish)
-   * Replaces aggressive CLOSED badge with calm text
+   * Get calm open status text (UX polish) - DEPRECATED
+   * Use getOpenStatusLabel() instead which uses i18n
    */
   getOpenStatusText(): string {
-    const status = this.getOpenStatus();
-    switch (status) {
-      case 'open': return 'פתוח עכשיו';
-      case 'closed': return 'סגור עכשיו';
-      case 'unknown': return 'שעות לא מאומתות';
-      default: return '';
-    }
+    return this.getOpenStatusLabel();
   }
 
   /**
@@ -286,7 +284,7 @@ export class RestaurantCardComponent implements AfterViewInit {
   }
 
   /**
-   * NEW: Get gluten-free badge info (SOFT hints)
+   * NEW: Get gluten-free badge info (SOFT hints) - i18n-ready
    * Returns badge text based on confidence level
    */
   readonly glutenFreeBadge = computed(() => {
@@ -297,27 +295,18 @@ export class RestaurantCardComponent implements AfterViewInit {
 
     // HIGH confidence: "GF"
     if (hint.confidence === 'HIGH') {
-      return { text: 'GF', level: 'high' };
+      return { text: this.i18n.tUi('card.glutenFree'), level: 'high' };
     }
 
     // MEDIUM/LOW confidence: "Maybe GF"
-    return { text: 'Maybe GF', level: 'low' };
+    return { text: this.i18n.tUi('card.maybeGlutenFree'), level: 'low' };
   });
 
   /**
-   * Get gluten-free badge tooltip
+   * Get gluten-free badge tooltip (i18n-ready)
    */
   getGlutenFreeTooltip(): string {
-    const hint = this.restaurant().dietaryHints?.glutenFree;
-    if (!hint) return '';
-
-    // Detect language from restaurant name (simple heuristic)
-    const hasHebrew = /[\u0590-\u05FF]/.test(this.restaurant().name);
-
-    if (hasHebrew) {
-      return 'מבוסס על רמזים בטקסט — לא מובטח';
-    }
-    return 'Based on text signals — not guaranteed';
+    return this.i18n.tUi('card.glutenFreeTooltip');
   }
 
   /**
@@ -399,69 +388,12 @@ export class RestaurantCardComponent implements AfterViewInit {
   }
 
   /**
-   * NEW: Extract primary cuisine/category for display under title
-   * Returns emoji + category (e.g. "🍣 Sushi · Asian")
+   * NEW: Extract primary cuisine/category for display under title (i18n-ready)
+   * Returns emoji + category (e.g. "🍣 Sushi")
    */
   getCuisineTag(): string {
     const tags = this.restaurant().tags || [];
-
-    // Cuisine mapping with emojis
-    const cuisineMap: { [key: string]: { emoji: string; label: string } } = {
-      'sushi': { emoji: '🍣', label: 'Sushi' },
-      'pizza': { emoji: '🍕', label: 'Pizza' },
-      'italian': { emoji: '🍝', label: 'Italian' },
-      'burger': { emoji: '🍔', label: 'Burger' },
-      'chinese': { emoji: '🥡', label: 'Chinese' },
-      'indian': { emoji: '🍛', label: 'Indian' },
-      'mexican': { emoji: '🌮', label: 'Mexican' },
-      'japanese': { emoji: '🍱', label: 'Japanese' },
-      'thai': { emoji: '🍜', label: 'Thai' },
-      'mediterranean': { emoji: '🥙', label: 'Mediterranean' },
-      'american': { emoji: '🍔', label: 'American' },
-      'asian': { emoji: '🥢', label: 'Asian' },
-      'middle_eastern': { emoji: '🥙', label: 'Middle Eastern' },
-      'seafood': { emoji: '🦞', label: 'Seafood' },
-      'steakhouse': { emoji: '🥩', label: 'Steakhouse' },
-      'vegan': { emoji: '🌱', label: 'Vegan' },
-      'vegetarian': { emoji: '🥗', label: 'Vegetarian' },
-      'cafe': { emoji: '☕', label: 'Cafe' },
-      'bar': { emoji: '🍺', label: 'Bar' },
-      'bakery': { emoji: '🥐', label: 'Bakery' },
-      'dessert': { emoji: '🍰', label: 'Dessert' },
-      // Hebrew mappings
-      'סושי': { emoji: '🍣', label: 'סושי' },
-      'פיצה': { emoji: '🍕', label: 'פיצה' },
-      'איטלקי': { emoji: '🍝', label: 'איטלקי' },
-      'המבורגר': { emoji: '🍔', label: 'המבורגר' },
-      'סיני': { emoji: '🥡', label: 'סיני' },
-      'הודי': { emoji: '🍛', label: 'הודי' },
-      'יפני': { emoji: '🍱', label: 'יפני' },
-      'תאילנדי': { emoji: '🍜', label: 'תאילנדי' },
-      'ים תיכוני': { emoji: '🥙', label: 'ים תיכוני' },
-      'אמריקאי': { emoji: '🍔', label: 'אמריקאי' },
-      'אסייתי': { emoji: '🥢', label: 'אסייתי' },
-      'מזרח תיכוני': { emoji: '🥙', label: 'מזרח תיכוני' },
-      'פירות ים': { emoji: '🦞', label: 'פירות ים' },
-      'בשרים': { emoji: '🥩', label: 'בשרים' },
-      'טבעוני': { emoji: '🌱', label: 'טבעוני' },
-      'צמחוני': { emoji: '🥗', label: 'צמחוני' },
-      'בית קפה': { emoji: '☕', label: 'בית קפה' },
-      'בר': { emoji: '🍺', label: 'בר' },
-      'מאפייה': { emoji: '🥐', label: 'מאפייה' },
-    };
-
-    // Find first matching cuisine from tags
-    for (const tag of tags) {
-      const normalized = tag.toLowerCase().trim();
-      for (const [key, value] of Object.entries(cuisineMap)) {
-        if (normalized.includes(key)) {
-          return `${value.emoji} ${value.label}`;
-        }
-      }
-    }
-
-    // Default fallback
-    return '🍽️ Restaurant';
+    return this.i18n.getCuisine(tags);
   }
 
   /**
@@ -491,7 +423,7 @@ export class RestaurantCardComponent implements AfterViewInit {
       return city ? `📍 ${city} · ${km} km` : `📍 ${km} km`;
     }
 
-    return city ? `📍 ${city}` : '📍 Location';
+    return city ? `📍 ${city}` : `📍 ${this.i18n.tUi('card.locationFallback')}`;
   }
 
   /**
