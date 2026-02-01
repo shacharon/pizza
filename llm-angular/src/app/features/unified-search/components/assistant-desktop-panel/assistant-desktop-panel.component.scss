@@ -47,7 +47,7 @@
         font-size: 0.625rem;
         color: #9ca3af;
         font-family: 'Courier New', monospace;
-        margin-inline-start: 0.5rem;
+        margin-inline-start: 0.5rem; // Already RTL-safe
         opacity: 0.6;
         align-self: flex-end;
       }

@@ -169,6 +169,7 @@ export class SearchAssistantHandler {
       ts?: number;
       question?: string | null;
       blocksSearch?: boolean;
+      language?: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es';
     } = {}
   ): RoutingDecision {
     // Generate stable messageId for deduplication
@@ -243,7 +244,8 @@ export class SearchAssistantHandler {
         question: payload.question || null,
         blocksSearch: payload.blocksSearch || false,
         requestId,
-        timestamp
+        timestamp,
+        language: payload.language // Pass language from envelope
       };
 
       this._cardMessages.update(msgs => [...msgs, cardMsg]);
@@ -252,7 +254,8 @@ export class SearchAssistantHandler {
         type,
         message: message.substring(0, 100),
         totalCardMessages: this._cardMessages().length + 1,
-        blocksSearch: payload.blocksSearch
+        blocksSearch: payload.blocksSearch,
+        language: payload.language
       });
 
       // Update legacy state for backward compatibility
@@ -272,12 +275,14 @@ export class SearchAssistantHandler {
     message: string,
     requestId: string,
     question: string | null = null,
-    blocksSearch: boolean = false
+    blocksSearch: boolean = false,
+    language?: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es'
   ): void {
     // Use new routing logic
     this.routeMessage(type, message, requestId, {
       question,
-      blocksSearch
+      blocksSearch,
+      language
     });
 
     // Legacy: Also update old messages array for backward compatibility
@@ -291,7 +296,8 @@ export class SearchAssistantHandler {
       question,
       blocksSearch,
       requestId,
-      timestamp
+      timestamp,
+      language
     };
 
     this._messages.update(msgs => [...msgs, newMessage]);

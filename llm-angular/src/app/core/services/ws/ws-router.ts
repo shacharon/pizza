@@ -32,7 +32,7 @@ export class WSRouter {
 
     try {
       const data = JSON.parse(event.data);
-
+      console.log('data handleMessage', data);
       // INSTRUMENTATION: Log parsed message structure
       if (data.type === 'assistant') {
         const msg = data as any;
@@ -72,11 +72,14 @@ export class WSRouter {
           reason: nack.reason
         });
       } else if (data.type === 'assistant') {
-        // DEBUG LOG: Assistant message received at WS layer
+        // DEBUG LOG: Assistant message received at WS layer (with language tracking)
+        const msg = data as any;
         console.log('[WS][assistant] received', {
-          requestId: data.requestId,
-          payloadType: data.type,
-          narratorType: data.payload?.type
+          requestId: msg.requestId,
+          payloadType: msg.payload?.type,
+          assistantLanguage: msg.assistantLanguage ?? null,
+          uiLanguage: msg.uiLanguage ?? null,
+          payloadLanguage: msg.payload?.language ?? null
         });
       }
 

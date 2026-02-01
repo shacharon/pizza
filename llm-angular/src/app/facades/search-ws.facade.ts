@@ -124,7 +124,12 @@ export class SearchWsHandler {
 
       // Validate payload has proper assistant type
       if (payload && payload.type && validTypes.includes(payload.type)) {
-        console.log('[WS][assistant] Valid LLM message:', payload.type, { requestId: (msg as any).requestId });
+        const msgEnvelope = msg as any;
+        console.log('[WS][assistant] Valid LLM message:', payload.type, {
+          requestId: msgEnvelope.requestId,
+          assistantLanguage: msgEnvelope.assistantLanguage ?? null,
+          uiLanguage: msgEnvelope.uiLanguage ?? null
+        });
         if (handlers.onAssistantMessage) handlers.onAssistantMessage(msg);
         return true;
       } else {

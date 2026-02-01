@@ -20,12 +20,12 @@ describe('Google Maps Stage - Cache Guard Integration', () => {
     // 1. checkGoogleCache returns array → cache hit
     // 2. Stage skips handler entirely
     // 3. Stage returns results with servedFrom='cache'
-    
+
     // To test this properly, we'd need to:
     // - Mock checkGoogleCache to return cached results
     // - Mock handler to throw if called (shouldn't be called)
     // - Assert stage returns cached results with servedFrom='cache'
-    
+
     // Mock implementation would look like:
     // const cachedResults = [{ id: '1', name: 'Cached Place' }];
     // mock.method(cacheGuard, 'checkGoogleCache', () => cachedResults);
@@ -51,7 +51,7 @@ describe('Google Maps Stage - Cache Guard Integration', () => {
     // 1. checkGoogleCache returns null → cache miss
     // 2. Stage calls appropriate handler
     // 3. Stage returns results with servedFrom='google_api'
-    
+
     // Mock implementation would look like:
     // const apiResults = [{ id: '2', name: 'API Place' }];
     // mock.method(cacheGuard, 'checkGoogleCache', () => null);
@@ -78,7 +78,7 @@ describe('Google Maps Stage - Cache Guard Integration', () => {
     // 2. Stage catches error gracefully
     // 3. Stage calls handler as fallback
     // 4. Stage returns results with servedFrom='google_api'
-    
+
     // Mock implementation would look like:
     // mock.method(cacheGuard, 'checkGoogleCache', () => { throw new Error('Cache error'); });
     // mock.method(textSearchHandler, 'executeTextSearch', () => [{ id: '3', name: 'Fallback Place' }]);
@@ -102,7 +102,7 @@ describe('Google Maps Stage - Cache Guard Integration', () => {
     // 2. checkGoogleCache called immediately (line 63)
     // 3. If null returned, dispatch to handler (line 78+)
     // 4. Handler executes and returns results
-    
+
     // Verification in logs:
     // - event=google_cache_guard_enter (from cache-guard.ts line 100)
     // - event=google_cache_guard_miss or google_cache_guard_no_cache_service

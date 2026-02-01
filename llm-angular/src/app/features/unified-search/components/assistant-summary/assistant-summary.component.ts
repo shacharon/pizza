@@ -7,7 +7,7 @@
  * - Never shows: PRESENCE, WS_STATUS, PROGRESS (those are line types)
  */
 
-import { Component, input, computed, isDevMode } from '@angular/core';
+import { Component, input, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import type { AssistantStatus } from '../../../../core/models/ws-protocol.types';
 import type { AssistantMessage } from '../../../../facades/search-assistant.facade';
@@ -68,8 +68,12 @@ export class AssistantSummaryComponent {
     return !this.isIdle() && (this.text().length > 0 || this.isFailed());
   });
   
-  // Dev mode flag
-  readonly isDevMode = isDevMode();
+  // DEV ONLY: Language debug (toggle via ?debug_lang=1 query param)
+  readonly showLanguageDebug = computed(() => {
+    if (typeof window === 'undefined') return false;
+    const params = new URLSearchParams(window.location.search);
+    return params.get('debug_lang') === '1';
+  });
   
   /**
    * Get message language with fallback

@@ -131,7 +131,7 @@ describe('rankResults', () => {
       openBoost: 0.5
     };
 
-    const ranked = rankResults(results, { 
+    const ranked = rankResults(results, {
       weights,
       openNowRequested: true // Must set this to preserve openBoost weight
     });

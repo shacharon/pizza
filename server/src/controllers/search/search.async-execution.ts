@@ -40,7 +40,7 @@ export async function executeBackgroundSearch(params: BackgroundParams): Promise
     // P0 Fix: Non-fatal Redis write (job tracking is optional)
     try {
       await searchJobStore.setStatus(requestId, 'RUNNING', JOB_MILESTONES.JOB_CREATED);
-      
+
       // OBSERVABILITY: Log status transition
       logger.info({
         requestId,
@@ -124,7 +124,7 @@ export async function executeBackgroundSearch(params: BackgroundParams): Promise
     // P0 Fix: Non-fatal Redis writes
     try {
       await searchJobStore.setResult(requestId, response);
-      
+
       // OBSERVABILITY: Log result storage success
       logger.info({
         requestId,
@@ -143,7 +143,7 @@ export async function executeBackgroundSearch(params: BackgroundParams): Promise
 
     try {
       await searchJobStore.setStatus(requestId, terminalStatus, JOB_MILESTONES.TERMINAL);
-      
+
       // OBSERVABILITY: Log terminal status
       logger.info({
         requestId,

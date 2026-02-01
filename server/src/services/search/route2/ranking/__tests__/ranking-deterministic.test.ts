@@ -27,7 +27,7 @@ describe('Ranking Profile Selection - Deterministic', () => {
 
     it('all profile weights should sum to 1.0', () => {
       const profiles = getAllProfileWeights();
-      
+
       for (const [name, weights] of Object.entries(profiles)) {
         const sum = weights.rating + weights.reviews + weights.distance + weights.openBoost;
         assert.ok(
@@ -44,7 +44,7 @@ describe('Ranking Profile Selection - Deterministic', () => {
         distance: 0.25,
         openBoost: 0.25
       };
-      
+
       assert.doesNotThrow(() => validateWeights(weights));
     });
 
@@ -55,7 +55,7 @@ describe('Ranking Profile Selection - Deterministic', () => {
         distance: 0.3,
         openBoost: 0.3  // Sum = 1.2 (invalid)
       };
-      
+
       assert.throws(() => validateWeights(weights), /must sum to 1\.0/);
     });
 
@@ -66,7 +66,7 @@ describe('Ranking Profile Selection - Deterministic', () => {
         distance: 0.5,
         openBoost: 0.1
       };
-      
+
       assert.throws(() => validateWeights(weights), /must be in \[0, 1\]/);
     });
   });
@@ -78,7 +78,7 @@ describe('Ranking Profile Selection - Deterministic', () => {
         hasUserLocation: false,
         intentReason: 'explicit_city_mentioned'
       });
-      
+
       // Profile name is NO_LOCATION (fixed from BALANCED)
       assert.strictEqual(selection.profile, 'NO_LOCATION');
       assert.strictEqual(selection.weights.distance, 0, 'Distance weight must be 0 (no location)');
@@ -91,12 +91,12 @@ describe('Ranking Profile Selection - Deterministic', () => {
         route: 'TEXTSEARCH',
         hasUserLocation: false
       });
-      
+
       const selection2 = selectRankingProfileDeterministic({
         route: 'LANDMARK',
         hasUserLocation: false
       });
-      
+
       // Same profile regardless of route (no location available)
       assert.deepStrictEqual(selection1.weights, selection2.weights);
     });
@@ -108,7 +108,7 @@ describe('Ranking Profile Selection - Deterministic', () => {
         route: 'NEARBY',
         hasUserLocation: true
       });
-      
+
       assert.strictEqual(selection.profile, 'NEARBY');
       assert.strictEqual(selection.weights.distance, 0.65, 'Distance weight should be dominant');
       assert.ok(selection.weights.distance > selection.weights.rating, 'Distance > rating');
@@ -121,7 +121,7 @@ describe('Ranking Profile Selection - Deterministic', () => {
         hasUserLocation: true,
         intentReason: 'explicit_city_mentioned'  // Not a proximity reason
       });
-      
+
       // Should still use DISTANCE_HEAVY (NEARBY route takes precedence)
       assert.strictEqual(selection.profile, 'NEARBY');
       assert.strictEqual(selection.weights.distance, 0.65);
@@ -143,7 +143,7 @@ describe('Ranking Profile Selection - Deterministic', () => {
           hasUserLocation: true,
           intentReason: reason
         });
-        
+
         assert.strictEqual(selection.profile, 'NEARBY');
         assert.strictEqual(selection.weights.distance, 0.65);
       });
@@ -155,7 +155,7 @@ describe('Ranking Profile Selection - Deterministic', () => {
         hasUserLocation: true,
         intentReason: 'explicit_city_mentioned'  // Not a proximity reason
       });
-      
+
       // Should use BALANCED (default)
       assert.strictEqual(selection.profile, 'BALANCED');
       assert.strictEqual(selection.weights.distance, 0.35, 'Balanced distance weight');
@@ -169,7 +169,7 @@ describe('Ranking Profile Selection - Deterministic', () => {
         hasUserLocation: true,
         intentReason: 'explicit_city_mentioned'
       });
-      
+
       assert.strictEqual(selection.profile, 'BALANCED');
       assert.strictEqual(selection.weights.rating, 0.30);
       assert.strictEqual(selection.weights.reviews, 0.25);
@@ -182,7 +182,7 @@ describe('Ranking Profile Selection - Deterministic', () => {
         route: 'LANDMARK',
         hasUserLocation: true
       });
-      
+
       assert.strictEqual(selection.profile, 'BALANCED');
     });
   });
@@ -194,11 +194,11 @@ describe('Ranking Profile Selection - Deterministic', () => {
         hasUserLocation: true,
         intentReason: 'explicit_city_mentioned'
       };
-      
+
       const selection1 = selectRankingProfileDeterministic(input);
       const selection2 = selectRankingProfileDeterministic(input);
       const selection3 = selectRankingProfileDeterministic(input);
-      
+
       assert.deepStrictEqual(selection1, selection2);
       assert.deepStrictEqual(selection2, selection3);
     });
@@ -210,7 +210,7 @@ describe('Ranking Profile Selection - Deterministic', () => {
           hasUserLocation: true
         })
       );
-      
+
       // All selections should be identical
       for (let i = 1; i < selections.length; i++) {
         assert.deepStrictEqual(selections[i], selections[0]);
@@ -265,16 +265,16 @@ describe('Ranking Results - Language Independence', () => {
         distance: 0.35,
         openBoost: 0.10
       };
-      
+
       const ranked1 = rankResults([...mockPlaces], { weights, userLocation });
       const ranked2 = rankResults([...mockPlaces], { weights, userLocation });
       const ranked3 = rankResults([...mockPlaces], { weights, userLocation });
-      
+
       // Extract placeIds for comparison
       const order1 = ranked1.map(p => p.placeId);
       const order2 = ranked2.map(p => p.placeId);
       const order3 = ranked3.map(p => p.placeId);
-      
+
       assert.deepStrictEqual(order1, order2);
       assert.deepStrictEqual(order2, order3);
     });
@@ -287,20 +287,20 @@ describe('Ranking Results - Language Independence', () => {
         distance: 0.65,  // Distance-heavy
         openBoost: 0.10
       };
-      
+
       const ranked = rankResults([...mockPlaces], { weights, userLocation });
       const placeIds = ranked.map(p => p.placeId);
-      
+
       // place1 should be near top (closest + good rating + open)
       assert.ok(placeIds.indexOf('place1') <= 1, 'place1 should be in top 2 (closest + open)');
-      
+
       // Verify distance weight dominates (closer places rank higher on average)
       const place1Index = placeIds.indexOf('place1');  // Closest
       const place4Index = placeIds.indexOf('place4');  // Farthest
-      
+
       // On average, closer places should rank better with distance-heavy weights
       // (individual results may vary due to composite scoring)
-      assert.ok(place1Index < place4Index || place1Index === 0, 
+      assert.ok(place1Index < place4Index || place1Index === 0,
         'Closest place should generally rank better than farthest with distance-heavy profile');
     });
 
@@ -312,26 +312,26 @@ describe('Ranking Results - Language Independence', () => {
         distance: 0.05,  // Distance low
         openBoost: 0.10
       };
-      
+
       const ranked = rankResults([...mockPlaces], { weights, userLocation });
       const placeIds = ranked.map(p => p.placeId);
-      
+
       // place4 has high rating (4.6) + most reviews (2000) + openNow=UNKNOWN (0.5)
       // place3 has highest rating (4.8) but fewer reviews (300) + closed (0)
       // place2 has lowest rating (4.2) + moderate reviews (800)
       // place1 has good rating (4.5) + many reviews (1200) + open (1.0)
-      
+
       // With rating=0.5 + reviews=0.35, place4 likely scores highest (high rating + most reviews)
       // place3 penalized for being closed
-      
+
       // Verify quality dominates (high rating/reviews rank better on average)
       const place2Index = placeIds.indexOf('place2');  // Lowest rating (4.2)
       const place4Index = placeIds.indexOf('place4');  // High rating + most reviews
-      
+
       // place2 should rank lower than place4 (lower quality)
-      assert.ok(place2Index > place4Index, 
+      assert.ok(place2Index > place4Index,
         'place2 (low quality) should rank lower than place4 (high quality)');
-      
+
       // place4 or place1 should be near top (both high quality)
       assert.ok(place4Index <= 1 || placeIds.indexOf('place1') <= 1,
         'High-quality places (place4 or place1) should be in top 2 with quality-heavy weights');
@@ -341,55 +341,55 @@ describe('Ranking Results - Language Independence', () => {
   describe('Language independence: Same profile → same ranking order', () => {
     it('assistantLanguage does NOT affect ranking order', () => {
       const userLocation = { lat: 32.0853, lng: 34.7818 };
-      
+
       // Simulate: Hebrew query → BALANCED profile
       const profileHE = selectRankingProfileDeterministic({
         route: 'TEXTSEARCH',
         hasUserLocation: true,
         intentReason: 'explicit_city_mentioned'
       });
-      
+
       // Simulate: English query → same profile (deterministic)
       const profileEN = selectRankingProfileDeterministic({
         route: 'TEXTSEARCH',
         hasUserLocation: true,
         intentReason: 'explicit_city_mentioned'
       });
-      
+
       // Profiles must be identical
       assert.deepStrictEqual(profileHE, profileEN);
-      
+
       // Ranking must be identical
       const rankedHE = rankResults([...mockPlaces], { weights: profileHE.weights, userLocation });
       const rankedEN = rankResults([...mockPlaces], { weights: profileEN.weights, userLocation });
-      
+
       const orderHE = rankedHE.map(p => p.placeId);
       const orderEN = rankedEN.map(p => p.placeId);
-      
+
       assert.deepStrictEqual(orderHE, orderEN, 'Ranking order must be identical regardless of query language');
     });
 
     it('queryLanguage does NOT affect ranking order', () => {
       const userLocation = { lat: 32.0853, lng: 34.7818 };
-      
+
       // Same route + location for different query languages
       const contexts = [
         { route: 'TEXTSEARCH' as const, hasUserLocation: true, intentReason: 'explicit_city_mentioned' },
         { route: 'TEXTSEARCH' as const, hasUserLocation: true, intentReason: 'explicit_city_mentioned' },
         { route: 'TEXTSEARCH' as const, hasUserLocation: true, intentReason: 'explicit_city_mentioned' }
       ];
-      
+
       const profiles = contexts.map(ctx => selectRankingProfileDeterministic(ctx));
-      
+
       // All profiles must be identical
       for (let i = 1; i < profiles.length; i++) {
         assert.deepStrictEqual(profiles[i], profiles[0]);
       }
-      
+
       // All rankings must be identical
       const rankings = profiles.map(p => rankResults([...mockPlaces], { weights: p.weights, userLocation }));
       const orders = rankings.map(r => r.map(p => p.placeId));
-      
+
       for (let i = 1; i < orders.length; i++) {
         assert.deepStrictEqual(orders[i], orders[0]);
       }
@@ -402,26 +402,26 @@ describe('Ranking Results - Language Independence', () => {
         hasUserLocation: true,
         intentReason: 'proximity_keywords'
       });
-      
+
       // English query "restaurants around here" → same intentReason
       const profileEN = selectRankingProfileDeterministic({
         route: 'TEXTSEARCH',
         hasUserLocation: true,
         intentReason: 'proximity_keywords'
       });
-      
+
       // Russian query "рестораны рядом" → same intentReason
       const profileRU = selectRankingProfileDeterministic({
         route: 'TEXTSEARCH',
         hasUserLocation: true,
         intentReason: 'proximity_keywords'
       });
-      
+
       // All must use DISTANCE_HEAVY profile
       assert.strictEqual(profileHE.profile, 'NEARBY');
       assert.strictEqual(profileEN.profile, 'NEARBY');
       assert.strictEqual(profileRU.profile, 'NEARBY');
-      
+
       // All must have identical weights
       assert.deepStrictEqual(profileHE.weights, profileEN.weights);
       assert.deepStrictEqual(profileEN.weights, profileRU.weights);
@@ -431,43 +431,43 @@ describe('Ranking Results - Language Independence', () => {
   describe('Real-world scenario: Same places, different query languages', () => {
     it('Hebrew query "מסעדות איטלקיות בתל אביב" vs English query "Italian restaurants in Tel Aviv"', () => {
       const userLocation = { lat: 32.0853, lng: 34.7818 };
-      
+
       // Both queries → TEXTSEARCH route, explicit_city_mentioned
       const profile = selectRankingProfileDeterministic({
         route: 'TEXTSEARCH',
         hasUserLocation: true,
         intentReason: 'explicit_city_mentioned'
       });
-      
+
       // Rank places (same for both queries)
       const ranked = rankResults([...mockPlaces], { weights: profile.weights, userLocation });
       const order = ranked.map(p => p.placeId);
-      
+
       // Verify order is deterministic
       const ranked2 = rankResults([...mockPlaces], { weights: profile.weights, userLocation });
       const order2 = ranked2.map(p => p.placeId);
-      
+
       assert.deepStrictEqual(order, order2, 'Same query intent → identical ranking order');
     });
 
     it('Hebrew "מסעדות ליד" vs English "restaurants near me" vs Spanish "restaurantes cerca"', () => {
       const userLocation = { lat: 32.0853, lng: 34.7818 };
-      
+
       // All queries → NEARBY route or proximity_keywords intentReason
       const profile = selectRankingProfileDeterministic({
         route: 'TEXTSEARCH',
         hasUserLocation: true,
         intentReason: 'proximity_keywords'
       });
-      
+
       // Should use DISTANCE_HEAVY profile
       assert.strictEqual(profile.profile, 'NEARBY');
       assert.strictEqual(profile.weights.distance, 0.65);
-      
+
       // Rank places
       const ranked = rankResults([...mockPlaces], { weights: profile.weights, userLocation });
       const order = ranked.map(p => p.placeId);
-      
+
       // Closest place should be first (place1)
       assert.strictEqual(order[0], 'place1', 'Closest place should be first for proximity queries');
     });

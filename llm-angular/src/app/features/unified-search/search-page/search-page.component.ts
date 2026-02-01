@@ -465,6 +465,14 @@ export class SearchPageComponent implements OnInit, OnDestroy {
     return Array.from(unique.values()).slice(0, 3);
   });
 
+  // LAYOUT MODE: Determine if we're in results mode (compact layout)
+  // Results mode triggers when: searching OR have results
+  readonly isResultsMode = computed(() => {
+    const isSearching = this.facade.loading();
+    const hasResults = this.facade.results().length > 0;
+    return isSearching || hasResults;
+  });
+
   // Phase 8: Disclosure banner for derived filters
   readonly showClosedDisclosure = computed(() => {
     const meta = this.facade.meta();

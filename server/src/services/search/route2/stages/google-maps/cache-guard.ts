@@ -80,7 +80,7 @@ function generateLandmarkPlanKey(mapping: Extract<RouteLLMMapping, { providerMet
     const category = mapping.cuisineKey || mapping.typeKey || 'restaurant';
     return `landmark_search:${mapping.landmarkId}:${mapping.radiusMeters}:${category}:${mapping.region || 'unknown'}`;
   }
-  
+
   // Fallback: use generateSearchCacheKey (same as handler line 237-245)
   const cacheKeyParams: CacheKeyParams = {
     category: mapping.cuisineKey || mapping.typeKey || mapping.keyword || '',
@@ -114,7 +114,7 @@ export async function checkGoogleCache(
   }, '[ROUTE2] Cache guard checking for cached results');
 
   const cache = getCacheService();
-  
+
   // If cache service not available, return null (proceed to handler)
   if (!cache) {
     logger.info({
@@ -215,7 +215,7 @@ export async function checkGoogleCache(
       // Use raceWithCleanup for timeout protection
       const cachePromise = cache.wrap(cacheKey, ttl, throwingFetchFn);
       const results = await raceWithCleanup(cachePromise, 5000); // 5s timeout for cache check
-      
+
       // If we got here, it's a cache hit
       logger.info({
         requestId,

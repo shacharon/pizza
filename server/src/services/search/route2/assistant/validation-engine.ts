@@ -22,6 +22,7 @@ import {
   type ValidationErrors 
 } from './text-validator.js';
 import { getDeterministicFallback } from './fallback-generator.js';
+import { checkLanguageCompliance, getLanguageFallbackMessage } from './language-compliance.js';
 
 /**
  * Assistant Validation Engine
@@ -39,7 +40,69 @@ export class AssistantValidationEngine {
     let useFallback = false;
     const validationIssues: string[] = [];
 
-    // 1. Validate language match
+    // 0. OUTPUT LANGUAGE VALIDATION (hardened enforcement)
+    // Check if LLM set outputLanguage field correctly
+    if (output.outputLanguage && output.outputLanguage !== requestedLanguage) {
+      validationIssues.push(`outputLanguage_mismatch (output=${output.outputLanguage}, requested=${requestedLanguage})`);
+      
+      logger.warn({
+        requestId,
+        event: 'assistant_output_language_mismatch',
+        requestedLanguage,
+        outputLanguage: output.outputLanguage,
+        type: context.type,
+        action: 'using_language_fallback'
+      }, '[ASSISTANT] LLM outputLanguage does not match requestedLanguage - using deterministic fallback');
+
+      // Use language-specific fallback message
+      const fallbackMessage = getLanguageFallbackMessage(requestedLanguage);
+
+      return {
+        type: output.type,
+        message: fallbackMessage,
+        question: null,
+        suggestedAction: output.suggestedAction,
+        blocksSearch: output.blocksSearch,
+        language: requestedLanguage,
+        outputLanguage: requestedLanguage
+      };
+    }
+
+    // 1. LANGUAGE COMPLIANCE CHECK (new: check all non-Latin scripts)
+    // Check if message complies with requested language
+    const messageCompliant = checkLanguageCompliance(output.message, requestedLanguage);
+    const questionCompliant = output.question 
+      ? checkLanguageCompliance(output.question, requestedLanguage)
+      : true;
+
+    if (!messageCompliant || !questionCompliant) {
+      validationIssues.push(`language_compliance_failed (requested=${requestedLanguage})`);
+      
+      logger.warn({
+        requestId,
+        event: 'assistant_language_noncompliance',
+        requestedLanguage,
+        messageCompliant,
+        questionCompliant,
+        messagePreview: output.message.substring(0, 100),
+        action: 'using_language_fallback'
+      }, '[ASSISTANT] LLM output does not match requested language - using deterministic fallback');
+
+      // Use language-specific fallback message
+      const fallbackMessage = getLanguageFallbackMessage(requestedLanguage);
+
+      return {
+        type: output.type,
+        message: fallbackMessage,
+        question: null, // Clear question to avoid mismatched language
+        suggestedAction: output.suggestedAction,
+        blocksSearch: output.blocksSearch,
+        language: requestedLanguage,
+        outputLanguage: requestedLanguage
+      };
+    }
+
+    // 2. LEGACY: Validate language match (Hebrew-specific check - keep for backward compat)
     const messageIsHebrew = isHebrewText(output.message);
     const questionIsHebrew = output.question ? isHebrewText(output.question) : null;
 
@@ -52,7 +115,7 @@ export class AssistantValidationEngine {
       useFallback = true;
     }
 
-    // 2. Validate message/question format
+    // 3. Validate message/question format
     const formatErrors = validateMessageFormat(output.message, output.question);
     if (formatErrors) {
       if (formatErrors.messageError) {
@@ -81,14 +144,16 @@ export class AssistantValidationEngine {
         question: fallback.question,
         suggestedAction: fallback.suggestedAction,
         blocksSearch: fallback.blocksSearch,
-        language: requestedLanguage // Set language from requested
+        language: requestedLanguage, // Set language from requested
+        outputLanguage: requestedLanguage // Set outputLanguage from requested
       };
     }
 
     // Ensure language field is set from requested language
     return {
       ...output,
-      language: requestedLanguage
+      language: requestedLanguage,
+      outputLanguage: requestedLanguage // Set outputLanguage from requested
     };
   }
 

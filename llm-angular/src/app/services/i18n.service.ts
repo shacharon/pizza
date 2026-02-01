@@ -16,105 +16,118 @@
  * ```
  */
 
-import { Injectable, inject, computed, Signal } from '@angular/core';
-import { SearchFacade } from '../../facades/search.facade';
+import { Injectable } from '@angular/core';
 import { t, type Lang, type MsgKey, normalizeLang, isRTL as isRTLLang } from '../i18n/search-narration.i18n';
 import { tUi, type UiLang, type UiKey, normalizeUiLang, isRTL as isRTLUi } from '../i18n/ui-strings.i18n';
-import { getCuisineLabel, type UiLang as CuisineLang } from '../i18n/cuisine-labels.i18n';
-import { getSignalLabel, normalizeSignalLang, type SignalLang } from '../../domain/i18n/card-signal-labels.i18n';
-import type { CardSignalType } from '../../domain/types/search.types';
+import { getCuisineLabel } from '../i18n/cuisine-labels.i18n';
+import { getSignalLabel, normalizeSignalLang, type SignalLang } from '../domain/i18n/card-signal-labels.i18n';
+import type { CardSignalType } from '../domain/types/search.types';
 
+/**
+ * i18n Service - Stateless Translation Utility
+ * 
+ * Provides translation functions with English fallback.
+ * Components can optionally pass language explicitly for better control.
+ * 
+ * Usage:
+ * ```typescript
+ * readonly i18n = inject(I18nService);
+ * // With explicit language:
+ * const label = this.i18n.t('en', 'hero.title');
+ * // With fallback to English:
+ * const label = this.i18n.tUi('card.openNow');
+ * ```
+ */
 @Injectable({
   providedIn: 'root'
 })
 export class I18nService {
-  private readonly searchFacade = inject(SearchFacade);
-
-  /**
-   * Current language from WebSocket (assistantLanguage)
-   * Falls back to 'en' if not available
-   */
-  readonly currentLang = computed<Lang>(() => {
-    const lang = this.searchFacade.assistantLanguage();
-    return normalizeLang(lang);
-  });
-
-  /**
-   * Current UI language (same as currentLang but typed as UiLang)
-   */
-  readonly currentUiLang = computed<UiLang>(() => {
-    const lang = this.searchFacade.assistantLanguage();
-    return normalizeUiLang(lang);
-  });
-
-  /**
-   * Current signal language (same as currentLang but typed as SignalLang)
-   */
-  readonly currentSignalLang = computed<SignalLang>(() => {
-    const lang = this.searchFacade.assistantLanguage();
-    return normalizeSignalLang(lang);
-  });
-
-  /**
-   * Is current language RTL?
-   */
-  readonly isRTL = computed<boolean>(() => {
-    return isRTLLang(this.currentLang());
-  });
-
-  /**
-   * Translate search narration key
-   * Example: t('hero.title')
-   */
-  t(key: MsgKey, vars?: Record<string, string | number>): string {
-    return t(this.currentLang(), key, vars);
+  // Function overloads for t()
+  t(key: MsgKey, vars?: Record<string, string | number>): string;
+  t(lang: Lang, key: MsgKey, vars?: Record<string, string | number>): string;
+  t(langOrKey: Lang | MsgKey, keyOrVars?: MsgKey | Record<string, string | number>, vars?: Record<string, string | number>): string {
+    // Support both signatures:
+    // t(key, vars) - English fallback
+    // t(lang, key, vars) - explicit language
+    if (keyOrVars === undefined || (typeof keyOrVars === 'object' && !this.isLang(langOrKey))) {
+      // Single arg or (key, vars) - use English fallback
+      return t('en', langOrKey as MsgKey, keyOrVars as Record<string, string | number> | undefined);
+    }
+    // Two/three args - (lang, key, vars)
+    return t(langOrKey as Lang, keyOrVars as MsgKey, vars);
   }
 
-  /**
-   * Translate UI string key
-   * Example: tUi('card.openNow')
-   */
-  tUi(key: UiKey, vars?: Record<string, string | number>): string {
-    return tUi(this.currentUiLang(), key, vars);
+  // Function overloads for tUi()
+  tUi(key: UiKey, vars?: Record<string, string | number>): string;
+  tUi(lang: UiLang, key: UiKey, vars?: Record<string, string | number>): string;
+  tUi(langOrKey: UiLang | UiKey, keyOrVars?: UiKey | Record<string, string | number>, vars?: Record<string, string | number>): string {
+    // Support both signatures:
+    // tUi(key, vars) - English fallback
+    // tUi(lang, key, vars) - explicit language
+    if (keyOrVars === undefined || (typeof keyOrVars === 'object' && !this.isUiLang(langOrKey))) {
+      // Single arg or (key, vars) - use English fallback
+      return tUi('en', langOrKey as UiKey, keyOrVars as Record<string, string | number> | undefined);
+    }
+    // Two/three args - (lang, key, vars)
+    return tUi(langOrKey as UiLang, keyOrVars as UiKey, vars);
   }
 
   /**
    * Get cuisine label (with emoji)
-   * Example: getCuisine(['sushi', 'japanese']) => '🍣 Sushi'
+   * @param tags - Cuisine tags
+   * @param lang - UI language code (optional, defaults to 'en')
    */
-  getCuisine(tags: string[]): string {
-    return getCuisineLabel(tags, this.currentUiLang());
+  getCuisine(tags: string[], lang: UiLang = 'en'): string {
+    return getCuisineLabel(tags, lang);
   }
 
   /**
    * Get signal label
-   * Example: getSignal('OPEN_NOW') => 'Open now'
+   * @param signalType - Signal type
+   * @param lang - Signal language code (optional, defaults to 'en')
    */
-  getSignal(signalType: CardSignalType): string {
-    return getSignalLabel(signalType, this.currentSignalLang());
+  getSignal(signalType: CardSignalType, lang: SignalLang = 'en'): string {
+    return getSignalLabel(signalType, lang);
+  }
+
+  // Helper type guards
+  private isLang(value: string): value is Lang {
+    return ['he', 'en', 'ru', 'ar', 'fr', 'es', 'it', 'ja', 'other'].includes(value);
+  }
+
+  private isUiLang(value: string): value is UiLang {
+    return ['he', 'en', 'ru', 'ar', 'fr', 'es', 'it', 'ja'].includes(value);
   }
 
   /**
-   * Computed version for template use
-   * Example: readonly openNowLabel = this.i18n.signal('OPEN_NOW');
+   * Check if language is RTL
+   * @param lang - Language code
    */
-  signal(signalType: CardSignalType): Signal<string> {
-    return computed(() => this.getSignal(signalType));
+  isRTL(lang: Lang): boolean {
+    return isRTLLang(lang);
   }
 
   /**
-   * Computed version for template use
-   * Example: readonly titleLabel = this.i18n.computed('hero.title');
+   * Normalize language code
+   * @param langCode - Raw language code
    */
-  computed(key: MsgKey, vars?: Record<string, string | number>): Signal<string> {
-    return computed(() => this.t(key, vars));
+  normalizeLang(langCode: string | undefined): Lang {
+    return normalizeLang(langCode);
   }
 
   /**
-   * Computed version for UI strings
-   * Example: readonly openNowLabel = this.i18n.computedUi('card.openNow');
+   * Normalize UI language code
+   * @param langCode - Raw language code
    */
-  computedUi(key: UiKey, vars?: Record<string, string | number>): Signal<string> {
-    return computed(() => this.tUi(key, vars));
+  normalizeUiLang(langCode: string | undefined): UiLang {
+    return normalizeUiLang(langCode);
+  }
+
+  /**
+   * Normalize signal language code
+   * @param langCode - Raw language code
+   */
+  normalizeSignalLang(langCode: string | undefined): SignalLang {
+    return normalizeSignalLang(langCode);
   }
 }

@@ -54,6 +54,7 @@ export function isValidLLMType(type: string | undefined): type is LLMAssistantTy
  * 
  * @param rawMessage - Raw WS message with payload
  * @param requestId - Associated request ID
+ * @param uiLanguageFallback - Optional UI language fallback
  * @returns Parsed assistant message or null if invalid
  * 
  * @example
@@ -61,18 +62,21 @@ export function isValidLLMType(type: string | undefined): type is LLMAssistantTy
  *   {
  *     type: 'assistant',
  *     requestId: 'req-123',
+ *     assistantLanguage: 'ru',
  *     payload: {
  *       type: 'SUMMARY',
  *       message: 'Found 10 results'
  *     }
  *   },
- *   'req-123'
+ *   'req-123',
+ *   'en'
  * )
- * // => { type: 'SUMMARY', message: 'Found 10 results', ... }
+ * // => { type: 'SUMMARY', message: 'Found 10 results', language: 'ru', ... }
  */
 export function extractAssistantMessage(
   rawMessage: any,
-  requestId: string
+  requestId: string,
+  uiLanguageFallback?: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es'
 ): AssistantMessageModel | null {
   // Extract payload
   const payload: RawAssistantPayload | undefined = rawMessage?.payload;
@@ -87,6 +91,13 @@ export function extractAssistantMessage(
   const message = payload.message || payload.question || '';
   if (!message) return null;
 
+  // LANGUAGE RESOLUTION: Priority order
+  // 1. envelope.assistantLanguage (authoritative from backend)
+  // 2. payload.language (legacy fallback)
+  // 3. uiLanguageFallback (from session)
+  // 4. 'en' (hard fallback)
+  const language = rawMessage.assistantLanguage ?? payload.language ?? uiLanguageFallback ?? 'en';
+
   // Build UI model
   const timestamp = Date.now();
   return {
@@ -97,7 +108,7 @@ export function extractAssistantMessage(
     blocksSearch: payload.blocksSearch || false,
     requestId,
     timestamp,
-    language: payload.language // Pass through language from backend
+    language // Resolved from envelope.assistantLanguage > payload.language > fallback
   };
 }
 

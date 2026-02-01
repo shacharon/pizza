@@ -59,12 +59,12 @@ export async function executeLandmarkPlan(
     const geocodeStartTime = Date.now();
     let geocodeResult: { lat: number; lng: number };
     let landmarkSource: string;
-    
+
     // Check if we have known coordinates (from landmark registry)
     if (mapping.resolvedLatLng) {
       geocodeResult = mapping.resolvedLatLng;
       landmarkSource = 'registry_cache';
-      
+
       logger.info({
         requestId,
         event: 'landmark_resolved',
@@ -79,7 +79,7 @@ export async function executeLandmarkPlan(
         mapping.geocodeQuery,
         mapping.region
       );
-      
+
       const geocodeFn = async (): Promise<{ lat: number; lng: number } | null> => {
         return await callGoogleGeocodingAPI(
           mapping.geocodeQuery,
@@ -88,9 +88,9 @@ export async function executeLandmarkPlan(
           requestId
         );
       };
-      
+
       let geocodeResultNullable: { lat: number; lng: number } | null = null;
-      
+
       if (cache) {
         try {
           // Cache landmark resolution (TTL: 7 days for landmarks)
@@ -110,7 +110,7 @@ export async function executeLandmarkPlan(
         geocodeResultNullable = await geocodeFn();
         landmarkSource = 'geocode_api';
       }
-      
+
       if (!geocodeResultNullable) {
         logger.warn({
           requestId,
@@ -120,9 +120,9 @@ export async function executeLandmarkPlan(
         }, '[GOOGLE] Geocoding returned no results');
         return [];
       }
-      
+
       geocodeResult = geocodeResultNullable;
-      
+
       logger.info({
         requestId,
         event: 'landmark_resolved',
@@ -137,7 +137,7 @@ export async function executeLandmarkPlan(
     const searchStartTime = Date.now();
     let results: any[] = [];
     let fromCache = false;
-    
+
     // Determine includedTypes from cuisineKey/typeKey (language-independent, like NEARBY)
     let includedTypes: string[];
     if (mapping.cuisineKey) {
@@ -147,7 +147,7 @@ export async function executeLandmarkPlan(
     } else {
       includedTypes = ['restaurant']; // Fallback
     }
-    
+
     // Log landmark search payload (observability)
     logger.info({
       requestId,
@@ -170,7 +170,7 @@ export async function executeLandmarkPlan(
         // Map language to Google API format
         const supportedLanguages = ['he', 'en', 'es', 'ru', 'ar', 'fr'];
         const languageCode = supportedLanguages.includes(mapping.language) ? mapping.language : 'en';
-        
+
         const requestBody = {
           locationRestriction: {
             circle: {
@@ -198,7 +198,7 @@ export async function executeLandmarkPlan(
         // Map language to Google API format
         const supportedLanguages = ['he', 'en', 'es', 'ru', 'ar', 'fr'];
         const languageCode = supportedLanguages.includes(mapping.language) ? mapping.language : 'en';
-        
+
         const requestBody: any = {
           textQuery: mapping.keyword,
           languageCode,
@@ -228,22 +228,22 @@ export async function executeLandmarkPlan(
         // Use landmarkId-based cache key for perfect multilingual sharing
         const searchCacheKey = mapping.landmarkId
           ? createLandmarkSearchCacheKey(
-              mapping.landmarkId,
-              mapping.radiusMeters,
-              mapping.cuisineKey || undefined,
-              mapping.typeKey || undefined,
-              mapping.region
-            )
+            mapping.landmarkId,
+            mapping.radiusMeters,
+            mapping.cuisineKey || undefined,
+            mapping.typeKey || undefined,
+            mapping.region
+          )
           : generateSearchCacheKey({
-              category: mapping.cuisineKey || mapping.typeKey || mapping.keyword || '',
-              locationText: mapping.geocodeQuery,
-              lat: geocodeResult.lat,
-              lng: geocodeResult.lng,
-              radius: mapping.radiusMeters,
-              region: mapping.region,
-              language: mapping.language
-            });
-        
+            category: mapping.cuisineKey || mapping.typeKey || mapping.keyword || '',
+            locationText: mapping.geocodeQuery,
+            lat: geocodeResult.lat,
+            lng: geocodeResult.lng,
+            radius: mapping.radiusMeters,
+            region: mapping.region,
+            language: mapping.language
+          });
+
         // Defensive: keyword can be null for landmark queries, getTTL handles this gracefully
         const ttl = cache.getTTL(mapping.keyword || mapping.geocodeQuery || undefined);
 

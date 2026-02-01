@@ -1,7 +1,7 @@
 .restaurant-card {
   display: flex;
-  gap: 1.5rem;
-  padding: 1.5rem;
+  gap: 1rem; // COMPACT: Reduced from 1.5rem
+  padding: 1rem; // COMPACT: Reduced from 1.5rem
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 16px;
@@ -201,7 +201,7 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.5rem; // COMPACT: Reduced from 0.75rem
 }
 
 // VISUAL POLISH: Typography hierarchy (desktop)
@@ -280,7 +280,7 @@
 
 // UX SIGNALS: Language-agnostic card signal display
 .card-signal-text {
-  margin: 0.25rem 0 0.5rem 0;
+  margin: 0.25rem 0 0.375rem 0; // COMPACT: Reduced bottom margin
   font-size: 0.8125rem;
   font-weight: 400; // VISUAL POLISH: Normal weight (default)
   line-height: 1.4;
@@ -325,7 +325,7 @@
 
 // VISUAL POLISH: Single-line shortened address
 .restaurant-address {
-  margin: 0 0 0.5rem 0;
+  margin: 0 0 0.375rem 0; // COMPACT: Reduced from 0.5rem
   color: #9ca3af; // VISUAL POLISH: Light gray (tertiary)
   font-size: 0.8125rem;
   font-weight: 400; // VISUAL POLISH: Normal weight
@@ -352,7 +352,7 @@
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
-  margin-top: 0.5rem;
+  margin-top: 0.375rem; // COMPACT: Reduced from 0.5rem
 }
 
 .tag {
@@ -367,7 +367,7 @@
 }
 
 // NEW: Horizontal action bar with labels
-// DESKTOP (>= md): Side-aligned actions with left border
+// DESKTOP (>= md): Side-aligned actions with border
 // MOBILE (< md): Bottom bar inside card with top border
 .action-bar {
   display: flex;
@@ -375,11 +375,11 @@
   align-items: center;
   flex-shrink: 0;
   
-  // DESKTOP: Side-aligned (default)
+  // DESKTOP: Side-aligned (default) - RTL-safe
   align-self: flex-start;
-  margin-left: auto;
-  padding-left: 1rem;
-  border-left: 1px solid #e5e7eb;
+  margin-inline-start: auto; // RTL-safe: use logical property
+  padding-inline-start: 1rem; // RTL-safe: use logical property
+  border-inline-start: 1px solid #e5e7eb; // RTL-safe: use logical property
 }
 
 .action-button {
@@ -538,7 +538,7 @@
   .restaurant-info {
     // MOBILE IMAGE: Add padding to content area (image has none)
     // OPTIMIZED: Reduced padding for tighter cards
-    padding: 0.625rem 0.75rem; // OPTIMIZED: Reduced from 0.875rem
+    padding: 0.5rem 0.625rem; // COMPACT: Further reduced
 
     // VISUAL POLISH: Consistent vertical rhythm
     display: flex;
@@ -659,18 +659,18 @@
   // MOBILE (< md): Action bar as bottom bar inside card
   // OPTIMIZED: Tighter action bar with primary action emphasis
   .action-bar {
-    // Reset desktop side-alignment
+    // Reset desktop side-alignment - RTL-safe
     align-self: stretch;
-    margin-left: 0;
-    padding-left: 0;
-    border-left: none;
+    margin-inline-start: 0; // RTL-safe
+    padding-inline-start: 0; // RTL-safe
+    border-inline-start: none; // RTL-safe
     
     // Bottom bar layout
     flex-direction: row;
     justify-content: space-between; // OPTIMIZED: Changed from space-evenly
     gap: 0.375rem; // OPTIMIZED: Tighter gap
-    padding: 0.5rem 0.75rem; // OPTIMIZED: Reduced padding
-    border-top: 1px solid #f3f4f6;
+    padding: 0.375rem 0.625rem; // COMPACT: Further reduced
+    border-block-start: 1px solid #f3f4f6; // RTL-safe: use logical property
 
     .action-button {
       min-width: auto;

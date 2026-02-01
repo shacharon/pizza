@@ -130,12 +130,16 @@ export function publishAssistantMessage(
     // SESSIONHASH: Use shared utility for consistent hashing
     const sessionHash = hashSessionId(sessionId);
 
+    // UILANGUAGE FIX: Resolve uiLanguage from context (for debugging + backward compat)
+    const uiLanguage = langCtx?.uiLanguage ?? uiLanguageFallback ?? 'en';
+
     logger.info({
       channel: ASSISTANT_WS_CHANNEL,
       requestId,
       sessionHash,
       payloadType: 'assistant',
       assistantLanguage,
+      uiLanguage,
       assistantType: normalizedPayload.type,
       event: 'assistant_ws_publish'
     }, '[ASSISTANT] Publishing to WebSocket with assistantLanguage');
@@ -144,6 +148,7 @@ export function publishAssistantMessage(
       type: 'assistant' as const,
       requestId,
       assistantLanguage,
+      uiLanguage, // Include uiLanguage for debugging + backward compat
       payload: {
         type: normalizedPayload.type,
         message: normalizedPayload.message,

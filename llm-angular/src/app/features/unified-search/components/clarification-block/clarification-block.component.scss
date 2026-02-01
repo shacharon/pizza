@@ -1,8 +1,8 @@
 .clarification-block {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   border-radius: 16px;
-  padding: 2rem;
-  margin: 2rem 0;
+  padding: 1.25rem; // COMPACT: Reduced from 2rem
+  margin: 0.25rem 0 0.5rem; // COMPACT: Further reduced margins
   box-shadow: 0 4px 20px rgba(102, 126, 234, 0.25);
   animation: slideIn 0.3s ease-out;
 }
@@ -89,8 +89,8 @@
 // Responsive design
 @media (max-width: 768px) {
   .clarification-block {
-    padding: 1.5rem;
-    margin: 1.5rem 0;
+    padding: 1rem; // COMPACT: Reduced from 1.5rem
+    margin: 0.25rem 0 0.5rem; // COMPACT: Match desktop
   }
 
   .clarification-question {

@@ -9,7 +9,7 @@
 
 .search-input {
   width: 100%;
-  padding: 0.875rem 3rem 0.875rem 1.25rem;
+  padding: 0.625rem 3rem 0.625rem 1rem; // COMPACT: Reduced from 0.875rem vertical, 1.25rem left
   font-size: 1rem;
   font-family: inherit;
   color: #111827;
@@ -99,7 +99,7 @@
 @media (max-width: 600px) {
   .search-input {
     font-size: 16px; // Prevents zoom on iOS
-    padding: 0.875rem 3rem 0.875rem 1.25rem;
+    padding: 0.625rem 3rem 0.625rem 1rem; // COMPACT: Match desktop
   }
 }
 

@@ -150,6 +150,86 @@ describe('Assistant Message Mapper', () => {
       const result = extractAssistantMessage(rawMessage, 'req-123');
       expect(result?.id).toMatch(/^req-123-SUMMARY-\d+$/);
     });
+
+    describe('Language Resolution', () => {
+      it('should use envelope.assistantLanguage (priority 1)', () => {
+        const rawMessage = {
+          type: 'assistant',
+          requestId: 'req-123',
+          assistantLanguage: 'ru',
+          payload: {
+            type: 'SUMMARY',
+            message: 'Test message',
+            language: 'en' // Should be ignored
+          }
+        };
+
+        const result = extractAssistantMessage(rawMessage, 'req-123', 'he');
+        expect(result?.language).toBe('ru'); // envelope.assistantLanguage wins
+      });
+
+      it('should use payload.language if envelope.assistantLanguage missing (priority 2)', () => {
+        const rawMessage = {
+          type: 'assistant',
+          requestId: 'req-123',
+          payload: {
+            type: 'SUMMARY',
+            message: 'Test message',
+            language: 'ar'
+          }
+        };
+
+        const result = extractAssistantMessage(rawMessage, 'req-123', 'he');
+        expect(result?.language).toBe('ar'); // payload.language is fallback
+      });
+
+      it('should use uiLanguageFallback if both envelope and payload missing (priority 3)', () => {
+        const rawMessage = {
+          type: 'assistant',
+          requestId: 'req-123',
+          payload: {
+            type: 'SUMMARY',
+            message: 'Test message'
+          }
+        };
+
+        const result = extractAssistantMessage(rawMessage, 'req-123', 'he');
+        expect(result?.language).toBe('he'); // uiLanguageFallback
+      });
+
+      it('should use "en" hard fallback if all sources missing (priority 4)', () => {
+        const rawMessage = {
+          type: 'assistant',
+          requestId: 'req-123',
+          payload: {
+            type: 'SUMMARY',
+            message: 'Test message'
+          }
+        };
+
+        const result = extractAssistantMessage(rawMessage, 'req-123');
+        expect(result?.language).toBe('en'); // hard fallback
+      });
+
+      it('should handle all supported languages', () => {
+        const languages: Array<'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es'> = ['he', 'en', 'ar', 'ru', 'fr', 'es'];
+        
+        for (const lang of languages) {
+          const rawMessage = {
+            type: 'assistant',
+            requestId: 'req-123',
+            assistantLanguage: lang,
+            payload: {
+              type: 'SUMMARY',
+              message: 'Test message'
+            }
+          };
+
+          const result = extractAssistantMessage(rawMessage, 'req-123');
+          expect(result?.language).toBe(lang);
+        }
+      });
+    });
   });
 
   describe('generateMessageId', () => {

@@ -84,64 +84,7 @@ export type MsgKey =
   // Generic messages
   | 'common.close'
   | 'common.clear'
-  | 'common.retry'
-
-  // Restaurant card
-  | 'card.viewDetails'
-  | 'card.photoAlt'
-  | 'card.photoPlaceholder'
-  | 'card.rating'
-  | 'card.priceLevel'
-  | 'card.reviews'
-  | 'card.navigate'
-  | 'card.navigateTo'
-  | 'card.locationNotAvailable'
-  | 'card.call'
-  | 'card.callRestaurant'
-  | 'card.phoneNotAvailable'
-  | 'card.save'
-  | 'card.saveToFavorites'
-  | 'card.openNow'
-  | 'card.closed'
-  | 'card.hoursUnverified'
-  | 'card.glutenFree'
-  | 'card.maybeGlutenFree'
-  | 'card.glutenFreeTooltip'
-  | 'card.restaurantFallback'
-  | 'card.locationFallback'
-
-  // Reason labels
-  | 'reason.bestMatch'
-  | 'reason.closestOption'
-
-  // Search bar
-  | 'searchBar.ariaLabel'
-  | 'searchBar.loading'
-  | 'searchBar.clearSearch'
-
-  // Assistant
-  | 'assistant.quickPicks'
-  | 'assistant.refine'
-  | 'assistant.clearMessages'
-  | 'assistant.primaryAction'
-  | 'assistant.action'
-
-  // Actions (executors)
-  | 'action.openedMaps'
-  | 'action.failedToOpenMaps'
-  | 'action.openedDialer'
-  | 'action.noPhoneNumber'
-  | 'action.phoneNotAvailable'
-  | 'action.failedToOpenDialer'
-  | 'action.openedWebsite'
-  | 'action.openedSearchResults'
-  | 'action.failedToOpenWebsite'
-  | 'action.shareText'
-  | 'action.sharedSuccessfully'
-  | 'action.copiedToClipboard'
-  | 'action.failedToShare'
-  | 'action.savedToFavorites'
-  | 'action.failedToSaveFavorite';
+  | 'common.retry';
 
 // Message dictionary: all languages with all keys
 export const MESSAGES: Record<Lang, Record<MsgKey, string>> = {

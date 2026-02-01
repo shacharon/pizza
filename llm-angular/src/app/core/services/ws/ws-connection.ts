@@ -275,7 +275,9 @@ export class WSConnection {
     }
 
     if (this.ws) {
-      this.ws.close();
+      // Send close with proper code and reason (prevents "empty reason" on server)
+      // Code 1000 = Normal closure (client-initiated graceful disconnect)
+      this.ws.close(1000, 'CLIENT_DISCONNECT');
       this.ws = undefined;
     }
 

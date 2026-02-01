@@ -1,6 +1,6 @@
 .assistant-summary {
-  padding: 0.75rem 1rem;
-  margin-bottom: 1rem;
+  padding: 0.5rem 0.75rem; // COMPACT: Reduced from 0.75rem 1rem
+  margin-bottom: 0.25rem; // COMPACT: Reduced from 0.5rem
   border-radius: 8px;
   background: var(--color-surface-light, #f5f5f5);
   transition: background-color 0.2s ease;
@@ -77,14 +77,14 @@
   .messages-container {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 0.5rem; // COMPACT: Reduced from 0.75rem
   }
 
   .assistant-message {
     display: flex;
     align-items: flex-start;
     gap: 0.5rem;
-    padding: 0.5rem;
+    padding: 0.375rem 0.5rem; // COMPACT: Reduced vertical padding
     background: white;
     border-radius: 4px;
     transition: background 0.2s;

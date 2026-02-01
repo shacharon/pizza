@@ -16,13 +16,41 @@ import type {
 } from './assistant.types.js';
 
 /**
+ * Single shared language resolver for ALL assistant contexts
+ * Maps language code to emphasis instruction
+ * 
+ * HARDENED: No inference, no detection, no fallback to English unless explicitly 'en' or 'other'
+ * 
+ * @param language - Language code from context (he|en|ru|ar|fr|es|other)
+ * @returns Language emphasis instruction
+ */
+function resolveLang(language: string): { emphasis: string } {
+  const languageMap: Record<string, { emphasis: string }> = {
+    'he': { emphasis: 'MUST write in Hebrew (עברית) ONLY' },
+    'en': { emphasis: 'MUST write in English ONLY' },
+    'ru': { emphasis: 'MUST write in Russian (Русский) ONLY' },
+    'ar': { emphasis: 'MUST write in Arabic (العربية) ONLY' },
+    'fr': { emphasis: 'MUST write in French (Français) ONLY' },
+    'es': { emphasis: 'MUST write in Spanish (Español) ONLY' }
+  };
+  
+  // Fallback to English only for 'other' or unknown languages
+  return languageMap[language] ?? languageMap['en']!;
+}
+
+/**
  * System prompt (universal rules for all assistant types)
  */
 const SYSTEM_PROMPT = `You are an assistant for a food search app. Return ONLY JSON.
 
 Rules:
 - Be friendly, concise (1-2 sentences max for message), helpful
-- CRITICAL: Respond in the EXACT language specified (he=Hebrew ONLY, en=English ONLY)
+- CRITICAL LANGUAGE RULE: 
+  * Respond in the EXACT language specified by "Language:" field in the user prompt
+  * NEVER output English unless requestedLanguage="en"
+  * IGNORE the language of restaurant names, query text, or any input data
+  * For SUMMARY type: Output ONLY in requestedLanguage, regardless of input language
+  * Set outputLanguage field to the SAME value as the requestedLanguage
 - "question" field: add a clarifying question when needed (CLARIFY should ask, others optional)
 - "blocksSearch": 
   * SUMMARY type: MUST be false (search already completed, showing results)
@@ -34,9 +62,9 @@ Rules:
   * SUMMARY: blocksSearch MUST be false, suggestedAction MUST be NONE (user is viewing results)
   * GENERIC_QUERY_NARRATION: blocksSearch MUST be false, suggestedAction MUST be REFINE
 
-Schema: {"type":"GATE_FAIL|CLARIFY|SUMMARY|SEARCH_FAILED|GENERIC_QUERY_NARRATION","message":"...","question":"..."|null,"suggestedAction":"NONE|ASK_LOCATION|ASK_FOOD|RETRY|EXPAND_RADIUS|REFINE","blocksSearch":true|false}
-The response language is provided externally and MUST be used as-is.
-Do NOT infer, detect, or change language.
+Schema: {"type":"GATE_FAIL|CLARIFY|SUMMARY|SEARCH_FAILED|GENERIC_QUERY_NARRATION","message":"...","question":"..."|null,"suggestedAction":"NONE|ASK_LOCATION|ASK_FOOD|RETRY|EXPAND_RADIUS|REFINE","blocksSearch":true|false,"language":"he|en|ar|ru|fr|es","outputLanguage":"he|en|ar|ru|fr|es"}
+The response language (requestedLanguage) is provided in the user prompt and MUST be used as-is.
+Do NOT infer, detect, or change language based on input data.
 
 `;
 
@@ -75,10 +103,7 @@ export class AssistantPromptEngine {
   }
 
   private buildGateFailPrompt(context: AssistantGateContext): string {
-    const languageInstruction = context.language === 'he' ? 'Hebrew' : 'English';
-    const languageEmphasis = context.language === 'he'
-      ? 'MUST write in Hebrew (עברית)'
-      : 'MUST write in English';
+    const lang = resolveLang(context.language);
     const reason = context.reason === 'NO_FOOD' ? 'not food-related' : 'uncertain if food-related';
 
     return `Query: "${context.query}"
@@ -86,16 +111,14 @@ Type: GATE_FAIL
 Reason: ${reason}
 Language: ${context.language}
 
-CRITICAL: You ${languageEmphasis}. Both "message" and "question" fields must be in ${languageInstruction}.
+CRITICAL: You ${lang.emphasis}.
+Set language=${context.language} and outputLanguage=${context.language}.
 
 Generate friendly message. Help user understand and guide them. Decide blocksSearch and suggestedAction.`;
   }
 
   private buildClarifyPrompt(context: AssistantClarifyContext): string {
-    const languageInstruction = context.language === 'he' ? 'Hebrew' : 'English';
-    const languageEmphasis = context.language === 'he'
-      ? 'MUST write in Hebrew (עברית)'
-      : 'MUST write in English';
+    const lang = resolveLang(context.language);
     const missing = context.reason === 'MISSING_LOCATION' ? 'location' : 'food type';
 
     return `Query: "${context.query}"
@@ -103,16 +126,14 @@ Type: CLARIFY
 Reason: missing ${missing}
 Language: ${context.language}
 
-CRITICAL: You ${languageEmphasis}. Both "message" and "question" fields must be in ${languageInstruction}.
+CRITICAL: You ${lang.emphasis}.
+Set language=${context.language} and outputLanguage=${context.language}.
 
 Ask a question to get the missing info. Decide blocksSearch and suggestedAction.`;
   }
 
   private buildSearchFailedPrompt(context: AssistantSearchFailedContext): string {
-    const languageInstruction = context.language === 'he' ? 'Hebrew' : 'English';
-    const languageEmphasis = context.language === 'he'
-      ? 'MUST write in Hebrew (עברית)'
-      : 'MUST write in English';
+    const lang = resolveLang(context.language);
     const reason = context.reason === 'GOOGLE_TIMEOUT' ? 'Google API timeout' : 'provider error';
 
     return `Query: "${context.query}"
@@ -120,16 +141,14 @@ Type: SEARCH_FAILED
 Reason: ${reason}
 Language: ${context.language}
 
-CRITICAL: You ${languageEmphasis}. Both "message" and "question" fields must be in ${languageInstruction}.
+CRITICAL: You ${lang.emphasis}.
+Set language=${context.language} and outputLanguage=${context.language}.
 
 Tell user search failed. Decide what to suggest and whether to block. Be helpful and honest.`;
   }
 
   private buildGenericNarrationPrompt(context: AssistantGenericQueryNarrationContext): string {
-    const languageInstruction = context.language === 'he' ? 'Hebrew' : 'English';
-    const languageEmphasis = context.language === 'he'
-      ? 'MUST write in Hebrew (עברית)'
-      : 'MUST write in English';
+    const lang = resolveLang(context.language);
     const locationSource = context.usedCurrentLocation ? 'current location' : 'default area';
 
     return `Query: "${context.query}"
@@ -138,7 +157,8 @@ Results: ${context.resultCount}
 Location used: ${locationSource}
 Language: ${context.language}
 
-CRITICAL: You ${languageEmphasis}. Both "message" and "question" fields must be in ${languageInstruction}.
+CRITICAL: You ${lang.emphasis}.
+Set language=${context.language} and outputLanguage=${context.language}.
 
 Instructions:
 1. Message (1 sentence): Explain assumption - we used their current location because query was generic
@@ -156,11 +176,7 @@ Examples:
   }
 
   private buildSummaryPrompt(context: AssistantSummaryContext): string {
-    const languageInstruction = context.language === 'he' ? 'Hebrew' : 'English';
-    const languageEmphasis = context.language === 'he'
-      ? 'MUST write in Hebrew (עברית)'
-      : 'MUST write in English';
-
+    const lang = resolveLang(context.language);
     const metadata = context.metadata || {};
     const dietaryNote = context.dietaryNote?.shouldInclude
       ? `\nDietary Note: Add SOFT gluten-free hint at end (1 sentence max).
@@ -182,9 +198,12 @@ ${metadata.filtersApplied && metadata.filtersApplied.length > 0 ? `- Active filt
 
     return `Query: "${context.query}"
 Type: SUMMARY
-Language: ${context.language}${metadataContext}${dietaryNote}
+Language: ${context.language}
+${metadataContext}${dietaryNote}
 
-CRITICAL: You ${languageEmphasis}. Both "message" and "question" fields must be in ${languageInstruction}.
+CRITICAL: You ${lang.emphasis}.
+Set language=${context.language} and outputLanguage=${context.language}.
+IGNORE the language of restaurant names, query text, or any input data.
 
 Instructions:
 1. CRITICAL: Reference the QUERY context in your response. User searched for "${context.query}" - acknowledge this.
@@ -205,6 +224,6 @@ Instructions:
    - (en) Query="Italian restaurants in Gedera": "Found Italian restaurants in Gedera. Most are rated highly."
    - (en) Query="romantic kosher restaurants in Tel Aviv": "Found romantic kosher spots in Tel Aviv. Several are open now."
 
-Generate a QUERY-SPECIFIC message that helps user understand results in context of THEIR search.`;
+Generate a QUERY-SPECIFIC message that helps user understand results.`;
   }
 }

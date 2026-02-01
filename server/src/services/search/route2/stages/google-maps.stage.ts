@@ -61,12 +61,12 @@ export async function executeGoogleMapsStage(
 
     // CACHE GUARD: Check cache before executing handler
     const cachedResults = await checkGoogleCache(mapping, requestId);
-    
+
     if (cachedResults !== null) {
       // Cache hit - skip handler execution
       results = cachedResults;
       servedFrom = 'cache';
-      
+
       // Update context to mark as served from cache
       if (ctx.google) {
         ctx.google.servedFrom = 'cache';

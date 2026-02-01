@@ -1,6 +1,8 @@
 <div class="search-page" dir="ltr">
-  <header class="search-header">
+  <header class="search-header" [class.results-mode]="isResultsMode()">
     <div class="search-header-inner">
+      <!-- Hero Section: Only show when NOT in results mode -->
+      @if (!isResultsMode()) {
       <div class="hero-section">
         <h1 class="page-title">{{ t(uiLanguage(), 'hero.title') }}</h1>
         <p class="page-subtitle">{{ t(uiLanguage(), 'hero.subtitle') }}</p>
@@ -20,6 +22,7 @@
           }
         </div>
       </div>
+      }
 
       <!-- Search Card: Input + Assistant Line + Contextual Assistant -->
       <div class="search-card">

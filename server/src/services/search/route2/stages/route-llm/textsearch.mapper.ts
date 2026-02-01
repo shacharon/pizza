@@ -61,7 +61,7 @@ const TEXTSEARCH_MAPPER_PROMPT_HASH = createHash('sha256')
  * @param mode KEYED or FREE_TEXT
  * @param llmResult LLM extraction result (keys, cityText)
  * @param originalQuery Original user query
- * @param searchLanguage Language for provider (from filters_resolved)
+ * @param searchLanguage Language for provider (from filters_resolved context)
  * @returns providerTextQuery and providerLanguage
  */
 function buildProviderQuery(
@@ -72,7 +72,7 @@ function buildProviderQuery(
     cityText: string | null;
   },
   originalQuery: string,
-  searchLanguage: 'he' | 'en',
+  searchLanguage: 'he' | 'en' | 'ru' | 'ar' | 'fr' | 'es' | 'other',
   requestId?: string
 ): { providerTextQuery: string; providerLanguage: 'he' | 'en' | 'ru' | 'ar' | 'fr' | 'es' | 'other'; source: string } {
 
@@ -94,13 +94,14 @@ function buildProviderQuery(
       cityText: llmResult.cityText,
       cityEnglish,
       providerTextQuery,
-      providerLanguage: 'en',
+      providerLanguage: searchLanguage,
+      providerLanguage_source: 'ctx',
       source: 'deterministic_builder'
-    }, '[TEXTSEARCH] Built KEYED mode query (cuisine + city) - fully in English');
+    }, '[TEXTSEARCH] Built KEYED mode query (cuisine + city) - using ctx providerLanguage');
 
     return {
       providerTextQuery,
-      providerLanguage: 'en', // Provider always uses English for structured queries
+      providerLanguage: searchLanguage, // Use language from context (not hardcoded)
       source: 'deterministic_builder_keyed'
     };
   }
@@ -118,13 +119,14 @@ function buildProviderQuery(
       cuisineKey,
       cityText: null,
       providerTextQuery: restaurantLabel,
-      providerLanguage: 'en',
+      providerLanguage: searchLanguage,
+      providerLanguage_source: 'ctx',
       source: 'deterministic_builder'
-    }, '[TEXTSEARCH] Built KEYED mode query (cuisine only)');
+    }, '[TEXTSEARCH] Built KEYED mode query (cuisine only) - using ctx providerLanguage');
 
     return {
       providerTextQuery: restaurantLabel,
-      providerLanguage: 'en',
+      providerLanguage: searchLanguage, // FIX: Use language from context (not hardcoded 'en')
       source: 'deterministic_builder_keyed_no_city'
     };
   }
@@ -144,8 +146,9 @@ function buildProviderQuery(
     originalQuery,
     cleanedQuery,
     providerLanguage: searchLanguage,
+    providerLanguage_source: 'ctx',
     source: 'deterministic_builder'
-  }, '[TEXTSEARCH] Built FREE_TEXT mode query (cleaned original)');
+  }, '[TEXTSEARCH] Built FREE_TEXT mode query (cleaned original) - using ctx providerLanguage');
 
   return {
     providerTextQuery: cleanedQuery,
@@ -516,6 +519,7 @@ export async function executeTextSearchMapper(
     llmResult.language = finalFilters.languageContext?.searchLanguage ?? finalFilters.providerLanguage;
 
     // DETERMINISTIC QUERY BUILDER: Build providerTextQuery based on mode
+    const searchLang = (finalFilters.languageContext?.searchLanguage ?? finalFilters.providerLanguage) as 'he' | 'en' | 'ru' | 'ar' | 'fr' | 'es' | 'other';
     const { providerTextQuery, providerLanguage, source } = buildProviderQuery(
       llmResult.mode,
       {
@@ -524,7 +528,7 @@ export async function executeTextSearchMapper(
         cityText: llmResult.cityText
       },
       request.query,
-      finalFilters.languageContext?.searchLanguage as 'he' | 'en' ?? 'he',
+      searchLang,
       requestId
     );
 
@@ -655,7 +659,7 @@ async function buildDeterministicMapping(
   }
 
   // Build provider query using deterministic builder
-  const searchLang = finalFilters.languageContext?.searchLanguage as 'he' | 'en' ?? 'he';
+  const searchLang = (finalFilters.languageContext?.searchLanguage ?? finalFilters.providerLanguage) as 'he' | 'en' | 'ru' | 'ar' | 'fr' | 'es' | 'other';
   const { providerTextQuery, providerLanguage, source } = buildProviderQuery(
     mode,
     { cuisineKey, placeTypeKey: null, cityText },

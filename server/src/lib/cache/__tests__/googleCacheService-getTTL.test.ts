@@ -13,17 +13,17 @@ const mockRedis = {
   set: async () => 'OK',
   del: async () => 1,
   pipeline: () => ({
-    get: () => {},
+    get: () => { },
     exec: async () => []
   })
 } as any;
 
 // Mock logger
 const mockLogger = {
-  info: () => {},
-  debug: () => {},
-  warn: () => {},
-  error: () => {}
+  info: () => { },
+  debug: () => { },
+  warn: () => { },
+  error: () => { }
 };
 
 describe('GoogleCacheService.getTTL() - Null Safety', () => {
@@ -95,7 +95,7 @@ describe('GoogleCacheService.getTTL() - Defensive Wrapper', () => {
 
     // Test with various edge cases
     const inputs = [null, undefined, '', NaN, Infinity, -Infinity];
-    
+
     for (const input of inputs) {
       const ttl = cacheServiceWithLogging.getTTL(input as any);
       assert.ok(typeof ttl === 'number' && ttl > 0, `Should return valid TTL for ${input}`);
@@ -104,7 +104,7 @@ describe('GoogleCacheService.getTTL() - Defensive Wrapper', () => {
 
   it('should return 900s as fallback if error occurs', () => {
     const cacheService = new GoogleCacheService(mockRedis, mockLogger);
-    
+
     // Test that even with unexpected inputs, we get the default 900s
     const ttl = cacheService.getTTL(null);
     assert.strictEqual(ttl, 900, 'fallback should be 900s');
@@ -114,7 +114,7 @@ describe('GoogleCacheService.getTTL() - Defensive Wrapper', () => {
 describe('GoogleCacheService.getTTL() - Landmark Use Cases', () => {
   it('should handle landmark queries with null keyword gracefully', () => {
     const cacheService = new GoogleCacheService(mockRedis, mockLogger);
-    
+
     // Simulates: mapping.keyword is null for a landmark query
     const ttl = cacheService.getTTL(null);
     assert.strictEqual(ttl, 900, 'landmark with null keyword should use default TTL');
@@ -122,7 +122,7 @@ describe('GoogleCacheService.getTTL() - Landmark Use Cases', () => {
 
   it('should handle landmark queries with undefined keyword gracefully', () => {
     const cacheService = new GoogleCacheService(mockRedis, mockLogger);
-    
+
     const ttl = cacheService.getTTL(undefined);
     assert.strictEqual(ttl, 900, 'landmark with undefined keyword should use default TTL');
   });

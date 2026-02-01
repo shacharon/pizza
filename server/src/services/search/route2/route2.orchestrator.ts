@@ -131,6 +131,9 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
     // MILESTONE: GATE_DONE (25%)
     try {
       await searchJobStore.setStatus(requestId, 'RUNNING', JOB_MILESTONES.GATE_DONE);
+      // Heartbeat: Keep job alive after Gate2
+      await searchJobStore.updateHeartbeat(requestId);
+      logger.debug({ requestId, stage: 'gate2', event: 'job_heartbeat_sent' }, '[ROUTE2] Job heartbeat after gate2');
     } catch (err) {
       // Non-fatal: progress tracking is optional
       logger.debug({ requestId, error: err instanceof Error ? err.message : 'unknown' }, '[ROUTE2] Progress update failed (non-fatal)');
@@ -189,6 +192,9 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
     // MILESTONE: INTENT_DONE (40%)
     try {
       await searchJobStore.setStatus(requestId, 'RUNNING', JOB_MILESTONES.INTENT_DONE);
+      // Heartbeat: Keep job alive after Intent
+      await searchJobStore.updateHeartbeat(requestId);
+      logger.debug({ requestId, stage: 'intent', event: 'job_heartbeat_sent' }, '[ROUTE2] Job heartbeat after intent');
     } catch (err) {
       // Non-fatal: progress tracking is optional
       logger.debug({ requestId, error: err instanceof Error ? err.message : 'unknown' }, '[ROUTE2] Progress update failed (non-fatal)');
@@ -435,6 +441,9 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
     // MILESTONE: GOOGLE_DONE (60%)
     try {
       await searchJobStore.setStatus(requestId, 'RUNNING', JOB_MILESTONES.GOOGLE_DONE);
+      // Heartbeat: Keep job alive after Google Maps fetch
+      await searchJobStore.updateHeartbeat(requestId);
+      logger.debug({ requestId, stage: 'google_maps', event: 'job_heartbeat_sent' }, '[ROUTE2] Job heartbeat after google_maps');
     } catch (err) {
       // Non-fatal: progress tracking is optional
       logger.debug({ requestId, error: err instanceof Error ? err.message : 'unknown' }, '[ROUTE2] Progress update failed (non-fatal)');
@@ -787,6 +796,9 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
     // MILESTONE: POST_CONSTRAINTS_DONE (75%)
     try {
       await searchJobStore.setStatus(requestId, 'RUNNING', JOB_MILESTONES.POST_CONSTRAINTS_DONE);
+      // Heartbeat: Keep job alive after post-constraints
+      await searchJobStore.updateHeartbeat(requestId);
+      logger.debug({ requestId, stage: 'post_constraints', event: 'job_heartbeat_sent' }, '[ROUTE2] Job heartbeat after post_constraints');
     } catch (err) {
       // Non-fatal: progress tracking is optional
       logger.debug({ requestId, error: err instanceof Error ? err.message : 'unknown' }, '[ROUTE2] Progress update failed (non-fatal)');
@@ -859,6 +871,9 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
     // MILESTONE: RANKING_DONE (90%)
     try {
       await searchJobStore.setStatus(requestId, 'RUNNING', JOB_MILESTONES.RANKING_DONE);
+      // Heartbeat: Keep job alive after ranking
+      await searchJobStore.updateHeartbeat(requestId);
+      logger.debug({ requestId, stage: 'ranking', event: 'job_heartbeat_sent' }, '[ROUTE2] Job heartbeat after ranking');
     } catch (err) {
       // Non-fatal: progress tracking is optional
       logger.debug({ requestId, error: err instanceof Error ? err.message : 'unknown' }, '[ROUTE2] Progress update failed (non-fatal)');

@@ -447,7 +447,18 @@ export class SearchFacade {
             return;
           }
 
-          safeLog('SearchFacade', 'Valid LLM assistant message', { type: narrator.type, message: narrator.message });
+          // LANGUAGE FIX: Extract language from envelope fields (priority) or payload.language (backward compat)
+          // Priority: envelope.assistantLanguage > envelope.uiLanguage > payload.language > uiStore fallback
+          const language = narratorMsg.assistantLanguage ?? narratorMsg.uiLanguage ?? narrator.language ?? this.locale();
+          
+          safeLog('SearchFacade', 'Valid LLM assistant message', {
+            type: narrator.type,
+            requestId: narratorMsg.requestId,
+            language,
+            assistantLanguage: narratorMsg.assistantLanguage ?? null,
+            uiLanguage: narratorMsg.uiLanguage ?? null,
+            payloadLanguage: narrator.language ?? null
+          });
 
           // MULTI-MESSAGE: Add to message collection (accumulates, doesn't overwrite)
           const assistMessage = narrator.message || narrator.question || '';
@@ -457,7 +468,8 @@ export class SearchFacade {
               assistMessage,
               narratorMsg.requestId,
               narrator.question || null,
-              narrator.blocksSearch || false
+              narrator.blocksSearch || false,
+              language // Pass language from envelope
             );
           }
 

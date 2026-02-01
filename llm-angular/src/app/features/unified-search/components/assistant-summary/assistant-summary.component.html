@@ -14,10 +14,10 @@
         @if (msg.question && msg.question !== msg.message) {
         <div class="message-question">{{ msg.question }}</div>
         }
-        <!-- DEV MODE: Language debug -->
-        @if (isDevMode) {
+        <!-- DEV ONLY: Language debug (toggle via ?debug_lang=1) -->
+        @if (showLanguageDebug()) {
         <div class="language-debug">
-          <small>📍 payload.language: {{ msg.language || 'missing' }} | uiLanguage: {{ locale() }}</small>
+          <small>🌐 assistantLanguage: {{ msg.language || 'missing' }}</small>
         </div>
         }
       </div>

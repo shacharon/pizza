@@ -62,7 +62,7 @@ describe('Gate Stop Language Lock', () => {
 
     it('should NEVER return "other" (always resolves to supported language)', () => {
       const supportedLanguages = ['he', 'en', 'ar', 'ru', 'fr', 'es'];
-      
+
       const testCases = [
         ['he', 'מסעדות'],
         ['en', 'pizza'],

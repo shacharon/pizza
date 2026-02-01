@@ -78,7 +78,8 @@ export const AssistantOutputSchema = z.object({
   question: z.string().nullable(),
   suggestedAction: z.enum(['NONE', 'ASK_LOCATION', 'ASK_FOOD', 'RETRY', 'EXPAND_RADIUS', 'REFINE']),
   blocksSearch: z.boolean(),
-  language: z.enum(['he', 'en', 'ar', 'ru', 'fr', 'es']).optional() // Language of the generated message (assistantLanguage)
+  language: z.enum(['he', 'en', 'ar', 'ru', 'fr', 'es']).optional(), // Language of the generated message (assistantLanguage) - backward compat
+  outputLanguage: z.enum(['he', 'en', 'ar', 'ru', 'fr', 'es']).optional() // LANGUAGE_ENFORCEMENT: Output language for validation
 }).strict();
 
 export type AssistantOutput = z.infer<typeof AssistantOutputSchema>;
@@ -92,9 +93,10 @@ export const ASSISTANT_JSON_SCHEMA = {
     question: { type: ['string', 'null'] },
     suggestedAction: { type: 'string', enum: ['NONE', 'ASK_LOCATION', 'ASK_FOOD', 'RETRY', 'EXPAND_RADIUS', 'REFINE'] },
     blocksSearch: { type: 'boolean' },
-    language: { type: 'string', enum: ['he', 'en', 'ar', 'ru', 'fr', 'es'] }
+    language: { type: 'string', enum: ['he', 'en', 'ar', 'ru', 'fr', 'es'] },
+    outputLanguage: { type: 'string', enum: ['he', 'en', 'ar', 'ru', 'fr', 'es'] }
   },
-  required: ['type', 'message', 'question', 'suggestedAction', 'blocksSearch', 'language'],
+  required: ['type', 'message', 'question', 'suggestedAction', 'blocksSearch', 'language', 'outputLanguage'],
   additionalProperties: false
 } as const;
 
@@ -102,8 +104,8 @@ export const ASSISTANT_JSON_SCHEMA = {
 // Schema Versioning
 // ============================================================================
 
-export const ASSISTANT_SCHEMA_VERSION = 'v3_strict_validation';
-export const ASSISTANT_PROMPT_VERSION = 'v2_language_enforcement';
+export const ASSISTANT_SCHEMA_VERSION = 'v4_output_language';
+export const ASSISTANT_PROMPT_VERSION = 'v3_hard_language_rule';
 
 // Generate schema hash for telemetry (consistent with other mappers)
 export const ASSISTANT_SCHEMA_HASH = createHash('sha256')

@@ -21,7 +21,7 @@ describe('ROUTE_LLM Schemas', () => {
   // ==========================================================================
   // TextSearchMappingSchema Tests
   // ==========================================================================
-  
+
   describe('TextSearchMappingSchema', () => {
     it('validates happy path with bias', () => {
       const valid = {

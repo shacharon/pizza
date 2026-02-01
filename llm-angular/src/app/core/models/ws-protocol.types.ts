@@ -155,18 +155,23 @@ export interface WSServerAssistantMessage {
 
 /**
  * Assistant message (CURRENT - matches backend protocol)
- * Backend sends: { type: 'assistant', requestId, payload: {...} }
+ * Backend sends: { type: 'assistant', requestId, assistantLanguage, uiLanguage, payload: {...} }
+ * Envelope-level language fields take priority over payload.language (backward compat)
  */
 export interface WSServerAssistant {
   type: 'assistant';
   requestId: string;
+  // Envelope-level language fields (preferred)
+  assistantLanguage?: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es' | 'it' | 'ja' | 'other';
+  uiLanguage?: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es' | 'it' | 'ja' | 'other';
   payload: {
     type: 'GATE_FAIL' | 'CLARIFY' | 'SUMMARY' | 'SEARCH_FAILED' | 'GENERIC_QUERY_NARRATION' | 'NUDGE_REFINE';
     message: string;
     question: string | null;
     blocksSearch: boolean;
     suggestedAction?: 'REFINE_QUERY';
-    language?: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es';  // Language of the message (assistantLanguage)
+    // Backward compatibility: language in payload (deprecated, use envelope fields)
+    language?: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es';
   };
 }
 

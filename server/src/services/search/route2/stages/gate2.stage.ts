@@ -252,66 +252,20 @@ export async function executeGate2Stage(
       lastError = err;
       const errorMsg = err?.message || String(err);
       const errorType = err?.errorType || '';
-      const isTimeout = errorType === 'abort_timeout' ||
-        errorMsg.toLowerCase().includes('abort') ||
-        errorMsg.toLowerCase().includes('timeout');
 
-      if (isTimeout) {
-        logger.warn({
-          requestId,
-          traceId,
-          stage: 'gate2',
-          errorType,
-          attempt: 1,
-          msg: '[ROUTE2] gate2 timeout, retrying once'
-        });
-
-        // Jittered backoff: 50-150ms (reduced to minimize immediate repeat aborts)
-        await new Promise(resolve => setTimeout(resolve, 50 + Math.random() * 100));
-
-        // Attempt 2: Retry once
-        try {
-          const retryResponse = await llmProvider.completeJSON(
-            messages,
-            Gate2LLMSchema,
-            {
-              model,
-              temperature: 0,
-              timeout: timeoutMs,
-              promptVersion: GATE2_PROMPT_VERSION,
-              promptHash: GATE2_PROMPT_HASH,
-              promptLength: GATE2_SYSTEM_PROMPT.length,
-              schemaHash: GATE2_SCHEMA_HASH,
-              ...(traceId && { traceId }),
-              ...(sessionId && { sessionId }),
-              ...(requestId && { requestId }),
-              stage: 'gate2'
-            },
-            GATE2_JSON_SCHEMA
-          );
-          llmResult = retryResponse.data;
-          tokenUsage = {
-            ...(retryResponse.usage?.prompt_tokens !== undefined && { input: retryResponse.usage.prompt_tokens }),
-            ...(retryResponse.usage?.completion_tokens !== undefined && { output: retryResponse.usage.completion_tokens }),
-            ...(retryResponse.usage?.total_tokens !== undefined && { total: retryResponse.usage.total_tokens }),
-            ...(retryResponse.model !== undefined && { model: retryResponse.model })
-          };
-
-          logger.info({
-            requestId,
-            traceId,
-            stage: 'gate2',
-            attempt: 2,
-            msg: '[ROUTE2] gate2 retry succeeded'
-          });
-        } catch (retryErr) {
-          // Retry failed - will use timeout error result
-          lastError = retryErr;
-        }
-      }
+      // LLM client already handles retries with backoff (maxAttempts=3)
+      // No additional retry at Route2 level - fail fast and return error result
+      logger.error({
+        requestId,
+        traceId,
+        stage: 'gate2',
+        errorType,
+        error: errorMsg,
+        msg: '[ROUTE2] gate2 LLM failed - LLM client retries already exhausted'
+      });
     }
 
-    // If LLM failed (even after retry), return timeout error result
+    // If LLM failed (after client retries), return timeout error result
     if (!llmResult) {
       const durationMs = Date.now() - startTime;
 

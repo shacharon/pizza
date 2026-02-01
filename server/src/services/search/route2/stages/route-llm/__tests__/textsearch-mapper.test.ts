@@ -480,3 +480,205 @@ describe('TEXTSEARCH Mapper - Location Bias Application', () => {
     assert.strictEqual(result.bias?.center.lng, 34.7807);
   });
 });
+
+describe('TEXTSEARCH Mapper - providerLanguage from Context', () => {
+  /**
+   * Test: KEYED mode should use providerLanguage from context, not hardcoded 'en'
+   * Regression test for French query being sent to Google with language='en'
+   */
+  it('should use providerLanguage=fr for French KEYED query', async () => {
+    // Mock intent for French query
+    const intent: IntentResult = {
+      route: 'TEXTSEARCH',
+      region: 'FR',
+      language: 'fr',
+      confidence: 0.9,
+      reason: 'explicit',
+      regionConfidence: 0.95,
+      regionReason: 'explicit'
+    };
+
+    // Mock request with French query
+    const request: SearchRequest = {
+      query: 'Bistro français à Paris',
+      userLocation: null
+    };
+
+    // Mock LLM provider returning KEYED mode with cuisine
+    const mockLLMProvider = {
+      completeJSON: async () => ({
+        data: {
+          providerMethod: 'textSearch' as const,
+          mode: 'KEYED',
+          cuisineKey: 'french',
+          placeTypeKey: 'restaurant',
+          cityText: 'Paris',
+          region: 'FR',
+          reason: 'keyed_both',
+          requiredTerms: [],
+          preferredTerms: [],
+          strictness: 'STRICT',
+          typeHint: 'restaurant'
+        },
+        usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 },
+        model: 'gpt-4o-mini'
+      }),
+      complete: async () => '',
+      completeStream: async () => ''
+    };
+
+    const context: Route2Context = {
+      requestId: 'test-fr-1',
+      llmProvider: mockLLMProvider as any,
+      startTime: Date.now()
+    };
+
+    const finalFilters: FinalSharedFilters = {
+      regionCode: 'FR',
+      providerLanguage: 'fr', // French should be used, not 'en'
+      uiLanguage: 'fr',
+      openState: null,
+      openAt: null,
+      openBetween: null,
+      disclaimers: { hours: true, dietary: true }
+    };
+
+    // Execute mapper
+    const result = await executeTextSearchMapper(intent, request, context, finalFilters);
+
+    // CRITICAL: providerLanguage should be 'fr', not 'en'
+    assert.strictEqual(result.providerLanguage, 'fr', 'providerLanguage should be fr from context');
+    assert.strictEqual(result.mode, 'KEYED');
+    assert.strictEqual(result.cuisineKey, 'french');
+    assert.strictEqual(result.region, 'FR');
+  });
+
+  /**
+   * Test: KEYED mode with Russian query
+   */
+  it('should use providerLanguage=ru for Russian KEYED query', async () => {
+    const intent: IntentResult = {
+      route: 'TEXTSEARCH',
+      region: 'RU',
+      language: 'ru',
+      confidence: 0.9,
+      reason: 'explicit',
+      regionConfidence: 0.95,
+      regionReason: 'explicit'
+    };
+
+    const request: SearchRequest = {
+      query: 'Итальянские рестораны в Москве',
+      userLocation: null
+    };
+
+    const mockLLMProvider = {
+      completeJSON: async () => ({
+        data: {
+          providerMethod: 'textSearch' as const,
+          mode: 'KEYED',
+          cuisineKey: 'italian',
+          placeTypeKey: 'restaurant',
+          cityText: 'Москва',
+          region: 'RU',
+          reason: 'keyed_both',
+          requiredTerms: [],
+          preferredTerms: [],
+          strictness: 'STRICT',
+          typeHint: 'restaurant'
+        },
+        usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 },
+        model: 'gpt-4o-mini'
+      }),
+      complete: async () => '',
+      completeStream: async () => ''
+    };
+
+    const context: Route2Context = {
+      requestId: 'test-ru-1',
+      llmProvider: mockLLMProvider as any,
+      startTime: Date.now()
+    };
+
+    const finalFilters: FinalSharedFilters = {
+      regionCode: 'RU',
+      providerLanguage: 'ru',
+      uiLanguage: 'ru',
+      openState: null,
+      openAt: null,
+      openBetween: null,
+      disclaimers: { hours: true, dietary: true }
+    };
+
+    const result = await executeTextSearchMapper(intent, request, context, finalFilters);
+
+    assert.strictEqual(result.providerLanguage, 'ru', 'providerLanguage should be ru from context');
+    assert.strictEqual(result.mode, 'KEYED');
+  });
+
+  /**
+   * Test: KEYED mode cuisine-only (no city) should also use context language
+   */
+  it('should use providerLanguage from context even without city', async () => {
+    const intent: IntentResult = {
+      route: 'TEXTSEARCH',
+      region: 'FR',
+      language: 'fr',
+      confidence: 0.9,
+      reason: 'explicit',
+      regionConfidence: 0.95,
+      regionReason: 'explicit'
+    };
+
+    const request: SearchRequest = {
+      query: 'Restaurants français',
+      userLocation: null
+    };
+
+    const mockLLMProvider = {
+      completeJSON: async () => ({
+        data: {
+          providerMethod: 'textSearch' as const,
+          mode: 'KEYED',
+          cuisineKey: 'french',
+          placeTypeKey: 'restaurant',
+          cityText: null, // No city
+          region: 'FR',
+          reason: 'keyed_cuisine',
+          requiredTerms: [],
+          preferredTerms: [],
+          strictness: 'STRICT',
+          typeHint: 'restaurant'
+        },
+        usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 },
+        model: 'gpt-4o-mini'
+      }),
+      complete: async () => '',
+      completeStream: async () => ''
+    };
+
+    const context: Route2Context = {
+      requestId: 'test-fr-nocity-1',
+      llmProvider: mockLLMProvider as any,
+      startTime: Date.now()
+    };
+
+    const finalFilters: FinalSharedFilters = {
+      regionCode: 'FR',
+      providerLanguage: 'fr',
+      uiLanguage: 'fr',
+      openState: null,
+      openAt: null,
+      openBetween: null,
+      disclaimers: { hours: true, dietary: true }
+    };
+
+    const result = await executeTextSearchMapper(intent, request, context, finalFilters);
+
+    // CRITICAL: Even without city, providerLanguage should be 'fr', not 'en'
+    assert.strictEqual(result.providerLanguage, 'fr', 'providerLanguage should be fr even without city');
+    assert.strictEqual(result.mode, 'KEYED');
+    assert.strictEqual(result.cuisineKey, 'french');
+    assert.strictEqual(result.cityText, null);
+  });
+});

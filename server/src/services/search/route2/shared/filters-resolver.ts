@@ -34,7 +34,7 @@ export async function resolveFilters(params: ResolveFiltersParams): Promise<Fina
     // c) Fallback to 'en'
     let queryLanguage: 'he' | 'en' | 'es' | 'ru' | 'ar' | 'fr';
     const INTENT_LANGUAGE_CONFIDENCE_THRESHOLD = 0.7;
-    
+
     // Priority 1: Use intentLanguage if confidence is high (LLM detected language)
     if (intent.language && intent.languageConfidence !== undefined && intent.languageConfidence >= INTENT_LANGUAGE_CONFIDENCE_THRESHOLD) {
         const supportedLangs = ['he', 'en', 'es', 'ru', 'ar', 'fr'];
@@ -51,7 +51,7 @@ export async function resolveFilters(params: ResolveFiltersParams): Promise<Fina
         // Priority 3: Fallback to 'en'
         queryLanguage = 'en';
     }
-    
+
     // 2. NEW POLICY: UI language = query language (what user types drives UX)
     // Limit uiLanguage to he/en for now (UI only supports these two)
     const uiLanguage: 'he' | 'en' = (['he', 'en'].includes(queryLanguage) ? queryLanguage : 'en') as 'he' | 'en';
@@ -68,7 +68,7 @@ export async function resolveFilters(params: ResolveFiltersParams): Promise<Fina
     const intentRegionCode = (intent as any).regionCode; // Type assertion for new field
     let rawRegionCode: string;
     let regionSource: 'intent_query' | 'intent_candidate' | 'device' | 'default';
-    
+
     if (intentRegionCode) {
         rawRegionCode = intentRegionCode;
         regionSource = 'intent_query';
@@ -103,7 +103,7 @@ export async function resolveFilters(params: ResolveFiltersParams): Promise<Fina
     // NOISE FIX: Only log when sanitization actually changed the value
     // Skip logging if intent.regionCandidate was null (no candidate to validate)
     const shouldLogSanitization = sanitizedRegionCode !== rawRegionCode && intent.regionCandidate !== null && !intentRegionCode;
-    
+
     if (shouldLogSanitization) {
         const fallback = sanitizedRegionCode || getFallbackRegion(rawRegionCode, userLocation);
 

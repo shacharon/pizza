@@ -17,30 +17,30 @@ export enum PipelineErrorKind {
   GATE_INVALID_INPUT = 'GATE_INVALID_INPUT',
   GATE_LLM_TIMEOUT = 'GATE_LLM_TIMEOUT',
   GATE_LLM_ERROR = 'GATE_LLM_ERROR',
-  
+
   // Intent failures
   INTENT_LLM_TIMEOUT = 'INTENT_LLM_TIMEOUT',
   INTENT_LLM_ERROR = 'INTENT_LLM_ERROR',
-  
+
   // Google API failures
   GOOGLE_TIMEOUT = 'GOOGLE_TIMEOUT',
   GOOGLE_QUOTA_EXCEEDED = 'GOOGLE_QUOTA_EXCEEDED',
   GOOGLE_NETWORK_ERROR = 'GOOGLE_NETWORK_ERROR',
   GOOGLE_DNS_FAIL = 'GOOGLE_DNS_FAIL',
   GOOGLE_API_ERROR = 'GOOGLE_API_ERROR',
-  
+
   // Near-me location failures
   NEARME_NO_LOCATION = 'NEARME_NO_LOCATION',
   NEARME_INVALID_LOCATION = 'NEARME_INVALID_LOCATION',
-  
+
   // Pipeline timeouts
   PIPELINE_TIMEOUT = 'PIPELINE_TIMEOUT',
-  
+
   // Provider failures
   LLM_PROVIDER_UNAVAILABLE = 'LLM_PROVIDER_UNAVAILABLE',
   OPENAI_API_KEY_MISSING = 'OPENAI_API_KEY_MISSING',
   GOOGLE_API_KEY_MISSING = 'GOOGLE_API_KEY_MISSING',
-  
+
   // Internal errors
   INTERNAL_ERROR = 'INTERNAL_ERROR',
   PARSE_ERROR = 'PARSE_ERROR',
@@ -218,7 +218,7 @@ export function isRetryableError(kind: PipelineErrorKind): boolean {
     PipelineErrorKind.INTENT_LLM_TIMEOUT,
     PipelineErrorKind.LLM_PROVIDER_UNAVAILABLE
   ]);
-  
+
   return retryable.has(kind);
 }
 
@@ -234,15 +234,15 @@ export function sanitizeErrorMessage(kind: PipelineErrorKind, rawMessage: string
   // For INTERNAL_ERROR and unclassified provider errors, use generic message
   // Raw error message is logged but NOT exposed to client
   if (kind === PipelineErrorKind.INTERNAL_ERROR ||
-      kind === PipelineErrorKind.PARSE_ERROR ||
-      kind === PipelineErrorKind.VALIDATION_ERROR ||
-      kind === PipelineErrorKind.GATE_LLM_ERROR ||
-      kind === PipelineErrorKind.INTENT_LLM_ERROR ||
-      kind === PipelineErrorKind.GOOGLE_API_ERROR ||
-      kind === PipelineErrorKind.LLM_PROVIDER_UNAVAILABLE) {
+    kind === PipelineErrorKind.PARSE_ERROR ||
+    kind === PipelineErrorKind.VALIDATION_ERROR ||
+    kind === PipelineErrorKind.GATE_LLM_ERROR ||
+    kind === PipelineErrorKind.INTENT_LLM_ERROR ||
+    kind === PipelineErrorKind.GOOGLE_API_ERROR ||
+    kind === PipelineErrorKind.LLM_PROVIDER_UNAVAILABLE) {
     return 'An internal error occurred';
   }
-  
+
   // For specific classified errors, return the safe classified message
   // This uses the kind's standard message, not the raw error message
   const errorMap: Record<PipelineErrorKind, string> = {
@@ -267,6 +267,6 @@ export function sanitizeErrorMessage(kind: PipelineErrorKind, rawMessage: string
     [PipelineErrorKind.GOOGLE_API_ERROR]: 'An internal error occurred',
     [PipelineErrorKind.LLM_PROVIDER_UNAVAILABLE]: 'An internal error occurred'
   };
-  
+
   return errorMap[kind] || 'An internal error occurred';
 }

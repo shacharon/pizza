@@ -116,7 +116,7 @@ router.post('/', async (req: Request, res: Response) => {
       startTime: Date.now(),
       llmProvider: llm,
       userLocation: queryData.userLocation ?? null,
-      debug: { stopAfter: 'post_filters' },   // 👈 זו השורה
+      //debug: { stopAfter: '' },   // 👈 זו השורה
       // Fix: Only include optional properties if they actually have a value
       ...(req.traceId && { traceId: req.traceId }),
       ...(authenticatedSessionId && { sessionId: authenticatedSessionId }),
@@ -213,68 +213,23 @@ router.post('/', async (req: Request, res: Response) => {
           const isStaleByUpdatedAt = updatedAgeMs > DEDUP_RUNNING_MAX_AGE_MS;
           const isStaleByAge = ageMs > DEDUP_RUNNING_MAX_AGE_MS;
 
-          // Check if there are active WS subscribers (job is "alive" if subscribed)
-          const hasActiveSubscribers = wsManager.hasActiveSubscribers(
-            candidateJob.requestId,
-            candidateJob.sessionId
-          );
-
-          if ((isStaleByUpdatedAt || isStaleByAge) && !hasActiveSubscribers) {
-            // Stale RUNNING job with no active subscribers - do not reuse
+          // DECISION-ONLY DEDUP: Do NOT mark job as failed here
+          // Stale detection logic remains, but cleanup is deferred to separate sweeper
+          if ((isStaleByUpdatedAt || isStaleByAge)) {
+            // Stale RUNNING job - do not reuse (decision only, no mutation)
             shouldReuse = false;
             reuseReason = isStaleByUpdatedAt
-              ? `STALE_RUNNING_NO_HEARTBEAT (updatedAgeMs: ${updatedAgeMs}ms > ${DEDUP_RUNNING_MAX_AGE_MS}ms, no subscribers)`
-              : `STALE_RUNNING_TOO_OLD (ageMs: ${ageMs}ms > ${DEDUP_RUNNING_MAX_AGE_MS}ms, no subscribers)`;
-
-            // Fail-safe: Mark stale RUNNING job as failed (idempotent - only if still RUNNING)
-            try {
-              // Re-fetch job to ensure it's still RUNNING (avoid race conditions)
-              const currentJob = await searchJobStore.getJob(candidateJob.requestId);
-              if (currentJob && currentJob.status === 'RUNNING') {
-                await searchJobStore.setError(
-                  candidateJob.requestId,
-                  'STALE_RUNNING',
-                  `Job marked as stale during deduplication check (updatedAgeMs: ${updatedAgeMs}ms, no active subscribers)`,
-                  'SEARCH_FAILED'
-                );
-
-                logger.warn({
-                  requestId: candidateJob.requestId,
-                  event: 'stale_running_marked_failed',
-                  ageMs,
-                  updatedAgeMs,
-                  maxAgeMs: DEDUP_RUNNING_MAX_AGE_MS,
-                  hasActiveSubscribers: false,
-                  reason: 'STALE_RUNNING_DEDUP_RESET'
-                }, '[Deduplication] Marked stale RUNNING job as DONE_FAILED (no heartbeat, no subscribers)');
-              } else {
-                logger.debug({
-                  requestId: candidateJob.requestId,
-                  currentStatus: currentJob?.status || 'NOT_FOUND',
-                  event: 'stale_marking_skipped'
-                }, '[Deduplication] Skipped marking stale job - already transitioned to terminal state');
-              }
-            } catch (markErr) {
-              // Non-fatal: if marking fails, still create new job
-              logger.error({
-                requestId: candidateJob.requestId,
-                error: markErr instanceof Error ? markErr.message : 'unknown',
-                operation: 'setError'
-              }, '[Deduplication] Failed to mark stale RUNNING job as failed (non-fatal)');
-            }
-          } else if (hasActiveSubscribers) {
-            // Job has active subscribers - keep it alive even if heartbeat missed
-            shouldReuse = true;
-            reuseReason = `RUNNING_ALIVE (has ${hasActiveSubscribers ? 'active subscribers' : 'recent heartbeat'})`;
-            existingJob = candidateJob;
+              ? `STALE_RUNNING_NO_HEARTBEAT (updatedAgeMs: ${updatedAgeMs}ms > ${DEDUP_RUNNING_MAX_AGE_MS}ms)`
+              : `STALE_RUNNING_TOO_OLD (ageMs: ${ageMs}ms > ${DEDUP_RUNNING_MAX_AGE_MS}ms)`;
 
             logger.info({
               requestId: candidateJob.requestId,
-              event: 'dedup_kept_alive_by_subscribers',
+              event: 'dedup_stale_detected',
               ageMs,
               updatedAgeMs,
-              hasActiveSubscribers: true
-            }, '[Deduplication] Keeping RUNNING job alive - has active WebSocket subscribers');
+              maxAgeMs: DEDUP_RUNNING_MAX_AGE_MS,
+              decision: 'NEW_JOB'
+            }, '[Deduplication] Stale RUNNING job detected - creating new job (no mutation)');
           } else {
             // Fresh RUNNING job - reuse it
             shouldReuse = true;
