@@ -41,15 +41,15 @@ export const IntentLLMSchema = z.object({
   /** Cuisine key (canonical identifier, e.g., "italian", "japanese") */
   cuisineKey: z.string().nullable(),
 
-  // ===== CLARIFY Payload (Optional) =====
-  /** CLARIFY content - MUST be present if route implies early-exit clarification */
+  // ===== CLARIFY Payload (Required, nullable) =====
+  /** CLARIFY content - null when not clarifying, object when clarifying */
   clarify: z.object({
     reason: z.enum(['MISSING_LOCATION', 'MISSING_FOOD', 'AMBIGUOUS']),
     message: z.string().min(1).max(300), // Max 2 sentences
     question: z.string().min(1).max(150), // Exactly 1 question
     blocksSearch: z.literal(true), // Hard rule: must be true
     suggestedAction: z.enum(['ASK_LOCATION', 'ASK_FOOD', 'REFINE'])
-  }).optional()
+  }).nullable()
 }).strict();
 
 export type IntentLLM = z.infer<typeof IntentLLMSchema>;

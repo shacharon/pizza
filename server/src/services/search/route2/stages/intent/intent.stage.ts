@@ -49,6 +49,7 @@ function createFallbackResult(query: string, isTimeout: boolean): IntentResult {
     regionCandidate: 'IL',
     regionConfidence: 0.1,
     regionReason: 'fallback_default',
+    clarify: null, // Not clarifying in fallback
     // NEW: Default hybrid ordering flags for fallback
     distanceIntent: false,
     openNowRequested: false,
@@ -211,7 +212,7 @@ export async function executeIntentStage(
         regionConfidence: llmResult.regionConfidence,
         regionReason: llmResult.regionReason,
         ...(cityText && { cityText }),
-        ...(llmResult.clarify && { clarify: llmResult.clarify }), // Pass clarify if present
+        clarify: llmResult.clarify, // Always include (null or object)
   
         // flags נשארים (נוח ל-UX וללוגים)
         distanceIntent: true, // או llmResult.distanceIntent
@@ -272,7 +273,7 @@ export async function executeIntentStage(
       regionConfidence: llmResult.regionConfidence,
       regionReason: llmResult.regionReason,
       ...(cityText && { cityText }),
-      ...(llmResult.clarify && { clarify: llmResult.clarify }), // Pass clarify if present
+      clarify: llmResult.clarify, // Always include (null or object)
       // NEW: Hybrid ordering intent flags
       distanceIntent: llmResult.distanceIntent,
       openNowRequested: llmResult.openNowRequested,

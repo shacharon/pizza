@@ -136,15 +136,15 @@ export interface IntentResult {
   /** Cuisine key (canonical identifier) */
   cuisineKey: string | null;
 
-  // ===== CLARIFY Payload (Optional) =====
-  /** CLARIFY content from Intent LLM - single source of truth for CLARIFY messages */
-  clarify?: {
+  // ===== CLARIFY Payload (Required, nullable) =====
+  /** CLARIFY content from Intent LLM - null when not clarifying, object when clarifying */
+  clarify: {
     reason: 'MISSING_LOCATION' | 'MISSING_FOOD' | 'AMBIGUOUS';
     message: string;
     question: string;
     blocksSearch: true;
     suggestedAction: 'ASK_LOCATION' | 'ASK_FOOD' | 'REFINE';
-  };
+  } | null;
 }
 
 // Intent2 specific types (DEPRECATED - will be removed)

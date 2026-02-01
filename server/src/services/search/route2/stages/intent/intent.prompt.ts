@@ -71,8 +71,8 @@ RULES:
 - occasion="romantic" if romantic/date/anniversary intent else null
 - cuisineKey if cuisine mentioned else null
 
-7) clarify (optional):
-- If route implies CLARIFY (e.g., NEARBY intent but missing userLocation context), you MUST output clarify with:
+7) clarify (REQUIRED field):
+- If route implies CLARIFY (e.g., NEARBY intent but missing userLocation context), output clarify object with:
   * message and question written in assistantLanguage
   * message ≤ 2 sentences (clear, friendly, actionable)
   * question exactly 1 short question
@@ -81,6 +81,7 @@ RULES:
     - NEARBY without location → MISSING_LOCATION + ASK_LOCATION
     - Ambiguous food → MISSING_FOOD + ASK_FOOD
     - Unclear intent → AMBIGUOUS + REFINE
+- If NOT clarifying, output: "clarify": null
 - Do NOT re-detect assistantLanguage (keep propagating from Gate).
 
 STRICT:
@@ -116,9 +117,9 @@ export const INTENT_JSON_SCHEMA = {
       occasion: { type: ["string", "null"], enum: ["romantic", null] },
       cuisineKey: { type: ["string", "null"] },
 
-      // CLARIFY Payload (optional)
+      // CLARIFY Payload (required field, null when not clarifying)
       clarify: {
-         type: "object",
+         type: ["object", "null"],
          properties: {
             reason: { type: "string", enum: ["MISSING_LOCATION", "MISSING_FOOD", "AMBIGUOUS"] },
             message: { type: "string", minLength: 1, maxLength: 300 },
@@ -147,7 +148,8 @@ export const INTENT_JSON_SCHEMA = {
       "priceIntent",
       "qualityIntent",
       "occasion",
-      "cuisineKey"
+      "cuisineKey",
+      "clarify" // REQUIRED: null when not clarifying, object when clarifying
    ],
    additionalProperties: false
 };
