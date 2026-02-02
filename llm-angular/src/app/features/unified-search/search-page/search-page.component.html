@@ -5,6 +5,15 @@
       <p class="page-subtitle">Search for food naturally, in any language.
         Just say what you’re in the mood for.</p>
 
+      <!-- PWA Install Prompt (subtle, Hebrew, food-themed) -->
+      @if (pwaInstall.canInstall() && !pwaInstall.isInstalled()) {
+      <div class="pwa-install-prompt">
+        <button class="pwa-install-button" (click)="onInstallPwa()" type="button">
+          <span class="pwa-install-text">שימו אותנו על הצלחת שלכם 🍽️</span>
+        </button>
+      </div>
+      }
+
       <!-- Location Status (automatic, inline) -->
       <div class="location-status">
         @if (locationState() === 'ON') {

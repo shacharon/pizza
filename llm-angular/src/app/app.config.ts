@@ -1,4 +1,4 @@
-import { ApplicationConfig, provideZoneChangeDetection, APP_INITIALIZER } from '@angular/core';
+import { ApplicationConfig, provideZoneChangeDetection, APP_INITIALIZER, isDevMode } from '@angular/core';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { provideRouter } from '@angular/router';
 import { routes } from './app.routes';
@@ -7,6 +7,7 @@ import { httpTimeoutRetryInterceptor } from './core/interceptors/http-timeout-re
 import { httpErrorInterceptor } from './core/interceptors/http-error.interceptor';
 import { apiSessionInterceptor } from './shared/http/api-session.interceptor';
 import { FlagsStore } from './state/flags.store';
+import { provideServiceWorker } from '@angular/service-worker';
 
 /**
  * Initialize feature flags on app startup
@@ -36,6 +37,9 @@ export const appConfig: ApplicationConfig = {
       useFactory: initializeFeatureFlags,
       deps: [FlagsStore],
       multi: true
-    }
+    }, provideServiceWorker('ngsw-worker.js', {
+            enabled: !isDevMode(),
+            registrationStrategy: 'registerWhenStable:30000'
+          })
   ]
 };

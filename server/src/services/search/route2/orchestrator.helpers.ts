@@ -18,14 +18,15 @@ export function shouldDebugStop(ctx: Route2Context, stopAfter: string): boolean 
  * Convert language to assistant-supported language
  * Maps detected language to supported LLM languages
  */
-export function toAssistantLanguage(lang: unknown): 'he' | 'en' | 'ru' | 'ar' | 'fr' | 'es' | 'other' {
+export function toAssistantLanguage(
+  lang: unknown
+): 'he' | 'en' | 'ru' | 'ar' | 'fr' | 'es' | 'other' {
   if (!lang || typeof lang !== 'string') {
-    return 'en';
+    return 'other';
   }
 
   const normalized = lang.toLowerCase();
 
-  // Direct mapping for supported languages
   if (normalized === 'he') return 'he';
   if (normalized === 'en') return 'en';
   if (normalized === 'ru') return 'ru';
@@ -33,109 +34,102 @@ export function toAssistantLanguage(lang: unknown): 'he' | 'en' | 'ru' | 'ar' | 
   if (normalized === 'fr') return 'fr';
   if (normalized === 'es') return 'es';
 
-  // Map unsupported languages to 'other' (LLM will respond in English)
   return 'other';
 }
 
 /**
- * Resolve assistant language with proper priority to prevent drift to English
- * 
- * NEW PRIORITY (2026-02-02 - FIXED):
- * 1. Detected language from stage (gate/intent/mapping) - if present and confident
- * 2. UI language from request/filters - if present
- * 3. Deterministic query language detection (queryLanguage) - if not "unknown"
- * 4. Fallback: uiLanguage or 'en'
- * 
- * CRITICAL FIXES:
- * - Never default to 'en' when query is mixed-script ("unknown")
- * - Stage-detected language (from Gate2) has highest priority
- * - Returns full LangCode (supports he/en/ru/ar/fr/es/other)
- * 
- * @returns LangCode (he/en/ru/ar/fr/es/other)
+ * Resolve assistant language with strict priority to prevent drift to English
+ *
+ * PRIORITY (FIXED):
+ * 1. Intent / Gate2 language (LLM output)
+ * 2. Query language detection (deterministic)
+ * 3. Base filters language
+ * 4. UI language (LAST RESORT ONLY)
+ * 5. Fallback: en
+ *
+ * IMPORTANT:
+ * - uiLanguage MUST NOT override Arabic/Hebrew queries
+ * - queryLanguage always wins over uiLanguage
  */
 export function resolveAssistantLanguage(
   ctx: Route2Context,
-  request?: SearchRequest,
+  _request?: SearchRequest,
   detectedLanguage?: unknown
 ): 'he' | 'en' | 'ru' | 'ar' | 'fr' | 'es' | 'other' {
-  let source: string = 'unknown';
-  let result: 'he' | 'en' | 'ru' | 'ar' | 'fr' | 'es' | 'other' | null = null;
-  
-  // Track candidates for logging
-  const candidates: Record<string, any> = {};
+  let chosen: 'he' | 'en' | 'ru' | 'ar' | 'fr' | 'es' | 'other' | null = null;
+  let source = 'unknown';
 
-  // Priority 1: Detected language from stage (gate/intent/mapping) - HIGHEST
-  if (detectedLanguage) {
-    const normalized = toAssistantLanguage(detectedLanguage);
-    candidates.detectedLanguage = normalized;
-    
-    // Use detected language if it's not 'other'
-    if (normalized !== 'other') {
-      result = normalized;
-      source = 'detectedLanguage';
-    }
-  }
-
-  // Priority 2: UI language from filters (if Priority 1 didn't resolve)
-  if (!result && ctx.sharedFilters?.final?.uiLanguage) {
-    const uiLang = toAssistantLanguage(ctx.sharedFilters.final.uiLanguage);
-    candidates.uiLanguage = uiLang;
-    if (uiLang !== 'other') {
-      result = uiLang;
-      source = 'uiLanguage';
-    }
-  }
-
-  // Priority 3: Deterministic query language detection (if not "unknown")
-  if (!result && ctx.queryLanguage && ctx.queryLanguage !== 'unknown') {
-    const queryLang = toAssistantLanguage(ctx.queryLanguage);
-    candidates.queryLanguage = queryLang;
-    if (queryLang !== 'other') {
-      result = queryLang;
-      source = 'queryLanguage';
-    }
-  }
-
-  // Priority 4: Base filters language
-  if (!result && ctx.sharedFilters?.preGoogle?.language) {
-    const baseLang = toAssistantLanguage(ctx.sharedFilters.preGoogle.language);
-    candidates.baseFilters = baseLang;
-    if (baseLang !== 'other') {
-      result = baseLang;
-      source = 'baseFilters';
-    }
-  }
-
-  // Final fallback: Use uiLanguage if available, else 'en'
-  if (!result) {
-    const fallbackLang = ctx.sharedFilters?.final?.uiLanguage 
+  // Collect candidates for full visibility
+  const candidates = {
+    intent: detectedLanguage ? toAssistantLanguage(detectedLanguage) : undefined,
+    queryDetected: ctx.queryLanguage
+      ? toAssistantLanguage(ctx.queryLanguage)
+      : undefined,
+    baseFilters: ctx.sharedFilters?.preGoogle?.language
+      ? toAssistantLanguage(ctx.sharedFilters.preGoogle.language)
+      : undefined,
+    uiLanguage: ctx.sharedFilters?.final?.uiLanguage
       ? toAssistantLanguage(ctx.sharedFilters.final.uiLanguage)
-      : 'en';
-    result = fallbackLang !== 'other' ? fallbackLang : 'en';
-    source = 'fallback';
+      : undefined
+  };
+
+  // 1. Intent / Gate2 language (LLM)
+  if (candidates.intent && candidates.intent !== 'other') {
+    chosen = candidates.intent;
+    source = 'intent';
   }
 
-  // Enhanced logging with all candidates
+  // 2. Query language (deterministic) — CRITICAL FIX
+  if (!chosen && candidates.queryDetected && candidates.queryDetected !== 'other') {
+    chosen = candidates.queryDetected;
+    source = 'queryDetected';
+  }
+
+  // 3. Base filters language
+  if (!chosen && candidates.baseFilters && candidates.baseFilters !== 'other') {
+    chosen = candidates.baseFilters;
+    source = 'baseFilters';
+  }
+
+  // 4. UI language — LAST RESORT ONLY
+  if (!chosen && candidates.uiLanguage && candidates.uiLanguage !== 'other') {
+    chosen = candidates.uiLanguage;
+    source = 'uiLanguage';
+  }
+
+  // 5. Final fallback
+  if (!chosen) {
+    chosen = 'en';
+    source = 'fallback_en';
+  }
+
   if (ctx.requestId) {
-    logger.info({
-      requestId: ctx.requestId,
-      event: 'assistant_language_resolved',
-      chosen: result,
-      source,
-      candidates,
-      queryLanguageDetected: ctx.queryLanguage,
-      detectedLanguage: detectedLanguage ? String(detectedLanguage) : undefined
-    }, '[ASSISTANT] Language resolved for assistant message');
+    logger.info(
+      {
+        requestId: ctx.requestId,
+        event: 'assistant_language_resolved',
+        chosen,
+        source,
+        candidates,
+        raw: {
+          detectedLanguage,
+          queryLanguage: ctx.queryLanguage
+        }
+      },
+      '[ASSISTANT] Language resolved'
+    );
   }
 
-  return result;
+  return chosen;
 }
 
 /**
  * Resolve session ID from request or context
- * CRITICAL: ctx.sessionId (JWT) takes precedence over request.sessionId (client payload)
- * This ensures consistent sessionHash in subscribe vs publish logs
+ * CRITICAL: ctx.sessionId (JWT) takes precedence over request.sessionId
  */
-export function resolveSessionId(request: SearchRequest, ctx: Route2Context): string {
+export function resolveSessionId(
+  request: SearchRequest,
+  ctx: Route2Context
+): string {
   return ctx.sessionId || request.sessionId || 'route2-session';
 }

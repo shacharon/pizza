@@ -45,20 +45,30 @@ export class SearchBarComponent {
 
   onSearch(): void {
     const q = this.query().trim();
+    console.log('[SearchBar] onSearch called', { query: q, hasQuery: !!q });
     if (q) {
+      console.log('[SearchBar] Emitting search event', q);
       this.search.emit(q);
+    } else {
+      console.warn('[SearchBar] Empty query, not emitting search');
+    }
+  }
+
+  onSearchFromInput(value: string): void {
+    const q = value.trim();
+    console.log('[SearchBar] onSearchFromInput called', { value, query: q, hasQuery: !!q });
+    if (q) {
+      console.log('[SearchBar] Emitting search event from input', q);
+      this.query.set(q); // Sync the signal
+      this.search.emit(q);
+    } else {
+      console.warn('[SearchBar] Empty query from input, not emitting search');
     }
   }
 
   onClear(): void {
     this.query.set('');
     this.clear.emit();
-  }
-
-  onKeydown(event: KeyboardEvent): void {
-    if (event.key === 'Enter') {
-      this.onSearch();
-    }
   }
 
   /**

@@ -18,6 +18,7 @@ import { AssistantLineComponent } from '../components/assistant-line/assistant-l
 import { ClarificationBlockComponent } from '../components/clarification-block/clarification-block.component';
 import { AssistantSummaryComponent } from '../components/assistant-summary/assistant-summary.component';
 import { LocationService } from '../../../services/location.service';
+import { PwaInstallService } from '../../../services/pwa-install.service';
 import type { Restaurant, ClarificationChoice, Coordinates } from '../../../domain/types/search.types';
 import type { ActionType, ActionLevel } from '../../../domain/types/action.types';
 // DEV: Import dev tools for testing (auto-loaded)
@@ -50,6 +51,7 @@ import '../../../facades/assistant-dev-tools';
 export class SearchPageComponent implements OnInit, OnDestroy {
   readonly facade = inject(SearchFacade);
   private readonly locationService = inject(LocationService);
+  readonly pwaInstall = inject(PwaInstallService);
 
   private cleanupInterval?: number;
 
@@ -510,6 +512,24 @@ export class SearchPageComponent implements OnInit, OnDestroy {
 
   trackByAction(_index: number, action: any): string {
     return action.id;
+  }
+
+  /**
+   * Handle PWA install button click
+   * Triggers the browser's install prompt
+   */
+  async onInstallPwa(): Promise<void> {
+    const accepted = await this.pwaInstall.promptInstall();
+    if (accepted) {
+      console.log('[SearchPage] PWA install accepted');
+    }
+  }
+
+  /**
+   * Dismiss PWA install prompt
+   */
+  onDismissInstall(): void {
+    this.pwaInstall.hidePrompt();
   }
 }
 

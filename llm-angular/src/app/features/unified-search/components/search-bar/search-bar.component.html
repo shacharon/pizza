@@ -1,11 +1,12 @@
 <div class="search-bar">
   <div class="search-input-container">
     <input
+      #searchInput
       type="text"
       class="search-input"
       [ngModel]="query()"
       (ngModelChange)="onInput($event)"
-      (keydown)="onKeydown($event)"
+      (keydown.enter)="onSearchFromInput(searchInput.value)"
       [disabled]="disabled()"
       [placeholder]="placeholder()"
       aria-label="Search for restaurants"

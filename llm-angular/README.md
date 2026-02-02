@@ -24,8 +24,46 @@ npm start
 
 ```bash
 cd llm-angular
-npm run build
+npm run build:prod
 ```
+
+**Note**: Production builds include the service worker for PWA support.
+
+### Progressive Web App (PWA)
+
+The Angular app is now a Progressive Web App with offline support and installability.
+
+**Features:**
+- ✅ Installable on desktop and mobile
+- ✅ Offline app shell (navigation works offline)
+- ✅ Service worker caching (app files only, NOT API data)
+- ✅ Fast load times with aggressive caching
+- ✅ Icons and manifest for all platforms
+
+**Testing PWA locally:**
+
+```bash
+# Build production
+npm run build:prod
+
+# Serve with HTTPS (required for service worker)
+cd dist/llm-angular/browser
+npx http-server -p 8080
+
+# Then test in Chrome (localhost is treated as secure)
+# Open: http://localhost:8080
+```
+
+**Chrome DevTools verification:**
+1. Open DevTools → Application tab
+2. Check Service Workers: Should show `ngsw-worker.js` as "activated and running"
+3. Check Manifest: Should show "Piza Search" with icons
+4. Check Cache Storage: Should see `ngsw:llm-angular:cache:app`
+5. Test offline: Network tab → Check "Offline" → Refresh (app shell should load)
+
+**Important**: API calls are NOT cached. Only the app shell (HTML/JS/CSS) is cached. Search results always come from the server.
+
+For deployment headers configuration, see: `../docs/pwa-hosting-headers.md`
 
 ### Testing (Jest)
 
