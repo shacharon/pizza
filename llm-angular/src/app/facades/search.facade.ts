@@ -156,21 +156,27 @@ export class SearchFacade {
       // Cancel any previous polling
       this.apiHandler.cancelPolling();
 
-      // FRESH SEARCH FIX: Clear ALL assistant messages on new search (no carry-over)
-      // Each search starts with a clean slate
-      this.assistantHandler.reset();
+      // STALE RESULTS FIX: Clear ALL state before new search
+      // This prevents old results from showing during new search
+      this.searchStore.clearState(); // Clear results, chips, assistant, error
+      this.assistantHandler.reset(); // Clear all assistant messages
+      
+      // CRITICAL: Clear currentRequestId BEFORE starting search
+      // This ensures events from previous search are ignored immediately
+      this.currentRequestId.set(undefined);
+      
+      // CRITICAL: Clear all WS subscriptions to old requests
+      // This prevents old events from being delivered after reconnection
+      this.wsHandler.clearAllSubscriptions();
 
       // CARD STATE: Reset to RUNNING for fresh search
       this._cardState.set('RUNNING');
-      
-      // NEW: Clear requestId before search (will be set when response arrives)
-      this.currentRequestId.set(undefined);
 
       // Update input state machine
       this.recentSearchesService.add(query);
       this.inputStateMachine.submit();
 
-      // Set loading
+      // Set loading and query
       this.searchStore.setLoading(true);
       this.searchStore.setQuery(query);
 

@@ -72,6 +72,16 @@ export class SearchStore {
     this._error.set(null);
     this._response.set(null);
   }
+
+  /**
+   * Clear all search state (for new search submission)
+   * Keeps query but clears results, assistant, chips, etc.
+   */
+  clearState(): void {
+    this._loading.set(false);
+    this._error.set(null);
+    this._response.set(null);
+  }
 }
 
 

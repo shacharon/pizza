@@ -52,6 +52,7 @@ export class AuthApiService {
    * - Explicitly includes Authorization Bearer header
    * - Explicitly includes X-Session-Id header
    * - On 401 (stale/invalid JWT): clears token and retries ONCE
+   * - On 503 (Redis not ready): retries with backoff (200ms, 500ms, 1s) max 3 tries
    * 
    * Dev logging:
    * - Logs ticket request start (dev only)
@@ -60,28 +61,35 @@ export class AuthApiService {
    */
   requestWSTicket(): Observable<WSTicketResponse> {
     return from(this.authService.getToken()).pipe(
-      switchMap(token => {
-        const sessionId = this.getSessionId();
+      switchMap(token => this.requestTicketWithRetry(token, 0))
+    );
+  }
 
-        // Dev logging (NEVER log actual token/session values)
-        if (!environment.production) {
-          safeLog('WS-Ticket', 'Requesting ticket', {
-            tokenPresent: !!token,
-            sessionIdPresent: !!sessionId
-          });
-        }
+  /**
+   * Internal: Request ticket with 503 retry logic
+   * Retries up to 3 times with exponential backoff (200ms, 500ms, 1s)
+   */
+  private requestTicketWithRetry(token: string, attemptNumber: number): Observable<WSTicketResponse> {
+    const sessionId = this.getSessionId();
 
-        const headers = new HttpHeaders({
-          'Authorization': `Bearer ${token}`,
-          'X-Session-Id': sessionId
-        });
+    // Dev logging (NEVER log actual token/session values)
+    if (!environment.production && attemptNumber === 0) {
+      safeLog('WS-Ticket', 'Requesting ticket', {
+        tokenPresent: !!token,
+        sessionIdPresent: !!sessionId
+      });
+    }
 
-        return this.http.post<WSTicketResponse>(
-          `${this.baseUrl}/auth/ws-ticket`,
-          {},
-          { headers }
-        );
-      }),
+    const headers = new HttpHeaders({
+      'Authorization': `Bearer ${token}`,
+      'X-Session-Id': sessionId
+    });
+
+    return this.http.post<WSTicketResponse>(
+      `${this.baseUrl}/auth/ws-ticket`,
+      {},
+      { headers }
+    ).pipe(
       catchError((error: unknown) => {
         // Handle 401: clear stale token and retry ONCE
         if (error instanceof HttpErrorResponse && error.status === 401) {
@@ -124,6 +132,50 @@ export class AuthApiService {
               return throwError(() => retryError);
             })
           );
+        }
+
+        // Handle 503: Redis not ready - retry with backoff
+        if (error instanceof HttpErrorResponse && error.status === 503) {
+          const errorCode = (error.error as any)?.code;
+          
+          // Check if this is a Redis not ready error
+          if (errorCode === 'WS_TICKET_REDIS_NOT_READY' && attemptNumber < 3) {
+            const backoffDelays = [200, 500, 1000]; // 200ms, 500ms, 1s
+            const delay = backoffDelays[attemptNumber];
+
+            if (!environment.production) {
+              safeLog('WS-Ticket', '503 Redis not ready, retrying with backoff', {
+                attemptNumber: attemptNumber + 1,
+                maxAttempts: 3,
+                delayMs: delay
+              });
+            }
+
+            // Wait for backoff delay, then retry
+            return new Observable<WSTicketResponse>(observer => {
+              const timeoutId = setTimeout(() => {
+                this.requestTicketWithRetry(token, attemptNumber + 1).subscribe({
+                  next: (response) => observer.next(response),
+                  error: (err) => observer.error(err),
+                  complete: () => observer.complete()
+                });
+              }, delay);
+
+              // Cleanup on unsubscribe
+              return () => clearTimeout(timeoutId);
+            });
+          }
+
+          // Max retries exceeded or different 503 error
+          if (!environment.production) {
+            safeError('WS-Ticket', '503 error - max retries exceeded or non-retryable', {
+              errorCode,
+              attemptNumber: attemptNumber + 1
+            });
+          }
+          
+          // Re-throw error if not retrying
+          return throwError(() => error);
         }
 
         // Re-throw other errors

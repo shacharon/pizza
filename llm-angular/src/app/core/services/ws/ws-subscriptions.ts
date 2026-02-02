@@ -126,6 +126,28 @@ export class WSSubscriptionManager {
   }
 
   /**
+   * Clear all active subscriptions
+   * Used when starting a new search to prevent stale messages
+   */
+  clearAllSubscriptions(): void {
+    // Unsubscribe from all active subscriptions
+    for (const sub of this.subscriptions.values()) {
+      const message = this.buildMessage('unsubscribe', {
+        requestId: sub.requestId,
+        channel: sub.channel as 'search' | 'assistant',
+        sessionId: sub.sessionId
+      });
+      this.sendOrQueue('unsubscribe', this.makeKey(sub as any), message);
+    }
+    
+    // Clear subscription tracking
+    this.subscriptions.clear();
+    this.pending.clear();
+    
+    console.log('[WS] Cleared all subscriptions');
+  }
+
+  /**
    * Optional debug helpers
    */
   getActiveSubscriptionsCount(): number {

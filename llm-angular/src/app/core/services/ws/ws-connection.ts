@@ -164,6 +164,21 @@ export class WSConnection {
         return;
       }
 
+      if (error?.status === 503) {
+        // Hard failure: Redis not ready after retries (auth-api.service already retried 3 times with backoff)
+        // Fall back to polling-only mode
+        const errorCode = error?.error?.code;
+        console.error('[WS] Hard failure - Redis not ready', { status: 503, code: errorCode });
+
+        if (!this.hardFailureLogged) {
+          console.error('[WS] Ticket request failed: 503 SERVICE_UNAVAILABLE (Redis not ready after retries) - falling back to polling-only mode');
+          this.hardFailureLogged = true;
+        }
+
+        this.shouldReconnect = false;
+        return;
+      }
+
       // Check if we've exceeded max reconnect attempts
       if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
         console.error('[WS] Max reconnect attempts reached - stopping', {
@@ -188,11 +203,6 @@ export class WSConnection {
           attempt: this.reconnectAttempts + 1,
           maxAttempts: MAX_RECONNECT_ATTEMPTS
         });
-      }
-
-      if (error?.status === 503) {
-        // Soft failure: service unavailable (Redis down)
-        console.warn('[WS] Service unavailable (503) - will retry');
       }
 
       // Only reconnect if we haven't hit a hard failure

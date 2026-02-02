@@ -6,6 +6,17 @@
 // Tri-state boolean for verifiable attributes
 export type VerifiableBoolean = boolean | 'UNKNOWN';
 
+// Card signal types for i18n labels
+export type CardSignalType = 
+  | 'OPEN_NOW'
+  | 'CLOSED_NOW'
+  | 'PRICE_CHEAP'
+  | 'PRICE_MID'
+  | 'PRICE_EXPENSIVE'
+  | 'NEARBY'
+  | 'INTENT_MATCH'
+  | 'POPULAR';
+
 export interface SearchRequest {
   query: string;
   sessionId?: string;

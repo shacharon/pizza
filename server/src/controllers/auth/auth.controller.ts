@@ -153,7 +153,7 @@ function generateTicket(): string {
  * 
  * Error codes:
  * - MISSING_SESSION (401): JWT missing sessionId
- * - WS_REDIS_UNAVAILABLE (503): Redis not available
+ * - WS_TICKET_REDIS_NOT_READY (503): Redis not available (client should retry with backoff)
  */
 router.post('/ws-ticket', authenticateJWT, async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
@@ -195,9 +195,9 @@ router.post('/ws-ticket', authenticateJWT, async (req: Request, res: Response) =
       );
 
       return res.status(503).json({
-        error: 'WS_REDIS_UNAVAILABLE',
-        code: 'WS_REDIS_UNAVAILABLE',
-        message: 'Ticket service temporarily unavailable',
+        error: 'SERVICE_UNAVAILABLE',
+        code: 'WS_TICKET_REDIS_NOT_READY',
+        message: 'WebSocket ticket service temporarily unavailable - Redis not ready',
         traceId
       });
     }

@@ -13,6 +13,38 @@ import { buildLLMOptions } from '../../../../lib/llm/index.js';
 import { z } from 'zod';
 
 // ============================================================================
+// Debug Helpers (ASSISTANT_LANG_DEBUG=1)
+// ============================================================================
+
+const ASSISTANT_LANG_DEBUG = process.env.ASSISTANT_LANG_DEBUG === '1';
+
+/**
+ * Simple script-based language detection for debug logging
+ * Returns first detected script or 'unknown'
+ */
+function detectMessageLanguage(text: string): string {
+  if (!text || typeof text !== 'string') return 'unknown';
+  
+  // Check for strong script signals
+  if (/[\u0590-\u05FF]/.test(text)) return 'he'; // Hebrew
+  if (/[\u0400-\u04FF]/.test(text)) return 'ru'; // Cyrillic
+  if (/[\u0600-\u06FF]/.test(text)) return 'ar'; // Arabic
+  
+  // Default to Latin/English if majority Latin letters
+  if (/[a-zA-Z]/.test(text)) return 'en';
+  
+  return 'unknown';
+}
+
+/**
+ * Get first N chars of text for preview (safe truncation)
+ */
+function getMessagePreview(text: string, maxChars: number = 80): string {
+  if (!text) return '';
+  return text.length > maxChars ? text.substring(0, maxChars) + '...' : text;
+}
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -661,6 +693,19 @@ function validateAndEnforceCorrectness(
   if (messageMismatch || questionMismatch) {
     validationIssues.push(`language_mismatch (requested=${requestedLanguage}, message=${messageIsHebrew ? 'he' : 'en'})`);
     useFallback = true;
+    
+    // Debug log for language mismatch (behind env flag)
+    if (ASSISTANT_LANG_DEBUG) {
+      logger.warn({
+        requestId,
+        event: 'assistant_language_mismatch_debug',
+        messagePreview: getMessagePreview(output.message),
+        messageDetectedLang: detectMessageLanguage(output.message),
+        requestedLang: requestedLanguage,
+        llmReturnedLang: messageIsHebrew ? 'he' : 'en',
+        willUseFallback: true
+      }, '[ASSISTANT_DEBUG] Language mismatch detected');
+    }
   }
 
   // 2. Validate message/question format
@@ -801,6 +846,20 @@ export async function generateAssistantMessage(
 
     // Use deterministic fallback on LLM error/timeout
     const fallback = getDeterministicFallback(context, questionLanguage);
+
+    // Debug log for error fallback (behind env flag)
+    if (ASSISTANT_LANG_DEBUG) {
+      logger.info({
+        requestId,
+        event: 'assistant_fallback_used_debug',
+        messagePreview: getMessagePreview(fallback.message),
+        messageDetectedLang: detectMessageLanguage(fallback.message),
+        requestedLang: questionLanguage,
+        reason: 'llm_error',
+        error: errorMsg,
+        isTimeout
+      }, '[ASSISTANT_DEBUG] Using fallback due to LLM error');
+    }
 
     return {
       type: context.type,

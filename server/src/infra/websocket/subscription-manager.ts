@@ -27,9 +27,12 @@ export class SubscriptionManager {
   ) { }
 
   /**
-   * Build subscription key (requestId-based for both channels)
+   * Build subscription key (STRICT: channel:requestId only, never session-based)
+   * Ensures backlog is keyed by exact subscriptionKey to prevent cross-request leakage
    */
   buildSubscriptionKey(channel: WSChannel, requestId: string, sessionId?: string): SubscriptionKey {
+    // STRICT: Never use sessionId for backlog key
+    // This prevents old request results from leaking into new searches
     return `${channel}:${requestId}`;
   }
 

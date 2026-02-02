@@ -36,6 +36,7 @@ export class BacklogManager {
   /**
    * Enqueue message to backlog (no active subscribers)
    * PROD Hardening: Enforces per-requestId and global caps
+   * STRICT: Backlog keyed by subscriptionKey = ${channel}:${requestId}
    */
   enqueue(
     key: SubscriptionKey,
@@ -47,6 +48,7 @@ export class BacklogManager {
     const totalMessages = this.getTotalMessages();
     if (totalMessages >= MAX_TOTAL_MESSAGES) {
       logger.warn({
+        subscriptionKey: key,
         channel,
         requestId,
         totalMessages,
@@ -59,7 +61,7 @@ export class BacklogManager {
     let entry = this.backlog.get(key);
 
     if (!entry) {
-      // Create new backlog entry
+      // Create new backlog entry for this subscriptionKey
       entry = {
         items: [],
         expiresAt: Date.now() + BACKLOG_TTL_MS
@@ -67,6 +69,7 @@ export class BacklogManager {
       this.backlog.set(key, entry);
 
       logger.info({
+        subscriptionKey: key,
         channel,
         requestId,
         event: 'backlog_created'
@@ -77,6 +80,7 @@ export class BacklogManager {
     if (entry.items.length >= BACKLOG_MAX_ITEMS) {
       const droppedMessage = entry.items.shift(); // Drop oldest
       logger.warn({
+        subscriptionKey: key,
         channel,
         requestId,
         backlogSize: entry.items.length,
@@ -88,6 +92,7 @@ export class BacklogManager {
     entry.items.push(message);
 
     logger.debug({
+      subscriptionKey: key,
       channel,
       requestId,
       backlogSize: entry.items.length,
@@ -98,6 +103,7 @@ export class BacklogManager {
 
   /**
    * Drain backlog to newly subscribed client
+   * STRICT: Only drains backlog for exact subscriptionKey = ${channel}:${requestId}
    */
   drain(
     key: SubscriptionKey,
@@ -107,17 +113,20 @@ export class BacklogManager {
     cleanup: (ws: WebSocket) => void
   ): void {
     const entry = this.backlog.get(key);
+    const clientId = (client as any).clientId;
 
     if (!entry) {
-      return; // No backlog
+      return; // No backlog for this subscriptionKey
     }
 
     // Check if expired
     if (entry.expiresAt < Date.now()) {
       this.backlog.delete(key);
       logger.debug({
+        subscriptionKey: key,
+        drainedRequestId: requestId,
         channel,
-        requestId,
+        clientId,
         event: 'backlog_expired'
       }, 'WebSocket backlog expired, not drained');
       return;
@@ -136,10 +145,12 @@ export class BacklogManager {
           failed++;
           this.messagesFailed++;
           logger.warn({
+            subscriptionKey: key,
+            drainedRequestId: requestId,
             channel,
-            requestId,
+            clientId,
             error: err instanceof Error ? err.message : 'unknown',
-            clientId: (client as any).clientId
+            event: 'backlog_drain_failed'
           }, 'WebSocket send failed in drainBacklog');
           // Cleanup failed connection and stop draining
           cleanup(client);
@@ -148,12 +159,14 @@ export class BacklogManager {
       }
     }
 
-    // Clear backlog
+    // Clear backlog for this subscriptionKey
     this.backlog.delete(key);
 
     logger.info({
+      subscriptionKey: key,
+      drainedRequestId: requestId,
       channel,
-      requestId,
+      clientId,
       count: sent,
       ...(failed > 0 && { failedCount: failed }),
       event: 'backlog_drained'

@@ -46,6 +46,14 @@ export class SearchWsHandler {
   }
 
   /**
+   * Clear all active subscriptions
+   * Used when starting a new search to prevent stale messages
+   */
+  clearAllSubscriptions(): void {
+    this.wsClient.clearAllSubscriptions();
+  }
+
+  /**
    * Handle incoming WebSocket message
    * Returns true if message was handled, false if should be passed to other handlers
    */

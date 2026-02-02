@@ -122,11 +122,26 @@ export interface WSServerAssistantSuggestion {
 export interface WSServerAssistant {
   type: 'assistant';
   requestId: string;
+  assistantLanguage?: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es';
+  uiLanguage?: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es';
   payload: {
-    type: 'GATE_FAIL' | 'CLARIFY' | 'SUMMARY';
+    type: 'GATE_FAIL' | 'CLARIFY' | 'SUMMARY' | 'SEARCH_FAILED' | 'GENERIC_QUERY_NARRATION' | 'NUDGE_REFINE';
     message: string;
     question: string | null;
     blocksSearch: boolean;
+    language?: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es';
+    suggestedAction?: 'REFINE_QUERY';
+  };
+}
+
+/**
+ * Assistant error event (no user-facing message, just error code)
+ */
+export interface WSServerAssistantError {
+  type: 'assistant_error';
+  requestId: string;
+  payload: {
+    errorCode: 'LLM_TIMEOUT' | 'LLM_FAILED' | 'SCHEMA_INVALID';
   };
 }
 
@@ -159,6 +174,7 @@ export type WSServerMessage =
   | WSServerAssistantProgress
   | WSServerAssistantSuggestion
   | WSServerAssistant
+  | WSServerAssistantError
   | WSServerSubAck
   | WSServerSubNack
   | WSServerConnectionStatus;

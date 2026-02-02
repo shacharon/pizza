@@ -126,6 +126,14 @@ export class WsClientService {
   }
 
   /**
+   * Clear all active subscriptions (PUBLIC API)
+   * Used when starting a new search to prevent stale messages
+   */
+  clearAllSubscriptions(): void {
+    this.subscriptionManager.clearAllSubscriptions();
+  }
+
+  /**
    * Send a message to server (PUBLIC API)
    * Safe to call even if not connected (will log and store for retry)
    */

@@ -29,7 +29,7 @@ export interface Route2Context {
   sessionService?: any; // Optional session service for region caching
   llmProvider: LLMProvider;
   query?: string; // Original user query (for assistant context on failures)
-  queryLanguage?: 'he' | 'en'; // Detected language from query text (deterministic, for assistant messages)
+  queryLanguage?: 'he' | 'en' | 'ru' | 'ar' | 'unknown'; // Detected language from query text (deterministic, majority-script heuristic)
   userLocation?: {
     lat: number;
     lng: number;
