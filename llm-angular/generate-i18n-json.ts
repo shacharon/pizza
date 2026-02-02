@@ -42,10 +42,10 @@ LANGUAGES.forEach((lang) => {
   const translations = {
     // Search narration (hero, location, search, errors, etc.)
     ...MESSAGES[lang as Lang],
-    
+
     // UI strings (card, actions, assistant, etc.)
     ...UI_STRINGS[lang as UiLang],
-    
+
     // Cuisine labels (formatted as cuisine.{key})
     cuisine: Object.fromEntries(
       Object.entries(CUISINE_LABELS[lang as UiLang]).map(([key, value]) => [
@@ -53,22 +53,22 @@ LANGUAGES.forEach((lang) => {
         `${value.emoji} ${value.label}`
       ])
     ),
-    
+
     // Signal labels (formatted as signal.{key})
     signal: CARD_SIGNAL_LABELS
       ? Object.fromEntries(
-          Object.entries(CARD_SIGNAL_LABELS).map(([key, value]) => [
-            key.toLowerCase(),
-            value[lang as UiLang]
-          ])
-        )
+        Object.entries(CARD_SIGNAL_LABELS).map(([key, value]) => [
+          key.toLowerCase(),
+          value[lang as UiLang]
+        ])
+      )
       : {}
   };
 
   // Write JSON file
   const outputPath = path.join(OUTPUT_DIR, `${lang}.json`);
   fs.writeFileSync(outputPath, JSON.stringify(translations, null, 2), 'utf-8');
-  
+
   console.log(`✓ Generated ${lang}.json (${Object.keys(translations).length} top-level keys)`);
 });
 

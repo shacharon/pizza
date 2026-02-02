@@ -28,15 +28,21 @@ This document describes the backend enforcement of `assistantLanguage` across th
 ```typescript
 // websocket-protocol.ts
 export interface WSServerAssistant {
-  type: 'assistant';
+  type: "assistant";
   requestId: string;
-  assistantLanguage: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es'; // REQUIRED
+  assistantLanguage: "he" | "en" | "ar" | "ru" | "fr" | "es"; // REQUIRED
   payload: {
-    type: 'GATE_FAIL' | 'CLARIFY' | 'SUMMARY' | 'SEARCH_FAILED' | 'GENERIC_QUERY_NARRATION' | 'NUDGE_REFINE';
+    type:
+      | "GATE_FAIL"
+      | "CLARIFY"
+      | "SUMMARY"
+      | "SEARCH_FAILED"
+      | "GENERIC_QUERY_NARRATION"
+      | "NUDGE_REFINE";
     message: string;
     question: string | null;
     blocksSearch: boolean;
-    suggestedAction?: 'REFINE_QUERY';
+    suggestedAction?: "REFINE_QUERY";
   };
 }
 ```
@@ -53,14 +59,14 @@ export function publishAssistantMessage(
   sessionId: string | undefined,
   assistant: AssistantOutput | AssistantPayload,
   langCtx: LangCtx | undefined,
-  uiLanguageFallback?: 'he' | 'en'
+  uiLanguageFallback?: "he" | "en"
 ): void {
   // Resolve assistantLanguage from hierarchy:
   // Priority 1: langCtx.assistantLanguage (authoritative)
   // Priority 2: payload.language (legacy)
   // Priority 3: uiLanguageFallback (request context)
   // Priority 4: Hard fallback to 'en'
-  
+
   const assistantLanguage = resolveAssistantLanguage(
     requestId,
     langCtx,
@@ -71,18 +77,18 @@ export function publishAssistantMessage(
 
   // Publish WS message with assistantLanguage at top level
   const message = {
-    type: 'assistant',
+    type: "assistant",
     requestId,
     assistantLanguage, // Required field
     payload: {
       type: assistant.type,
       message: assistant.message,
       question: assistant.question,
-      blocksSearch: assistant.blocksSearch
-    }
+      blocksSearch: assistant.blocksSearch,
+    },
   };
 
-  wsManager.publishToChannel('assistant', requestId, sessionId, message);
+  wsManager.publishToChannel("assistant", requestId, sessionId, message);
 }
 ```
 
@@ -102,22 +108,25 @@ if (gateResult.gate && !ctx.langCtx) {
     gateResult.gate.language,
     gateResult.gate.confidence
   );
-  
+
   ctx.langCtx = {
     assistantLanguage,
     assistantLanguageConfidence: gateResult.gate.confidence || 0,
     uiLanguage: assistantLanguage,
     providerLanguage: assistantLanguage,
-    region: 'IL'
+    region: "IL",
   };
 
-  logger.info({
-    requestId,
-    event: 'langCtx_initialized',
-    source: 'gate2',
-    assistantLanguage,
-    confidence: gateResult.gate.confidence
-  }, '[ROUTE2] langCtx initialized from Gate2');
+  logger.info(
+    {
+      requestId,
+      event: "langCtx_initialized",
+      source: "gate2",
+      assistantLanguage,
+      confidence: gateResult.gate.confidence,
+    },
+    "[ROUTE2] langCtx initialized from Gate2"
+  );
 }
 ```
 
@@ -198,6 +207,7 @@ If `langCtx` is missing at publish time (defensive):
 4. **Hard fallback 'en'** → Use + WARN
 
 All fallbacks log WARN with:
+
 - `requestId`
 - `stage` (where missing)
 - `reason` (why fallback triggered)
@@ -208,24 +218,24 @@ All fallbacks log WARN with:
 
 ```typescript
 // assistant-publisher-enforcement.test.ts
-describe('Assistant Publisher - Language Enforcement', () => {
-  it('should fail if any assistant publish is missing assistantLanguage', () => {
+describe("Assistant Publisher - Language Enforcement", () => {
+  it("should fail if any assistant publish is missing assistantLanguage", () => {
     // Publishes message
     // Asserts message.assistantLanguage is present
   });
 
-  it('should use langCtx.assistantLanguage as source of truth', () => {
+  it("should use langCtx.assistantLanguage as source of truth", () => {
     // langCtx.assistantLanguage = 'fr'
     // payload.language = 'en'
     // Asserts message.assistantLanguage === 'fr'
   });
 
-  it('should assert assistantLanguage is identical across all assistant events for the same requestId', () => {
+  it("should assert assistantLanguage is identical across all assistant events for the same requestId", () => {
     // Publishes GATE_FAIL, CLARIFY, SUMMARY with same langCtx
     // Asserts all have identical assistantLanguage
   });
 
-  it('should correctly handle all 6 supported languages', () => {
+  it("should correctly handle all 6 supported languages", () => {
     // Tests: he, en, ar, ru, fr, es
   });
 });
@@ -247,20 +257,24 @@ npm test
 ### Core Files
 
 1. **`websocket-protocol.ts`**
+
    - Moved `assistantLanguage` from `payload.uiLanguage` to top-level `assistantLanguage`
    - Made `assistantLanguage` REQUIRED on `WSServerAssistant`
 
 2. **`assistant-publisher.ts`**
+
    - Added `resolveAssistantLanguage()` with 4-tier fallback hierarchy
    - Updated `publishAssistantMessage()` to resolve and enforce `assistantLanguage`
    - All publishes now include `assistantLanguage` at top level
    - Logs WARN when fallback is used
 
 3. **`route2.orchestrator.ts`**
+
    - Ensured `langCtx` initialization happens immediately after Gate2
    - Added info log when `langCtx` is initialized
 
 4. **`types.ts`**
+
    - Updated `Route2Context.langCtx` documentation
    - Clarified that `assistantLanguage` MUST be present before any WS publish
 
@@ -275,6 +289,7 @@ npm test
 ### Logs to Monitor
 
 1. **langCtx initialization:**
+
 ```json
 {
   "requestId": "req-123",
@@ -286,6 +301,7 @@ npm test
 ```
 
 2. **Assistant publish (success):**
+
 ```json
 {
   "requestId": "req-123",
@@ -296,6 +312,7 @@ npm test
 ```
 
 3. **Fallback warning (if langCtx missing):**
+
 ```json
 {
   "requestId": "req-789",
@@ -311,12 +328,15 @@ npm test
 Test with different languages:
 
 1. Query: "pizza" (English)
+
    - `assistantLanguage` should be `'en'`
 
 2. Query: "פיצה" (Hebrew)
+
    - `assistantLanguage` should be `'he'`
 
 3. Query: "pizza" with `uiLanguage: 'fr'` in request
+
    - `assistantLanguage` should be detected by Gate2 (likely `'en'` or `'fr'`)
 
 4. Multiple queries in same session
@@ -344,6 +364,7 @@ Frontend receives:
 ```
 
 Frontend MUST:
+
 - Use `assistantLanguage` field (not `payload.language`)
 - Switch UI language to match `assistantLanguage`
 - Render `payload.message` in UI
@@ -351,6 +372,7 @@ Frontend MUST:
 ### Backend Contract
 
 Backend MUST:
+
 - Set `ctx.langCtx.assistantLanguage` immediately after Gate2
 - Pass `langCtx` to `publishAssistantMessage()` for ALL assistant publishes
 - Never modify `assistantLanguage` after it's set

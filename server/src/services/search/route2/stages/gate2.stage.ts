@@ -18,6 +18,7 @@ import { logger } from '../../../../lib/logger/structured-logger.js';
 import { startStage, endStage } from '../../../../lib/telemetry/stage-timer.js';
 import { sanitizeQuery } from '../../../../lib/telemetry/query-sanitizer.js';
 import { resolveLLM } from '../../../../lib/llm/index.js';
+import { Gate2RoutingEngine } from './gate2/gate2.routing-engine.js';
 
 // Gate2 Zod Schema for LLM output (before routing logic) - SOURCE OF TRUTH
 const Gate2LLMSchema = z.object({
@@ -166,26 +167,12 @@ function createTimeoutErrorResult(): Gate2Result {
 /**
  * Apply deterministic routing rules AFTER LLM classification
  * NO routing decisions inside LLM - pure mapping logic
+ * 
+ * REFACTORED: Now delegates to Gate2RoutingEngine for all routing logic
  */
 function applyDeterministicRouting(llmResult: z.infer<typeof Gate2LLMSchema>): Gate2Result {
-  let route: 'CONTINUE' | 'ASK_CLARIFY' | 'STOP';
-
-  if (llmResult.foodSignal === 'NO') {
-    route = 'STOP';
-  } else if (llmResult.foodSignal === 'UNCERTAIN') {
-    route = 'ASK_CLARIFY';
-  } else {
-    route = 'CONTINUE';
-  }
-
-  return {
-    foodSignal: llmResult.foodSignal,
-    language: llmResult.assistantLanguage,
-    languageConfidence: llmResult.assistantLanguageConfidence,
-    route,
-    confidence: llmResult.confidence,
-    stop: llmResult.stop // Pass through stop payload from LLM (null if not stopping)
-  };
+  // Delegate to the routing engine (single source of truth)
+  return Gate2RoutingEngine.applyDeterministicRouting(llmResult);
 }
 
 /**

@@ -73,7 +73,7 @@ export function wsClose(ws: any, options: WSCloseOptions): void {
 
   // Validate reason is non-empty
   const finalReason = reason?.trim() || 'UNKNOWN';
-  
+
   // INVARIANT: Code 1001 ONLY for IDLE_TIMEOUT/SERVER_SHUTDOWN
   if (code === 1001 && closeSource !== CloseSource.IDLE_TIMEOUT && closeSource !== CloseSource.SERVER_SHUTDOWN) {
     logger.warn({
@@ -113,19 +113,19 @@ export function getCloseParams(closeSource: CloseSource, reason?: string): Pick<
   switch (closeSource) {
     case CloseSource.IDLE_TIMEOUT:
       return { code: 1001, reason: reason || 'IDLE_TIMEOUT' };
-    
+
     case CloseSource.SERVER_SHUTDOWN:
       return { code: 1001, reason: reason || 'SERVER_SHUTDOWN' };
-    
+
     case CloseSource.CLIENT_CLOSE:
       return { code: 1000, reason: reason || 'CLIENT_CLOSE' };
-    
+
     case CloseSource.POLICY:
       return { code: 1008, reason: reason || 'POLICY_VIOLATION' };
-    
+
     case CloseSource.ERROR:
       return { code: 1011, reason: reason || 'UNEXPECTED_ERROR' };
-    
+
     default:
       return { code: 1000, reason: reason || 'UNKNOWN' };
   }

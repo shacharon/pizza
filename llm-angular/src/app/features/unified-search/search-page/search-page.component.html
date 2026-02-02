@@ -27,8 +27,8 @@
       <!-- Search Card: Input + Assistant Line + Contextual Assistant -->
       <div class="search-card">
         <app-search-bar [value]="facade.currentQuery()" [loading]="facade.loading()"
-          [placeholder]="t(uiLanguage(), 'search.placeholder')" (search)="onSearch($event)" (inputChange)="onInputChange($event)"
-          (clear)="onClear()" />
+          [placeholder]="t(uiLanguage(), 'search.placeholder')" (search)="onSearch($event)"
+          (inputChange)="onInputChange($event)" (clear)="onClear()" />
 
         <!-- Assistant Line (always shown - includes WS status) -->
         <div class="search-meta-row">
@@ -156,14 +156,12 @@
         <!-- Applied Filters Chips -->
         <div class="applied-filters">
           @if (closedFilterActive() === 'open') {
-          <span class="filter-chip open-now"
-            [title]="t(uiLanguage(), 'filter.openNowTooltip')">
+          <span class="filter-chip open-now" [title]="t(uiLanguage(), 'filter.openNowTooltip')">
             {{ t(uiLanguage(), 'filter.openNow') }}
           </span>
           }
           @if (glutenFreeFilterActive()) {
-          <span class="filter-chip gluten-free"
-            [title]="t(uiLanguage(), 'filter.glutenFreeTooltip')">
+          <span class="filter-chip gluten-free" [title]="t(uiLanguage(), 'filter.glutenFreeTooltip')">
             {{ t(uiLanguage(), 'filter.glutenFree') }}
           </span>
           }

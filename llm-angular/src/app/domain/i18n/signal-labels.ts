@@ -31,7 +31,7 @@ export const SIGNAL_LABELS: Record<CardSignalType, Record<SupportedLanguage, str
     it: 'Aperto ora',
     ja: '営業中'
   },
-  
+
   CLOSED_NOW: {
     he: 'סגור עכשיו',
     en: 'Closed now',
@@ -42,7 +42,7 @@ export const SIGNAL_LABELS: Record<CardSignalType, Record<SupportedLanguage, str
     it: 'Chiuso',
     ja: '閉店'
   },
-  
+
   // Priority 2: Price
   PRICE_CHEAP: {
     he: 'זול',
@@ -54,7 +54,7 @@ export const SIGNAL_LABELS: Record<CardSignalType, Record<SupportedLanguage, str
     it: 'Economico',
     ja: '安い'
   },
-  
+
   PRICE_MID: {
     he: 'בינוני',
     en: 'Mid-price',
@@ -65,7 +65,7 @@ export const SIGNAL_LABELS: Record<CardSignalType, Record<SupportedLanguage, str
     it: 'Prezzo medio',
     ja: '中価格'
   },
-  
+
   PRICE_EXPENSIVE: {
     he: 'יקר',
     en: 'Expensive',
@@ -76,7 +76,7 @@ export const SIGNAL_LABELS: Record<CardSignalType, Record<SupportedLanguage, str
     it: 'Costoso',
     ja: '高い'
   },
-  
+
   // Priority 3: Distance
   NEARBY: {
     he: 'קרוב',
@@ -88,7 +88,7 @@ export const SIGNAL_LABELS: Record<CardSignalType, Record<SupportedLanguage, str
     it: 'Vicino',
     ja: '近い'
   },
-  
+
   // Priority 4: Intent match
   INTENT_MATCH: {
     he: 'מתאים',
@@ -100,7 +100,7 @@ export const SIGNAL_LABELS: Record<CardSignalType, Record<SupportedLanguage, str
     it: 'Buona opzione',
     ja: '最適'
   },
-  
+
   // Priority 5: Popularity
   POPULAR: {
     he: 'פופולרי',
@@ -130,7 +130,7 @@ export const INTENT_LABELS: Record<string, Record<SupportedLanguage, string>> = 
     it: 'Buono per colazione',
     ja: '朝食に最適'
   },
-  
+
   lunch: {
     he: 'טוב לארוחת צהריים',
     en: 'Good for lunch',
@@ -141,7 +141,7 @@ export const INTENT_LABELS: Record<string, Record<SupportedLanguage, string>> = 
     it: 'Buono per pranzo',
     ja: '昼食に最適'
   },
-  
+
   dinner: {
     he: 'טוב לארוחת ערב',
     en: 'Good for dinner',
@@ -152,7 +152,7 @@ export const INTENT_LABELS: Record<string, Record<SupportedLanguage, string>> = 
     it: 'Buono per cena',
     ja: '夕食に最適'
   },
-  
+
   brunch: {
     he: 'טוב לברנץ\'',
     en: 'Good for brunch',
@@ -163,7 +163,7 @@ export const INTENT_LABELS: Record<string, Record<SupportedLanguage, string>> = 
     it: 'Buono per brunch',
     ja: 'ブランチに最適'
   },
-  
+
   // Occasions
   date: {
     he: 'רומנטי',
@@ -175,7 +175,7 @@ export const INTENT_LABELS: Record<string, Record<SupportedLanguage, string>> = 
     it: 'Romantico',
     ja: 'ロマンチック'
   },
-  
+
   family: {
     he: 'משפחתי',
     en: 'Family-friendly',
@@ -186,7 +186,7 @@ export const INTENT_LABELS: Record<string, Record<SupportedLanguage, string>> = 
     it: 'Per famiglie',
     ja: '家族向け'
   },
-  
+
   group: {
     he: 'טוב לקבוצות',
     en: 'Good for groups',
@@ -197,7 +197,7 @@ export const INTENT_LABELS: Record<string, Record<SupportedLanguage, string>> = 
     it: 'Buono per gruppi',
     ja: 'グループ向け'
   },
-  
+
   business: {
     he: 'עסקי',
     en: 'Business dining',
@@ -208,7 +208,7 @@ export const INTENT_LABELS: Record<string, Record<SupportedLanguage, string>> = 
     it: 'Business',
     ja: 'ビジネス'
   },
-  
+
   // Atmosphere
   casual: {
     he: 'נינוח',
@@ -220,7 +220,7 @@ export const INTENT_LABELS: Record<string, Record<SupportedLanguage, string>> = 
     it: 'Informale',
     ja: 'カジュアル'
   },
-  
+
   fancy: {
     he: 'מפואר',
     en: 'Fine dining',
@@ -231,7 +231,7 @@ export const INTENT_LABELS: Record<string, Record<SupportedLanguage, string>> = 
     it: 'Raffinato',
     ja: '高級'
   },
-  
+
   cozy: {
     he: 'אינטימי',
     en: 'Cozy',
@@ -242,7 +242,7 @@ export const INTENT_LABELS: Record<string, Record<SupportedLanguage, string>> = 
     it: 'Accogliente',
     ja: '居心地の良い'
   },
-  
+
   trendy: {
     he: 'טרנדי',
     en: 'Trendy',
@@ -253,7 +253,7 @@ export const INTENT_LABELS: Record<string, Record<SupportedLanguage, string>> = 
     it: 'Alla moda',
     ja: 'トレンディ'
   },
-  
+
   // Service
   takeout: {
     he: 'טייק אווי',
@@ -265,7 +265,7 @@ export const INTENT_LABELS: Record<string, Record<SupportedLanguage, string>> = 
     it: 'Da asporto',
     ja: 'テイクアウト'
   },
-  
+
   delivery: {
     he: 'משלוחים',
     en: 'Delivery',
@@ -276,7 +276,7 @@ export const INTENT_LABELS: Record<string, Record<SupportedLanguage, string>> = 
     it: 'Consegna',
     ja: '配達'
   },
-  
+
   outdoor: {
     he: 'ישיבה בחוץ',
     en: 'Outdoor seating',
@@ -287,7 +287,7 @@ export const INTENT_LABELS: Record<string, Record<SupportedLanguage, string>> = 
     it: 'Posti all\'aperto',
     ja: '屋外席'
   },
-  
+
   // Quality
   highly_rated: {
     he: 'מדורג גבוה',
@@ -299,7 +299,7 @@ export const INTENT_LABELS: Record<string, Record<SupportedLanguage, string>> = 
     it: 'Altamente valutato',
     ja: '高評価'
   },
-  
+
   popular: {
     he: 'פופולרי',
     en: 'Popular',
@@ -310,7 +310,7 @@ export const INTENT_LABELS: Record<string, Record<SupportedLanguage, string>> = 
     it: 'Popolare',
     ja: '人気'
   },
-  
+
   hidden_gem: {
     he: 'אבן חן מוסתרת',
     en: 'Hidden gem',
@@ -338,7 +338,7 @@ export const DISTANCE_LABELS: Record<string, Record<SupportedLanguage, string>> 
     it: 'Molto vicino',
     ja: '非常に近い'
   },
-  
+
   nearby: {
     he: 'קרוב',
     en: 'Nearby',
@@ -349,7 +349,7 @@ export const DISTANCE_LABELS: Record<string, Record<SupportedLanguage, string>> 
     it: 'Vicino',
     ja: '近く'
   },
-  
+
   walkable: {
     he: 'הליכה קצרה',
     en: 'Short walk',
@@ -360,7 +360,7 @@ export const DISTANCE_LABELS: Record<string, Record<SupportedLanguage, string>> 
     it: 'Breve passeggiata',
     ja: '徒歩圏内'
   },
-  
+
   moderate: {
     he: 'מרחק בינוני',
     en: 'Moderate distance',
@@ -371,7 +371,7 @@ export const DISTANCE_LABELS: Record<string, Record<SupportedLanguage, string>> 
     it: 'Distanza moderata',
     ja: '中距離'
   },
-  
+
   far: {
     he: 'רחוק',
     en: 'Far',
@@ -416,7 +416,7 @@ export function getIntentLabel(
   if (labels) {
     return labels[language] || labels.en;
   }
-  
+
   // Fallback to generic match label
   return SIGNAL_LABELS.INTENT_MATCH[language];
 }
@@ -436,7 +436,7 @@ export function getDistanceLabel(
   if (labels) {
     return labels[language] || labels.en;
   }
-  
+
   // Fallback to nearby
   return DISTANCE_LABELS['nearby'][language];
 }

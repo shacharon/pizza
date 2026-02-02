@@ -388,7 +388,8 @@ export class WebSocketManager {
         message: messageData.text,
         question: null,
         blocksSearch: messageData.blocksSearch,
-        suggestedAction: messageData.suggestedAction
+        suggestedAction: messageData.suggestedAction,
+        language: uiLanguage // LANGUAGE CONTRACT: Always set payload.language = assistantLanguage
       }
     };
 
@@ -575,7 +576,7 @@ export class WebSocketManager {
     }
   ): PublishSummary {
     // Extract assistantLanguage from payload (fallback to 'en')
-    const assistantLanguage: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es' = 
+    const assistantLanguage: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es' =
       (payload.uiLanguage as 'he' | 'en') || 'en';
 
     const message: WSServerMessage = {
@@ -587,6 +588,7 @@ export class WebSocketManager {
         message: payload.message || '',
         question: payload.question || null,
         blocksSearch: payload.blocksSearch ?? false,
+        language: assistantLanguage, // LANGUAGE CONTRACT: Always set payload.language = assistantLanguage
         ...(payload.suggestedAction && { suggestedAction: payload.suggestedAction as 'REFINE_QUERY' })
       }
     };

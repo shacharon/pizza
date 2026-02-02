@@ -143,11 +143,13 @@ export interface WSServerAssistant {
   type: 'assistant';
   requestId: string;
   assistantLanguage: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es';
+  uiLanguage?: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es'; // Optional: UI language from client
   payload: {
     type: 'GATE_FAIL' | 'CLARIFY' | 'SUMMARY' | 'SEARCH_FAILED' | 'GENERIC_QUERY_NARRATION' | 'NUDGE_REFINE';
     message: string;
     question: string | null;
     blocksSearch: boolean;
+    language: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es'; // LANGUAGE CONTRACT: Set from assistantLanguage
     suggestedAction?: 'REFINE_QUERY';
   };
 }

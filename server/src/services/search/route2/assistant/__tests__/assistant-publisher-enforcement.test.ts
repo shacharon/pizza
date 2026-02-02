@@ -48,9 +48,42 @@ describe('Assistant Publisher - Language Enforcement', () => {
 
       assert.strictEqual(publishedMessages.length, 1);
       const publishedMsg = publishedMessages[0].message;
-      
+
       assert.ok(publishedMsg.hasOwnProperty('assistantLanguage'), 'assistantLanguage field must be present');
       assert.strictEqual(publishedMsg.assistantLanguage, 'he');
+    });
+
+    it('should set payload.language = assistantLanguage (LANGUAGE CONTRACT)', () => {
+      const langCtx: LangCtx = {
+        assistantLanguage: 'he',
+        assistantLanguageConfidence: 0.9,
+        uiLanguage: 'en', // Different uiLanguage
+        providerLanguage: 'he',
+        region: 'IL'
+      };
+
+      publishAssistantMessage(
+        mockWsManager,
+        'req-124',
+        'sess-124',
+        {
+          type: 'GATE_FAIL',
+          message: 'Not food related',
+          question: null,
+          blocksSearch: true
+        },
+        langCtx,
+        'en'
+      );
+
+      const publishedMsg = publishedMessages[0].message;
+
+      // Verify envelope fields
+      assert.strictEqual(publishedMsg.assistantLanguage, 'he', 'Envelope assistantLanguage should be he');
+      assert.strictEqual(publishedMsg.uiLanguage, 'en', 'Envelope uiLanguage should remain en (not overridden)');
+      
+      // LANGUAGE CONTRACT: payload.language should equal assistantLanguage
+      assert.strictEqual(publishedMsg.payload.language, 'he', 'payload.language must equal assistantLanguage');
     });
 
     it('should use langCtx.assistantLanguage as source of truth', () => {

@@ -131,7 +131,10 @@ export function publishAssistantMessage(
     const sessionHash = hashSessionId(sessionId);
 
     // UILANGUAGE FIX: Resolve uiLanguage from context (for debugging + backward compat)
-    const uiLanguage = langCtx?.uiLanguage ?? uiLanguageFallback ?? 'en';
+    // Filter out 'other' - fallback to 'en' if invalid for WS protocol
+    const rawUiLanguage = langCtx?.uiLanguage ?? uiLanguageFallback ?? 'en';
+    const uiLanguage: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es' = 
+      rawUiLanguage === 'other' ? 'en' : (rawUiLanguage as 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es');
 
     logger.info({
       channel: ASSISTANT_WS_CHANNEL,
@@ -154,6 +157,7 @@ export function publishAssistantMessage(
         message: normalizedPayload.message,
         question: normalizedPayload.question,
         blocksSearch: normalizedPayload.blocksSearch,
+        language: assistantLanguage, // LANGUAGE CONTRACT: Always set payload.language = assistantLanguage
         ...(normalizedPayload.suggestedAction === 'REFINE' && { suggestedAction: 'REFINE_QUERY' as const })
       }
     };

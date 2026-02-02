@@ -17,16 +17,17 @@ Updated the RestaurantCard component to make action buttons responsive with diff
   display: flex;
   gap: 0.75rem;
   align-items: center;
-  
+
   // Side-aligned (default desktop)
   align-self: flex-start;
-  margin-left: auto;        // Push to right side
+  margin-left: auto; // Push to right side
   padding-left: 1rem;
-  border-left: 1px solid #e5e7eb;  // Left border separator
+  border-left: 1px solid #e5e7eb; // Left border separator
 }
 ```
 
 **Visual:**
+
 ```
 ┌─────────────────────────────────────────────────┐
 │ 📷  Restaurant Name          │ 📍 Navigate    │
@@ -47,17 +48,18 @@ Updated the RestaurantCard component to make action buttons responsive with diff
     margin-left: 0;
     padding-left: 0;
     border-left: none;
-    
+
     // Bottom bar layout
     flex-direction: row;
     justify-content: space-evenly;
     padding: 0.75rem 0.875rem 0.875rem;
-    border-top: 1px solid #f3f4f6;  // Top border separator
+    border-top: 1px solid #f3f4f6; // Top border separator
   }
 }
 ```
 
 **Visual:**
+
 ```
 ┌─────────────────────┐
 │ 📷 Image            │
@@ -75,21 +77,25 @@ Updated the RestaurantCard component to make action buttons responsive with diff
 ## Key Features
 
 ### ✅ No Duplication
+
 - Single set of action buttons in HTML
 - Same handlers (`onAction()`)
 - Layout controlled purely by CSS media queries
 
 ### ✅ Accessibility Maintained
+
 - All `aria-label` attributes preserved
 - Keyboard navigation works on both layouts
 - Touch targets properly sized on mobile
 
 ### ✅ Responsive Behavior
+
 - **Desktop**: Actions aligned to the side with left border
 - **Mobile**: Actions as bottom bar with top border
 - Smooth transition at 768px breakpoint
 
 ### ✅ Visual Polish
+
 - Desktop: Compact vertical layout, aligned right
 - Mobile: Full-width bottom bar, evenly spaced
 - Proper padding and borders for clear separation
@@ -102,14 +108,14 @@ The HTML already has the correct structure:
 <article class="restaurant-card">
   <!-- Photo -->
   <img class="restaurant-photo" ... />
-  
+
   <!-- Restaurant Info -->
   <div class="restaurant-info">
     <h3 class="restaurant-name">...</h3>
     <p class="restaurant-meta">...</p>
     <p class="card-signal-text">...</p>
   </div>
-  
+
   <!-- Action Bar (responsive via CSS) -->
   <div class="action-bar">
     <button class="action-button" (click)="onAction($event, 'GET_DIRECTIONS')">
@@ -131,12 +137,14 @@ The HTML already has the correct structure:
 ## Testing
 
 ### Desktop (≥ 768px)
+
 - ✅ Actions appear on the right side
 - ✅ Left border separator visible
 - ✅ Hover effects work
 - ✅ Click handlers fire correctly
 
 ### Mobile (< 768px)
+
 - ✅ Actions appear at bottom of card
 - ✅ Top border separator visible
 - ✅ Actions evenly spaced

@@ -9,6 +9,7 @@ Created a comprehensive, deterministic UI translation system for a restaurant se
 ### 1. Core Translation Modules
 
 #### `ui-strings.i18n.ts` ✅
+
 - **55+ UI string keys** covering:
   - Restaurant card (buttons, labels, tooltips)
   - Reason labels
@@ -19,6 +20,7 @@ Created a comprehensive, deterministic UI translation system for a restaurant se
 - Variable interpolation support: `{name}`, `{address}`, etc.
 
 #### `cuisine-labels.i18n.ts` ✅
+
 - **22 cuisine types** with emojis:
   - Sushi 🍣, Pizza 🍕, Italian 🍝, Burger 🍔, etc.
   - Vegan 🌱, Vegetarian 🥗, Cafe ☕, Bar 🍺, etc.
@@ -26,6 +28,7 @@ Created a comprehensive, deterministic UI translation system for a restaurant se
 - Auto-matching function for restaurant tags
 
 #### `card-signal-labels.i18n.ts` ✅
+
 - **8 card signal types**:
   - OPEN_NOW, CLOSED_NOW
   - PRICE_CHEAP, PRICE_MID, PRICE_EXPENSIVE
@@ -34,6 +37,7 @@ Created a comprehensive, deterministic UI translation system for a restaurant se
 - Modern, concise, app-style translations
 
 #### `search-narration.i18n.ts` (Extended) ✅
+
 - Added **Italian (it)** and **Japanese (ja)**
 - Now supports all 8 languages
 - 50+ existing keys for hero, location, search, errors, filters, etc.
@@ -41,6 +45,7 @@ Created a comprehensive, deterministic UI translation system for a restaurant se
 ### 2. Centralized Service
 
 #### `I18nService` ✅
+
 ```typescript
 readonly currentLang: Signal<Lang>     // From WebSocket
 readonly currentUiLang: Signal<UiLang> // Typed for UI
@@ -59,6 +64,7 @@ signal(signalType: CardSignalType): Signal<string>
 ```
 
 **Key Features:**
+
 - Single source of truth: `assistantLanguage` from backend
 - Reactive: Updates automatically when language changes
 - RTL detection: Built-in for Hebrew & Arabic
@@ -67,7 +73,9 @@ signal(signalType: CardSignalType): Signal<string>
 ### 3. Component Integration Example
 
 #### Restaurant Card Component ✅
+
 **TypeScript:**
+
 ```typescript
 readonly i18n = inject(I18nService);
 
@@ -87,13 +95,13 @@ getCuisineTag(): string {
 ```
 
 **HTML Template:**
+
 ```html
 <!-- Aria-labels with i18n -->
 <article [attr.aria-label]="i18n.tUi('card.viewDetails') + ' ' + restaurant().name">
-  
   <!-- Photo with i18n alt text -->
   <img [alt]="restaurant().name + ' ' + i18n.tUi('card.photoAlt')" />
-  
+
   <!-- Rating with i18n -->
   <span [attr.aria-label]="i18n.tUi('card.rating') + ' ' + restaurant().rating">
     ⭐ {{ restaurant().rating }}
@@ -101,16 +109,14 @@ getCuisineTag(): string {
   </span>
 
   <!-- Buttons with i18n tooltips -->
-  <button [title]="i18n.tUi('card.navigate')"
-          [attr.aria-label]="i18n.tUi('card.navigateTo') + ' ' + restaurant().name">
-    Navigate
-  </button>
+  <button [title]="i18n.tUi('card.navigate')" [attr.aria-label]="i18n.tUi('card.navigateTo') + ' ' + restaurant().name">Navigate</button>
 </article>
 ```
 
 ### 4. JSON Export Script ✅
 
 #### `generate-i18n-json.ts`
+
 Generates standalone JSON files for each language:
 
 ```bash
@@ -118,6 +124,7 @@ npx ts-node generate-i18n-json.ts
 ```
 
 **Output:**
+
 ```
 src/assets/i18n/
 ├── en.json (English)
@@ -131,6 +138,7 @@ src/assets/i18n/
 ```
 
 Each JSON combines all translation sources:
+
 ```json
 {
   "hero.title": "Search food the way you think",
@@ -150,7 +158,9 @@ Each JSON combines all translation sources:
 ### 5. Documentation ✅
 
 #### `I18N_README.md` (2,500+ words)
+
 Complete documentation covering:
+
 - Architecture overview
 - Language source of truth (backend WebSocket)
 - Translation module details
@@ -166,7 +176,9 @@ Complete documentation covering:
 - FAQ
 
 #### `I18N_MIGRATION_CHECKLIST.md`
+
 Detailed checklist for migrating all components:
+
 - Core infrastructure status ✅
 - Components to migrate (prioritized)
 - Templates to update
@@ -180,17 +192,20 @@ Detailed checklist for migrating all components:
 ## 🌍 Language Quality
 
 ### Hebrew (he) & Arabic (ar)
+
 - **Natural, modern, UI-friendly**
 - NOT literal Google Translate tone
 - Appropriate for app contexts
 - RTL-aware
 
 ### Japanese (ja)
+
 - **Concise, app-style**
 - Uses katakana for foreign concepts
 - です/ます form (polite but not overly formal)
 
 ### All Languages
+
 - **Deterministic** (no variations)
 - **No emojis** (except in cuisine labels where appropriate)
 - **Preserve placeholders** exactly: `{name}`, `{count}`, etc.
@@ -199,12 +214,14 @@ Detailed checklist for migrating all components:
 ## 🔧 Translation Scope
 
 ### ✅ Translate (Static UI)
+
 - Headings, buttons, labels, chips
 - Filters, meta UI words (open now, reviews, price, distance)
 - Empty states, error messages
 - Helper texts, aria-labels, tooltips
 
 ### ❌ DO NOT Translate
+
 - Restaurant names
 - Addresses
 - User-generated content
@@ -223,6 +240,7 @@ Detailed checklist for migrating all components:
 ## 🎨 Example Translations
 
 ### "Open now"
+
 - 🇺🇸 en: Open now
 - 🇮🇱 he: פתוח עכשיו
 - 🇫🇷 fr: Ouvert maintenant
@@ -233,6 +251,7 @@ Detailed checklist for migrating all components:
 - 🇯🇵 ja: 営業中
 
 ### "Cuisine: Sushi"
+
 - 🇺🇸 en: 🍣 Sushi
 - 🇮🇱 he: 🍣 סושי
 - 🇫🇷 fr: 🍣 Sushi
@@ -254,27 +273,32 @@ Detailed checklist for migrating all components:
 ## ✨ Key Strengths
 
 ### 1. Deterministic
+
 - NO LLM involvement in runtime
 - NO paraphrasing
 - Exact same structure across all languages
 - Predictable, testable translations
 
 ### 2. Type-Safe
+
 - All keys are typed enums
 - TypeScript catches missing translations at compile-time
 - Autocomplete in IDE
 
 ### 3. Centralized
+
 - Single `I18nService` for all translations
 - One source of truth (backend WebSocket)
 - Easy to maintain and extend
 
 ### 4. Reactive
+
 - Automatic updates when language changes
 - Signal-based architecture
 - No manual subscriptions needed
 
 ### 5. RTL Support
+
 - Built-in detection for Hebrew & Arabic
 - `isRTL()` signal for layout switching
 - Natural RTL translations
@@ -282,6 +306,7 @@ Detailed checklist for migrating all components:
 ## 📝 Next Steps
 
 See `I18N_MIGRATION_CHECKLIST.md` for:
+
 1. Remaining component migrations
 2. Template updates for aria-labels
 3. Action executor message translations
@@ -306,7 +331,7 @@ See `I18N_MIGRATION_CHECKLIST.md` for:
 ✅ **Centralized service** with simple API  
 ✅ **Component integration** example provided  
 ✅ **JSON export** script ready  
-✅ **Comprehensive documentation** (4,000+ words)  
+✅ **Comprehensive documentation** (4,000+ words)
 
 **Ready for production use!** 🚀
 

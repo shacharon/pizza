@@ -1,7 +1,9 @@
 # Ranking Invariant Log Deduplication - Implementation Summary
 
 ## Problem
+
 1. `ranking_invariant_applied` was logged **TWICE per request**:
+
    - Once in `rankResults()` (line 139)
    - Once in `computeScoreBreakdown()` (line 227)
 
@@ -13,9 +15,11 @@
 ## Solution
 
 ### 1. Single Choke Point for Invariants
+
 **Moved invariant application to ONE location:** `orchestrator.ranking.ts` (Step 4)
 
 **Before:**
+
 ```typescript
 // results-ranker.ts - rankResults()
 const effectiveWeights = enforceRankingInvariants(..., requestId); // LOG 1
@@ -25,6 +29,7 @@ const effectiveWeights = enforceRankingInvariants(..., requestId); // LOG 2 (dup
 ```
 
 **After:**
+
 ```typescript
 // orchestrator.ranking.ts - applyRankingIfEnabled() (Step 4)
 const finalWeights = enforceRankingInvariants(..., requestId, true); // LOG ONCE
@@ -37,6 +42,7 @@ const finalWeights = enforceRankingInvariants(..., requestId, true); // LOG ONCE
 ```
 
 ### 2. Added `shouldLog` Parameter
+
 **Updated `enforceRankingInvariants()` signature:**
 
 ```typescript
@@ -48,20 +54,24 @@ export function enforceRankingInvariants(
   hasCuisineScores: boolean,
   requestId?: string,
   shouldLog?: boolean // NEW: Controls logging (default: false)
-): RankingWeights
+): RankingWeights;
 ```
 
 **Logging logic:**
+
 ```typescript
 // Log ONLY when shouldLog is true (set by orchestrator)
 if (appliedRules.length > 0 && requestId && shouldLog) {
-  logger.info({
-    requestId,
-    event: 'ranking_invariant_applied',
-    rules: appliedRules,
-    baseWeights: weights, // Before invariants
-    finalWeights: adjusted // After invariants
-  }, `[RANKING] Invariants applied: ...`);
+  logger.info(
+    {
+      requestId,
+      event: "ranking_invariant_applied",
+      rules: appliedRules,
+      baseWeights: weights, // Before invariants
+      finalWeights: adjusted, // After invariants
+    },
+    `[RANKING] Invariants applied: ...`
+  );
 }
 ```
 
@@ -69,13 +79,13 @@ if (appliedRules.length > 0 && requestId && shouldLog) {
 
 **All ranking events now use `finalWeights` (after ALL adjustments):**
 
-| Event | Before | After |
-|-------|--------|-------|
-| `ranking_profile_selected` | `weights` (base) | `baseWeights` (base) |
-| `ranking_invariant_applied` | `originalWeights` + `adjustedWeights` | `baseWeights` + `finalWeights` |
-| `ranking_weights_final` | ❌ (didn't exist) | ✅ `baseWeights` + `finalWeights` |
-| `ranking_score_breakdown` | `effectiveWeights` (inconsistent) | `finalWeights` (consistent) |
-| `post_rank_applied` | `selection.weights` (base) ❌ | `finalWeights` ✅ |
+| Event                       | Before                                | After                             |
+| --------------------------- | ------------------------------------- | --------------------------------- |
+| `ranking_profile_selected`  | `weights` (base)                      | `baseWeights` (base)              |
+| `ranking_invariant_applied` | `originalWeights` + `adjustedWeights` | `baseWeights` + `finalWeights`    |
+| `ranking_weights_final`     | ❌ (didn't exist)                     | ✅ `baseWeights` + `finalWeights` |
+| `ranking_score_breakdown`   | `effectiveWeights` (inconsistent)     | `finalWeights` (consistent)       |
+| `post_rank_applied`         | `selection.weights` (base) ❌         | `finalWeights` ✅                 |
 
 ### 4. Added `ranking_weights_final` Event
 
@@ -162,6 +172,7 @@ logger.info({
 ```
 
 **Verification:**
+
 - ✅ `ranking_invariant_applied` logged **ONCE**
 - ✅ `finalWeights` identical across all events: `ranking_score_breakdown.weights` == `post_rank_applied.weights`
 - ✅ `baseWeights` vs `finalWeights` clearly separated
@@ -201,6 +212,7 @@ logger.info({
 ```
 
 **Verification:**
+
 - ✅ `ranking_invariant_applied` **NOT logged** (no rules applied)
 - ✅ `ranking_weights_final` **NOT logged** (weights unchanged)
 - ✅ All weight references identical
@@ -208,12 +220,14 @@ logger.info({
 ## Files Modified
 
 1. **`server/src/services/search/route2/ranking/results-ranker.ts`**
+
    - Added `shouldLog` parameter to `enforceRankingInvariants()`
    - Removed invariant enforcement from `rankResults()` (now receives finalWeights)
    - Removed invariant enforcement from `computeScoreBreakdown()` (now receives finalWeights)
    - Made `enforceRankingInvariants()` **exported** (for orchestrator to call)
 
 2. **`server/src/services/search/route2/orchestrator.ranking.ts`**
+
    - Added Step 4: Single choke point for invariant application
    - Import and call `enforceRankingInvariants()` with `shouldLog=true`
    - Added `ranking_weights_final` log event (if weights changed)
@@ -235,10 +249,12 @@ npm test -- ranking
 ### Manual Verification
 
 1. Query with no user location:
+
    - Expect: `ranking_invariant_applied` logged ONCE
    - Verify: `distance: 0` in all subsequent logs
 
 2. Query with user location + openNow + cuisine:
+
    - Expect: NO `ranking_invariant_applied` log
    - Verify: All weights non-zero
 

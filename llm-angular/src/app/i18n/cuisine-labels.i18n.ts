@@ -265,7 +265,7 @@ export function getCuisineLabel(tags: string[], lang: UiLang): string {
   // Try to match each tag against known cuisine keys
   for (const tag of tags) {
     const normalized = tag.toLowerCase().trim();
-    
+
     // Try direct key match
     for (const cuisineKey of Object.keys(CUISINE_LABELS.en) as CuisineKey[]) {
       if (normalized.includes(cuisineKey)) {
@@ -296,7 +296,7 @@ export function getCuisineLabelObject(tags: string[], lang: UiLang): CuisineLabe
 
   for (const tag of tags) {
     const normalized = tag.toLowerCase().trim();
-    
+
     for (const cuisineKey of Object.keys(CUISINE_LABELS.en) as CuisineKey[]) {
       if (normalized.includes(cuisineKey)) {
         return CUISINE_LABELS[lang][cuisineKey];

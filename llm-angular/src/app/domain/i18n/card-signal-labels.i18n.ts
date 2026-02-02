@@ -28,7 +28,7 @@ export const CARD_SIGNAL_LABELS: Record<CardSignalType, Record<SignalLang, strin
     it: 'Aperto ora',
     ja: '営業中'
   },
-  
+
   CLOSED_NOW: {
     he: 'סגור עכשיו',
     en: 'Closed now',
@@ -39,7 +39,7 @@ export const CARD_SIGNAL_LABELS: Record<CardSignalType, Record<SignalLang, strin
     it: 'Chiuso',
     ja: '閉店'
   },
-  
+
   PRICE_CHEAP: {
     he: 'זול',
     en: 'Cheap',
@@ -50,7 +50,7 @@ export const CARD_SIGNAL_LABELS: Record<CardSignalType, Record<SignalLang, strin
     it: 'Economico',
     ja: '安い'
   },
-  
+
   PRICE_MID: {
     he: 'בינוני',
     en: 'Mid-price',
@@ -61,7 +61,7 @@ export const CARD_SIGNAL_LABELS: Record<CardSignalType, Record<SignalLang, strin
     it: 'Prezzo medio',
     ja: '中価格'
   },
-  
+
   PRICE_EXPENSIVE: {
     he: 'יקר',
     en: 'Expensive',
@@ -72,7 +72,7 @@ export const CARD_SIGNAL_LABELS: Record<CardSignalType, Record<SignalLang, strin
     it: 'Costoso',
     ja: '高い'
   },
-  
+
   NEARBY: {
     he: 'קרוב',
     en: 'Nearby',
@@ -83,7 +83,7 @@ export const CARD_SIGNAL_LABELS: Record<CardSignalType, Record<SignalLang, strin
     it: 'Vicino',
     ja: '近い'
   },
-  
+
   INTENT_MATCH: {
     he: 'מתאים',
     en: 'Good match',
@@ -94,7 +94,7 @@ export const CARD_SIGNAL_LABELS: Record<CardSignalType, Record<SignalLang, strin
     it: 'Buona opzione',
     ja: '最適'
   },
-  
+
   POPULAR: {
     he: 'פופולרי',
     en: 'Popular',

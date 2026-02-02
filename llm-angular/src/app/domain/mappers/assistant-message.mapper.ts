@@ -36,6 +36,7 @@ export interface RawAssistantPayload {
   message?: string;
   question?: string;
   blocksSearch?: boolean;
+  language?: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es'; // LANGUAGE CONTRACT: Set by backend from assistantLanguage
 }
 
 /**
@@ -91,12 +92,12 @@ export function extractAssistantMessage(
   const message = payload.message || payload.question || '';
   if (!message) return null;
 
-  // LANGUAGE RESOLUTION: Priority order
-  // 1. envelope.assistantLanguage (authoritative from backend)
-  // 2. payload.language (legacy fallback)
+  // LANGUAGE RESOLUTION: Priority order (LANGUAGE CONTRACT)
+  // 1. payload.language (set by backend from assistantLanguage)
+  // 2. envelope.assistantLanguage (backward compat)
   // 3. uiLanguageFallback (from session)
   // 4. 'en' (hard fallback)
-  const language = rawMessage.assistantLanguage ?? payload.language ?? uiLanguageFallback ?? 'en';
+  const language = (payload as any).language ?? rawMessage.assistantLanguage ?? uiLanguageFallback ?? 'en';
 
   // Build UI model
   const timestamp = Date.now();

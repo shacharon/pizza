@@ -36,6 +36,7 @@ The i18n system is organized into four main modules:
 #### 1. **Search Narration** (`search-narration.i18n.ts`)
 
 Covers main app UI:
+
 - Hero section (title, subtitle)
 - Location status
 - Search bar
@@ -45,14 +46,16 @@ Covers main app UI:
 - Results states
 
 **Usage:**
+
 ```typescript
-import { t } from './i18n/search-narration.i18n';
-const title = t(lang, 'hero.title');
+import { t } from "./i18n/search-narration.i18n";
+const title = t(lang, "hero.title");
 ```
 
 #### 2. **UI Strings** (`ui-strings.i18n.ts`)
 
 Covers component-specific strings:
+
 - Restaurant card (buttons, labels, tooltips)
 - Reason labels
 - Search bar
@@ -60,28 +63,32 @@ Covers component-specific strings:
 - Action executors (toasts, messages)
 
 **Usage:**
+
 ```typescript
-import { tUi } from './i18n/ui-strings.i18n';
-const label = tUi(lang, 'card.openNow');
+import { tUi } from "./i18n/ui-strings.i18n";
+const label = tUi(lang, "card.openNow");
 ```
 
 #### 3. **Cuisine Labels** (`cuisine-labels.i18n.ts`)
 
 Covers cuisine types with emojis:
+
 - Sushi 🍣, Pizza 🍕, Italian 🍝, etc.
 - Automatically matches tags from restaurants
 - Each cuisine has emoji + localized label
 
 **Usage:**
+
 ```typescript
-import { getCuisineLabel } from './i18n/cuisine-labels.i18n';
-const cuisine = getCuisineLabel(['sushi', 'japanese'], lang);
+import { getCuisineLabel } from "./i18n/cuisine-labels.i18n";
+const cuisine = getCuisineLabel(["sushi", "japanese"], lang);
 // Returns: "🍣 Sushi" (English) or "🍣 סושי" (Hebrew)
 ```
 
 #### 4. **Card Signal Labels** (`card-signal-labels.i18n.ts`)
 
 Covers card badges:
+
 - Open/Closed status
 - Price levels (cheap, mid, expensive)
 - Distance (nearby)
@@ -89,9 +96,10 @@ Covers card badges:
 - Popularity
 
 **Usage:**
+
 ```typescript
-import { getSignalLabel } from './domain/i18n/card-signal-labels.i18n';
-const label = getSignalLabel('OPEN_NOW', lang);
+import { getSignalLabel } from "./domain/i18n/card-signal-labels.i18n";
+const label = getSignalLabel("OPEN_NOW", lang);
 ```
 
 ### Centralized Service
@@ -124,8 +132,8 @@ readonly openLabel = this.i18n.computedUi('card.openNow');
 ### Example: Restaurant Card Component
 
 ```typescript
-import { inject } from '@angular/core';
-import { I18nService } from '../../../../services/i18n.service';
+import { inject } from "@angular/core";
+import { I18nService } from "../../../../services/i18n.service";
 
 export class RestaurantCardComponent {
   private readonly i18n = inject(I18nService);
@@ -134,18 +142,22 @@ export class RestaurantCardComponent {
   getOpenStatusLabel(): string {
     const status = this.getOpenStatus();
     switch (status) {
-      case 'open': return this.i18n.tUi('card.openNow');
-      case 'closed': return this.i18n.tUi('card.closed');
-      case 'unknown': return this.i18n.tUi('card.hoursUnverified');
-      default: return '';
+      case "open":
+        return this.i18n.tUi("card.openNow");
+      case "closed":
+        return this.i18n.tUi("card.closed");
+      case "unknown":
+        return this.i18n.tUi("card.hoursUnverified");
+      default:
+        return "";
     }
   }
 
   // Use in computed
   readonly glutenFreeBadge = computed(() => {
     const hint = this.restaurant().dietaryHints?.glutenFree;
-    if (hint?.confidence === 'HIGH') {
-      return { text: this.i18n.tUi('card.glutenFree'), level: 'high' };
+    if (hint?.confidence === "HIGH") {
+      return { text: this.i18n.tUi("card.glutenFree"), level: "high" };
     }
     return null;
   });
@@ -162,9 +174,7 @@ export class RestaurantCardComponent {
 
 ```html
 <!-- Use i18n service directly in templates -->
-<span [attr.aria-label]="i18n.tUi('card.viewDetails') + ' ' + restaurant().name">
-  View Details
-</span>
+<span [attr.aria-label]="i18n.tUi('card.viewDetails') + ' ' + restaurant().name"> View Details </span>
 
 <!-- Or use component methods that wrap i18n -->
 <span class="status">{{ getOpenStatusLabel() }}</span>
@@ -201,7 +211,7 @@ Hebrew (`he`) and Arabic (`ar`) are RTL languages.
 
 ```typescript
 // Check if current language is RTL
-this.i18n.isRTL() // true for 'he' and 'ar'
+this.i18n.isRTL(); // true for 'he' and 'ar'
 ```
 
 The app should apply RTL CSS when `isRTL()` is true.
@@ -234,6 +244,7 @@ npx ts-node generate-i18n-json.ts
 ```
 
 Outputs:
+
 ```
 src/assets/i18n/
 ├── en.json
@@ -247,6 +258,7 @@ src/assets/i18n/
 ```
 
 Each JSON file combines all translation sources:
+
 ```json
 {
   "hero.title": "Search food the way you think",
@@ -268,9 +280,7 @@ Each JSON file combines all translation sources:
 
 ```typescript
 // In search-narration.i18n.ts or ui-strings.i18n.ts
-export type MsgKey =
-  | 'existing.key'
-  | 'new.key'; // Add here
+export type MsgKey = "existing.key" | "new.key"; // Add here
 ```
 
 ### 2. Add Translations for All Languages
@@ -278,11 +288,11 @@ export type MsgKey =
 ```typescript
 export const MESSAGES: Record<Lang, Record<MsgKey, string>> = {
   en: {
-    'new.key': 'English translation',
+    "new.key": "English translation",
     // ...
   },
   he: {
-    'new.key': 'תרגום עברי',
+    "new.key": "תרגום עברי",
     // ...
   },
   // ... repeat for fr, es, ru, ar, it, ja
@@ -292,7 +302,7 @@ export const MESSAGES: Record<Lang, Record<MsgKey, string>> = {
 ### 3. Use in Component
 
 ```typescript
-const label = this.i18n.t('new.key');
+const label = this.i18n.t("new.key");
 ```
 
 ### 4. Regenerate JSON Files
@@ -304,27 +314,32 @@ npx ts-node generate-i18n-json.ts
 ## Translation Quality Standards
 
 ### English (en)
+
 - Clear, concise, modern UX copy
 - Use active voice
 - Avoid jargon
 
 ### Hebrew (he)
+
 - Natural, modern Hebrew
 - UI-friendly (not literal Google Translate)
 - Use סמיכות where appropriate
 - Avoid archaic forms
 
 ### Arabic (ar)
+
 - Modern Standard Arabic (MSA)
 - Natural app-style language
 - Avoid literal translations
 
 ### Japanese (ja)
+
 - Concise, app-style Japanese
 - Use katakana for foreign concepts
 - Avoid overly polite forms (use です/ます form)
 
 ### All Languages
+
 - No emojis (unless in original English)
 - No paraphrasing across languages
 - Preserve placeholders exactly: `{name}`, `{count}`, etc.
@@ -366,22 +381,22 @@ llm-angular/src/app/
 ### Automated Testing
 
 ```typescript
-describe('I18nService', () => {
-  it('should return correct language from backend', () => {
+describe("I18nService", () => {
+  it("should return correct language from backend", () => {
     // Mock assistantLanguage = 'he'
-    expect(i18n.currentLang()).toBe('he');
+    expect(i18n.currentLang()).toBe("he");
   });
 
-  it('should detect RTL for Hebrew and Arabic', () => {
+  it("should detect RTL for Hebrew and Arabic", () => {
     // Mock assistantLanguage = 'he'
     expect(i18n.isRTL()).toBe(true);
     // Mock assistantLanguage = 'en'
     expect(i18n.isRTL()).toBe(false);
   });
 
-  it('should translate UI strings correctly', () => {
+  it("should translate UI strings correctly", () => {
     // Mock assistantLanguage = 'fr'
-    expect(i18n.tUi('card.openNow')).toBe('Ouvert maintenant');
+    expect(i18n.tUi("card.openNow")).toBe("Ouvert maintenant");
   });
 });
 ```
@@ -389,6 +404,7 @@ describe('I18nService', () => {
 ## Migration Guide
 
 ### Before (Hardcoded Strings)
+
 ```typescript
 getOpenStatusLabel(): string {
   return this.openNow ? 'Open now' : 'Closed';
@@ -396,12 +412,13 @@ getOpenStatusLabel(): string {
 ```
 
 ### After (i18n)
+
 ```typescript
 private readonly i18n = inject(I18nService);
 
 getOpenStatusLabel(): string {
-  return this.openNow 
-    ? this.i18n.tUi('card.openNow') 
+  return this.openNow
+    ? this.i18n.tUi('card.openNow')
     : this.i18n.tUi('card.closed');
 }
 ```
@@ -409,26 +426,34 @@ getOpenStatusLabel(): string {
 ## FAQ
 
 ### Q: Where does the language come from?
+
 **A:** The backend WebSocket sends `assistantLanguage` field. The frontend uses this as the single source of truth.
 
 ### Q: What if assistantLanguage is not supported?
+
 **A:** The system falls back to English (`en`).
 
 ### Q: Can I override the language manually?
+
 **A:** No. The language is controlled by the backend to ensure consistency with assistant messages.
 
 ### Q: How do I add a new language?
+
 **A:** You need to:
+
 1. Add to `Lang` / `UiLang` type
 2. Add translations to all `MESSAGES` / `UI_STRINGS` objects
 3. Update `normalizeLang()` function
 4. Regenerate JSON files
 
 ### Q: Do I translate restaurant names or addresses?
+
 **A:** No. Only static UI strings. Restaurant data is user-generated or from Google Maps.
 
 ### Q: How do I handle plurals?
+
 **A:** Use separate keys or variable interpolation:
+
 ```typescript
 'results.count': '{count} restaurants'
 ```
@@ -436,6 +461,7 @@ getOpenStatusLabel(): string {
 ## Support
 
 For questions or issues with the i18n system:
+
 1. Check this README
 2. Review translation modules (`*.i18n.ts`)
 3. Test with `I18nService` in dev mode

@@ -19,6 +19,7 @@ This document tracks the migration of hardcoded UI strings to the i18n system.
 ### High Priority
 
 #### Restaurant Card Component
+
 - [x] Add `I18nService` injection
 - [x] Update `getOpenStatusLabel()` to use i18n
 - [x] Update `getOpenStatusText()` to use i18n
@@ -30,6 +31,7 @@ This document tracks the migration of hardcoded UI strings to the i18n system.
 - [ ] Update template button tooltips
 
 #### Search Bar Component
+
 - [ ] Add `I18nService` injection
 - [ ] Replace hardcoded `aria-label="Search for restaurants"`
 - [ ] Replace hardcoded `aria-label="Loading"`
@@ -37,6 +39,7 @@ This document tracks the migration of hardcoded UI strings to the i18n system.
 - [ ] Replace placeholder text
 
 #### Reason Label Component
+
 - [ ] Add `I18nService` injection
 - [ ] Replace hardcoded `'Best match'`
 - [ ] Replace hardcoded `'Open now'`
@@ -45,20 +48,25 @@ This document tracks the migration of hardcoded UI strings to the i18n system.
 #### Assistant Components
 
 ##### Assistant Desktop Panel
+
 - [ ] Replace hardcoded `'Quick Picks'`
 - [ ] Replace hardcoded `'Refine'`
 
 ##### Assistant Bottom Sheet
+
 - [ ] Replace hardcoded `'Quick Picks'` default title
 
 ##### Assistant Panel
+
 - [ ] Replace hardcoded `aria-label="Clear messages"`
 
 ##### Assistant Strip
+
 - [ ] Replace hardcoded `'Primary action: ' + primaryChip!.label`
 - [ ] Replace hardcoded `'Action: ' + chip.label`
 
 ##### Assistant Line
+
 - [ ] Replace hardcoded `aria-label="Clear"`
 
 ### Medium Priority
@@ -66,6 +74,7 @@ This document tracks the migration of hardcoded UI strings to the i18n system.
 #### Action Executors
 
 ##### Navigation Executor
+
 - [ ] Replace `'Opened Google Maps'`
 - [ ] Replace `'Failed to open maps'`
 - [ ] Replace `'Opened phone dialer'`
@@ -77,6 +86,7 @@ This document tracks the migration of hardcoded UI strings to the i18n system.
 - [ ] Replace `'Failed to open website'`
 
 ##### Social Executor
+
 - [ ] Replace `'Check out ${restaurant.name} at ${restaurant.address}'`
 - [ ] Replace `'Shared successfully'`
 - [ ] Replace `'Copied to clipboard'`
@@ -87,14 +97,17 @@ This document tracks the migration of hardcoded UI strings to the i18n system.
 ### Low Priority
 
 #### Search Page Component
+
 - [ ] Update `'Open Now Priority'` (line 847 - debug mapping)
 
 #### Index HTML
+
 - [ ] Consider i18n for `<title>LlmAngular</title>`
 
 ## Templates to Update
 
 ### Restaurant Card Template
+
 File: `restaurant-card.component.html`
 
 - [ ] Line 3: `'View details for ' + restaurant().name`
@@ -108,6 +121,7 @@ File: `restaurant-card.component.html`
 - [ ] Save button tooltips
 
 ### Search Bar Template
+
 File: `search-bar.component.html`
 
 - [ ] `aria-label="Search for restaurants"`
@@ -115,6 +129,7 @@ File: `search-bar.component.html`
 - [ ] `aria-label="Clear search"`
 
 ### Assistant Templates
+
 Files: Various assistant component templates
 
 - [ ] All hardcoded English text
@@ -125,6 +140,7 @@ Files: Various assistant component templates
 The old `signal-labels.ts` file had only Hebrew and English. The new system supports all 8 languages.
 
 ### Migration Steps:
+
 1. [x] Create new `card-signal-labels.i18n.ts` with all 8 languages
 2. [ ] Update imports from `signal-labels.ts` to `card-signal-labels.i18n.ts`
 3. [ ] Replace `getSignalLabel()` calls with `I18nService.getSignal()`
@@ -133,6 +149,7 @@ The old `signal-labels.ts` file had only Hebrew and English. The new system supp
 ## Testing Checklist
 
 ### Manual Testing
+
 - [ ] Test English (en)
 - [ ] Test Hebrew (he) - verify RTL
 - [ ] Test French (fr)
@@ -143,6 +160,7 @@ The old `signal-labels.ts` file had only Hebrew and English. The new system supp
 - [ ] Test Japanese (ja)
 
 ### Test Scenarios
+
 - [ ] Backend sends `assistantLanguage = 'he'` → UI switches to Hebrew
 - [ ] Backend sends `assistantLanguage = 'ja'` → UI switches to Japanese
 - [ ] Backend sends unsupported language → fallback to English
@@ -156,6 +174,7 @@ The old `signal-labels.ts` file had only Hebrew and English. The new system supp
 - [ ] Action executor toasts translate
 
 ### Automated Testing
+
 - [ ] Write unit tests for `I18nService`
 - [ ] Write unit tests for translation functions
 - [ ] Write integration tests for component i18n usage
@@ -171,6 +190,7 @@ npx ts-node generate-i18n-json.ts
 ```
 
 Verify outputs in `src/assets/i18n/`:
+
 - [ ] `en.json` generated
 - [ ] `he.json` generated
 - [ ] `fr.json` generated
@@ -190,16 +210,21 @@ Verify outputs in `src/assets/i18n/`:
 ## Known Issues
 
 ### Hardcoded Hebrew in Restaurant Card
+
 The template has a hardcoded `ביקורות` (reviews) on line 40. This should be replaced with:
+
 ```html
 <span class="rating-reviews"> · {{ formatReviewCount(restaurant().userRatingsTotal!) }} {{ i18n.tUi('card.reviews') }}</span>
 ```
 
 ### Cuisine Map
+
 The old `getCuisineTag()` had a massive hardcoded map. This is now replaced with `cuisine-labels.i18n.ts` which is centralized and supports all 8 languages.
 
 ### Signal Labels File Location
+
 There are two `signal-labels.ts` files:
+
 1. `domain/i18n/signal-labels.ts` (old, only he/en)
 2. `domain/i18n/card-signal-labels.i18n.ts` (new, all 8 languages)
 

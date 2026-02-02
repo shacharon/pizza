@@ -81,7 +81,7 @@ export class PublisherService {
             const envelope = message as any;
             const payload = envelope.payload || {};
             const rawJson = data;
-            
+
             logger.info({
               event: 'ws_assistant_out_raw',
               requestId,

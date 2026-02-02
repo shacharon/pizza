@@ -39,7 +39,7 @@ export class MessageValidationService {
       allowLegacy: boolean; // From WS_ALLOW_LEGACY env
       isProduction: boolean;
     }
-  ) {}
+  ) { }
 
   /**
    * Parse raw WebSocket data into JSON
@@ -71,7 +71,7 @@ export class MessageValidationService {
     const msgKeys = message ? Object.keys(message) : [];
     const payloadKeys = message?.payload ? Object.keys(message.payload) : null;
     const dataKeys = message?.data ? Object.keys(message.data) : null;
-    
+
     logger.debug({
       clientId,
       msgKeys,

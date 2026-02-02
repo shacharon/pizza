@@ -5,8 +5,9 @@
   background: #f9fafb; // Light gray page background
   position: relative;
   
-  // SCROLLBAR FIX: Prevent layout shift when scrollbar appears
-  overflow-y: scroll;
+  // FIX: Remove overflow-y to allow sticky positioning to work
+  // Window-level scrolling handles the page scroll
+  overflow-y: visible;
 }
 
 .search-header {
@@ -189,9 +190,9 @@
   margin-inline: auto; // RTL-safe centering
   width: 100%;
 
-  // IMMEDIATE START: Results begin right under sticky panel
+  // SPACING: Results begin below sticky panel with clear separation
   // Responsive padding matches header (RTL-safe with logical properties)
-  padding-block-start: 0.25rem; // COMPACT: Reduced from 0.5rem
+  padding-block-start: 1rem; // FIXED: Increased spacing for clear separation from sticky header
   padding-block-end: calc(1rem + env(safe-area-inset-bottom, 0)); // COMPACT: Reduced from 1.5rem
   padding-inline: max(1rem, env(safe-area-inset-left, 1rem));
 
@@ -545,9 +546,9 @@
   }
 }
 
-// Results Section: Start immediately (no large gap)
+// Results Section: Clear spacing from header
 .results-section {
-  margin-top: 0.25rem; // COMPACT: Reduced from 0.5rem
+  margin-top: 0.75rem; // FIXED: Increased for better separation from sticky header
 }
 
 .results-header {

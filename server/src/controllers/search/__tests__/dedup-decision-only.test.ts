@@ -28,7 +28,7 @@ describe('Deduplication Decision-Only Behavior', () => {
 
       // DECISION-ONLY: Dedup determines NEW_JOB
       expect(isStale).toBe(true);
-      
+
       let decision: 'REUSE' | 'NEW_JOB' = 'NEW_JOB';
       let reason = updatedAgeMs > RUNNING_MAX_AGE
         ? `STALE_RUNNING_NO_HEARTBEAT (updatedAgeMs: ${updatedAgeMs}ms)`
@@ -37,7 +37,7 @@ describe('Deduplication Decision-Only Behavior', () => {
       // ASSERTIONS:
       expect(decision).toBe('NEW_JOB');
       expect(reason).toContain('STALE_RUNNING');
-      
+
       // CRITICAL: Job object should NOT be mutated
       expect(staleJob.status).toBe('RUNNING'); // Still RUNNING (not marked FAILED)
       expect(staleJob.error).toBeUndefined(); // No error set
@@ -59,14 +59,14 @@ describe('Deduplication Decision-Only Behavior', () => {
       const isStale = updatedAgeMs > RUNNING_MAX_AGE || ageMs > RUNNING_MAX_AGE;
 
       expect(isStale).toBe(false);
-      
+
       let decision: 'REUSE' | 'NEW_JOB' = 'REUSE';
       let reason = `RUNNING_FRESH (updatedAgeMs: ${updatedAgeMs}ms)`;
 
       // ASSERTIONS:
       expect(decision).toBe('REUSE');
       expect(reason).toContain('RUNNING_FRESH');
-      
+
       // Job object unchanged
       expect(freshJob.status).toBe('RUNNING');
       expect(freshJob.error).toBeUndefined();
@@ -113,7 +113,7 @@ describe('Deduplication Decision-Only Behavior', () => {
       expect(candidateJob.status).toBe(originalJobSnapshot.status);
       expect(candidateJob.error).toBe(originalJobSnapshot.error);
       expect(candidateJob.updatedAt).toBe(originalJobSnapshot.updatedAt);
-      
+
       // Decision is made but job is NOT mutated
       expect(decision).toBe('NEW_JOB');
       expect(reason).toContain('STALE_RUNNING');

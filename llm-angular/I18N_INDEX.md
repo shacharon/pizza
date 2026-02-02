@@ -5,11 +5,13 @@ Complete internationalization system supporting **8 languages** with determinist
 ## 📚 Documentation Index
 
 ### Getting Started
+
 1. **[Quick Reference](./I18N_QUICK_REFERENCE.md)** ⚡ - Start here! Quick API reference and examples
 2. **[Implementation Summary](./I18N_IMPLEMENTATION_SUMMARY.md)** 📊 - What's built and how it works
 3. **[Full Documentation](./I18N_README.md)** 📖 - Complete guide (4,000+ words)
 
 ### Technical Details
+
 4. **[Architecture Diagram](./I18N_ARCHITECTURE.md)** 🏗️ - Visual data flow and system design
 5. **[Migration Checklist](./I18N_MIGRATION_CHECKLIST.md)** ✅ - Track component migration progress
 6. **[Testing Guide](./I18N_TESTING_GUIDE.md)** 🧪 - Manual, automated, and E2E testing
@@ -19,6 +21,7 @@ Complete internationalization system supporting **8 languages** with determinist
 ## 🎯 Quick Overview
 
 ### Supported Languages
+
 - 🇺🇸 **en** - English
 - 🇮🇱 **he** - Hebrew (RTL)
 - 🇫🇷 **fr** - French
@@ -29,6 +32,7 @@ Complete internationalization system supporting **8 languages** with determinist
 - 🇯🇵 **ja** - Japanese
 
 ### Key Features
+
 ✅ **Deterministic** - No LLM-generated text  
 ✅ **Type-safe** - All keys are typed enums  
 ✅ **Reactive** - Automatic updates on language change  
@@ -41,9 +45,10 @@ Complete internationalization system supporting **8 languages** with determinist
 ## 🚀 Quick Start (30 seconds)
 
 ### 1. Inject Service
+
 ```typescript
-import { inject } from '@angular/core';
-import { I18nService } from './services/i18n.service';
+import { inject } from "@angular/core";
+import { I18nService } from "./services/i18n.service";
 
 export class MyComponent {
   readonly i18n = inject(I18nService);
@@ -51,12 +56,14 @@ export class MyComponent {
 ```
 
 ### 2. Use in Template
+
 ```html
 <span>{{ i18n.tUi('card.openNow') }}</span>
 <!-- Displays: "営業中" when language is Japanese -->
 ```
 
 ### 3. Done! 🎉
+
 The language comes from backend via WebSocket (`assistantLanguage` field). UI updates automatically.
 
 ---
@@ -87,27 +94,31 @@ llm-angular/
 ## 🔑 Common Usage Patterns
 
 ### Translate UI String
+
 ```typescript
-const label = this.i18n.tUi('card.openNow');
+const label = this.i18n.tUi("card.openNow");
 // → "Open now" (en) / "פתוח עכשיו" (he) / "営業中" (ja)
 ```
 
 ### Translate with Variables
+
 ```typescript
-const text = this.i18n.tUi('action.shareText', {
-  name: 'Pizza Place',
-  address: '123 Main St'
+const text = this.i18n.tUi("action.shareText", {
+  name: "Pizza Place",
+  address: "123 Main St",
 });
 // → "Check out Pizza Place at 123 Main St"
 ```
 
 ### Get Cuisine Label
+
 ```typescript
-const cuisine = this.i18n.getCuisine(['sushi', 'japanese']);
+const cuisine = this.i18n.getCuisine(["sushi", "japanese"]);
 // → "🍣 Sushi" (en) / "🍣 סושי" (he) / "🍣 寿司" (ja)
 ```
 
 ### Check RTL
+
 ```typescript
 if (this.i18n.isRTL()) {
   // Apply RTL layout (Hebrew or Arabic)
@@ -118,47 +129,50 @@ if (this.i18n.isRTL()) {
 
 ## 📊 Translation Coverage
 
-| Module | Keys | Status |
-|--------|------|--------|
-| Search Narration | 50+ | ✅ Complete |
-| UI Strings | 55+ | ✅ Complete |
-| Cuisine Labels | 22 | ✅ Complete |
-| Signal Labels | 8 | ✅ Complete |
-| **Total** | **130+** | **✅ All languages** |
+| Module           | Keys     | Status               |
+| ---------------- | -------- | -------------------- |
+| Search Narration | 50+      | ✅ Complete          |
+| UI Strings       | 55+      | ✅ Complete          |
+| Cuisine Labels   | 22       | ✅ Complete          |
+| Signal Labels    | 8        | ✅ Complete          |
+| **Total**        | **130+** | **✅ All languages** |
 
 ---
 
 ## 🎨 Example Translations
 
 ### "Open now"
-| Language | Translation |
-|----------|-------------|
-| 🇺🇸 English | Open now |
-| 🇮🇱 Hebrew | פתוח עכשיו |
-| 🇫🇷 French | Ouvert maintenant |
-| 🇪🇸 Spanish | Abierto ahora |
-| 🇷🇺 Russian | Открыто сейчас |
-| 🇸🇦 Arabic | مفتوح الآن |
-| 🇮🇹 Italian | Aperto ora |
-| 🇯🇵 Japanese | 営業中 |
+
+| Language    | Translation       |
+| ----------- | ----------------- |
+| 🇺🇸 English  | Open now          |
+| 🇮🇱 Hebrew   | פתוח עכשיו        |
+| 🇫🇷 French   | Ouvert maintenant |
+| 🇪🇸 Spanish  | Abierto ahora     |
+| 🇷🇺 Russian  | Открыто сейчас    |
+| 🇸🇦 Arabic   | مفتوح الآن        |
+| 🇮🇹 Italian  | Aperto ora        |
+| 🇯🇵 Japanese | 営業中            |
 
 ### Cuisine: "Sushi"
-| Language | Translation |
-|----------|-------------|
-| 🇺🇸 English | 🍣 Sushi |
-| 🇮🇱 Hebrew | 🍣 סושי |
-| 🇫🇷 French | 🍣 Sushi |
-| 🇪🇸 Spanish | 🍣 Sushi |
-| 🇷🇺 Russian | 🍣 Суши |
-| 🇸🇦 Arabic | 🍣 سوشي |
-| 🇮🇹 Italian | 🍣 Sushi |
-| 🇯🇵 Japanese | 🍣 寿司 |
+
+| Language    | Translation |
+| ----------- | ----------- |
+| 🇺🇸 English  | 🍣 Sushi    |
+| 🇮🇱 Hebrew   | 🍣 סושי     |
+| 🇫🇷 French   | 🍣 Sushi    |
+| 🇪🇸 Spanish  | 🍣 Sushi    |
+| 🇷🇺 Russian  | 🍣 Суши     |
+| 🇸🇦 Arabic   | 🍣 سوشي     |
+| 🇮🇹 Italian  | 🍣 Sushi    |
+| 🇯🇵 Japanese | 🍣 寿司     |
 
 ---
 
 ## 📋 Translation Scope
 
 ### ✅ DO Translate
+
 - Buttons, labels, headings
 - Tooltips, aria-labels
 - Error messages, empty states
@@ -167,6 +181,7 @@ if (this.i18n.isRTL()) {
 - Meta UI (open now, reviews, distance)
 
 ### ❌ DON'T Translate
+
 - Restaurant names
 - Addresses
 - User-generated content
@@ -178,13 +193,16 @@ if (this.i18n.isRTL()) {
 ## 🛠️ Tools & Scripts
 
 ### Generate JSON Files
+
 ```bash
 cd llm-angular
 npx ts-node generate-i18n-json.ts
 ```
+
 Output: `src/assets/i18n/*.json` (one per language)
 
 ### Test All Languages
+
 ```bash
 npm run test:i18n
 npm run e2e:i18n
@@ -230,19 +248,23 @@ Day 5: Complete migration → Generate JSON → Deploy! 🚀
 ## ✨ System Highlights
 
 ### 1. Language Source of Truth
+
 ```
 Backend WebSocket → assistantLanguage → SearchFacade → I18nService → Components
 ```
+
 No guessing. Language always comes from backend.
 
 ### 2. Type Safety
+
 ```typescript
 // Autocomplete & compile-time checks
-this.i18n.tUi('card.openNow'); // ✅ Valid key
-this.i18n.tUi('card.invalid'); // ❌ TypeScript error
+this.i18n.tUi("card.openNow"); // ✅ Valid key
+this.i18n.tUi("card.invalid"); // ❌ TypeScript error
 ```
 
 ### 3. Reactive Updates
+
 ```typescript
 // When assistantLanguage changes from 'en' to 'ja'
 // All UI automatically updates to Japanese
@@ -250,9 +272,10 @@ this.i18n.tUi('card.invalid'); // ❌ TypeScript error
 ```
 
 ### 4. RTL Detection
+
 ```typescript
 // Hebrew & Arabic automatically detected
-this.i18n.isRTL() // true for 'he' and 'ar'
+this.i18n.isRTL(); // true for 'he' and 'ar'
 ```
 
 ---
@@ -260,12 +283,14 @@ this.i18n.isRTL() // true for 'he' and 'ar'
 ## 🏆 Quality Standards
 
 ### Translation Quality
+
 - **Natural** - Not literal Google Translate
 - **Modern** - Contemporary language for each locale
 - **Consistent** - Same terminology across all strings
 - **Concise** - App-style, not formal documentation
 
 ### Code Quality
+
 - **100% TypeScript** - Full type safety
 - **Zero dependencies** - Pure Angular/TypeScript
 - **Signal-based** - Modern reactive patterns
@@ -288,12 +313,14 @@ this.i18n.isRTL() // true for 'he' and 'ar'
 ## 🤝 Contributing
 
 ### Adding a New String
+
 1. Add key to type definition (`MsgKey` or `UiKey`)
 2. Add translations for all 8 languages
 3. Regenerate JSON files
 4. Update documentation if needed
 
 ### Adding a New Language
+
 1. Add to `Lang` / `UiLang` type
 2. Add translations to all modules
 3. Update `normalizeLang()` function
@@ -306,6 +333,7 @@ this.i18n.isRTL() // true for 'he' and 'ar'
 ## 📞 Support
 
 **Questions?** Check the documentation:
+
 - [Quick Reference](./I18N_QUICK_REFERENCE.md)
 - [FAQ in README](./I18N_README.md#faq)
 - [Testing Guide](./I18N_TESTING_GUIDE.md)
@@ -330,7 +358,7 @@ this.i18n.isRTL() // true for 'he' and 'ar'
 **Created:** 2026-02-01  
 **Languages:** 8 (en, he, fr, es, ru, ar, it, ja)  
 **Keys:** 130+  
-**Translations:** 1,000+  
+**Translations:** 1,000+
 
 **Ready to use!** 🚀
 

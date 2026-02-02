@@ -20,48 +20,7 @@ import { publishRankingSuggestionDeferred } from './assistant/ranking-suggestion
 import { rankingSignalsCache } from './ranking/ranking-signals-cache.redis.js';
 import { resolveOrderMetadata } from './ranking/order-profile.js';
 import { resolveHybridOrderWeights, type HybridWeightContext } from './ranking/order-weights.hybrid.js';
-
-/**
- * DEFENSIVE INVARIANT: Validate response for CLARIFY/STOPPED states
- * Ensures CLARIFY responses NEVER contain results or pagination
- */
-function validateClarifyResponse(response: SearchResponse): SearchResponse {
-  const isClarify = response.assist.type === 'clarify';
-  const isDoneStopped = response.meta.failureReason !== 'NONE';
-
-  if (isClarify || isDoneStopped) {
-    // INVARIANT VIOLATION: CLARIFY/STOPPED must have empty results
-    if (response.results.length > 0) {
-      logger.error({
-        requestId: response.requestId,
-        assistType: response.assist.type,
-        failureReason: response.meta.failureReason,
-        resultCount: response.results.length,
-        event: 'clarify_invariant_violated',
-        msg: '[ROUTE2] CLARIFY response had results - sanitizing (BUG)'
-      });
-      // FAIL-SAFE: Force empty results
-      response.results = [];
-      delete response.groups;
-    }
-
-    // INVARIANT VIOLATION: CLARIFY/STOPPED must have no pagination
-    if (response.meta.pagination) {
-      logger.error({
-        requestId: response.requestId,
-        assistType: response.assist.type,
-        failureReason: response.meta.failureReason,
-        hasPagination: true,
-        event: 'clarify_pagination_invariant_violated',
-        msg: '[ROUTE2] CLARIFY response had pagination - sanitizing (BUG)'
-      });
-      // FAIL-SAFE: Remove pagination
-      delete response.meta.pagination;
-    }
-  }
-
-  return response;
-}
+import { ResponseValidator } from './response/response.validator.js';
 
 /**
  * Build early exit response (gate stop, clarify, location required, etc.)
@@ -146,7 +105,7 @@ export function buildEarlyExitResponse(params: {
   });
 
   // DEFENSIVE: Validate invariants before returning
-  return validateClarifyResponse(response);
+  return ResponseValidator.validateAndSanitize(response, logger);
 }
 
 /**
@@ -449,5 +408,5 @@ export async function buildFinalResponse(
   }
 
   // DEFENSIVE: Validate invariants before returning (should never trigger for success case)
-  return validateClarifyResponse(response);
+  return ResponseValidator.validateAndSanitize(response, logger);
 }

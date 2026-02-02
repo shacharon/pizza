@@ -126,7 +126,7 @@ export class SearchPageComponent implements OnInit, OnDestroy {
 
     // Map backend profile names to i18n keys
     const profileKey = profile.toLowerCase() as 'balanced' | 'nearby' | 'quality' | 'budget' | 'cuisine';
-    
+
     switch (profileKey) {
       case 'balanced':
         return t(lang, 'order.balanced');
@@ -178,7 +178,7 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   readonly hybridBadgeText = computed(() => {
     const order = this.orderProfile();
     const lang = this.uiLanguage();
-    
+
     if (!order || !order.reasonCodes || order.reasonCodes.length === 0) {
       return t(lang, 'order.hybrid'); // Fallback if no reason codes
     }

@@ -7,6 +7,13 @@
 
 import type { RankingWeights } from './ranking-profile.schema.js';
 import { logger } from '../../../../lib/logger/structured-logger.js';
+import { ScoreNormalizer } from './ranking.score-normalizer.js';
+import { DistanceCalculator } from './ranking.distance-calculator.js';
+import { RankingInvariantEnforcer, type RankingContext } from './ranking.invariant-enforcer.js';
+
+// Instantiate utilities (stateless, can be shared)
+const scoreNormalizer = new ScoreNormalizer();
+const distanceCalculator = new DistanceCalculator();
 
 /**
  * User Location for Distance Calculation
@@ -55,6 +62,9 @@ interface ScoredResult extends RankableResult {
  * 
  * Policy B: If a signal is not present, its weight must be 0.
  * 
+ * This is now a WRAPPER around RankingInvariantEnforcer for backward compatibility.
+ * All enforcement logic has been extracted to the enforcer class.
+ * 
  * @param weights - Original weights from profile selection
  * @param hasUserLocation - Whether user location is available
  * @param cuisineKey - Cuisine intent (null if no cuisine filter)
@@ -73,52 +83,32 @@ export function enforceRankingInvariants(
   requestId?: string,
   shouldLog?: boolean
 ): RankingWeights {
-  const adjusted = { ...weights };
-  const appliedRules: Array<{ rule: string; component: string; oldWeight: number }> = [];
+  // Build context for enforcer
+  const context: RankingContext = {
+    hasUserLocation,
+    cuisineKey,
+    openNowRequested,
+    hasCuisineScores,
+    requestId
+  };
 
-  // Invariant 1: No cuisineKey OR no cuisineScores => cuisineMatch weight = 0
-  if ((!cuisineKey || !hasCuisineScores) && adjusted.cuisineMatch && adjusted.cuisineMatch > 0) {
-    const reason = !cuisineKey ? 'NO_CUISINE_INTENT' : 'NO_CUISINE_SCORES';
-    appliedRules.push({
-      rule: reason,
-      component: 'cuisineMatch',
-      oldWeight: adjusted.cuisineMatch
-    });
-    adjusted.cuisineMatch = 0;
-  }
-
-  // Invariant 2: No user location => distance weight = 0
-  if (!hasUserLocation && adjusted.distance > 0) {
-    appliedRules.push({
-      rule: 'NO_USER_LOCATION',
-      component: 'distance',
-      oldWeight: adjusted.distance
-    });
-    adjusted.distance = 0;
-  }
-
-  // Invariant 3: No openNow request => openBoost weight = 0
-  if (!openNowRequested && adjusted.openBoost > 0) {
-    appliedRules.push({
-      rule: 'NO_OPEN_NOW_REQUESTED',
-      component: 'openBoost',
-      oldWeight: adjusted.openBoost
-    });
-    adjusted.openBoost = 0;
-  }
+  // Delegate to the invariant enforcer
+  const result = RankingInvariantEnforcer.enforce(weights, context);
 
   // Log when invariants are applied (ONLY if shouldLog is true)
-  if (appliedRules.length > 0 && requestId && shouldLog) {
+  if (result.violations.length > 0 && requestId && shouldLog) {
+    const appliedRules = RankingInvariantEnforcer.toLegacyFormat(result);
+    
     logger.info({
       requestId,
       event: 'ranking_invariant_applied',
       rules: appliedRules,
       baseWeights: weights,
-      finalWeights: adjusted
-    }, `[RANKING] Invariants applied: ${appliedRules.map(r => `${r.rule} (${r.component})`).join(', ')}`);
+      finalWeights: result.enforcedWeights
+    }, `[RANKING] Invariants applied: ${result.appliedRules.join(', ')}`);
   }
 
-  return adjusted;
+  return result.enforcedWeights;
 }
 
 /**
@@ -213,43 +203,46 @@ export function computeScoreBreakdown(
   openNowRequested?: boolean | null,
   requestId?: string
 ): ScoreBreakdown {
-  // CRITICAL: Weights are now ALREADY-ADJUSTED by caller (orchestrator.ranking.ts)
-  // NO invariant enforcement here to avoid duplicate logging
-  const effectiveWeights = weights;
+  // Build context for invariant enforcement
+  const hasCuisineScore = result.cuisineScore !== undefined && result.cuisineScore !== null;
+  const context: RankingContext = {
+    hasUserLocation: !!userLocation,
+    cuisineKey,
+    openNowRequested,
+    hasCuisineScores: hasCuisineScore,
+    requestId
+  };
+
+  // Enforce invariants (without logging - this is for breakdown analysis)
+  const enforcementResult = RankingInvariantEnforcer.enforce(weights, context);
+  const effectiveWeights = enforcementResult.enforcedWeights;
 
   // Rating normalized (0-1)
-  const ratingNorm = clamp((result.rating ?? 0) / 5, 0, 1);
+  const ratingNorm = scoreNormalizer.normalizeRating(result.rating);
 
   // Reviews normalized (log scale, 0-1)
-  const reviewsNorm = clamp(Math.log10((result.userRatingsTotal ?? 0) + 1) / 5, 0, 1);
+  const reviewsNorm = scoreNormalizer.normalizeReviews(result.userRatingsTotal);
 
   // Distance normalized (0-1, higher score for closer places)
   let distanceNorm = 0;
   let distanceMeters: number | null = null;
   if (userLocation && result.location) {
-    const distanceKm = haversineDistance(
+    const distanceKm = distanceCalculator.haversine(
       userLocation.lat,
       userLocation.lng,
       result.location.lat,
       result.location.lng
     );
-    distanceNorm = 1 / (1 + distanceKm);
+    distanceNorm = scoreNormalizer.normalizeDistance(distanceKm);
     distanceMeters = Math.round(distanceKm * 1000); // Convert km to meters
   }
 
   // Open/closed normalized (0-1)
-  let openNorm = 0.5; // Default for unknown
-  if (result.openNow === true) {
-    openNorm = 1;
-  } else if (result.openNow === false) {
-    openNorm = 0;
-  }
+  const openNorm = scoreNormalizer.normalizeOpen(result.openNow);
 
   // Cuisine match normalized (0-1, already normalized from enforcer)
-  // Check if result has cuisine score
-  const hasCuisineScore = result.cuisineScore !== undefined && result.cuisineScore !== null;
-  // If no cuisineKey OR no cuisineScore => force cuisineNorm to 0 (invariant already enforced by caller)
-  const cuisineNorm = (cuisineKey && hasCuisineScore) ? (result.cuisineScore ?? 0) : 0;
+  // Invariant enforcement in effectiveWeights ensures cuisineMatch weight is 0 if no cuisineKey/score
+  const cuisineNorm = result.cuisineScore ?? 0;
 
   // Compute component scores (weighted)
   const ratingScore = effectiveWeights.rating * ratingNorm;
@@ -298,31 +291,26 @@ function computeScore(
   userLocation?: UserLocation | null
 ): number {
   // Rating normalized (0-1)
-  const ratingNorm = clamp((result.rating ?? 0) / 5, 0, 1);
+  const ratingNorm = scoreNormalizer.normalizeRating(result.rating);
 
   // Reviews normalized (log scale, 0-1)
   // log10(1000+1) ≈ 3, so we divide by 5 to get ~0.6 for 1000 reviews
-  const reviewsNorm = clamp(Math.log10((result.userRatingsTotal ?? 0) + 1) / 5, 0, 1);
+  const reviewsNorm = scoreNormalizer.normalizeReviews(result.userRatingsTotal);
 
   // Distance normalized (0-1, higher score for closer places)
   let distanceNorm = 0;
   if (userLocation && result.location) {
-    const distanceKm = haversineDistance(
+    const distanceKm = distanceCalculator.haversine(
       userLocation.lat,
       userLocation.lng,
       result.location.lat,
       result.location.lng
     );
-    distanceNorm = 1 / (1 + distanceKm);
+    distanceNorm = scoreNormalizer.normalizeDistance(distanceKm);
   }
 
   // Open/closed normalized (0-1)
-  let openNorm = 0.5; // Default for unknown
-  if (result.openNow === true) {
-    openNorm = 1;
-  } else if (result.openNow === false) {
-    openNorm = 0;
-  }
+  const openNorm = scoreNormalizer.normalizeOpen(result.openNow);
 
   // Cuisine match normalized (0-1, from enforcer)
   const cuisineNorm = result.cuisineScore ?? 0.5; // Default 0.5 if no score
@@ -338,37 +326,3 @@ function computeScore(
   return score;
 }
 
-/**
- * Clamp value between min and max
- */
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-/**
- * Calculate Haversine distance between two coordinates (in km)
- */
-function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371; // Earth's radius in km
-  const dLat = toRadians(lat2 - lat1);
-  const dLon = toRadians(lon2 - lon1);
-
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRadians(lat1)) *
-    Math.cos(toRadians(lat2)) *
-    Math.sin(dLon / 2) *
-    Math.sin(dLon / 2);
-
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  const distance = R * c;
-
-  return distance;
-}
-
-/**
- * Convert degrees to radians
- */
-function toRadians(degrees: number): number {
-  return degrees * (Math.PI / 180);
-}

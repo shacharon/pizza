@@ -5,6 +5,7 @@
 ### 1. `server/src/services/search/route2/ranking/results-ranker.ts`
 
 **Changes:**
+
 - Added `shouldLog` parameter to `enforceRankingInvariants()` (default: `false`)
 - Changed `enforceRankingInvariants()` from `function` to `export function` (so orchestrator can call it)
 - Updated log field names: `originalWeights` → `baseWeights`, `adjustedWeights` → `finalWeights`
@@ -13,6 +14,7 @@
 - Fixed undefined `hasCuisineScore` variable in `computeScoreBreakdown()`
 
 **Before:**
+
 ```typescript
 // rankResults() - Line 139
 const effectiveWeights = enforceRankingInvariants(..., requestId); // LOGS
@@ -22,6 +24,7 @@ const effectiveWeights = enforceRankingInvariants(..., requestId); // LOGS (dupl
 ```
 
 **After:**
+
 ```typescript
 // rankResults() - Line 133
 // CRITICAL: Invariants now enforced by CALLER (orchestrator)
@@ -36,6 +39,7 @@ const effectiveWeights = weights; // No enforcement
 ### 2. `server/src/services/search/route2/orchestrator.ranking.ts`
 
 **Changes:**
+
 - Added Step 4: Single choke point for invariant application (before calling `rankResults`)
 - Import `enforceRankingInvariants` from `results-ranker.ts`
 - Call `enforceRankingInvariants()` with `shouldLog=true` (ONLY place where invariants log)
@@ -44,6 +48,7 @@ const effectiveWeights = weights; // No enforcement
 - Added `cuisineMatch: 0` to all fallback weight objects (3 locations)
 
 **Before:**
+
 ```typescript
 // Step 4: Deterministically score and sort results
 const rankedResults = rankResults(finalResults, {
@@ -64,6 +69,7 @@ logger.info({
 ```
 
 **After:**
+
 ```typescript
 // Step 4: Apply invariants ONCE (single choke point)
 const { enforceRankingInvariants } = await import('./ranking/results-ranker.js');
@@ -101,10 +107,12 @@ logger.info({ event: 'post_rank_applied', weights: finalWeights });
 ### 3. `server/src/services/search/route2/ranking/ranking-profile-deterministic.ts`
 
 **Changes:**
+
 - Renamed `weights` to `baseWeights` in all `ranking_profile_selected` log events (6 locations)
 - No functional change - just clarity for log analysis
 
 **Before:**
+
 ```typescript
 logger.info({
   event: 'ranking_profile_selected',
@@ -115,6 +123,7 @@ logger.info({
 ```
 
 **After:**
+
 ```typescript
 logger.info({
   event: 'ranking_profile_selected',
@@ -126,14 +135,14 @@ logger.info({
 
 ## Log Event Changes
 
-| Event | Before | After |
-|-------|--------|-------|
-| `ranking_profile_selected` | `weights` (base) | `baseWeights` (base) |
-| `ranking_invariant_applied` | Logged 2x per request | ✅ Logged 1x per request |
-| `ranking_invariant_applied` | `originalWeights` + `adjustedWeights` | `baseWeights` + `finalWeights` |
-| `ranking_weights_final` | ❌ Didn't exist | ✅ NEW (logged if weights changed) |
-| `ranking_score_breakdown` | `weights` (inconsistent) | `weights` = `finalWeights` |
-| `post_rank_applied` | `weights` = `selection.weights` (base) ❌ | `weights` = `finalWeights` ✅ |
+| Event                       | Before                                    | After                              |
+| --------------------------- | ----------------------------------------- | ---------------------------------- |
+| `ranking_profile_selected`  | `weights` (base)                          | `baseWeights` (base)               |
+| `ranking_invariant_applied` | Logged 2x per request                     | ✅ Logged 1x per request           |
+| `ranking_invariant_applied` | `originalWeights` + `adjustedWeights`     | `baseWeights` + `finalWeights`     |
+| `ranking_weights_final`     | ❌ Didn't exist                           | ✅ NEW (logged if weights changed) |
+| `ranking_score_breakdown`   | `weights` (inconsistent)                  | `weights` = `finalWeights`         |
+| `post_rank_applied`         | `weights` = `selection.weights` (base) ❌ | `weights` = `finalWeights` ✅      |
 
 ## Verification
 
@@ -199,7 +208,7 @@ npm test
 ✅ **Deduplication Achieved** (1x log per request)  
 ✅ **Weight Consistency Enforced**  
 ✅ **No Behavior Changes** (logs/metadata only)  
-✅ **Documentation Created**  
+✅ **Documentation Created**
 
 ---
 

@@ -11,7 +11,8 @@
   <img class="restaurant-photo" [src]="getCurrentPhotoSrc()" [alt]="restaurant().name + ' ' + i18n.tUi('card.photoAlt')"
     loading="lazy" (error)="onPhotoError()" [attr.aria-label]="'Photo of ' + restaurant().name" />
   } @else {
-  <div class="restaurant-photo-placeholder" role="img" [attr.aria-label]="i18n.tUi('card.photoPlaceholder') + ' ' + restaurant().name">
+  <div class="restaurant-photo-placeholder" role="img"
+    [attr.aria-label]="i18n.tUi('card.photoPlaceholder') + ' ' + restaurant().name">
     🍽️
   </div>
   }
@@ -37,7 +38,8 @@
         [attr.aria-label]="i18n.tUi('card.rating') + ' ' + restaurant().rating">
         ⭐ {{ restaurant().rating }}
         @if (restaurant().userRatingsTotal) {
-        <span class="rating-reviews"> · {{ formatReviewCount(restaurant().userRatingsTotal!) }} {{ i18n.tUi('card.reviews') }}</span>
+        <span class="rating-reviews"> · {{ formatReviewCount(restaurant().userRatingsTotal!) }} {{
+          i18n.tUi('card.reviews') }}</span>
         }
       </span>
       }

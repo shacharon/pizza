@@ -152,7 +152,7 @@ describe('Assistant Message Mapper', () => {
     });
 
     describe('Language Resolution', () => {
-      it('should use envelope.assistantLanguage (priority 1)', () => {
+      it('should use payload.language (priority 1 - LANGUAGE CONTRACT)', () => {
         const rawMessage = {
           type: 'assistant',
           requestId: 'req-123',
@@ -160,27 +160,27 @@ describe('Assistant Message Mapper', () => {
           payload: {
             type: 'SUMMARY',
             message: 'Test message',
-            language: 'en' // Should be ignored
+            language: 'en' // Priority 1: payload.language wins
           }
         };
 
         const result = extractAssistantMessage(rawMessage, 'req-123', 'he');
-        expect(result?.language).toBe('ru'); // envelope.assistantLanguage wins
+        expect(result?.language).toBe('en'); // payload.language takes priority
       });
 
-      it('should use payload.language if envelope.assistantLanguage missing (priority 2)', () => {
+      it('should use envelope.assistantLanguage if payload.language missing (priority 2)', () => {
         const rawMessage = {
           type: 'assistant',
           requestId: 'req-123',
+          assistantLanguage: 'ar',
           payload: {
             type: 'SUMMARY',
-            message: 'Test message',
-            language: 'ar'
+            message: 'Test message'
           }
         };
 
         const result = extractAssistantMessage(rawMessage, 'req-123', 'he');
-        expect(result?.language).toBe('ar'); // payload.language is fallback
+        expect(result?.language).toBe('ar'); // envelope.assistantLanguage is fallback
       });
 
       it('should use uiLanguageFallback if both envelope and payload missing (priority 3)', () => {
@@ -213,7 +213,7 @@ describe('Assistant Message Mapper', () => {
 
       it('should handle all supported languages', () => {
         const languages: Array<'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es'> = ['he', 'en', 'ar', 'ru', 'fr', 'es'];
-        
+
         for (const lang of languages) {
           const rawMessage = {
             type: 'assistant',

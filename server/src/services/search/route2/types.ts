@@ -35,20 +35,20 @@ export interface Route2Context {
     lat: number;
     lng: number;
   } | null;
-  
+
   /**
    * LANGUAGE ENFORCEMENT: Single source of truth for all language decisions
    * Set once by Gate2 (or Intent if Gate2 skips), flows through entire pipeline
    * CRITICAL: langCtx.assistantLanguage MUST be present before any assistant WS publish
    */
   langCtx?: LangCtx;
-  
+
   /**
    * @deprecated Use langCtx.uiLanguage instead
    * UI language (from client, for display only)
    */
   uiLanguage?: 'he' | 'en';
-  
+
   userRegionCode?: 'IL' | 'OTHER';
   queryRegionCode?: 'IL' | 'OTHER';
   regionCodeFinal?: 'IL' | 'OTHER';

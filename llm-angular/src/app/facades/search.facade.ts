@@ -450,7 +450,7 @@ export class SearchFacade {
           // LANGUAGE FIX: Extract language from envelope fields (priority) or payload.language (backward compat)
           // Priority: envelope.assistantLanguage > envelope.uiLanguage > payload.language > uiStore fallback
           const language = narratorMsg.assistantLanguage ?? narratorMsg.uiLanguage ?? narrator.language ?? this.locale();
-          
+
           safeLog('SearchFacade', 'Valid LLM assistant message', {
             type: narrator.type,
             requestId: narratorMsg.requestId,

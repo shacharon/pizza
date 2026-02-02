@@ -15,74 +15,18 @@ import { CONTRACTS_VERSION } from '../../contracts/search.contracts.js';
 import { searchJobStore } from '../../services/search/job-store/index.js';
 import { hashSessionId, sanitizePhotoUrls } from '../../utils/security.utils.js';
 import { wsManager } from '../../server.js';
-import crypto from 'crypto';
 import { DEDUP_RUNNING_MAX_AGE_MS, DEDUP_SUCCESS_FRESH_WINDOW_MS } from '../../config/deduplication.config.js';
 
 // Extracted modules
 import { executeBackgroundSearch } from './search.async-execution.js';
 import { validateJobOwnership, getAuthenticatedSession } from './search.security.js';
 import { validateSearchRequest, validateRequestIdParam } from './search.validation.js';
+import { IdempotencyKeyGenerator } from './search.idempotency-key.generator.js';
+import { SearchDeduplicationService } from './search.deduplication.service.js';
 
 const router = Router();
-
-/**
- * Generate idempotency key for deduplication
- * Key = hash(sessionId + normalizedQuery + mode + locationHash + filters)
- * Includes user-provided filters to ensure "same search" actually dedups correctly
- */
-function generateIdempotencyKey(params: {
-  sessionId: string;
-  query: string;
-  mode: 'sync' | 'async';
-  userLocation?: { lat: number; lng: number } | null;
-  filters?: {
-    openNow?: boolean;
-    priceLevel?: number;
-    dietary?: string[];
-    mustHave?: string[];
-  } | null;
-}): string {
-  // Normalize query: lowercase, trim, collapse whitespace
-  const normalizedQuery = params.query.toLowerCase().trim().replace(/\s+/g, ' ');
-
-  // Hash location if present (to handle float precision issues)
-  const locationHash = params.userLocation
-    ? `${params.userLocation.lat.toFixed(4)},${params.userLocation.lng.toFixed(4)}`
-    : 'no-location';
-
-  // Serialize filters (normalized and sorted for consistency)
-  let filtersHash = 'no-filters';
-  if (params.filters) {
-    const filterParts: string[] = [];
-
-    if (params.filters.openNow !== undefined) {
-      filterParts.push(`openNow:${params.filters.openNow}`);
-    }
-    if (params.filters.priceLevel !== undefined) {
-      filterParts.push(`priceLevel:${params.filters.priceLevel}`);
-    }
-    if (params.filters.dietary && params.filters.dietary.length > 0) {
-      // Sort dietary array for consistent hashing
-      const sortedDietary = [...params.filters.dietary].sort();
-      filterParts.push(`dietary:${sortedDietary.join(',')}`);
-    }
-    if (params.filters.mustHave && params.filters.mustHave.length > 0) {
-      // Sort mustHave array for consistent hashing
-      const sortedMustHave = [...params.filters.mustHave].sort();
-      filterParts.push(`mustHave:${sortedMustHave.join(',')}`);
-    }
-
-    if (filterParts.length > 0) {
-      filtersHash = filterParts.join('|');
-    }
-  }
-
-  // Combine components
-  const rawKey = `${params.sessionId}:${normalizedQuery}:${params.mode}:${locationHash}:${filtersHash}`;
-
-  // Hash for consistent length and privacy
-  return crypto.createHash('sha256').update(rawKey).digest('hex');
-}
+const idempotencyKeyGenerator = new IdempotencyKeyGenerator();
+const deduplicationService = new SearchDeduplicationService(searchJobStore);
 
 /**
  * POST /search
@@ -149,7 +93,7 @@ router.post('/', async (req: Request, res: Response) => {
       }
 
       // Generate idempotency key for deduplication
-      const idempotencyKey = generateIdempotencyKey({
+      const idempotencyKey = idempotencyKeyGenerator.generate({
         sessionId: ownerSessionId || 'anonymous',
         query: queryData.query,
         mode,
@@ -157,28 +101,24 @@ router.post('/', async (req: Request, res: Response) => {
         filters: queryData.filters || null
       });
 
-      // Check for existing job with same idempotency key
-      let candidateJob = null;
-      try {
-        candidateJob = await searchJobStore.findByIdempotencyKey(idempotencyKey, DEDUP_SUCCESS_FRESH_WINDOW_MS);
-      } catch (err) {
-        // Non-fatal: if lookup fails, continue with new job creation
-        logger.warn({
-          requestId,
-          error: err instanceof Error ? err.message : 'unknown',
-          operation: 'findByIdempotencyKey'
-        }, '[Deduplication] Failed to check for existing job (non-fatal) - creating new job');
+      // Check for existing job with same idempotency key (delegated to service)
+      const candidateJob = await deduplicationService.findCandidate(idempotencyKey);
+
+      // If lookup failed (returned null due to error), log warning
+      if (candidateJob === null) {
+        // Note: Service already handles try/catch, so null means either no job or lookup error
+        // We can't distinguish here, but that's fine - we'll create a new job either way
       }
 
-      // Deduplication Decision Logic
-      let shouldReuse = false;
-      let reuseReason = '';
-      let existingJob = null;
+      // Deduplication Decision Logic (delegated to service)
+      const decision = deduplicationService.decideReuse(candidateJob, Date.now());
+      const shouldReuse = decision.shouldReuse;
+      const reuseReason = decision.reason;
+      const existingJob = decision.existingJob;
 
       if (candidateJob) {
-        const now = Date.now();
-        const ageMs = now - candidateJob.createdAt;
-        const updatedAgeMs = now - candidateJob.updatedAt;
+        const ageMs = decision.ageMs!;
+        const updatedAgeMs = decision.updatedAgeMs!;
 
         // Log candidate found for observability
         logger.info({
@@ -192,55 +132,16 @@ router.post('/', async (req: Request, res: Response) => {
           sessionHash: hashSessionId(ownerSessionId || 'anonymous')
         }, '[Deduplication] Found candidate job for deduplication');
 
-        // Decision Matrix:
-        // 1. DONE_SUCCESS -> REUSE (cached result)
-        // 2. DONE_FAIL -> NEW_JOB (failed, don't reuse)
-        // 3. RUNNING -> Check staleness:
-        //    - Fresh (updatedAt recent) -> REUSE
-        //    - Stale (updatedAt old) -> NEW_JOB + mark old as failed
-
-        if (candidateJob.status === 'DONE_SUCCESS') {
-          // Cached result available - reuse immediately
-          shouldReuse = true;
-          reuseReason = 'CACHED_RESULT_AVAILABLE';
-          existingJob = candidateJob;
-        } else if (candidateJob.status === 'DONE_FAILED') {
-          // Previous job failed - create new job
-          shouldReuse = false;
-          reuseReason = 'PREVIOUS_JOB_FAILED';
-        } else if (candidateJob.status === 'RUNNING') {
-          // Check if RUNNING job is stale
-          const isStaleByUpdatedAt = updatedAgeMs > DEDUP_RUNNING_MAX_AGE_MS;
-          const isStaleByAge = ageMs > DEDUP_RUNNING_MAX_AGE_MS;
-
-          // DECISION-ONLY DEDUP: Do NOT mark job as failed here
-          // Stale detection logic remains, but cleanup is deferred to separate sweeper
-          if ((isStaleByUpdatedAt || isStaleByAge)) {
-            // Stale RUNNING job - do not reuse (decision only, no mutation)
-            shouldReuse = false;
-            reuseReason = isStaleByUpdatedAt
-              ? `STALE_RUNNING_NO_HEARTBEAT (updatedAgeMs: ${updatedAgeMs}ms > ${DEDUP_RUNNING_MAX_AGE_MS}ms)`
-              : `STALE_RUNNING_TOO_OLD (ageMs: ${ageMs}ms > ${DEDUP_RUNNING_MAX_AGE_MS}ms)`;
-
-            logger.info({
-              requestId: candidateJob.requestId,
-              event: 'dedup_stale_detected',
-              ageMs,
-              updatedAgeMs,
-              maxAgeMs: DEDUP_RUNNING_MAX_AGE_MS,
-              decision: 'NEW_JOB'
-            }, '[Deduplication] Stale RUNNING job detected - creating new job (no mutation)');
-          } else {
-            // Fresh RUNNING job - reuse it
-            shouldReuse = true;
-            reuseReason = `RUNNING_FRESH (updatedAgeMs: ${updatedAgeMs}ms < ${DEDUP_RUNNING_MAX_AGE_MS}ms)`;
-            existingJob = candidateJob;
-          }
-        } else {
-          // Other statuses (PENDING, DONE_CLARIFY, DONE_STOPPED) - reuse
-          shouldReuse = true;
-          reuseReason = `STATUS_${candidateJob.status}`;
-          existingJob = candidateJob;
+        // Log stale detection if applicable (preserving original logging)
+        if (!shouldReuse && candidateJob.status === 'RUNNING' && (reuseReason.includes('STALE_RUNNING'))) {
+          logger.info({
+            requestId: candidateJob.requestId,
+            event: 'dedup_stale_detected',
+            ageMs,
+            updatedAgeMs,
+            maxAgeMs: DEDUP_RUNNING_MAX_AGE_MS,
+            decision: 'NEW_JOB'
+          }, '[Deduplication] Stale RUNNING job detected - creating new job (no mutation)');
         }
 
         // Log decision for observability

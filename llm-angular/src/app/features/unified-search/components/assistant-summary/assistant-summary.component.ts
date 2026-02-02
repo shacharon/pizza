@@ -77,10 +77,12 @@ export class AssistantSummaryComponent {
   
   /**
    * Get message language with fallback
-   * Priority: payload.language > uiLanguage > 'en'
+   * LANGUAGE CONTRACT: msg.language already resolved by mapper with priority:
+   * payload.language ?? assistantLanguage ?? uiLanguage ?? 'en'
+   * This method adds final UI fallback if somehow undefined
    */
   getMessageLanguage(msg: AssistantCardMessage): string {
-    return msg.language || this.locale() || 'en';
+    return msg.language ?? this.locale() ?? 'en';
   }
   
   /**

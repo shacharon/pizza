@@ -1,13 +1,13 @@
 .restaurant-card {
   display: flex;
-  gap: 1rem; // COMPACT: Reduced from 1.5rem
-  padding: 1rem; // COMPACT: Reduced from 1.5rem
+  gap: 0.875rem; // PREMIUM: Compact spacing
+  padding: 0.75rem; // PREMIUM: 25% reduction for density
   background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 16px;
+  border: 1px solid #e8e8e8; // PREMIUM: Softer border
+  border-radius: 12px; // PREMIUM: Slightly tighter radius
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06); // PREMIUM: Subtle shadow
   position: relative;
 
   // MOBILE FIRST: Prevent text selection on tap (better touch UX)
@@ -17,15 +17,15 @@
   // UX POLISH: Subtle hover feedback (desktop only)
   @media (min-width: 769px) {
     &:hover {
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-      transform: translateY(-2px);
-      border-color: #d1d5db;
+      box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12); // PREMIUM: Gentle elevation
+      transform: translateY(-1px); // PREMIUM: Subtle lift
+      border-color: #d0d0d0;
     }
   }
 
   &.selected {
     border-color: #60a5fa;
-    box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.15);
+    box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.15);
   }
 
   &:focus {
@@ -48,23 +48,23 @@
 
   // MOBILE ONLY: Compact mode for bottom sheet/panel (NOISE REDUCTION)
   &.compact {
-    padding: 0.75rem; // NOISE REDUCTION: Even tighter
-    gap: 0.625rem; // NOISE REDUCTION: Minimal gap
+    padding: 0.625rem; // PREMIUM: Compact padding
+    gap: 0.75rem; // PREMIUM: Balanced gap
 
     .restaurant-photo,
     .restaurant-photo-placeholder {
-      width: 60px; // COMPACT: Ultra-small (was 64px)
-      height: 60px;
-      min-height: 60px; // PERFORMANCE: Fixed height
-      min-width: 60px;
-      aspect-ratio: 1 / 1; // COMPACT: Square for space efficiency
-      border-radius: 8px; // COMPACT: All corners rounded (not card-top)
+      width: 56px; // PREMIUM: Small square
+      height: 56px;
+      min-height: 56px;
+      min-width: 56px;
+      aspect-ratio: 1 / 1;
+      border-radius: 6px;
       object-fit: cover;
       object-position: center;
     }
 
     .restaurant-photo-placeholder {
-      font-size: 1.5rem; // COMPACT: Tiny icon
+      font-size: 1.5rem;
     }
 
     .restaurant-info {
@@ -73,7 +73,7 @@
 
       .restaurant-name {
         font-size: 0.9375rem;
-        margin-bottom: 0.1875rem; // NOISE REDUCTION: Less space
+        margin-bottom: 0.25rem;
         line-height: 1.3;
       }
 
@@ -84,27 +84,25 @@
 
       .restaurant-meta {
         font-size: 0.75rem;
-        margin-bottom: 0.125rem; // NOISE REDUCTION: Minimal space
-        gap: 0.25rem; // NOISE REDUCTION: Tight gap
+        margin-bottom: 0.125rem;
+        gap: 0.375rem;
       }
 
       .restaurant-address-compact {
-        font-size: 0.6875rem; // NOISE REDUCTION: Smaller
-        margin-bottom: 0.125rem; // NOISE REDUCTION: Minimal space
-        color: #9ca3af;
+        font-size: 0.6875rem;
+        margin-bottom: 0;
+        color: #999999;
       }
 
       .card-signal-text {
         font-size: 0.6875rem;
-        margin: 0.125rem 0; // NOISE REDUCTION: Minimal margins
+        margin: 0.125rem 0 0 0;
       }
 
-      // MOBILE: Hide price level in compact mode
       .price-level {
         display: none;
       }
 
-      // NOISE REDUCTION: Hide review count in compact mode
       .rating-reviews {
         display: none;
       }
@@ -114,15 +112,16 @@
       gap: 0.25rem;
 
       .action-button {
-        padding: 0.375rem 0.5rem;
-        font-size: 0.75rem;
+        padding: 0.375rem;
+        width: 32px;
+        height: 32px;
 
         .action-icon {
-          font-size: 0.875rem;
+          font-size: 1rem;
         }
 
         .action-label {
-          display: none; // Hide labels in compact mode
+          display: none;
         }
       }
     }
@@ -157,32 +156,34 @@
   }
 }
 
-// DESKTOP: Image contextual, not primary CTA
+// DESKTOP: Image compact square (premium look)
 .restaurant-photo {
-  width: 140px;
-  height: 140px;
+  width: 72px; // PREMIUM: Compact square (Google Maps style)
+  height: 72px;
   object-fit: cover;
   object-position: center;
-  border-radius: 12px;
+  border-radius: 8px; // PREMIUM: Rounded corners
   flex-shrink: 0;
+  align-self: center; // PREMIUM: Vertically centered
 
   // PERFORMANCE: Fixed height prevents CLS (Content Layout Shift)
-  min-height: 140px;
+  min-height: 72px;
 }
 
 .restaurant-photo-placeholder {
-  width: 140px;
-  height: 140px;
-  min-height: 140px; // PERFORMANCE: Prevent layout jump
+  width: 72px; // PREMIUM: Compact square (Google Maps style)
+  height: 72px;
+  min-height: 72px; // PERFORMANCE: Prevent layout jump
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #f0f9ff 0%, #dbeafe 100%); // Better blue gradient
-  border-radius: 12px;
-  font-size: 2.5rem; // Smaller icon
-  color: #93c5fd; // Softer blue
+  background: linear-gradient(135deg, #f0f9ff 0%, #dbeafe 100%);
+  border-radius: 8px; // PREMIUM: Match photo radius
+  font-size: 1.875rem; // PREMIUM: Proportional icon
+  color: #93c5fd;
   flex-shrink: 0;
-  border: 1px dashed #bfdbfe; // Subtle dashed border
+  align-self: center; // PREMIUM: Vertically centered
+  border: 1px dashed #d1d5db; // PREMIUM: Subtle neutral border
   transition: all 0.2s ease;
 
   // Parent hover effect
@@ -201,46 +202,45 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin-bottom: 0.5rem; // COMPACT: Reduced from 0.75rem
+  margin-bottom: 0.375rem; // PREMIUM: Tighter spacing
 }
 
 // VISUAL POLISH: Typography hierarchy (desktop)
 .restaurant-name {
   margin: 0;
-  font-size: 1.375rem;
-  font-weight: 600; // VISUAL POLISH: Semibold (weight 1 of 2)
-  color: #111827; // VISUAL POLISH: Dark text
+  font-size: 1rem; // PREMIUM: 16px (compact, scannable)
+  font-weight: 600; // PREMIUM: Semi-bold (clear hierarchy)
+  color: #1a1a1a; // PREMIUM: Neutral dark (not blue)
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  line-height: 1.3;
+  line-height: 1.4;
   position: relative;
   flex: 1;
 
-  // NEW: Clickable name styling
+  // NEW: Clickable name styling - subtle interaction
   &.clickable {
-    color: #2563eb; // Blue link color
+    color: #1a1a1a; // PREMIUM: Keep dark (not blue)
     cursor: pointer;
     text-decoration: none;
     transition: color 0.15s ease;
 
     &:hover {
-      color: #1d4ed8; // Darker blue on hover
-      text-decoration: underline;
+      color: #3b82f6; // PREMIUM: Blue on hover only
     }
 
     &:active {
-      color: #1e40af; // Even darker on click
+      color: #2563eb;
     }
   }
 }
 
 // NEW: Cuisine/category tag
 .cuisine-tag {
-  margin: 0 0 0.5rem 0;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: #6b7280;
+  margin: 0 0 0.25rem 0; // PREMIUM: Tighter spacing
+  font-size: 0.8125rem; // PREMIUM: Slightly smaller
+  font-weight: 400; // PREMIUM: Regular weight
+  color: #737373; // PREMIUM: Neutral gray
   line-height: 1.3;
   display: flex;
   align-items: center;
@@ -249,40 +249,40 @@
 
 .restaurant-meta {
   display: flex;
-  gap: 0.75rem;
+  gap: 0.625rem; // PREMIUM: Tighter gap
   align-items: center;
   flex-wrap: wrap;
-  margin-bottom: 0.5rem;
-  font-size: 0.875rem;
-  font-weight: 400; // VISUAL POLISH: Normal (weight 2 of 2)
-  color: #6b7280; // VISUAL POLISH: Medium gray
+  margin-bottom: 0.375rem; // PREMIUM: Tighter spacing
+  font-size: 0.8125rem; // PREMIUM: Slightly smaller
+  font-weight: 400;
+  color: #737373; // PREMIUM: Neutral gray
 }
 
-// VISUAL POLISH: Clean rating format "⭐ 4.2 · 114 ביקורות"
+// VISUAL POLISH: Clean rating format "⭐ 4.2 · 114 reviews"
 .rating {
   display: flex;
   align-items: center;
   gap: 0.25rem;
-  color: #6b7280; // VISUAL POLISH: Medium gray (not dark)
-  font-weight: 400; // VISUAL POLISH: Normal weight
+  color: #737373; // PREMIUM: Neutral gray
+  font-weight: 400;
 
   .rating-reviews {
-    color: #9ca3af; // VISUAL POLISH: Light gray for review count
+    color: #999999; // PREMIUM: Lighter neutral
     font-weight: 400;
   }
 }
 
 .price-level {
-  color: #6b7280; // VISUAL POLISH: Neutral gray (not green)
-  font-weight: 400; // VISUAL POLISH: Normal weight
-  font-size: 0.875rem;
+  color: #737373; // PREMIUM: Neutral gray
+  font-weight: 400;
+  font-size: 0.8125rem;
 }
 
 // UX SIGNALS: Language-agnostic card signal display
 .card-signal-text {
-  margin: 0.25rem 0 0.375rem 0; // COMPACT: Reduced bottom margin
-  font-size: 0.8125rem;
-  font-weight: 400; // VISUAL POLISH: Normal weight (default)
+  margin: 0.125rem 0 0.25rem 0; // PREMIUM: Minimal spacing
+  font-size: 0.75rem; // PREMIUM: Smaller text
+  font-weight: 400;
   line-height: 1.4;
 
   // LANGUAGE-AGNOSTIC: Single-line with ellipsis truncation
@@ -337,9 +337,9 @@
 
 // NEW: Compact city + distance line
 .restaurant-address-compact {
-  margin: 0 0 0.5rem 0;
-  color: #9ca3af;
-  font-size: 0.8125rem;
+  margin: 0; // PREMIUM: No bottom margin
+  color: #999999; // PREMIUM: Neutral gray
+  font-size: 0.75rem; // PREMIUM: Smaller
   font-weight: 400;
   line-height: 1.4;
   display: flex;
@@ -366,59 +366,61 @@
   font-weight: 400; // VISUAL POLISH: Normal weight
 }
 
-// NEW: Horizontal action bar with labels
-// DESKTOP (>= md): Side-aligned actions with border
-// MOBILE (< md): Bottom bar inside card with top border
+// NEW: Horizontal action bar - PREMIUM icon row
+// DESKTOP: Compact icon row on the right
 .action-bar {
   display: flex;
-  gap: 0.75rem;
+  gap: 0.25rem; // PREMIUM: Minimal gap
   align-items: center;
   flex-shrink: 0;
   
-  // DESKTOP: Side-aligned (default) - RTL-safe
-  align-self: flex-start;
-  margin-inline-start: auto; // RTL-safe: use logical property
-  padding-inline-start: 1rem; // RTL-safe: use logical property
-  border-inline-start: 1px solid #e5e7eb; // RTL-safe: use logical property
+  // DESKTOP: Side-aligned, compact row - RTL-safe
+  align-self: center; // PREMIUM: Vertically centered
+  margin-inline-start: auto; // RTL-safe: push to right
+  padding-inline-start: 0.75rem; // PREMIUM: Reduced padding
+  border-inline-start: none; // PREMIUM: No border (cleaner)
 }
 
 .action-button {
   display: flex;
-  flex-direction: column;
+  flex-direction: row; // PREMIUM: Horizontal icon only
   align-items: center;
   justify-content: center;
   gap: 0.25rem;
   background: transparent;
   border: none;
-  color: #6b7280;
+  color: #737373; // PREMIUM: Neutral gray
   cursor: pointer;
   transition: all 0.15s ease;
   font-family: inherit;
-  padding: 0.5rem 0.75rem;
-  border-radius: 8px;
-  min-width: 64px;
+  padding: 0.5rem; // PREMIUM: Icon-only padding
+  border-radius: 6px; // PREMIUM: Smaller radius
+  min-width: unset; // PREMIUM: No min-width for icons
+  width: 36px; // PREMIUM: Fixed icon button size
+  height: 36px;
 
   &:hover:not(:disabled) {
-    background: #f3f4f6;
-    color: #111827;
+    background: #f5f5f5; // PREMIUM: Subtle background
+    color: #1a1a1a; // PREMIUM: Dark on hover
   }
 
   &:active:not(:disabled) {
-    background: #e5e7eb;
-    transform: scale(0.97);
+    background: #e8e8e8;
+    transform: scale(0.95);
   }
 
   &:disabled {
-    opacity: 0.4;
+    opacity: 0.3; // PREMIUM: More subtle disabled state
     cursor: not-allowed;
   }
 
   .action-icon {
-    font-size: 1.25rem;
+    font-size: 1.125rem; // PREMIUM: Compact icon
     line-height: 1;
   }
 
   .action-label {
+    display: none; // PREMIUM: Hide labels on desktop for compact look
     font-size: 0.75rem;
     font-weight: 500;
     line-height: 1;
@@ -469,50 +471,50 @@
   .restaurant-card {
     // MOBILE: Vertical single-column layout with image at top
     flex-direction: column;
-    padding: 0; // MOBILE IMAGE: Zero padding (image bleeds to edges)
-    gap: 0; // MOBILE IMAGE: No gap (image flows into content)
-    border-radius: 12px;
-    overflow: hidden; // MOBILE IMAGE: Clip image to card border-radius
+    padding: 0;
+    gap: 0;
+    border-radius: 10px; // PREMIUM: Slightly tighter for mobile
+    overflow: hidden;
 
-    // NOISE REDUCTION: Remove shadow entirely on mobile
-    box-shadow: none;
-    border: 1px solid #f3f4f6; // NOISE REDUCTION: Lighter border
+    // PREMIUM: Minimal shadow on mobile
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+    border: 1px solid #e8e8e8;
 
-    // MOBILE: Subtle tap feedback (no hover assumptions)
+    // MOBILE: Subtle tap feedback
     &:active {
-      opacity: 0.94; // NOISE REDUCTION: Less aggressive
-      transform: none; // NOISE REDUCTION: No scale
-      background: #fafafa; // NOISE REDUCTION: Subtle bg change
+      opacity: 0.96;
+      transform: none;
+      background: #fafafa;
     }
 
     // MOBILE: Remove hover effects entirely
     &:hover {
-      box-shadow: none;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
       transform: none;
-      border-color: #f3f4f6;
+      border-color: #e8e8e8;
     }
   }
 
   // MOBILE: Image contextual (not primary CTA), optimized for scan speed
-  // OPTIMIZED: Reduced height for lighter cards - target 2-3 cards per viewport
+  // PREMIUM: Compact height for denser card list
   .restaurant-photo,
   .restaurant-photo-placeholder {
     width: 100%;
-    height: 100px; // OPTIMIZED: Reduced from 130px (20% lighter)
-    min-height: 100px; // PERFORMANCE: Fixed height prevents CLS
-    aspect-ratio: 16 / 9; // MOBILE: Standard video aspect ratio
+    height: 90px; // PREMIUM: Compact mobile image
+    min-height: 90px;
+    aspect-ratio: 16 / 9;
     object-fit: cover;
     object-position: center;
 
-    // MOBILE: Rounded corners ONLY on top (card flows from image)
-    border-radius: 12px 12px 0 0;
+    // MOBILE: Rounded corners ONLY on top
+    border-radius: 10px 10px 0 0;
   }
 
   .restaurant-photo-placeholder {
-    font-size: 2rem; // MOBILE: Smaller placeholder icon
-    color: #93c5fd; // Softer blue
+    font-size: 1.875rem;
+    color: #93c5fd;
     background: linear-gradient(135deg, #f0f9ff 0%, #dbeafe 100%);
-    border: 1px dashed #bfdbfe;
+    border: none; // PREMIUM: Clean placeholder
   }
 
   // MOBILE IMAGE: Optional minimal overlay (if needed)
@@ -536,54 +538,52 @@
   }
 
   .restaurant-info {
-    // MOBILE IMAGE: Add padding to content area (image has none)
-    // OPTIMIZED: Reduced padding for tighter cards
-    padding: 0.5rem 0.625rem; // COMPACT: Further reduced
+    // MOBILE IMAGE: Add padding to content area
+    // PREMIUM: Compact padding
+    padding: 0.625rem 0.75rem; // PREMIUM: Balanced mobile padding
 
     // VISUAL POLISH: Consistent vertical rhythm
     display: flex;
     flex-direction: column;
-    gap: 0.25rem; // OPTIMIZED: Tighter spacing (was 0.375rem)
+    gap: 0.25rem;
 
-    // VISUAL POLISH: Typography hierarchy (max 2 font weights)
+    // VISUAL POLISH: Typography hierarchy
     .restaurant-name {
-      font-size: 1rem; // OPTIMIZED: Slightly smaller (was 1.0625rem)
-      font-weight: 600; // PRIMARY: Semibold (weight 1 of 2)
-      margin-bottom: 0; // VISUAL POLISH: Gap handles spacing
-      line-height: 1.25; // OPTIMIZED: Tighter line height
-      color: #111827; // PRIMARY: Dark text
+      font-size: 1rem; // PREMIUM: Compact size
+      font-weight: 500; // PREMIUM: Medium weight (not bold)
+      margin-bottom: 0;
+      line-height: 1.3;
+      color: #1a1a1a; // PREMIUM: Neutral dark
     }
 
     .restaurant-meta {
-      font-size: 0.75rem; // OPTIMIZED: Slightly smaller (was 0.8125rem)
-      font-weight: 400; // SECONDARY: Normal (weight 2 of 2)
-      gap: 0.25rem; // OPTIMIZED: Tighter gap
-      margin-bottom: 0; // VISUAL POLISH: Gap handles spacing
-      color: #6b7280; // SECONDARY: Medium gray
+      font-size: 0.75rem;
+      font-weight: 400;
+      gap: 0.375rem;
+      margin-bottom: 0;
+      color: #737373; // PREMIUM: Neutral gray
 
-      // NOISE REDUCTION: Hide price level on mobile
       .price-level {
         display: none;
       }
 
-      // VISUAL POLISH: De-emphasize low-review ratings (lighter color only)
       .rating {
         &[data-low-reviews="true"] {
-          color: #9ca3af; // VISUAL POLISH: Light gray
-          opacity: 1; // VISUAL POLISH: Use color, not opacity
+          color: #999999;
+          opacity: 1;
         }
       }
 
       .rating-reviews {
-        color: #9ca3af; // VISUAL POLISH: Lighter gray for review count
+        color: #999999;
       }
     }
 
     .restaurant-address {
-      font-size: 0.75rem; // TERTIARY: Small size
-      font-weight: 400; // TERTIARY: Normal weight
-      margin-bottom: 0; // VISUAL POLISH: Gap handles spacing
-      color: #9ca3af; // TERTIARY: Light gray
+      font-size: 0.75rem;
+      font-weight: 400;
+      margin-bottom: 0;
+      color: #999999; // PREMIUM: Neutral gray
       line-height: 1.4;
     }
 
@@ -657,43 +657,46 @@
   }
 
   // MOBILE (< md): Action bar as bottom bar inside card
-  // OPTIMIZED: Tighter action bar with primary action emphasis
+  // PREMIUM: Clean action bar with icon emphasis
   .action-bar {
     // Reset desktop side-alignment - RTL-safe
     align-self: stretch;
-    margin-inline-start: 0; // RTL-safe
-    padding-inline-start: 0; // RTL-safe
-    border-inline-start: none; // RTL-safe
+    margin-inline-start: 0;
+    padding-inline-start: 0;
+    border-inline-start: none;
     
     // Bottom bar layout
     flex-direction: row;
-    justify-content: space-between; // OPTIMIZED: Changed from space-evenly
-    gap: 0.375rem; // OPTIMIZED: Tighter gap
-    padding: 0.375rem 0.625rem; // COMPACT: Further reduced
-    border-block-start: 1px solid #f3f4f6; // RTL-safe: use logical property
+    justify-content: space-evenly; // PREMIUM: Even distribution
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem; // PREMIUM: Balanced mobile padding
+    border-block-start: 1px solid #e8e8e8; // PREMIUM: Softer border
 
     .action-button {
       min-width: auto;
-      padding: 0.5rem 0.5rem; // OPTIMIZED: Tighter padding
+      padding: 0.5rem;
+      width: auto;
+      height: auto;
       
       // PRIMARY ACTION: Navigate button (first button)
       &:first-child {
-        flex: 1.5; // EMPHASIS: Larger than other buttons
-        background: #2563eb; // PRIMARY: Blue background
+        flex: 1.2; // PREMIUM: Slight emphasis
+        background: #3b82f6;
         color: white;
-        border-radius: 8px;
+        border-radius: 6px;
         font-weight: 500;
         
         &:hover:not(:disabled) {
-          background: #1d4ed8;
+          background: #2563eb;
         }
 
         &:active:not(:disabled) {
-          background: #1e40af;
+          background: #1d4ed8;
           transform: scale(0.97);
         }
         
         .action-label {
+          display: inline; // Show label for primary action
           font-weight: 500;
         }
       }
@@ -703,21 +706,22 @@
         flex: 1;
         
         &:hover:not(:disabled) {
-          background: transparent;
+          background: #f5f5f5;
         }
 
         &:active:not(:disabled) {
-          background: #f3f4f6;
+          background: #e8e8e8;
           transform: scale(0.95);
         }
       }
 
       .action-icon {
-        font-size: 1rem; // OPTIMIZED: Slightly smaller
+        font-size: 1rem;
       }
 
       .action-label {
-        font-size: 0.625rem; // OPTIMIZED: Smaller
+        font-size: 0.6875rem;
+        display: none; // PREMIUM: Hide labels except primary
       }
     }
   }

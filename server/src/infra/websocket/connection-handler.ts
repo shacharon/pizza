@@ -115,7 +115,7 @@ export function handleClose(
 
   let reason = reasonBuffer?.toString()?.trim() || '';
   const wasClean = code === 1000 || code === 1001;
-  
+
   // Extract closeSource if tagged (by wsClose helper)
   const closeSource = (ws as any).closeSource || 'UNKNOWN';
   const taggedReason = (ws as any).closeReason;
@@ -176,7 +176,7 @@ export function executeHeartbeat(
       // Mark termination source for disconnect logging
       ws.terminatedBy = 'server_heartbeat';
       cleanup(ws);
-      
+
       // Close with structured reason before terminate
       const params = getCloseParams(CloseSource.IDLE_TIMEOUT, 'HEARTBEAT_TIMEOUT');
       wsClose(ws, {
@@ -184,7 +184,7 @@ export function executeHeartbeat(
         closeSource: CloseSource.IDLE_TIMEOUT,
         clientId: ws.clientId
       });
-      
+
       ws.terminate();
       terminatedCount++;
 
