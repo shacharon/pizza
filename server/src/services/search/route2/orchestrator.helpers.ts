@@ -40,14 +40,15 @@ export function toAssistantLanguage(
 /**
  * Resolve assistant language with strict priority to prevent drift to English
  *
- * PRIORITY (FIXED):
- * 1. Intent / Gate2 language (LLM output)
+ * PRIORITY (FIXED - intent.language is single source of truth):
+ * 1. Intent / Gate2 language (LLM output) - SINGLE SOURCE OF TRUTH
  * 2. Query language detection (deterministic)
- * 3. Base filters language
- * 4. UI language (LAST RESORT ONLY)
- * 5. Fallback: en
+ * 3. UI language (LAST RESORT ONLY)
+ * 4. Fallback: en
  *
  * IMPORTANT:
+ * - intent.language is the SINGLE SOURCE OF TRUTH (always prioritized)
+ * - base_filters.language DEPRECATED - removed from priority chain
  * - uiLanguage MUST NOT override Arabic/Hebrew queries
  * - queryLanguage always wins over uiLanguage
  */
@@ -60,20 +61,18 @@ export function resolveAssistantLanguage(
   let source = 'unknown';
 
   // Collect candidates for full visibility
+  // REMOVED: base_filters.language (deprecated - intent.language is single source of truth)
   const candidates = {
     intent: detectedLanguage ? toAssistantLanguage(detectedLanguage) : undefined,
     queryDetected: ctx.queryLanguage
       ? toAssistantLanguage(ctx.queryLanguage)
-      : undefined,
-    baseFilters: ctx.sharedFilters?.preGoogle?.language
-      ? toAssistantLanguage(ctx.sharedFilters.preGoogle.language)
       : undefined,
     uiLanguage: ctx.sharedFilters?.final?.uiLanguage
       ? toAssistantLanguage(ctx.sharedFilters.final.uiLanguage)
       : undefined
   };
 
-  // 1. Intent / Gate2 language (LLM)
+  // 1. Intent / Gate2 language (LLM) - SINGLE SOURCE OF TRUTH
   if (candidates.intent && candidates.intent !== 'other') {
     chosen = candidates.intent;
     source = 'intent';
@@ -85,19 +84,13 @@ export function resolveAssistantLanguage(
     source = 'queryDetected';
   }
 
-  // 3. Base filters language
-  if (!chosen && candidates.baseFilters && candidates.baseFilters !== 'other') {
-    chosen = candidates.baseFilters;
-    source = 'baseFilters';
-  }
-
-  // 4. UI language — LAST RESORT ONLY
+  // 3. UI language — LAST RESORT ONLY (was priority 4, renumbered after removing baseFilters)
   if (!chosen && candidates.uiLanguage && candidates.uiLanguage !== 'other') {
     chosen = candidates.uiLanguage;
     source = 'uiLanguage';
   }
 
-  // 5. Final fallback
+  // 4. Final fallback (was priority 5, renumbered)
   if (!chosen) {
     chosen = 'en';
     source = 'fallback_en';

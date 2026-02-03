@@ -19,50 +19,50 @@ frontend:
       - llm-angular/node_modules/**/*
 customHeaders:
   # Service worker files and index.html: MUST NOT be cached
-  - pattern: '/index.html'
+  - pattern: "/index.html"
     headers:
-      - key: 'Cache-Control'
-        value: 'no-cache, no-store, must-revalidate'
-      - key: 'Pragma'
-        value: 'no-cache'
-      - key: 'Expires'
-        value: '0'
-  - pattern: '/ngsw-worker.js'
+      - key: "Cache-Control"
+        value: "no-cache, no-store, must-revalidate"
+      - key: "Pragma"
+        value: "no-cache"
+      - key: "Expires"
+        value: "0"
+  - pattern: "/ngsw-worker.js"
     headers:
-      - key: 'Cache-Control'
-        value: 'no-cache, no-store, must-revalidate'
-  - pattern: '/ngsw.json'
+      - key: "Cache-Control"
+        value: "no-cache, no-store, must-revalidate"
+  - pattern: "/ngsw.json"
     headers:
-      - key: 'Cache-Control'
-        value: 'no-cache, no-store, must-revalidate'
-  - pattern: '/safety-worker.js'
+      - key: "Cache-Control"
+        value: "no-cache, no-store, must-revalidate"
+  - pattern: "/safety-worker.js"
     headers:
-      - key: 'Cache-Control'
-        value: 'no-cache, no-store, must-revalidate'
+      - key: "Cache-Control"
+        value: "no-cache, no-store, must-revalidate"
   # Manifest: short cache
-  - pattern: '/manifest.webmanifest'
+  - pattern: "/manifest.webmanifest"
     headers:
-      - key: 'Cache-Control'
-        value: 'public, max-age=3600'
+      - key: "Cache-Control"
+        value: "public, max-age=3600"
   # Hashed bundles: long-term cache (immutable)
-  - pattern: '**/*.js'
+  - pattern: "**/*.js"
     headers:
-      - key: 'Cache-Control'
-        value: 'public, max-age=31536000, immutable'
-  - pattern: '**/*.css'
+      - key: "Cache-Control"
+        value: "public, max-age=31536000, immutable"
+  - pattern: "**/*.css"
     headers:
-      - key: 'Cache-Control'
-        value: 'public, max-age=31536000, immutable'
+      - key: "Cache-Control"
+        value: "public, max-age=31536000, immutable"
   # Static assets: medium cache
-  - pattern: '**/*.png'
+  - pattern: "**/*.png"
     headers:
-      - key: 'Cache-Control'
-        value: 'public, max-age=604800'
-  - pattern: '**/*.svg'
+      - key: "Cache-Control"
+        value: "public, max-age=604800"
+  - pattern: "**/*.svg"
     headers:
-      - key: 'Cache-Control'
-        value: 'public, max-age=604800'
-  - pattern: '**/*.ico'
+      - key: "Cache-Control"
+        value: "public, max-age=604800"
+  - pattern: "**/*.ico"
     headers:
-      - key: 'Cache-Control'
-        value: 'public, max-age=604800'
+      - key: "Cache-Control"
+        value: "public, max-age=604800"

@@ -23,7 +23,7 @@ const PLACES_FIELD_MASK = 'places.id,places.displayName,places.formattedAddress,
 export async function executeLandmarkPlan(
   mapping: Extract<RouteLLMMapping, { providerMethod: 'landmarkPlan' }>,
   ctx: Route2Context
-): Promise<any[]> {
+): Promise<{ results: any[], servedFrom: 'cache' | 'google_api' }> {
   const { requestId } = ctx;
   const startTime = Date.now();
 
@@ -49,7 +49,7 @@ export async function executeLandmarkPlan(
       method: 'landmarkPlan',
       error: 'GOOGLE_API_KEY not configured'
     }, '[GOOGLE] API key missing');
-    return [];
+    return { results: [], servedFrom: 'google_api' };
   }
 
   try {
@@ -69,7 +69,7 @@ export async function executeLandmarkPlan(
         method: 'landmarkPlan',
         geocodeQuery: mapping.geocodeQuery
       }, '[GOOGLE] Geocoding returned no results');
-      return [];
+      return { results: [], servedFrom: 'google_api' };
     }
 
     const geocodeDurationMs = Date.now() - geocodeStartTime;
@@ -225,6 +225,8 @@ export async function executeLandmarkPlan(
     const searchDurationMs = Date.now() - searchStartTime;
     const totalDurationMs = Date.now() - startTime;
 
+    const servedFrom = fromCache ? 'cache' as const : 'google_api' as const;
+
     logger.info({
       requestId,
       provider: 'google_places_new',
@@ -235,10 +237,10 @@ export async function executeLandmarkPlan(
       totalDurationMs,
       resultCount: results.length,
       fieldMaskUsed: PLACES_FIELD_MASK,
-      servedFrom: fromCache ? 'cache' : 'google_api'
+      servedFrom
     }, '[GOOGLE] Landmark Plan completed');
 
-    return results;
+    return { results, servedFrom };
 
   } catch (error) {
     const durationMs = Date.now() - startTime;

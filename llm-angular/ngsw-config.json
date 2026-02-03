@@ -28,10 +28,6 @@
     }
   ],
   "dataGroups": [],
-  "navigationUrls": [
-    "/**",
-    "!/**/*.*",
-    "!/**/api/**"
-  ],
+  "navigationUrls": ["/**", "!/**/*.*", "!/**/api/**"],
   "navigationRequestStrategy": "performance"
 }

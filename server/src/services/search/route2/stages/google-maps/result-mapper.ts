@@ -42,6 +42,15 @@ export function mapGooglePlaceToResult(place: any): any {
     openNow: place.currentOpeningHours?.openNow !== undefined
       ? place.currentOpeningHours.openNow
       : 'UNKNOWN',
+    // Opening hours for "Open until" display
+    currentOpeningHours: place.currentOpeningHours ? {
+      openNow: place.currentOpeningHours.openNow,
+      nextCloseTime: place.currentOpeningHours.nextCloseTime
+    } : undefined,
+    regularOpeningHours: place.regularOpeningHours ? {
+      periods: place.regularOpeningHours.periods,
+      weekdayText: place.regularOpeningHours.weekdayText
+    } : undefined,
     // P0 Security: Return photo reference only (no key)
     photoReference: place.photos?.[0]
       ? buildPhotoReference(place.photos[0].name)
@@ -50,7 +59,19 @@ export function mapGooglePlaceToResult(place: any): any {
       buildPhotoReference(photo.name)
     ) || [],
     googleMapsUrl: place.googleMapsUri || `https://www.google.com/maps/place/?q=place_id:${placeId}`,
-    tags: place.types || []
+    tags: place.types || [],
+    // NEW: Structured provider enrichments
+    providers: {
+      wolt: {
+        status: 'PENDING' as const,
+        url: null
+      }
+    },
+    // DEPRECATED: Legacy wolt field (kept for backward compatibility)
+    wolt: {
+      status: 'PENDING' as const,
+      url: null
+    }
   };
 }
 

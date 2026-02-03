@@ -14,7 +14,7 @@ describe('Distance Utilities', () => {
       const to: Coordinates = { lat: 32.0809, lng: 34.7806 };
 
       const distance = calculateDistance(from, to);
-      
+
       // Distance should be approximately 500-600 meters
       expect(distance).toBeGreaterThan(400);
       expect(distance).toBeLessThan(700);
@@ -23,7 +23,7 @@ describe('Distance Utilities', () => {
     it('should return 0 for identical coordinates', () => {
       const coords: Coordinates = { lat: 32.0853, lng: 34.7818 };
       const distance = calculateDistance(coords, coords);
-      
+
       expect(distance).toBe(0);
     });
 
@@ -33,7 +33,7 @@ describe('Distance Utilities', () => {
       const jerusalem: Coordinates = { lat: 31.7683, lng: 35.2137 };
 
       const distance = calculateDistance(telAviv, jerusalem);
-      
+
       // Distance should be approximately 50-70 km
       expect(distance).toBeGreaterThan(50000);
       expect(distance).toBeLessThan(70000);

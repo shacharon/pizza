@@ -38,7 +38,7 @@
   // Compact mode (for mobile panels)
   &.compact {
     .card-content {
-      padding: 0.75rem 0.875rem;
+      padding: 0.5625rem 0.875rem; // Reduced from 0.75rem (same as mobile)
     }
 
     .card-header {
@@ -78,9 +78,10 @@
 }
 
 // Main content area (clickable) - COMPACT
+// Reduced vertical padding to prevent card height increase with status-line
 .card-content {
   flex: 1;
-  padding: 0.875rem 1rem;
+  padding: 0.625rem 1rem; // Reduced from 0.875rem to 0.625rem (10px vs 14px)
   cursor: pointer;
 }
 
@@ -117,20 +118,21 @@
   border: 1px dashed #d1d5db;
 }
 
-// Restaurant info - TIGHTER SPACING
+// Restaurant info - TIGHTER SPACING (reduced gap to accommodate status-line)
 .restaurant-info {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.375rem;
+  gap: 0.3125rem; // Reduced from 0.375rem to prevent card height increase
 }
 
 .restaurant-name-row {
   display: flex;
-  align-items: center;
-  gap: 0.625rem;
-  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: nowrap; // Prevent wrapping to keep status on same line
+  min-width: 0; // Allow flex children to shrink
 }
 
 .restaurant-name {
@@ -145,7 +147,7 @@
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   flex: 1;
-  min-width: 0;
+  min-width: 0; // Essential for text truncation in flex
   letter-spacing: -0.01em;
 }
 
@@ -177,14 +179,27 @@
   }
 }
 
-// Restaurant meta (rating, price, status) - IMPROVED HIERARCHY
+// Restaurant meta (rating, price, distance) - TWO-COLUMN LAYOUT
+// Row 2: Rating + price on left, distance on right
 .restaurant-meta {
+  display: flex;
+  justify-content: space-between; // Push distance to right
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.8125rem;
+  color: #6b7280;
+  flex-wrap: nowrap; // Keep on one line - prevent wrapping to header
+  min-width: 0; // Allow children to shrink
+}
+
+// Left side of Row 2: rating + price
+.meta-left {
   display: flex;
   gap: 0.625rem;
   align-items: center;
-  flex-wrap: wrap;
-  font-size: 0.8125rem;
-  color: #6b7280;
+  flex-wrap: wrap; // Allow rating/price to wrap if needed
+  flex: 1; // Take available space, pushing distance to right
+  min-width: 0; // Allow text truncation if necessary
 }
 
 .rating {
@@ -230,53 +245,19 @@
   }
 }
 
-.distance-eta {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  color: #6b7280;
+// Distance text (inline with rating/price on Row 2)
+// PLACEMENT: Right side of meta row, same hierarchy as address
+// STYLING: Small, muted, RTL-safe
+.distance-text {
+  color: #6b7280; // Gray-500 (same muted tone as address)
   font-weight: 500;
-  font-size: 0.75rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 0.75rem; // 12px - small and compact
+  white-space: nowrap; // Prevent wrapping
+  flex-shrink: 0; // Never shrink, always visible
   
-  // Force LTR for distance/ETA to prevent icon/number reordering in RTL
-  direction: ltr;
-  unicode-bidi: isolate;
-  
-  .distance-icon,
-  .eta-icon {
-    flex-shrink: 0;
-  }
-  
-  .distance-value,
-  .eta-value {
-    flex-shrink: 0;
-  }
-}
-
-// Near you badge
-.near-you-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.1875rem 0.5rem;
-  font-size: 0.6875rem;
-  font-weight: 600;
-  color: #047857;
-  background: #d1fae5;
-  border: 1px solid #a7f3d0;
-  border-radius: 6px;
-  white-space: nowrap;
-  letter-spacing: 0.01em;
-}
-
-// Open until text
-.open-until {
-  color: #059669;
-  font-weight: 500;
-  font-size: 0.75rem;
-  white-space: nowrap;
+  // RTL-safe: the text "ממך" is in Hebrew, numbers are LTR
+  // Uses logical properties via flex parent
+  unicode-bidi: plaintext;
 }
 
 // Address - BETTER CONTRAST
@@ -290,13 +271,35 @@
   white-space: nowrap;
 }
 
-// Enhanced info line (distance/ETA, near badge, open until)
-.restaurant-enhanced-info {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-  margin-top: 0.375rem;
+// Single-line status + hours (inline with restaurant name)
+// RTL-safe: appears on the right in RTL, adjusts naturally in LTR
+.status-line {
+  font-size: 0.8125rem; // 13px - optimal readability
+  font-weight: 500;
+  line-height: 1.35; // Match restaurant-name line-height for baseline alignment
+  margin: 0;
+  white-space: nowrap; // Prevent wrapping
+  flex-shrink: 0; // Never shrink, always visible
+  
+  // RTL-safe: respect parent directionality but keep time values stable
+  unicode-bidi: plaintext;
+
+  // Brand green for open status
+  &.open {
+    color: #059669; // Emerald-600 (brand green)
+  }
+
+  // Muted gray for closed status
+  &.closed {
+    color: #6b7280; // Gray-500 (subtle, not alarming)
+  }
+
+  // Neutral italic for unknown/unverified
+  &.neutral {
+    color: #9ca3af; // Gray-400
+    font-style: italic;
+    opacity: 0.9;
+  }
 }
 
 // Tags (removed as per modern 2025 design)
@@ -354,6 +357,61 @@
     .action-label {
       line-height: 1;
     }
+
+    // Wolt primary button (FOUND status)
+    &.action-btn-wolt-primary {
+      background: linear-gradient(135deg, #009de0 0%, #0086c3 100%);
+      color: #fff;
+      font-weight: 600;
+
+      &:hover:not(:disabled) {
+        background: linear-gradient(135deg, #0086c3 0%, #007ab8 100%);
+        transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(0, 157, 224, 0.3);
+      }
+
+      &:active:not(:disabled) {
+        transform: translateY(0);
+      }
+
+      .action-icon {
+        color: #fff;
+      }
+    }
+
+    // Wolt pending button (PENDING status)
+    &.action-btn-wolt-pending {
+      background: #f3f4f6;
+      color: #6b7280;
+      cursor: wait;
+
+      .action-spinner {
+        animation: spin 1s linear infinite;
+      }
+    }
+
+    // Wolt search button (NOT_FOUND status)
+    &.action-btn-wolt-search {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      color: #374151;
+
+      &:hover:not(:disabled) {
+        background: #f9fafb;
+        border-color: #009de0;
+        color: #009de0;
+      }
+    }
+  }
+}
+
+// Spinner animation
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }
 
@@ -364,7 +422,7 @@
   }
 
   .card-content {
-    padding: 0.75rem 0.875rem;
+    padding: 0.5625rem 0.875rem; // Reduced from 0.75rem to 0.5625rem (9px vs 12px)
   }
 
   .card-header {
@@ -383,9 +441,21 @@
     font-size: 1rem;
   }
 
+  .restaurant-name-row {
+    gap: 0.5rem; // Tighter gap on mobile
+  }
+
+  .status-line {
+    font-size: 0.75rem; // Slightly smaller on mobile
+  }
+
   .restaurant-meta {
     font-size: 0.75rem;
     gap: 0.5rem;
+  }
+
+  .distance-text {
+    font-size: 0.6875rem; // Even smaller on mobile (11px)
   }
 
   .restaurant-address {

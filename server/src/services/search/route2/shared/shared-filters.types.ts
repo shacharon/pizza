@@ -55,12 +55,20 @@ export type OpenBetween = z.infer<typeof OpenBetweenSchema>;
  * Pre-Google Base Filters
  *
  * Applied before calling Google Places API
- * - language can be 'auto' (will be resolved before final)
+ * 
+ * IMPORTANT - Language Field:
+ * - language field is INFORMATIONAL ONLY (used for logging and filter extraction context)
+ * - DEPRECATED for decision-making: use intent.language instead
+ * - intent.language is the SINGLE SOURCE OF TRUTH for all language decisions
+ * - This field exists for historical reasons and filter extraction context
+ * - It is NOT used in final filters derivation or assistant language resolution
+ * 
+ * Other fields:
  * - regionHint is optional but must be in schema as nullable
  * - openState: null unless explicitly requested
  */
 export const PreGoogleBaseFiltersSchema = z.object({
-    language: z.enum(['he', 'en', 'auto']),
+    language: z.enum(['he', 'en', 'auto']), // DEPRECATED: Use intent.language for decisions
     openState: OpenStateSchema,
     openAt: OpenAtSchema,
     openBetween: OpenBetweenSchema,

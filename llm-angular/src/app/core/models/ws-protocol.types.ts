@@ -181,6 +181,46 @@ export interface WSServerSubNack {
   reason: 'session_mismatch' | 'invalid_request' | 'unauthorized';
 }
 
+/**
+ * Provider enrichment state (matches domain types)
+ */
+export interface ProviderState {
+  status: 'PENDING' | 'FOUND' | 'NOT_FOUND';
+  url: string | null;
+  updatedAt?: string; // ISO timestamp of last update (optional, only in patches)
+}
+
+/**
+ * Result patch event (for async enrichments like Wolt links)
+ */
+export interface WSServerResultPatch {
+  type: 'RESULT_PATCH';
+  requestId: string;
+  placeId: string;
+  patch: {
+    // NEW: Structured providers field
+    providers?: {
+      wolt?: ProviderState;
+    };
+    // DEPRECATED: Legacy wolt field (kept for backward compatibility)
+    wolt?: {
+      status: 'FOUND' | 'NOT_FOUND';
+      url: string | null;
+    };
+  };
+}
+
+/**
+ * Search results event (final results from backend)
+ */
+export interface WSServerSearchResults {
+  type: 'SEARCH_RESULTS';
+  requestId: string;
+  resultCount: number;
+  results: any[]; // Full restaurant results array
+  servedFrom: 'cache' | 'google_api';
+}
+
 export type WSServerMessage =
   | WSServerStatus
   | WSServerStreamDelta
@@ -193,7 +233,9 @@ export type WSServerMessage =
   | WSServerAssistant
   | WSServerSubAck
   | WSServerSubNack
-  | WSServerConnectionStatus;
+  | WSServerConnectionStatus
+  | WSServerResultPatch
+  | WSServerSearchResults;
 
 /**
  * Type guard for WebSocket server messages

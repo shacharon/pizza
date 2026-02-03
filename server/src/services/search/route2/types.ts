@@ -146,4 +146,5 @@ export interface GoogleMapsResult {
   results: any[];
   providerMethod: 'textSearch' | 'nearbySearch' | 'landmarkPlan';
   durationMs: number;
+  servedFrom?: 'cache' | 'google_api'; // Track if results came from cache or API
 }

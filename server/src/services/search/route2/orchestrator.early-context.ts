@@ -25,9 +25,9 @@ export function toRequestLanguage(lang: string | undefined | null): RequestLangu
   if (!lang) {
     return 'en';
   }
-  
+
   const normalized = lang.toLowerCase();
-  
+
   // Map known languages
   if (normalized === 'he') return 'he';
   if (normalized === 'en') return 'en';
@@ -37,7 +37,7 @@ export function toRequestLanguage(lang: string | undefined | null): RequestLangu
   if (normalized === 'es') return 'es';
   if (normalized === 'de') return 'de';
   if (normalized === 'it') return 'it';
-  
+
   // Fallback for 'other', 'unknown', or any unsupported language
   return 'en';
 }

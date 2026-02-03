@@ -13,6 +13,7 @@ The Angular app is now a Progressive Web App (PWA) with service worker support e
 ## Required Headers by File Type
 
 ### 1. index.html (App Shell)
+
 **Critical**: Must not be cached by CDN or browser
 
 ```
@@ -24,6 +25,7 @@ Expires: 0
 **Why**: The index.html is the entry point. If cached, users won't get updates. The service worker handles offline support.
 
 ### 2. Service Worker Files
+
 Files: `ngsw-worker.js`, `ngsw.json`, `safety-worker.js`
 
 ```
@@ -35,6 +37,7 @@ Expires: 0
 **Why**: Service worker files must always be fresh so the browser can detect updates. If cached, the PWA won't update properly.
 
 ### 3. Hashed JavaScript & CSS Bundles
+
 Files: `*.js`, `*.css` (except service worker files)
 
 ```
@@ -44,6 +47,7 @@ Cache-Control: public, max-age=31536000, immutable
 **Why**: These files have content hashes in their names (e.g., `main-VOOGDJMM.js`). They never change. Safe to cache forever.
 
 ### 4. manifest.webmanifest
+
 ```
 Cache-Control: public, max-age=3600
 ```
@@ -51,6 +55,7 @@ Cache-Control: public, max-age=3600
 **Why**: The manifest can be cached briefly. Changes are infrequent but should propagate within an hour.
 
 ### 5. Icons & Static Assets
+
 Files: `*.png`, `*.svg`, `*.ico`, `/assets/**`
 
 ```
@@ -79,55 +84,55 @@ frontend:
   artifacts:
     baseDirectory: llm-angular/dist/llm-angular/browser
     files:
-      - '**/*'
+      - "**/*"
   cache:
     paths:
       - llm-angular/node_modules/**/*
 customHeaders:
-  - pattern: '/index.html'
+  - pattern: "/index.html"
     headers:
-      - key: 'Cache-Control'
-        value: 'no-cache, no-store, must-revalidate'
-      - key: 'Pragma'
-        value: 'no-cache'
-      - key: 'Expires'
-        value: '0'
-  - pattern: '/ngsw-worker.js'
+      - key: "Cache-Control"
+        value: "no-cache, no-store, must-revalidate"
+      - key: "Pragma"
+        value: "no-cache"
+      - key: "Expires"
+        value: "0"
+  - pattern: "/ngsw-worker.js"
     headers:
-      - key: 'Cache-Control'
-        value: 'no-cache, no-store, must-revalidate'
-  - pattern: '/ngsw.json'
+      - key: "Cache-Control"
+        value: "no-cache, no-store, must-revalidate"
+  - pattern: "/ngsw.json"
     headers:
-      - key: 'Cache-Control'
-        value: 'no-cache, no-store, must-revalidate'
-  - pattern: '/safety-worker.js'
+      - key: "Cache-Control"
+        value: "no-cache, no-store, must-revalidate"
+  - pattern: "/safety-worker.js"
     headers:
-      - key: 'Cache-Control'
-        value: 'no-cache, no-store, must-revalidate'
-  - pattern: '**/*.js'
+      - key: "Cache-Control"
+        value: "no-cache, no-store, must-revalidate"
+  - pattern: "**/*.js"
     headers:
-      - key: 'Cache-Control'
-        value: 'public, max-age=31536000, immutable'
-  - pattern: '**/*.css'
+      - key: "Cache-Control"
+        value: "public, max-age=31536000, immutable"
+  - pattern: "**/*.css"
     headers:
-      - key: 'Cache-Control'
-        value: 'public, max-age=31536000, immutable'
-  - pattern: '/manifest.webmanifest'
+      - key: "Cache-Control"
+        value: "public, max-age=31536000, immutable"
+  - pattern: "/manifest.webmanifest"
     headers:
-      - key: 'Cache-Control'
-        value: 'public, max-age=3600'
-  - pattern: '**/*.png'
+      - key: "Cache-Control"
+        value: "public, max-age=3600"
+  - pattern: "**/*.png"
     headers:
-      - key: 'Cache-Control'
-        value: 'public, max-age=604800'
-  - pattern: '**/*.svg'
+      - key: "Cache-Control"
+        value: "public, max-age=604800"
+  - pattern: "**/*.svg"
     headers:
-      - key: 'Cache-Control'
-        value: 'public, max-age=604800'
-  - pattern: '**/*.ico'
+      - key: "Cache-Control"
+        value: "public, max-age=604800"
+  - pattern: "**/*.ico"
     headers:
-      - key: 'Cache-Control'
-        value: 'public, max-age=604800'
+      - key: "Cache-Control"
+        value: "public, max-age=604800"
 ```
 
 **Note**: Amplify applies headers in order. More specific patterns (like `/ngsw-worker.js`) should come before wildcard patterns (like `**/*.js`).
@@ -144,45 +149,55 @@ customHeaders:
 
 ```javascript
 exports.handler = async (event) => {
-    const response = event.Records[0].cf.response;
-    const uri = event.Records[0].cf.request.uri;
-    const headers = response.headers;
+  const response = event.Records[0].cf.response;
+  const uri = event.Records[0].cf.request.uri;
+  const headers = response.headers;
 
-    // Service worker files and index.html: no cache
-    if (uri === '/index.html' || 
-        uri === '/ngsw-worker.js' || 
-        uri === '/ngsw.json' || 
-        uri === '/safety-worker.js') {
-        headers['cache-control'] = [{ 
-            key: 'Cache-Control', 
-            value: 'no-cache, no-store, must-revalidate' 
-        }];
-        headers['pragma'] = [{ key: 'Pragma', value: 'no-cache' }];
-        headers['expires'] = [{ key: 'Expires', value: '0' }];
-    }
-    // Manifest: short cache
-    else if (uri === '/manifest.webmanifest') {
-        headers['cache-control'] = [{ 
-            key: 'Cache-Control', 
-            value: 'public, max-age=3600' 
-        }];
-    }
-    // Hashed bundles: long cache
-    else if (uri.match(/\.(js|css)$/)) {
-        headers['cache-control'] = [{ 
-            key: 'Cache-Control', 
-            value: 'public, max-age=31536000, immutable' 
-        }];
-    }
-    // Static assets: medium cache
-    else if (uri.match(/\.(png|svg|ico|jpg|jpeg|webp)$/)) {
-        headers['cache-control'] = [{ 
-            key: 'Cache-Control', 
-            value: 'public, max-age=604800' 
-        }];
-    }
+  // Service worker files and index.html: no cache
+  if (
+    uri === "/index.html" ||
+    uri === "/ngsw-worker.js" ||
+    uri === "/ngsw.json" ||
+    uri === "/safety-worker.js"
+  ) {
+    headers["cache-control"] = [
+      {
+        key: "Cache-Control",
+        value: "no-cache, no-store, must-revalidate",
+      },
+    ];
+    headers["pragma"] = [{ key: "Pragma", value: "no-cache" }];
+    headers["expires"] = [{ key: "Expires", value: "0" }];
+  }
+  // Manifest: short cache
+  else if (uri === "/manifest.webmanifest") {
+    headers["cache-control"] = [
+      {
+        key: "Cache-Control",
+        value: "public, max-age=3600",
+      },
+    ];
+  }
+  // Hashed bundles: long cache
+  else if (uri.match(/\.(js|css)$/)) {
+    headers["cache-control"] = [
+      {
+        key: "Cache-Control",
+        value: "public, max-age=31536000, immutable",
+      },
+    ];
+  }
+  // Static assets: medium cache
+  else if (uri.match(/\.(png|svg|ico|jpg|jpeg|webp)$/)) {
+    headers["cache-control"] = [
+      {
+        key: "Cache-Control",
+        value: "public, max-age=604800",
+      },
+    ];
+  }
 
-    return response;
+  return response;
 };
 ```
 
@@ -193,6 +208,7 @@ exports.handler = async (event) => {
 PWA service workers require HTTPS. Options for local testing:
 
 1. **Use http-server with local SSL**:
+
    ```bash
    npm install -g http-server
    cd llm-angular/dist/llm-angular/browser
@@ -200,6 +216,7 @@ PWA service workers require HTTPS. Options for local testing:
    ```
 
 2. **Use ngrok**:
+
    ```bash
    npm install -g http-server
    cd llm-angular/dist/llm-angular/browser
@@ -213,21 +230,25 @@ PWA service workers require HTTPS. Options for local testing:
 ### Chrome DevTools Verification
 
 1. **Service Worker Registration**:
+
    - Open DevTools → Application tab → Service Workers
    - Verify `ngsw-worker.js` is registered and activated
    - Status should be "activated and running"
 
 2. **Manifest**:
+
    - Open DevTools → Application tab → Manifest
    - Verify name, icons, theme color are correct
    - Check for any warnings
 
 3. **Cache Storage**:
+
    - Open DevTools → Application tab → Cache Storage
    - Verify `ngsw:llm-angular:cache:app` contains app shell files
    - Verify `ngsw:llm-angular:cache:assets` contains icons
 
 4. **Install Prompt**:
+
    - On a production HTTPS site, Chrome will show an install prompt
    - Or use DevTools → Application → Manifest → "Add to homescreen"
 
@@ -295,9 +316,7 @@ Example (DO NOT USE without careful consideration):
   "dataGroups": [
     {
       "name": "api-safe-readonly",
-      "urls": [
-        "/api/v1/config/languages"
-      ],
+      "urls": ["/api/v1/config/languages"],
       "cacheConfig": {
         "strategy": "freshness",
         "maxAge": "5m",
@@ -311,24 +330,28 @@ Example (DO NOT USE without careful consideration):
 ## Troubleshooting
 
 ### Service Worker Not Registering
+
 - Check browser console for errors
 - Verify `isDevMode()` returns `false` (production build)
 - Ensure HTTPS (or localhost)
 - Check `ngsw-worker.js` exists in dist output
 
 ### App Not Updating
+
 - Check `ngsw-worker.js` and `ngsw.json` headers (must be no-cache)
 - Service worker checks for updates on navigation
 - Force update: DevTools → Application → Service Workers → "Update"
 - Clear cache and hard reload if stuck
 
 ### Install Prompt Not Showing
+
 - Must be HTTPS
 - Must meet PWA installability criteria (manifest, service worker, icons)
 - Chrome only shows prompt if user hasn't dismissed it recently
 - Use DevTools → Application → Manifest → "Add to homescreen" to test
 
 ### Icons Not Loading
+
 - Check `/icons/` directory exists in dist output
 - Verify manifest icon paths are correct (relative to root)
 - Check 192x192 and 512x512 icons exist (required sizes)

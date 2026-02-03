@@ -26,7 +26,7 @@ export class GroupedResultsComponent {
   @Input() groups: ResultGroup[] = [];
   @Input() loading = false;
   @Input() userLocation: Coordinates | null = null;
-  
+
   @Output() restaurantClick = new EventEmitter<RestaurantResult>();
   @Output() actionClick = new EventEmitter<ActionClickEvent>();
 

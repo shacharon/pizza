@@ -22,7 +22,7 @@ export class AssistantBottomSheetComponent {
   @Input() highlightedResults: Restaurant[] = []; // Max 3
   @Input() title = 'Quick Picks';
   @Input() userLocation: Coordinates | null = null;
-  
+
   @Output() close = new EventEmitter<void>();
   @Output() restaurantClick = new EventEmitter<Restaurant>();
 

@@ -54,20 +54,30 @@ export async function executeGoogleMapsStage(
 
   try {
     let results: any[] = [];
+    let servedFrom: 'cache' | 'google_api';
 
     // Dispatch to correct Google API handler based on providerMethod
     switch (mapping.providerMethod) {
-      case 'textSearch':
-        results = await executeTextSearch(mapping, ctx);
+      case 'textSearch': {
+        const result = await executeTextSearch(mapping, ctx);
+        results = result.results;
+        servedFrom = result.servedFrom;
         break;
+      }
 
-      case 'nearbySearch':
-        results = await executeNearbySearch(mapping, ctx);
+      case 'nearbySearch': {
+        const result = await executeNearbySearch(mapping, ctx);
+        results = result.results;
+        servedFrom = result.servedFrom;
         break;
+      }
 
-      case 'landmarkPlan':
-        results = await executeLandmarkPlan(mapping, ctx);
+      case 'landmarkPlan': {
+        const result = await executeLandmarkPlan(mapping, ctx);
+        results = result.results;
+        servedFrom = result.servedFrom;
         break;
+      }
 
       default:
         // Exhaustiveness check
@@ -86,6 +96,7 @@ export async function executeGoogleMapsStage(
       durationMs,
       providerMethod: mapping.providerMethod,
       resultCount: results.length,
+      servedFrom,
       region: mapping.region,
       language: mapping.language
     }, '[ROUTE2] google_maps completed');
@@ -93,7 +104,8 @@ export async function executeGoogleMapsStage(
     return {
       results,
       providerMethod: mapping.providerMethod,
-      durationMs
+      durationMs,
+      servedFrom
     };
 
   } catch (error) {

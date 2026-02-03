@@ -27,7 +27,8 @@ export async function buildFinalResponse(
   finalResults: any[],
   filtersForPostFilter: any,
   ctx: Route2Context,
-  wsManager: WebSocketManager
+  wsManager: WebSocketManager,
+  servedFrom?: 'cache' | 'google_api'
 ): Promise<SearchResponse> {
   const { requestId, startTime } = ctx;
   const sessionId = resolveSessionId(request, ctx);
@@ -167,6 +168,37 @@ export async function buildFinalResponse(
     requestId,
     status: 'completed'
   });
+
+  // Publish final search results to WebSocket channel
+  const subscriberCount = (wsManager as any).subscriptionManager?.getSubscribers(`search:${requestId}`)?.size || 0;
+
+  logger.info({
+    requestId,
+    event: 'search_ws_publish_attempt',
+    channel: 'search',
+    payloadType: 'SEARCH_RESULTS',
+    resultCount: finalResults.length,
+    servedFrom: servedFrom || 'unknown',
+    subscriberCount
+  }, '[ROUTE2] Publishing search results to WebSocket');
+
+  wsManager.publishToChannel('search', requestId, sessionId, {
+    type: 'SEARCH_RESULTS',
+    requestId,
+    resultCount: finalResults.length,
+    results: finalResults,
+    servedFrom: servedFrom || 'google_api'
+  });
+
+  logger.info({
+    requestId,
+    event: 'search_ws_published',
+    channel: 'search',
+    payloadType: 'SEARCH_RESULTS',
+    resultCount: finalResults.length,
+    servedFrom: servedFrom || 'unknown',
+    subscriberCount
+  }, '[ROUTE2] Search results published to WebSocket');
 
   // DIETARY NOTE: Merged into SUMMARY (no separate message)
   // Dietary hint is now included in the SUMMARY message via assistantContext.dietaryNote

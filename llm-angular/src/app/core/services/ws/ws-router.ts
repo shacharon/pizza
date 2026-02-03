@@ -28,6 +28,21 @@ export class WSRouter {
     try {
       const data = JSON.parse(event.data);
 
+      // DEV-ONLY: Log raw incoming message BEFORE validation
+      const rawKeys = Object.keys(data);
+      const hasResultsArray = 'results' in data && Array.isArray(data.results);
+      const resultsLen = hasResultsArray ? data.results.length : 0;
+
+      console.log('[WS][DEV] ui_ws_raw_received', {
+        event: 'ui_ws_raw_received',
+        channel: data.channel || 'unknown',
+        requestId: data.requestId || 'unknown',
+        payloadType: data.type || 'unknown',
+        rawKeys,
+        hasResultsArray,
+        resultsLen
+      });
+
       // Validate message format
       if (!isWSServerMessage(data)) {
         console.warn('[WS] Invalid message format', data);
@@ -55,6 +70,14 @@ export class WSRouter {
           requestId: data.requestId,
           payloadType: data.type,
           narratorType: data.payload?.type
+        });
+      } else if (data.type === 'SEARCH_RESULTS') {
+        // DEV LOG: Search results received
+        console.log('[WS][SEARCH_RESULTS] received', {
+          requestId: data.requestId,
+          resultCount: data.resultCount,
+          resultsLen: data.results?.length || 0,
+          servedFrom: data.servedFrom
         });
       }
 

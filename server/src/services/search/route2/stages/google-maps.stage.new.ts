@@ -58,15 +58,15 @@ export async function executeGoogleMapsStage(
     // Dispatch to correct Google API handler based on providerMethod
     switch (mapping.providerMethod) {
       case 'textSearch':
-        results = await executeTextSearch(mapping, ctx);
+        ({ results } = await executeTextSearch(mapping, ctx));
         break;
 
       case 'nearbySearch':
-        results = await executeNearbySearch(mapping, ctx);
+        ({ results } = await executeNearbySearch(mapping, ctx));
         break;
 
       case 'landmarkPlan':
-        results = await executeLandmarkPlan(mapping, ctx);
+        ({ results } = await executeLandmarkPlan(mapping, ctx));
         break;
 
       default:

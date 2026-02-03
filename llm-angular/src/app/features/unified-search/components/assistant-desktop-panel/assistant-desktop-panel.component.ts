@@ -22,7 +22,7 @@ export class AssistantDesktopPanelComponent {
   @Input() chips: RefinementChip[] = [];
   @Input() highlightedResults: Restaurant[] = []; // Max 3
   @Input() userLocation: Coordinates | null = null;
-  
+
   @Output() chipClick = new EventEmitter<string>();
   @Output() restaurantClick = new EventEmitter<Restaurant>();
 

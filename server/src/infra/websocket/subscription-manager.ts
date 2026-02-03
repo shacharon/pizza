@@ -68,7 +68,7 @@ export class SubscriptionManager {
   }
 
   /**
-   * Unsubscribe from a channel
+   * Unsubscribe from a channel (idempotent)
    */
   unsubscribe(
     channel: WSChannel,
@@ -78,7 +78,10 @@ export class SubscriptionManager {
   ): void {
     const key = this.buildSubscriptionKey(channel, requestId, sessionId);
 
+    // Check if client was actually subscribed before modifying
     const subscribers = this.subscriptions.get(key);
+    const wasSubscribed = subscribers && subscribers.has(client);
+
     if (subscribers) {
       subscribers.delete(client);
       if (subscribers.size === 0) {
@@ -91,11 +94,14 @@ export class SubscriptionManager {
       clientSubs.delete(key);
     }
 
-    logger.debug({
-      channel,
-      requestId,
-      sessionId: sessionId || 'none'
-    }, 'WebSocket unsubscribed from channel');
+    // Only log if client was actually subscribed (idempotent: no double-logs)
+    if (wasSubscribed) {
+      logger.debug({
+        channel,
+        requestId,
+        sessionId: sessionId || 'none'
+      }, 'WebSocket unsubscribed from channel');
+    }
   }
 
   /**
@@ -106,23 +112,26 @@ export class SubscriptionManager {
   }
 
   /**
-   * Cleanup WebSocket from all subscriptions
+   * Cleanup WebSocket from all subscriptions (idempotent)
    */
   cleanup(ws: WebSocket): void {
     const subscriptionKeys = this.socketToSubscriptions.get(ws);
 
-    if (subscriptionKeys) {
-      for (const key of subscriptionKeys) {
-        const sockets = this.subscriptions.get(key);
-        if (sockets) {
-          sockets.delete(ws);
-          if (sockets.size === 0) {
-            this.subscriptions.delete(key);
-          }
+    // Idempotent: safe to call multiple times, no-op if already cleaned
+    if (!subscriptionKeys || subscriptionKeys.size === 0) {
+      return;
+    }
+
+    for (const key of subscriptionKeys) {
+      const sockets = this.subscriptions.get(key);
+      if (sockets) {
+        sockets.delete(ws);
+        if (sockets.size === 0) {
+          this.subscriptions.delete(key);
         }
       }
-      this.socketToSubscriptions.delete(ws);
     }
+    this.socketToSubscriptions.delete(ws);
   }
 
   /**

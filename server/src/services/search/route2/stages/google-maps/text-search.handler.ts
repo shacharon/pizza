@@ -21,7 +21,7 @@ const PLACES_FIELD_MASK = 'places.id,places.displayName,places.formattedAddress,
 export async function executeTextSearch(
   mapping: Extract<RouteLLMMapping, { providerMethod: 'textSearch' }>,
   ctx: Route2Context
-): Promise<any[]> {
+): Promise<{ results: any[], servedFrom: 'cache' | 'google_api' }> {
   const { requestId } = ctx;
   const startTime = Date.now();
 
@@ -46,7 +46,7 @@ export async function executeTextSearch(
       method: 'searchText',
       error: 'GOOGLE_API_KEY not configured'
     }, '[GOOGLE] API key missing');
-    return [];
+    return { results: [], servedFrom: 'google_api' };
   }
 
   const cache = getCacheService();
@@ -184,6 +184,8 @@ export async function executeTextSearch(
     }
 
     const durationMs = Date.now() - startTime;
+    const servedFrom = fromCache ? 'cache' as const : 'google_api' as const;
+
     logger.info({
       requestId,
       provider: 'google_places_new',
@@ -191,10 +193,10 @@ export async function executeTextSearch(
       durationMs,
       resultCount: results.length,
       fieldMaskUsed: PLACES_FIELD_MASK,
-      servedFrom: fromCache ? 'cache' : 'google_api'
+      servedFrom
     }, '[GOOGLE] Text Search completed');
 
-    return results;
+    return { results, servedFrom };
 
   } catch (error) {
     const durationMs = Date.now() - startTime;

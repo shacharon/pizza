@@ -22,7 +22,7 @@ export class RankedResultsComponent {
   @Input() loading = false;
   @Input() showReasonLabels = true; // Top result gets reason label
   @Input() userLocation: Coordinates | null = null;
-  
+
   @Output() restaurantClick = new EventEmitter<Restaurant>();
 
   /**

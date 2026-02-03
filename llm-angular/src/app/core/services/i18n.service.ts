@@ -17,7 +17,7 @@ export interface I18nKeys {
   'card.status.open': string;
   'card.status.closed': string;
   'card.status.hours_unverified': string;
-  
+
   // Restaurant card - Actions
   'card.action.navigate': string;
   'card.action.call': string;
@@ -25,37 +25,50 @@ export interface I18nKeys {
   'card.action.location_not_available': string;
   'card.action.call_restaurant': string;
   'card.action.phone_not_available': string;
-  
+
+  // Restaurant card - Wolt actions
+  'card.action.order_wolt': string;
+  'card.action.order_wolt_title': string;
+  'card.action.checking_wolt': string;
+  'card.action.checking_wolt_title': string;
+  'card.action.search_wolt': string;
+  'card.action.search_wolt_title': string;
+
   // Restaurant card - Dietary badges
   'card.dietary.gluten_free': string;
   'card.dietary.gluten_free_maybe': string;
   'card.dietary.gluten_free_disclaimer': string;
-  
+
   // Restaurant card - Near you badge
   'card.badge.near_you': string;
-  
+
   // Restaurant card - Open until
   'card.hours.open_until': string;
-  
+
+  // Restaurant card - Single-line status + hours
+  'card.hours.open_now_until': string;  // "Open now · until {time}"
+  'card.hours.closed_opens_at': string;  // "Closed · opens at {time}"
+  'card.hours.closed_hours': string;     // "Closed · hours: {range}"
+
   // Restaurant card - Distance units
   'card.distance.meters_short': string;
   'card.distance.km_short': string;
   'card.distance.minutes_short': string;
-  
+
   // Reason label
   'reason.best_match': string;
   'reason.open_now': string;
   'reason.closest_option': string;
-  
+
   // Filter chips
   'filter.open_now': string;
   'filter.open_now_description': string;
   'filter.gluten_free': string;
   'filter.gluten_free_description': string;
-  
+
   // Location prompt
   'location.enable_prompt': string;
-  
+
   // Results pagination
   'results.loadMore': string;
 }
@@ -75,11 +88,20 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.action.location_not_available': 'Location not available',
     'card.action.call_restaurant': 'Call restaurant',
     'card.action.phone_not_available': 'Phone number not available',
+    'card.action.order_wolt': 'Order on Wolt',
+    'card.action.order_wolt_title': 'Order delivery from this restaurant via Wolt',
+    'card.action.checking_wolt': 'Checking Wolt…',
+    'card.action.checking_wolt_title': 'Checking if this restaurant is available on Wolt',
+    'card.action.search_wolt': 'Search on Wolt',
+    'card.action.search_wolt_title': 'Search for this restaurant on Wolt',
     'card.dietary.gluten_free': 'GF',
     'card.dietary.gluten_free_maybe': 'Maybe GF',
     'card.dietary.gluten_free_disclaimer': 'Based on text signals — not guaranteed',
     'card.badge.near_you': 'Near you',
     'card.hours.open_until': 'Open until {time}',
+    'card.hours.open_now_until': 'Open now · until {time}',
+    'card.hours.closed_opens_at': 'Closed · opens at {time}',
+    'card.hours.closed_hours': 'Closed · hours: {range}',
     'card.distance.meters_short': 'm',
     'card.distance.km_short': 'km',
     'card.distance.minutes_short': 'min',
@@ -93,7 +115,7 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'location.enable_prompt': 'Enable location for better results',
     'results.loadMore': 'Load {count} more'
   },
-  
+
   // Hebrew
   he: {
     'card.status.open': 'פתוח עכשיו',
@@ -105,11 +127,20 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.action.location_not_available': 'מיקום לא זמין',
     'card.action.call_restaurant': 'התקשר למסעדה',
     'card.action.phone_not_available': 'מספר טלפון לא זמין',
+    'card.action.order_wolt': 'הזמן ב-Wolt',
+    'card.action.order_wolt_title': 'הזמן משלוח מהמסעדה דרך Wolt',
+    'card.action.checking_wolt': 'בודק ב-Wolt…',
+    'card.action.checking_wolt_title': 'בודק אם המסעדה זמינה ב-Wolt',
+    'card.action.search_wolt': 'חפש ב-Wolt',
+    'card.action.search_wolt_title': 'חפש את המסעדה ב-Wolt',
     'card.dietary.gluten_free': 'ללא גלוטן',
     'card.dietary.gluten_free_maybe': 'אולי ללא גלוטן',
     'card.dietary.gluten_free_disclaimer': 'מבוסס על רמזים בטקסט — לא מובטח',
     'card.badge.near_you': 'קרוב אליך',
     'card.hours.open_until': 'פתוח עד {time}',
+    'card.hours.open_now_until': 'פתוח עכשיו · עד {time}',
+    'card.hours.closed_opens_at': 'סגור · נפתח ב־{time}',
+    'card.hours.closed_hours': 'סגור · שעות: {range}',
     'card.distance.meters_short': 'מ׳',
     'card.distance.km_short': 'ק״מ',
     'card.distance.minutes_short': 'דק׳',
@@ -123,7 +154,7 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'location.enable_prompt': 'הפעל מיקום לתוצאות טובות יותר',
     'results.loadMore': 'עוד {count}'
   },
-  
+
   // Russian
   ru: {
     'card.status.open': 'Открыто сейчас',
@@ -135,11 +166,20 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.action.location_not_available': 'Местоположение недоступно',
     'card.action.call_restaurant': 'Позвонить в ресторан',
     'card.action.phone_not_available': 'Номер телефона недоступен',
+    'card.action.order_wolt': 'Заказать на Wolt',
+    'card.action.order_wolt_title': 'Заказать доставку из этого ресторана через Wolt',
+    'card.action.checking_wolt': 'Проверка Wolt…',
+    'card.action.checking_wolt_title': 'Проверка доступности ресторана на Wolt',
+    'card.action.search_wolt': 'Искать на Wolt',
+    'card.action.search_wolt_title': 'Искать этот ресторан на Wolt',
     'card.dietary.gluten_free': 'БГ',
     'card.dietary.gluten_free_maybe': 'Возможно БГ',
     'card.dietary.gluten_free_disclaimer': 'На основе текстовых сигналов — не гарантируется',
     'card.badge.near_you': 'Рядом',
     'card.hours.open_until': 'Открыто до {time}',
+    'card.hours.open_now_until': 'Открыто сейчас · до {time}',
+    'card.hours.closed_opens_at': 'Закрыто · откроется в {time}',
+    'card.hours.closed_hours': 'Закрыто · часы: {range}',
     'card.distance.meters_short': 'м',
     'card.distance.km_short': 'км',
     'card.distance.minutes_short': 'мин',
@@ -153,7 +193,7 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'location.enable_prompt': 'Включить местоположение для лучших результатов',
     'results.loadMore': 'Показать ещё {count}'
   },
-  
+
   // Arabic
   ar: {
     'card.status.open': 'مفتوح الآن',
@@ -165,11 +205,20 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.action.location_not_available': 'الموقع غير متاح',
     'card.action.call_restaurant': 'اتصل بالمطعم',
     'card.action.phone_not_available': 'رقم الهاتف غير متاح',
+    'card.action.order_wolt': 'اطلب على Wolt',
+    'card.action.order_wolt_title': 'اطلب توصيل من هذا المطعم عبر Wolt',
+    'card.action.checking_wolt': 'جاري التحقق من Wolt…',
+    'card.action.checking_wolt_title': 'جاري التحقق من توفر المطعم على Wolt',
+    'card.action.search_wolt': 'ابحث على Wolt',
+    'card.action.search_wolt_title': 'ابحث عن هذا المطعم على Wolt',
     'card.dietary.gluten_free': 'خالٍ من الغلوتين',
     'card.dietary.gluten_free_maybe': 'ربما خالٍ من الغلوتين',
     'card.dietary.gluten_free_disclaimer': 'بناءً على إشارات نصية — غير مضمون',
     'card.badge.near_you': 'بالقرب منك',
     'card.hours.open_until': 'مفتوح حتى {time}',
+    'card.hours.open_now_until': 'مفتوح الآن · حتى {time}',
+    'card.hours.closed_opens_at': 'مغلق · يفتح في {time}',
+    'card.hours.closed_hours': 'مغلق · ساعات: {range}',
     'card.distance.meters_short': 'م',
     'card.distance.km_short': 'كم',
     'card.distance.minutes_short': 'د',
@@ -183,7 +232,7 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'location.enable_prompt': 'تمكين الموقع لنتائج أفضل',
     'results.loadMore': 'عرض {count} إضافية'
   },
-  
+
   // French
   fr: {
     'card.status.open': 'Ouvert maintenant',
@@ -195,11 +244,20 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.action.location_not_available': 'Emplacement non disponible',
     'card.action.call_restaurant': 'Appeler le restaurant',
     'card.action.phone_not_available': 'Numéro de téléphone non disponible',
+    'card.action.order_wolt': 'Commander sur Wolt',
+    'card.action.order_wolt_title': 'Commander la livraison de ce restaurant via Wolt',
+    'card.action.checking_wolt': 'Vérification Wolt…',
+    'card.action.checking_wolt_title': 'Vérification de la disponibilité du restaurant sur Wolt',
+    'card.action.search_wolt': 'Rechercher sur Wolt',
+    'card.action.search_wolt_title': 'Rechercher ce restaurant sur Wolt',
     'card.dietary.gluten_free': 'SG',
     'card.dietary.gluten_free_maybe': 'Peut-être SG',
     'card.dietary.gluten_free_disclaimer': 'Basé sur des signaux textuels — non garanti',
     'card.badge.near_you': 'Tout près',
     'card.hours.open_until': 'Ouvert jusqu\'à {time}',
+    'card.hours.open_now_until': 'Ouvert maintenant · jusqu\'à {time}',
+    'card.hours.closed_opens_at': 'Fermé · ouvre à {time}',
+    'card.hours.closed_hours': 'Fermé · horaires: {range}',
     'card.distance.meters_short': 'm',
     'card.distance.km_short': 'km',
     'card.distance.minutes_short': 'min',
@@ -213,7 +271,7 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'location.enable_prompt': 'Activer la localisation pour de meilleurs résultats',
     'results.loadMore': 'Afficher {count} de plus'
   },
-  
+
   // Spanish
   es: {
     'card.status.open': 'Abierto ahora',
@@ -225,11 +283,20 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.action.location_not_available': 'Ubicación no disponible',
     'card.action.call_restaurant': 'Llamar al restaurante',
     'card.action.phone_not_available': 'Número de teléfono no disponible',
+    'card.action.order_wolt': 'Pedir en Wolt',
+    'card.action.order_wolt_title': 'Pedir entrega de este restaurante a través de Wolt',
+    'card.action.checking_wolt': 'Verificando Wolt…',
+    'card.action.checking_wolt_title': 'Verificando si este restaurante está disponible en Wolt',
+    'card.action.search_wolt': 'Buscar en Wolt',
+    'card.action.search_wolt_title': 'Buscar este restaurante en Wolt',
     'card.dietary.gluten_free': 'SG',
     'card.dietary.gluten_free_maybe': 'Tal vez SG',
     'card.dietary.gluten_free_disclaimer': 'Basado en señales de texto — no garantizado',
     'card.badge.near_you': 'Cerca de ti',
     'card.hours.open_until': 'Abierto hasta {time}',
+    'card.hours.open_now_until': 'Abierto ahora · hasta {time}',
+    'card.hours.closed_opens_at': 'Cerrado · abre a las {time}',
+    'card.hours.closed_hours': 'Cerrado · horario: {range}',
     'card.distance.meters_short': 'm',
     'card.distance.km_short': 'km',
     'card.distance.minutes_short': 'min',
@@ -243,7 +310,7 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'location.enable_prompt': 'Activar ubicación para mejores resultados',
     'results.loadMore': 'Mostrar {count} más'
   },
-  
+
   // German
   de: {
     'card.status.open': 'Jetzt geöffnet',
@@ -255,11 +322,20 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.action.location_not_available': 'Standort nicht verfügbar',
     'card.action.call_restaurant': 'Restaurant anrufen',
     'card.action.phone_not_available': 'Telefonnummer nicht verfügbar',
+    'card.action.order_wolt': 'Bei Wolt bestellen',
+    'card.action.order_wolt_title': 'Lieferung von diesem Restaurant über Wolt bestellen',
+    'card.action.checking_wolt': 'Wolt wird überprüft…',
+    'card.action.checking_wolt_title': 'Verfügbarkeit des Restaurants bei Wolt wird überprüft',
+    'card.action.search_wolt': 'Bei Wolt suchen',
+    'card.action.search_wolt_title': 'Dieses Restaurant bei Wolt suchen',
     'card.dietary.gluten_free': 'GF',
     'card.dietary.gluten_free_maybe': 'Vielleicht GF',
     'card.dietary.gluten_free_disclaimer': 'Basierend auf Textsignalen — nicht garantiert',
     'card.badge.near_you': 'In der Nähe',
     'card.hours.open_until': 'Geöffnet bis {time}',
+    'card.hours.open_now_until': 'Jetzt geöffnet · bis {time}',
+    'card.hours.closed_opens_at': 'Geschlossen · öffnet um {time}',
+    'card.hours.closed_hours': 'Geschlossen · Zeiten: {range}',
     'card.distance.meters_short': 'm',
     'card.distance.km_short': 'km',
     'card.distance.minutes_short': 'Min',
@@ -273,7 +349,7 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'location.enable_prompt': 'Standort aktivieren für bessere Ergebnisse',
     'results.loadMore': '{count} weitere anzeigen'
   },
-  
+
   // Italian
   it: {
     'card.status.open': 'Aperto ora',
@@ -285,11 +361,20 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.action.location_not_available': 'Posizione non disponibile',
     'card.action.call_restaurant': 'Chiama il ristorante',
     'card.action.phone_not_available': 'Numero di telefono non disponibile',
+    'card.action.order_wolt': 'Ordina su Wolt',
+    'card.action.order_wolt_title': 'Ordina consegna da questo ristorante tramite Wolt',
+    'card.action.checking_wolt': 'Controllo Wolt…',
+    'card.action.checking_wolt_title': 'Controllo disponibilità del ristorante su Wolt',
+    'card.action.search_wolt': 'Cerca su Wolt',
+    'card.action.search_wolt_title': 'Cerca questo ristorante su Wolt',
     'card.dietary.gluten_free': 'SG',
     'card.dietary.gluten_free_maybe': 'Forse SG',
     'card.dietary.gluten_free_disclaimer': 'Basato su segnali testuali — non garantito',
     'card.badge.near_you': 'Vicino a te',
     'card.hours.open_until': 'Aperto fino alle {time}',
+    'card.hours.open_now_until': 'Aperto ora · fino alle {time}',
+    'card.hours.closed_opens_at': 'Chiuso · apre alle {time}',
+    'card.hours.closed_hours': 'Chiuso · orari: {range}',
     'card.distance.meters_short': 'm',
     'card.distance.km_short': 'km',
     'card.distance.minutes_short': 'min',
@@ -310,19 +395,19 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
 })
 export class I18nService {
   private languageService = inject(LanguageService);
-  
+
   // Current UI language (reactive signal)
   readonly currentLang = signal<SupportedUiLang>('en');
-  
+
   // Current translations (computed from currentLang)
   readonly translations = computed(() => TRANSLATIONS[this.currentLang()]);
-  
+
   constructor() {
     // Initialize with language service current language
     const langServiceLang = this.languageService.currentLang();
     this.setLanguage(this.normalizeToUiLang(langServiceLang));
   }
-  
+
   /**
    * Set UI language
    */
@@ -330,7 +415,7 @@ export class I18nService {
     this.currentLang.set(lang);
     console.log(`[I18nService] UI language set to: ${lang}`);
   }
-  
+
   /**
    * Get translation for a key
    * Falls back to English if key not found
@@ -339,33 +424,33 @@ export class I18nService {
   t(key: keyof I18nKeys, params?: Record<string, string | number>): string {
     const translations = this.translations();
     let value = translations[key];
-    
+
     // Fallback to English if key missing in current language
     if (!value && this.currentLang() !== 'en') {
       console.warn(`[I18nService] Missing translation for key "${key}" in language "${this.currentLang()}", using English fallback`);
       value = TRANSLATIONS.en[key] || key;
     }
-    
+
     if (!value) {
       value = key;
     }
-    
+
     // Interpolate params if provided
     if (params) {
       return Object.entries(params).reduce((result, [paramKey, paramValue]) => {
         return result.replace(new RegExp(`\\{${paramKey}\\}`, 'g'), String(paramValue));
       }, value);
     }
-    
+
     return value;
   }
-  
+
   /**
    * Normalize language from LanguageService to UI language
    */
   private normalizeToUiLang(lang: string): SupportedUiLang {
     const normalized = lang.toLowerCase().split('-')[0];
-    
+
     switch (normalized) {
       case 'he':
       case 'iw':
@@ -387,7 +472,7 @@ export class I18nService {
         return 'en';
     }
   }
-  
+
   /**
    * Sync language from search response (NOT used for UI labels)
    * UI language is independent of assistant language
@@ -395,7 +480,7 @@ export class I18nService {
   syncFromBrowserOrDefault(): void {
     const langServiceLang = this.languageService.currentLang();
     const uiLang = this.normalizeToUiLang(langServiceLang);
-    
+
     if (uiLang !== this.currentLang()) {
       this.setLanguage(uiLang);
     }

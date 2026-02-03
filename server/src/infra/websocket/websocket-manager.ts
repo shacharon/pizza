@@ -564,6 +564,76 @@ export class WebSocketManager {
     return this.publishToChannel('search', requestId, undefined, message);
   }
 
+  /**
+   * Unified method for publishing provider enrichment patches
+   * 
+   * Publishes RESULT_PATCH WebSocket event with structured logging.
+   * Use this method for all provider enrichments (Wolt, TripAdvisor, etc.)
+   * 
+   * @param provider - Provider name (e.g., 'wolt', 'tripadvisor')
+   * @param placeId - Google Place ID
+   * @param requestId - Search request ID
+   * @param status - Enrichment status
+   * @param url - Provider URL (or null)
+   * @param updatedAt - ISO timestamp (optional, defaults to now)
+   * @returns Publish summary
+   */
+  publishProviderPatch(
+    provider: string,
+    placeId: string,
+    requestId: string,
+    status: 'FOUND' | 'NOT_FOUND',
+    url: string | null,
+    updatedAt?: string
+  ): PublishSummary {
+    const timestamp = updatedAt || new Date().toISOString();
+
+    // Build provider state with updatedAt
+    const providerState = {
+      status,
+      url,
+      updatedAt: timestamp,
+    };
+
+    // Build RESULT_PATCH message
+    const patchEvent: any = {
+      type: 'RESULT_PATCH',
+      requestId,
+      placeId,
+      patch: {
+        // NEW: Structured providers field
+        providers: {
+          [provider]: providerState,
+        },
+        // DEPRECATED: Legacy field for backward compatibility (only for 'wolt')
+        ...(provider === 'wolt' && {
+          wolt: {
+            status,
+            url,
+          },
+        }),
+      },
+    };
+
+    // Structured logging BEFORE publish
+    logger.info(
+      {
+        event: 'provider_patch_published',
+        provider,
+        placeId,
+        status,
+        url: url ? 'present' : 'null', // Don't log full URL for privacy
+        updatedAt: timestamp,
+        requestId,
+      },
+      `[WebSocketManager] Publishing provider patch: ${provider}`
+    );
+
+    // Publish to 'search' channel
+    const result = this.publishToChannel('search', requestId, undefined, patchEvent);
+
+    return result;
+  }
 
   private sendTo(ws: WebSocket, message: WSServerMessage): boolean {
     if (ws.readyState === WebSocket.OPEN) {

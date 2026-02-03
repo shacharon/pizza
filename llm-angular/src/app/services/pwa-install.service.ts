@@ -23,7 +23,7 @@ interface BeforeInstallPromptEvent extends Event {
 export class PwaInstallService {
   // Install prompt event (captured when browser fires beforeinstallprompt)
   private deferredPrompt: BeforeInstallPromptEvent | null = null;
-  
+
   // Signals for reactive UI
   readonly canInstall = signal(false);
   readonly isInstalled = signal(false);
@@ -43,13 +43,13 @@ export class PwaInstallService {
     // Listen for beforeinstallprompt event
     window.addEventListener('beforeinstallprompt', (e: Event) => {
       console.log('[PWA] beforeinstallprompt event fired');
-      
+
       // Prevent default browser install prompt
       e.preventDefault();
-      
+
       // Store the event for later use
       this.deferredPrompt = e as BeforeInstallPromptEvent;
-      
+
       // Show our custom install UI
       this.canInstall.set(true);
     });
@@ -69,10 +69,10 @@ export class PwaInstallService {
   private isStandaloneMode(): boolean {
     // Check if running as PWA (display-mode: standalone)
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
-    
+
     // iOS Safari fallback
     const isIosStandalone = (window.navigator as any).standalone === true;
-    
+
     return isStandalone || isIosStandalone;
   }
 
@@ -89,12 +89,12 @@ export class PwaInstallService {
     try {
       // Show the browser's install prompt
       await this.deferredPrompt.prompt();
-      
+
       // Wait for the user's response
       const { outcome } = await this.deferredPrompt.userChoice;
-      
+
       console.log('[PWA] Install prompt outcome:', outcome);
-      
+
       if (outcome === 'accepted') {
         // User accepted - hide our UI
         this.canInstall.set(false);

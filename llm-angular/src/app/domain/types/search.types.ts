@@ -6,8 +6,21 @@
 // Tri-state boolean for verifiable attributes
 export type VerifiableBoolean = boolean | 'UNKNOWN';
 
+/**
+ * Provider enrichment state - Generic state for external provider data
+ * Status tri-state matches enrichment lifecycle:
+ * - 'PENDING': Enrichment in progress
+ * - 'FOUND': Provider has data for this restaurant
+ * - 'NOT_FOUND': Provider has no data for this restaurant
+ */
+export interface ProviderState {
+  status: 'PENDING' | 'FOUND' | 'NOT_FOUND';
+  url: string | null;
+  updatedAt?: string; // ISO timestamp of last update (optional, only in patches)
+}
+
 // Card signal types for i18n labels
-export type CardSignalType = 
+export type CardSignalType =
   | 'OPEN_NOW'
   | 'CLOSED_NOW'
   | 'PRICE_CHEAP'
@@ -78,6 +91,18 @@ export interface Restaurant {
   // NEW: Opening hours information (for "Open until" display)
   currentOpeningHours?: CurrentOpeningHours;
   regularOpeningHours?: RegularOpeningHours;
+
+  // NEW: Structured provider enrichments (async, non-blocking)
+  providers?: {
+    wolt?: ProviderState;
+    // Future: tripadvisor?: ProviderState, etc.
+  };
+
+  // DEPRECATED: Legacy wolt field (kept for backward compatibility)
+  wolt?: {
+    status: 'FOUND' | 'NOT_FOUND' | 'PENDING';
+    url: string | null;
+  };
 }
 
 // Current opening hours with next close time

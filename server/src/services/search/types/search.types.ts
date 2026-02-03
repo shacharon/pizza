@@ -60,6 +60,19 @@ export type RestaurantSource = 'google_places' | 'tripadvisor' | 'internal';
  */
 export type VerifiableBoolean = true | false | 'UNKNOWN';
 
+/**
+ * Provider enrichment state - Generic state for external provider data
+ * Status tri-state matches enrichment lifecycle:
+ * - 'PENDING': Enrichment in progress
+ * - 'FOUND': Provider has data for this restaurant
+ * - 'NOT_FOUND': Provider has no data for this restaurant
+ */
+export interface ProviderState {
+  status: 'PENDING' | 'FOUND' | 'NOT_FOUND';
+  url: string | null;
+  updatedAt?: string; // ISO timestamp of last update (optional, only in patches)
+}
+
 // ============================================================================
 // Location Types
 // ============================================================================
@@ -170,7 +183,7 @@ export interface RestaurantResult {
   // Media (P0 Security: Use photo references, not URLs with API keys)
   photoReference?: string;      // Photo reference (not URL) - fetch via /api/v1/photos/{ref}
   photoReferences?: string[];   // Array of photo references
-  
+
   // DEPRECATED: Use photoReference instead
   photoUrl?: string;            // Legacy: Direct URL (may contain API key)
   photos?: string[];            // Legacy: Array of URLs (may contain API keys)
@@ -178,6 +191,18 @@ export interface RestaurantResult {
   // Enrichment
   tags?: string[];  // ['pizza', 'romantic', 'fast-food']
   matchReasons?: string[];  // Why this matches the query (REQUIRED after ranking)
+
+  // External enrichments (async, non-blocking) - NEW structured format
+  providers?: {
+    wolt?: ProviderState;
+    // Future: tripadvisor?: ProviderState, etc.
+  };
+
+  // DEPRECATED: Legacy wolt field (kept for backward compatibility)
+  wolt?: {
+    status: 'FOUND' | 'NOT_FOUND' | 'PENDING';
+    url: string | null;
+  };
 
   // Scoring (added by RankingService)
   score?: number;  // 0-100 (REQUIRED after ranking)

@@ -150,8 +150,8 @@
         <div class="results-grid">
           @for (restaurant of filteredResults(); track trackByRestaurant($index, restaurant)) {
           <app-restaurant-card [restaurant]="restaurant" [selected]="facade.selectedRestaurant()?.id === restaurant.id"
-            [userLocation]="locationCoords()"
-            (cardClick)="onCardClick($event)" (actionClick)="onActionClick($event, restaurant)" />
+            [userLocation]="locationCoords()" (cardClick)="onCardClick($event)"
+            (actionClick)="onActionClick($event, restaurant)" />
           }
         </div>
 
@@ -173,8 +173,8 @@
     <!-- Mobile: Bottom Sheet (Conditional - only when contextual assistant shown) -->
     @if (showContextualAssistant()) {
     <app-assistant-bottom-sheet [visible]="bottomSheetVisible()" [highlightedResults]="highlightedResults()"
-      [userLocation]="locationCoords()"
-      (close)="closeBottomSheet()" (restaurantClick)="onCardClick($event); closeBottomSheet()" />
+      [userLocation]="locationCoords()" (close)="closeBottomSheet()"
+      (restaurantClick)="onCardClick($event); closeBottomSheet()" />
     }
 
     <!-- Pending Actions Panel -->

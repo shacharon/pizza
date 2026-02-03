@@ -5,34 +5,29 @@
       <span class="assistant-icon">🤖</span>
       <p>{{ assist.message }}</p>
     </div>
-    
+
     <!-- Quick Picks (Highlighted Results) -->
     @if (highlightedResults.length > 0) {
-      <div class="quick-picks">
-        <h4>Quick Picks</h4>
-        @for (result of highlightedResults.slice(0, 3); track trackById($index, result)) {
-          <app-restaurant-card
-            [restaurant]="result"
-            [compact]="true"
-            [userLocation]="userLocation"
-            (click)="onRestaurantClick(result)"
-          />
-        }
-      </div>
+    <div class="quick-picks">
+      <h4>Quick Picks</h4>
+      @for (result of highlightedResults.slice(0, 3); track trackById($index, result)) {
+      <app-restaurant-card [restaurant]="result" [compact]="true" [userLocation]="userLocation"
+        (click)="onRestaurantClick(result)" />
+      }
+    </div>
     }
-    
+
     <!-- Refinement Chips -->
     @if (chips.length > 0) {
-      <div class="chips">
-        <h4>Refine</h4>
-        @for (chip of chips; track trackByChipId($index, chip)) {
-          <button class="chip" (click)="onChipClick(chip.id)">
-            <span class="chip-emoji">{{ chip.emoji }}</span>
-            <span class="chip-label">{{ chip.label }}</span>
-          </button>
-        }
-      </div>
+    <div class="chips">
+      <h4>Refine</h4>
+      @for (chip of chips; track trackByChipId($index, chip)) {
+      <button class="chip" (click)="onChipClick(chip.id)">
+        <span class="chip-emoji">{{ chip.emoji }}</span>
+        <span class="chip-label">{{ chip.label }}</span>
+      </button>
+      }
+    </div>
     }
   </div>
 </aside>
-

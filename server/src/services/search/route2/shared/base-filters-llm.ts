@@ -16,6 +16,9 @@ const BASE_FILTERS_LLM_VERSION = 'base_filters_v1';
 
 const BASE_FILTERS_PROMPT = `You are a filter extractor for restaurant search queries.
 
+IMPORTANT: The 'language' field is INFORMATIONAL ONLY. It does NOT override intent.language.
+Intent stage already detected language - this is for filter extraction context ONLY.
+
 Output ONLY JSON with ALL 5 fields (NEVER omit any field):
 {
   "language": "he|en|auto",
@@ -29,6 +32,7 @@ CRITICAL: When openAt or openBetween is an object, ALL 3-4 keys MUST be present 
 
 RULES:
 - language: "he" (Hebrew), "en" (English), "auto" (mixed/other)
+  NOTE: This is for logging only - intent.language is the single source of truth
 
 - openState (default: null):
   * "OPEN_NOW" if: "פתוחות עכשיו", "פתוח עכשיו", "open now", "currently open"

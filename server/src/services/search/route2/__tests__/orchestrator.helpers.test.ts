@@ -109,7 +109,7 @@ describe('resolveAssistantLanguage - Priority Chain', () => {
       llmProvider: mockLLMProvider,
       queryLanguage: 'ar', // Query detected as Arabic
       sharedFilters: {
-        final: { uiLanguage: 'en' } // UI is English
+        final: createFinalFilters('en', 'ar') // UI is English, provider is Arabic
       }
     };
 
@@ -118,30 +118,12 @@ describe('resolveAssistantLanguage - Priority Chain', () => {
   });
 
   /**
-   * Priority 3: Base filters language (when intent and query detection unavailable)
-   */
-  it('should use baseFilters language when higher priorities unavailable', () => {
-    const ctx: Route2Context = {
-      requestId: 'test-3',
-      startTime: Date.now(),
-      llmProvider: mockLLMProvider,
-      queryLanguage: 'unknown', // Query language unknown
-      sharedFilters: {
-        preGoogle: { language: 'ru' }, // Base filter says Russian
-        final: createFinalFilters('en', 'ru')
-      }
-    };
-
-    const result = resolveAssistantLanguage(ctx, undefined, undefined);
-    assert.strictEqual(result, 'ru', 'Should use baseFilters language');
-  });
-
-  /**
-   * Priority 4: UI language (FALLBACK when everything else unknown)
+   * Priority 3: UI language (FALLBACK when intent and query detection unavailable)
+   * Note: baseFilters.language was removed from priority chain - intent.language is single source of truth
    */
   it('should use uiLanguage as fallback when query language is unknown', () => {
     const ctx: Route2Context = {
-      requestId: 'test-4',
+      requestId: 'test-3',
       startTime: Date.now(),
       llmProvider: mockLLMProvider,
       queryLanguage: 'unknown', // Can't detect query language
@@ -155,13 +137,13 @@ describe('resolveAssistantLanguage - Priority Chain', () => {
   });
 
   /**
-   * Final fallback: English
+   * Priority 4: Final fallback - English (when all else fails)
    */
   it('should fallback to English when no language available', () => {
     const ctx: Route2Context = {
-      requestId: 'test-5',
+      requestId: 'test-4',
       startTime: Date.now(),
-      llmProvider: 'openai'
+      llmProvider: mockLLMProvider
       // No queryLanguage, no filters
     };
 

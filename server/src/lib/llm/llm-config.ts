@@ -24,11 +24,11 @@ export interface LLMConfig {
  * Default timeout values per purpose (used when no env override)
  */
 const DEFAULT_TIMEOUTS: Record<LLMPurpose, number> = {
-  gate: 2500,          // Fast classification, needs to be quick
-  intent: 2500,        // Route decision, medium priority
-  baseFilters: 2000,   // Simple extraction, fast
-  routeMapper: 3500,   // Query mapping, more complex
-  assistant: 3000      // Assistant messages (GATE_FAIL, CLARIFY, SUMMARY, SEARCH_FAILED)
+  gate: 4000,          // Fast classification, needs to be quick
+  intent: 4000,        // Route decision, medium priority
+  baseFilters: 4000,   // Simple extraction, fast
+  routeMapper: 4000,   // Query mapping, more complex
+  assistant: 4000      // Assistant messages (GATE_FAIL, CLARIFY, SUMMARY, SEARCH_FAILED)
 };
 
 /**
@@ -72,7 +72,7 @@ export function loadLLMConfig(): LLMConfig {
 
   // Per-purpose timeout overrides (only set if valid)
   const perPurposeTimeoutMs: Partial<Record<LLMPurpose, number>> = {};
-  
+
   if (process.env.GATE_TIMEOUT_MS) {
     const parsed = parseInt(process.env.GATE_TIMEOUT_MS, 10);
     if (!isNaN(parsed)) perPurposeTimeoutMs.gate = parsed;

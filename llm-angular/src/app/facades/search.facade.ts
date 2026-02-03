@@ -310,6 +310,18 @@ export class SearchFacade {
    * Delegates to wsHandler for routing
    */
   private handleWsMessage(msg: WSServerMessage): void {
+    // Handle SEARCH_RESULTS events (final results from backend)
+    if ((msg as any).type === 'SEARCH_RESULTS') {
+      this.handleSearchResults(msg as any);
+      return;
+    }
+
+    // Handle RESULT_PATCH events (Wolt enrichment)
+    if ((msg as any).type === 'RESULT_PATCH') {
+      this.handleResultPatch(msg as any);
+      return;
+    }
+
     this.wsHandler.handleMessage(
       msg,
       this.currentRequestId(),
@@ -390,6 +402,96 @@ export class SearchFacade {
         onLegacyMessage: (msg) => this.assistantHandler.handleLegacyMessage(msg)
       }
     );
+  }
+
+  /**
+   * Handle SEARCH_RESULTS WebSocket event (final results from backend)
+   */
+  private handleSearchResults(msg: import('../core/models/ws-protocol.types').WSServerSearchResults): void {
+    console.log('[SearchFacade] SEARCH_RESULTS received', {
+      requestId: msg.requestId,
+      resultCount: msg.resultCount,
+      resultsLen: msg.results.length,
+      servedFrom: msg.servedFrom
+    });
+
+    // Verify this is for the current search
+    if (msg.requestId !== this.currentRequestId()) {
+      console.debug('[SearchFacade] Ignoring SEARCH_RESULTS for old request', {
+        msgRequestId: msg.requestId,
+        currentRequestId: this.currentRequestId()
+      });
+      return;
+    }
+
+    // Cancel polling - we have results via WebSocket
+    this.apiHandler.cancelPolling();
+
+    // Map WS results to SearchResponse format
+    // This ensures compatibility with existing UI code that expects SearchResponse
+    const searchResponse: SearchResponse = {
+      requestId: msg.requestId,
+      sessionId: this.conversationId(),
+      query: {
+        original: this.query() || '',
+        parsed: {},
+        language: this.locale()
+      },
+      results: msg.results,
+      chips: [],
+      assist: { type: 'guide', message: '' },
+      meta: {
+        tookMs: 0,
+        mode: 'textsearch',
+        appliedFilters: [],
+        confidence: 1.0,
+        source: msg.servedFrom === 'cache' ? 'cache' : 'route2',
+        failureReason: 'NONE'
+      }
+    };
+
+    // Use existing handleSearchResponse to update store (same path as HTTP polling)
+    this.handleSearchResponse(searchResponse, this.query());
+  }
+
+  /**
+   * Handle RESULT_PATCH WebSocket event (Wolt enrichment)
+   * Patches both new providers.wolt and legacy wolt fields
+   */
+  private handleResultPatch(msg: import('../core/models/ws-protocol.types').WSServerResultPatch): void {
+    console.log('[SearchFacade] RESULT_PATCH received', {
+      requestId: msg.requestId,
+      placeId: msg.placeId,
+      providers: msg.patch.providers,
+      legacyWolt: msg.patch.wolt
+    });
+
+    // Verify this patch is for the current search
+    if (msg.requestId !== this.currentRequestId()) {
+      console.debug('[SearchFacade] Ignoring RESULT_PATCH for old request', {
+        msgRequestId: msg.requestId,
+        currentRequestId: this.currentRequestId()
+      });
+      return;
+    }
+
+    // Build patch object with both new and legacy fields
+    const patch: Partial<Restaurant> = {};
+
+    // NEW: Patch providers.wolt field (primary)
+    if (msg.patch.providers) {
+      patch.providers = msg.patch.providers;
+    }
+
+    // DEPRECATED: Patch legacy wolt field (backward compatibility)
+    if (msg.patch.wolt) {
+      patch.wolt = msg.patch.wolt;
+    }
+
+    // Apply patch if we have any data
+    if (patch.providers || patch.wolt) {
+      this.searchStore.patchRestaurant(msg.placeId, patch);
+    }
   }
 
   /**

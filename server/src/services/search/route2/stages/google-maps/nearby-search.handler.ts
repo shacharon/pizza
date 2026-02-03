@@ -20,7 +20,7 @@ const PLACES_FIELD_MASK = 'places.id,places.displayName,places.formattedAddress,
 export async function executeNearbySearch(
   mapping: Extract<RouteLLMMapping, { providerMethod: 'nearbySearch' }>,
   ctx: Route2Context
-): Promise<any[]> {
+): Promise<{ results: any[], servedFrom: 'cache' | 'google_api' }> {
   const { requestId } = ctx;
   const startTime = Date.now();
 
@@ -44,7 +44,7 @@ export async function executeNearbySearch(
       method: 'searchNearby',
       error: 'GOOGLE_API_KEY not configured'
     }, '[GOOGLE] API key missing');
-    return [];
+    return { results: [], servedFrom: 'google_api' };
   }
 
   // Prepare cache key parameters
@@ -147,6 +147,8 @@ export async function executeNearbySearch(
     }
 
     const durationMs = Date.now() - startTime;
+    const servedFrom = fromCache ? 'cache' as const : 'google_api' as const;
+
     logger.info({
       requestId,
       provider: 'google_places_new',
@@ -154,10 +156,10 @@ export async function executeNearbySearch(
       durationMs,
       resultCount: results.length,
       fieldMaskUsed: PLACES_FIELD_MASK,
-      servedFrom: fromCache ? 'cache' : 'google_api'
+      servedFrom
     }, '[GOOGLE] Nearby Search completed');
 
-    return results;
+    return { results, servedFrom };
 
   } catch (error) {
     const durationMs = Date.now() - startTime;

@@ -23,6 +23,14 @@
         <div class="restaurant-name-row">
           <h3 class="restaurant-name">{{ restaurant().name }}</h3>
 
+          @if (statusLine().text) {
+          <span class="status-line" [class.open]="statusLine().tone === 'open'"
+            [class.closed]="statusLine().tone === 'closed'" [class.neutral]="statusLine().tone === 'neutral'"
+            [attr.aria-label]="statusLine().text">
+            {{ statusLine().text }}
+          </span>
+          }
+
           @if (glutenFreeBadge()) {
           <span class="dietary-badge gluten-free" [class.high]="glutenFreeBadge()!.level === 'high'"
             [class.low]="glutenFreeBadge()!.level === 'low'" [title]="getGlutenFreeTooltip()">
@@ -32,61 +40,56 @@
         </div>
 
         <div class="restaurant-meta">
-          @if (restaurant().rating) {
-          <span class="rating" [attr.aria-label]="'Rating: ' + restaurant().rating">
-            <span class="rating-value">{{ restaurant().rating }}</span>
-            @if (restaurant().userRatingsTotal) {
-            <span class="rating-count">({{ restaurant().userRatingsTotal }})</span>
+          <div class="meta-left">
+            @if (restaurant().rating) {
+            <span class="rating" [attr.aria-label]="'Rating: ' + restaurant().rating">
+              <span class="rating-value">{{ restaurant().rating }}</span>
+              @if (restaurant().userRatingsTotal) {
+              <span class="rating-count">({{ restaurant().userRatingsTotal }})</span>
+              }
+            </span>
             }
-          </span>
-          }
 
-          @if (restaurant().priceLevel) {
-          <span class="price-level" [attr.aria-label]="'Price level: ' + restaurant().priceLevel">
-            {{ getPriceLevel(restaurant().priceLevel) }}
-          </span>
-          }
+            @if (restaurant().priceLevel) {
+            <span class="price-level" [attr.aria-label]="'Price level: ' + restaurant().priceLevel">
+              {{ getPriceLevel(restaurant().priceLevel) }}
+            </span>
+            }
+          </div>
 
-          @if (getOpenStatus()) {
-          <span class="open-status" [class.open]="getOpenStatus() === 'open'"
-            [class.closed]="getOpenStatus() === 'closed'" [class.unknown]="getOpenStatus() === 'unknown'"
-            [attr.aria-label]="getOpenStatusLabel()">
-            {{ getOpenStatusLabel() }}
+          @if (distanceInfo()) {
+          <span class="distance-text" [attr.aria-label]="'Distance: ' + distanceInfo()!.distanceText">
+            {{ distanceInfo()!.distanceText }} ממך
           </span>
           }
         </div>
 
         <p class="restaurant-address">{{ restaurant().address }}</p>
-
-        <!-- Enhanced info line: distance/ETA, near badge, open until -->
-        <div class="restaurant-enhanced-info">
-          @if (distanceInfo()) {
-          <span class="distance-eta" [attr.aria-label]="'Distance: ' + distanceInfo()!.distanceText + ', Walking time: ' + distanceInfo()!.walkingMinutes + ' minutes'">
-            <span class="distance-icon">📍</span>
-            <span class="distance-value">{{ distanceInfo()!.distanceText }}</span>
-            <span class="eta-icon">🚶‍♂️</span>
-            <span class="eta-value">{{ distanceInfo()!.walkingMinutes }} {{ distanceInfo()!.minutesUnit }}</span>
-          </span>
-          }
-
-          @if (showNearYouBadge()) {
-          <span class="near-you-badge" [attr.aria-label]="i18n.t('card.badge.near_you')">
-            {{ i18n.t('card.badge.near_you') }}
-          </span>
-          }
-
-          @if (closingTimeToday()) {
-          <span class="open-until" [attr.aria-label]="i18n.t('card.hours.open_until', { time: closingTimeToday()! })">
-            {{ i18n.t('card.hours.open_until', { time: closingTimeToday()! }) }}
-          </span>
-          }
-        </div>
       </div>
     </div>
   </div>
 
   <!-- Bottom action bar (not clickable for card details) -->
   <div class="action-bar" (click)="$event.stopPropagation()">
+    <!-- Wolt CTA (primary action when available) -->
+    @if (woltCta()) {
+      <button type="button" 
+        [class]="woltCta()!.className"
+        [disabled]="woltCta()!.disabled"
+        (click)="onWoltAction($event)"
+        [title]="woltCta()!.title"
+        [attr.aria-label]="woltCta()!.ariaLabel">
+        @if (woltCta()!.showSpinner) {
+          <span class="action-spinner">⏳</span>
+        } @else {
+          <svg class="action-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+          </svg>
+        }
+        <span class="action-label">{{ woltCta()!.label }}</span>
+      </button>
+    }
+
     <button type="button" class="action-btn" (click)="onAction($event, 'GET_DIRECTIONS')"
       [disabled]="!isActionAvailable('GET_DIRECTIONS')" [title]="getDirectionsTitle()"
       [attr.aria-label]="getDirectionsAriaLabel()">

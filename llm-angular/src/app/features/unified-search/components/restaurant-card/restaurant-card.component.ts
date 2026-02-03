@@ -17,6 +17,71 @@ import { calculateDistance, calculateWalkingTime, formatDistance } from '../../.
 // Near you badge threshold (meters)
 export const NEAR_THRESHOLD_METERS = 600;
 
+/**
+ * Helper function: Format single-line open status + hours
+ * Pure function with no side effects
+ * 
+ * @param params - Opening hours information
+ * @returns Object with text and tone for display
+ */
+export function formatOpenStatusLine(params: {
+  isOpenNow: boolean | 'UNKNOWN' | undefined;
+  closeTime: string | null;          // HH:mm format
+  nextOpenTime: string | null;        // HH:mm format
+  hoursRange: string | null;          // e.g., "09:00–22:00"
+  i18nGetText: (key: string, vars?: Record<string, string>) => string;
+}): { text: string; tone: 'open' | 'closed' | 'neutral' } {
+  const { isOpenNow, closeTime, nextOpenTime, hoursRange, i18nGetText } = params;
+
+  // Handle UNKNOWN or undefined status
+  if (isOpenNow === 'UNKNOWN' || isOpenNow === undefined) {
+    return {
+      text: i18nGetText('card.status.hours_unverified'),
+      tone: 'neutral'
+    };
+  }
+
+  // OPEN: Show "Open now · until HH:mm" if closeTime exists, else just "Open now"
+  if (isOpenNow === true) {
+    if (closeTime) {
+      return {
+        text: i18nGetText('card.hours.open_now_until', { time: closeTime }),
+        tone: 'open'
+      };
+    }
+    return {
+      text: i18nGetText('card.status.open'),
+      tone: 'open'
+    };
+  }
+
+  // CLOSED: Prefer "Closed · opens at HH:mm", fallback to "Closed · hours: HH:mm–HH:mm", else just "Closed"
+  if (isOpenNow === false) {
+    if (nextOpenTime) {
+      return {
+        text: i18nGetText('card.hours.closed_opens_at', { time: nextOpenTime }),
+        tone: 'closed'
+      };
+    }
+    if (hoursRange) {
+      return {
+        text: i18nGetText('card.hours.closed_hours', { range: hoursRange }),
+        tone: 'closed'
+      };
+    }
+    return {
+      text: i18nGetText('card.status.closed'),
+      tone: 'closed'
+    };
+  }
+
+  // Fallback (should never reach here)
+  return {
+    text: '',
+    tone: 'neutral'
+  };
+}
+
 @Component({
   selector: 'app-restaurant-card',
   standalone: true,
@@ -46,6 +111,9 @@ export class RestaurantCardComponent {
 
   // Photo error state (for broken images)
   readonly photoError = signal(false);
+
+  // TEMP DEBUG: Track logged cards to avoid spam
+  private static debuggedCards = new Set<string>();
 
   onCardClick(): void {
     this.cardClick.emit(this.restaurant());
@@ -186,6 +254,7 @@ export class RestaurantCardComponent {
     }
 
     const distanceMeters = calculateDistance(userLoc, placeLoc);
+    const distanceKm = distanceMeters / 1000;
     const walkingMinutes = calculateWalkingTime(distanceMeters);
     
     // Get i18n units
@@ -195,10 +264,34 @@ export class RestaurantCardComponent {
     
     const distanceText = formatDistance(distanceMeters, metersUnit, kmUnit);
 
+    // GUARDRAIL: Hide ETA if too far (> 60 min OR > 5 km)
+    const shouldShowEta = walkingMinutes <= 60 && distanceKm <= 5;
+
+    // TEMP DEBUG: Log once per card (remove after debugging)
+    const cardId = this.restaurant().placeId;
+    if (!RestaurantCardComponent.debuggedCards.has(cardId)) {
+      RestaurantCardComponent.debuggedCards.add(cardId);
+      console.log('[RestaurantCard DEBUG]', {
+        name: this.restaurant().name,
+        distanceMeters,
+        distanceKm: distanceKm.toFixed(2),
+        etaMinutes: walkingMinutes,
+        shouldShowEta,
+        openNow: this.restaurant().openNow,
+        hasCurrentOpeningHours: !!this.restaurant().currentOpeningHours,
+        currentNextCloseTime: this.restaurant().currentOpeningHours?.nextCloseTime,
+        hasRegularHours: !!this.restaurant().regularOpeningHours,
+        regularPeriodsCount: this.restaurant().regularOpeningHours?.periods?.length,
+        derivedClosingTime: this.closingTimeToday()
+      });
+    }
+
     return {
       distanceMeters,
+      distanceKm,
       distanceText,
       walkingMinutes,
+      shouldShowEta,
       minutesUnit
     };
   });
@@ -218,17 +311,40 @@ export class RestaurantCardComponent {
   /**
    * Get closing time for today if available
    * Returns formatted time string or null
+   * 
+   * Rules:
+   * - Show ONLY if place is currently OPEN
+   * - Show ONLY if closing time is confidently available for TODAY
+   * - Priority 1: currentOpeningHours.nextCloseTime
+   * - Priority 2: derive from regularOpeningHours (if unambiguous)
+   * - If closed or ambiguous → return null
    */
   readonly closingTimeToday = computed(() => {
     const restaurant = this.restaurant();
+
+    // RULE: Only show if place is currently open
+    const openStatus = this.getOpenStatus();
+    if (openStatus !== 'open') {
+      return null; // Don't show if closed, unknown, or missing
+    }
 
     // Priority 1: Use currentOpeningHours.nextCloseTime if available
     if (restaurant.currentOpeningHours?.nextCloseTime) {
       try {
         const closeTime = new Date(restaurant.currentOpeningHours.nextCloseTime);
-        // Check if it's today
         const now = new Date();
-        if (closeTime.toDateString() === now.toDateString()) {
+        
+        // Check if it's today (handle both same-day and after-midnight closes)
+        // For same-day closes: compare date strings
+        const isSameDay = closeTime.toDateString() === now.toDateString();
+        
+        // For after-midnight closes: check if close time is within next 6 hours and before 6am
+        const timeDiffMs = closeTime.getTime() - now.getTime();
+        const isWithin6Hours = timeDiffMs > 0 && timeDiffMs < 6 * 60 * 60 * 1000;
+        const isEarlyMorning = closeTime.getHours() < 6;
+        const isNextDayEarlyMorning = isWithin6Hours && isEarlyMorning;
+        
+        if (isSameDay || isNextDayEarlyMorning) {
           return this.formatTime(closeTime);
         }
       } catch (e) {
@@ -236,23 +352,41 @@ export class RestaurantCardComponent {
       }
     }
 
-    // Priority 2: Derive from regularOpeningHours for today
+    // Priority 2: Derive from regularOpeningHours for today (ONLY if unambiguous)
     if (restaurant.regularOpeningHours?.periods) {
       const now = new Date();
       const today = now.getDay(); // 0 = Sunday, 6 = Saturday
       
-      // Find today's period
-      const todayPeriod = restaurant.regularOpeningHours.periods.find(p => p.open.day === today);
+      // Find all periods for today
+      const todayPeriods = restaurant.regularOpeningHours.periods.filter(p => p.open.day === today);
+      
+      // RULE: Only use if exactly ONE period for today (unambiguous)
+      if (todayPeriods.length !== 1) {
+        return null; // Multiple periods or no periods → ambiguous
+      }
+      
+      const todayPeriod = todayPeriods[0];
       
       if (todayPeriod?.close) {
         try {
           // Parse HHmm format (e.g., "2200" for 10:00 PM)
           const closeTimeStr = todayPeriod.close.time;
+          
+          // Guard: Ensure time string is defined
+          if (!closeTimeStr) {
+            return null;
+          }
+          
           const hours = parseInt(closeTimeStr.substring(0, 2), 10);
           const minutes = parseInt(closeTimeStr.substring(2, 4), 10);
           
           const closeTime = new Date(now);
           closeTime.setHours(hours, minutes, 0, 0);
+          
+          // Handle after-midnight closing times (e.g., 01:00 = 1am next day)
+          if (hours < 6 && closeTime <= now) {
+            closeTime.setDate(closeTime.getDate() + 1);
+          }
           
           // Only show if closing time is in the future
           if (closeTime > now) {
@@ -276,6 +410,130 @@ export class RestaurantCardComponent {
     const minutes = date.getMinutes().toString().padStart(2, '0');
     return `${hours}:${minutes}`;
   }
+
+  /**
+   * Get next opening time for closed restaurants
+   * Returns formatted time string (HH:mm) or null
+   */
+  private getNextOpenTime(): string | null {
+    const restaurant = this.restaurant();
+    
+    // Only show for closed restaurants
+    const openStatus = this.getOpenStatus();
+    if (openStatus !== 'closed') {
+      return null;
+    }
+
+    // Try to derive from regularOpeningHours
+    if (restaurant.regularOpeningHours?.periods) {
+      const now = new Date();
+      const today = now.getDay(); // 0 = Sunday, 6 = Saturday
+      const currentTimeMinutes = now.getHours() * 60 + now.getMinutes();
+
+      // Check today's periods first (for later today openings)
+      const todayPeriods = restaurant.regularOpeningHours.periods
+        .filter(p => p.open.day === today && p.open.time) // Filter out periods with undefined time
+        .sort((a, b) => (a.open.time || '').localeCompare(b.open.time || ''));
+
+      for (const period of todayPeriods) {
+        const openTimeStr = period.open.time;
+        
+        // Guard: Skip if time string is undefined
+        if (!openTimeStr) {
+          continue;
+        }
+        
+        const hours = parseInt(openTimeStr.substring(0, 2), 10);
+        const minutes = parseInt(openTimeStr.substring(2, 4), 10);
+        const openTimeMinutes = hours * 60 + minutes;
+
+        if (openTimeMinutes > currentTimeMinutes) {
+          return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+        }
+      }
+
+      // If no opening today, check tomorrow
+      const tomorrow = (today + 1) % 7;
+      const tomorrowPeriods = restaurant.regularOpeningHours.periods
+        .filter(p => p.open.day === tomorrow && p.open.time) // Filter out periods with undefined time
+        .sort((a, b) => (a.open.time || '').localeCompare(b.open.time || ''));
+
+      if (tomorrowPeriods.length > 0) {
+        const firstPeriod = tomorrowPeriods[0];
+        const openTimeStr = firstPeriod.open.time;
+        
+        // Guard: Ensure time string is defined
+        if (!openTimeStr) {
+          return null;
+        }
+        
+        const hours = parseInt(openTimeStr.substring(0, 2), 10);
+        const minutes = parseInt(openTimeStr.substring(2, 4), 10);
+        return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Get hours range for today (e.g., "09:00–22:00")
+   * Returns formatted range string or null
+   */
+  private getTodayHoursRange(): string | null {
+    const restaurant = this.restaurant();
+    
+    if (restaurant.regularOpeningHours?.periods) {
+      const now = new Date();
+      const today = now.getDay();
+      
+      const todayPeriods = restaurant.regularOpeningHours.periods.filter(p => p.open.day === today);
+      
+      // Only show if exactly one period for today (unambiguous)
+      if (todayPeriods.length === 1) {
+        const period = todayPeriods[0];
+        if (period.close) {
+          const openTimeStr = period.open.time;
+          const closeTimeStr = period.close.time;
+          
+          // Guard: Ensure time strings are defined before parsing
+          if (!openTimeStr || !closeTimeStr) {
+            return null;
+          }
+          
+          const openHours = openTimeStr.substring(0, 2);
+          const openMinutes = openTimeStr.substring(2, 4);
+          const closeHours = closeTimeStr.substring(0, 2);
+          const closeMinutes = closeTimeStr.substring(2, 4);
+          
+          return `${openHours}:${openMinutes}–${closeHours}:${closeMinutes}`;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Single-line status + hours display
+   * Computed signal that uses the pure helper function
+   */
+  readonly statusLine = computed(() => {
+    const restaurant = this.restaurant();
+    const openStatus = this.getOpenStatus();
+    const isOpenNow = restaurant.openNow;
+    const closeTime = this.closingTimeToday();
+    const nextOpenTime = this.getNextOpenTime();
+    const hoursRange = this.getTodayHoursRange();
+
+    return formatOpenStatusLine({
+      isOpenNow,
+      closeTime,
+      nextOpenTime,
+      hoursRange,
+      i18nGetText: (key, vars) => this.i18n.t(key as keyof import('../../../../core/services/i18n.service').I18nKeys, vars)
+    });
+  });
 
   /**
    * Get gluten-free badge tooltip (i18n)
@@ -372,6 +630,114 @@ export class RestaurantCardComponent {
       url.includes('maps.googleapis.com') ||
       url.includes('places.googleapis.com');
   }
+
+  /**
+   * Wolt CTA configuration
+   * Returns button configuration based on enrichment status
+   * Uses new providers.wolt field (with legacy fallback)
+   */
+  readonly woltCta = computed(() => {
+    // NEW: Use providers.wolt field (fallback to legacy wolt)
+    const wolt = this.restaurant().providers?.wolt || this.restaurant().wolt;
+    if (!wolt) {
+      return null; // No enrichment data
+    }
+
+    const cityText = this.extractCityFromAddress();
+
+    // FOUND: Primary CTA - Order via Wolt
+    if (wolt.status === 'FOUND' && wolt.url) {
+      return {
+        className: 'action-btn action-btn-wolt-primary',
+        label: this.i18n.t('card.action.order_wolt'),
+        disabled: false,
+        showSpinner: false,
+        url: wolt.url,
+        title: this.i18n.t('card.action.order_wolt_title'),
+        ariaLabel: `${this.i18n.t('card.action.order_wolt')} ${this.restaurant().name}`,
+      };
+    }
+
+    // PENDING: Disabled CTA with spinner
+    if (wolt.status === 'PENDING') {
+      return {
+        className: 'action-btn action-btn-wolt-pending',
+        label: this.i18n.t('card.action.checking_wolt'),
+        disabled: true,
+        showSpinner: true,
+        url: null,
+        title: this.i18n.t('card.action.checking_wolt_title'),
+        ariaLabel: this.i18n.t('card.action.checking_wolt'),
+      };
+    }
+
+    // NOT_FOUND: Fallback CTA - Search on Wolt
+    if (wolt.status === 'NOT_FOUND' || !wolt.url) {
+      const searchQuery = this.buildWoltSearchQuery(cityText);
+      const woltSearchUrl = `https://wolt.com/en/discovery/q/${encodeURIComponent(searchQuery)}`;
+
+      return {
+        className: 'action-btn action-btn-wolt-search',
+        label: this.i18n.t('card.action.search_wolt'),
+        disabled: false,
+        showSpinner: false,
+        url: woltSearchUrl,
+        title: this.i18n.t('card.action.search_wolt_title'),
+        ariaLabel: `${this.i18n.t('card.action.search_wolt')} ${this.restaurant().name}`,
+      };
+    }
+
+    return null;
+  });
+
+  /**
+   * Extract city from address (simple heuristic)
+   * Returns null if city cannot be determined
+   */
+  private extractCityFromAddress(): string | null {
+    const address = this.restaurant().address;
+    if (!address) return null;
+
+    // Simple heuristic: Split by comma, take second-to-last part
+    // Example: "123 Main St, Tel Aviv, Israel" → "Tel Aviv"
+    const parts = address.split(',').map(p => p.trim());
+    if (parts.length >= 2) {
+      return parts[parts.length - 2]; // Second-to-last part
+    }
+
+    return null;
+  }
+
+  /**
+   * Build Wolt search query
+   * Format: "${restaurantName} ${cityText}"
+   */
+  private buildWoltSearchQuery(cityText: string | null): string {
+    const name = this.restaurant().name;
+    return cityText ? `${name} ${cityText}` : name;
+  }
+
+  /**
+   * Handle Wolt action click
+   */
+  onWoltAction(event: Event): void {
+    event.stopPropagation();
+
+    const cta = this.woltCta();
+    if (!cta || cta.disabled || !cta.url) {
+      return;
+    }
+
+    // Open Wolt URL in new tab
+    window.open(cta.url, '_blank', 'noopener,noreferrer');
+
+    console.log('[RestaurantCard] Wolt action clicked', {
+      placeId: this.restaurant().placeId,
+      status: this.restaurant().providers?.wolt?.status || this.restaurant().wolt?.status,
+      url: cta.url,
+    });
+  }
+
 }
 
 
