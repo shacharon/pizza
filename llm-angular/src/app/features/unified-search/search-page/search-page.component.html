@@ -145,27 +145,35 @@
         </div>
       </div>
 
-      <div class="results-grid">
-        @for (restaurant of filteredResults(); track trackByRestaurant($index, restaurant)) {
-        <app-restaurant-card [restaurant]="restaurant" [selected]="facade.selectedRestaurant()?.id === restaurant.id"
-          (cardClick)="onCardClick($event)" (actionClick)="onActionClick($event, restaurant)" />
-        }
-      </div>
+      <!-- Results Container: extends to viewport bottom with persistent gutter -->
+      <div class="results-container">
+        <div class="results-grid">
+          @for (restaurant of filteredResults(); track trackByRestaurant($index, restaurant)) {
+          <app-restaurant-card [restaurant]="restaurant" [selected]="facade.selectedRestaurant()?.id === restaurant.id"
+            [userLocation]="locationCoords()"
+            (cardClick)="onCardClick($event)" (actionClick)="onActionClick($event, restaurant)" />
+          }
+        </div>
 
-      <!-- Load More Button -->
-      @if (hasMoreResults()) {
-      <div class="load-more-container">
-        <button class="load-more-btn" (click)="loadMore()">
-          {{ i18n.t('results.loadMore', { count: remainingResults() }) }}
-        </button>
+        <!-- Load More Button (above gutter) -->
+        @if (hasMoreResults()) {
+        <div class="load-more-container">
+          <button class="load-more-btn" (click)="loadMore()">
+            {{ i18n.t('results.loadMore', { count: remainingResults() }) }}
+          </button>
+        </div>
+        }
+
+        <!-- Bottom Gutter: persistent spacer to prevent spill-under -->
+        <div class="results-bottom-gutter"></div>
       </div>
-      }
     </section>
     }
 
     <!-- Mobile: Bottom Sheet (Conditional - only when contextual assistant shown) -->
     @if (showContextualAssistant()) {
     <app-assistant-bottom-sheet [visible]="bottomSheetVisible()" [highlightedResults]="highlightedResults()"
+      [userLocation]="locationCoords()"
       (close)="closeBottomSheet()" (restaurantClick)="onCardClick($event); closeBottomSheet()" />
     }
 

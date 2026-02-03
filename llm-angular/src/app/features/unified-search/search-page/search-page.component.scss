@@ -581,10 +581,29 @@
   font-weight: 500;
 }
 
+// Results Container: extends to viewport bottom with consistent background
+.results-container {
+  background: #f9fafb;
+  min-height: 60vh;
+  padding-bottom: 0;
+  // Ensure background extends without gaps
+  margin: 0 -1rem;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
 .results-grid {
   display: grid;
   gap: 1.5rem;
   grid-template-columns: 1fr;
+}
+
+// Bottom Gutter: persistent spacer to prevent results spilling under page
+.results-bottom-gutter {
+  height: 64px;
+  flex-shrink: 0;
+  // Ensure gutter is part of the background flow
+  background: transparent;
 }
 
 // Pending Actions Panel
@@ -697,12 +716,15 @@
   }
 }
 
-// Load More Button
+// Load More Button (now inside results-container, above bottom gutter)
 .load-more-container {
   display: flex;
   justify-content: center;
   padding: 2rem 0;
   margin-top: 1rem;
+  // Ensure button stays visible above gutter
+  position: relative;
+  z-index: 1;
 }
 
 .load-more-btn {

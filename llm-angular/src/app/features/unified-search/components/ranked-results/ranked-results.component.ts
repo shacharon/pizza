@@ -7,7 +7,7 @@
 import { Component, Input, Output, EventEmitter, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RestaurantCardComponent } from '../restaurant-card/restaurant-card.component';
-import type { Restaurant } from '../../../../domain/types/search.types';
+import type { Restaurant, Coordinates } from '../../../../domain/types/search.types';
 
 @Component({
   selector: 'app-ranked-results',
@@ -21,6 +21,7 @@ export class RankedResultsComponent {
   @Input() results: Restaurant[] = [];
   @Input() loading = false;
   @Input() showReasonLabels = true; // Top result gets reason label
+  @Input() userLocation: Coordinates | null = null;
   
   @Output() restaurantClick = new EventEmitter<Restaurant>();
 

@@ -23,6 +23,7 @@
             @for (result of group.results; track trackById($index, result)) {
               <app-restaurant-card
                 [restaurant]="result"
+                [userLocation]="userLocation"
                 (click)="onRestaurantClick(result)"
               />
             }

@@ -7,7 +7,7 @@
 import { Component, Input, Output, EventEmitter, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RestaurantCardComponent } from '../restaurant-card/restaurant-card.component';
-import type { ResultGroup, RestaurantResult, ActionDefinition } from '../../../../domain/types/search.types';
+import type { ResultGroup, RestaurantResult, ActionDefinition, Coordinates } from '../../../../domain/types/search.types';
 
 export interface ActionClickEvent {
   restaurant: RestaurantResult;
@@ -25,6 +25,7 @@ export interface ActionClickEvent {
 export class GroupedResultsComponent {
   @Input() groups: ResultGroup[] = [];
   @Input() loading = false;
+  @Input() userLocation: Coordinates | null = null;
   
   @Output() restaurantClick = new EventEmitter<RestaurantResult>();
   @Output() actionClick = new EventEmitter<ActionClickEvent>();

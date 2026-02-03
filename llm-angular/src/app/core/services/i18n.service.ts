@@ -31,6 +31,17 @@ export interface I18nKeys {
   'card.dietary.gluten_free_maybe': string;
   'card.dietary.gluten_free_disclaimer': string;
   
+  // Restaurant card - Near you badge
+  'card.badge.near_you': string;
+  
+  // Restaurant card - Open until
+  'card.hours.open_until': string;
+  
+  // Restaurant card - Distance units
+  'card.distance.meters_short': string;
+  'card.distance.km_short': string;
+  'card.distance.minutes_short': string;
+  
   // Reason label
   'reason.best_match': string;
   'reason.open_now': string;
@@ -67,6 +78,11 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.dietary.gluten_free': 'GF',
     'card.dietary.gluten_free_maybe': 'Maybe GF',
     'card.dietary.gluten_free_disclaimer': 'Based on text signals — not guaranteed',
+    'card.badge.near_you': 'Near you',
+    'card.hours.open_until': 'Open until {time}',
+    'card.distance.meters_short': 'm',
+    'card.distance.km_short': 'km',
+    'card.distance.minutes_short': 'min',
     'reason.best_match': 'Best match',
     'reason.open_now': 'Open now',
     'reason.closest_option': 'Closest option',
@@ -92,6 +108,11 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.dietary.gluten_free': 'ללא גלוטן',
     'card.dietary.gluten_free_maybe': 'אולי ללא גלוטן',
     'card.dietary.gluten_free_disclaimer': 'מבוסס על רמזים בטקסט — לא מובטח',
+    'card.badge.near_you': 'קרוב אליך',
+    'card.hours.open_until': 'פתוח עד {time}',
+    'card.distance.meters_short': 'מ׳',
+    'card.distance.km_short': 'ק״מ',
+    'card.distance.minutes_short': 'דק׳',
     'reason.best_match': 'התאמה הטובה ביותר',
     'reason.open_now': 'פתוח עכשיו',
     'reason.closest_option': 'האופציה הקרובה ביותר',
@@ -117,6 +138,11 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.dietary.gluten_free': 'БГ',
     'card.dietary.gluten_free_maybe': 'Возможно БГ',
     'card.dietary.gluten_free_disclaimer': 'На основе текстовых сигналов — не гарантируется',
+    'card.badge.near_you': 'Рядом',
+    'card.hours.open_until': 'Открыто до {time}',
+    'card.distance.meters_short': 'м',
+    'card.distance.km_short': 'км',
+    'card.distance.minutes_short': 'мин',
     'reason.best_match': 'Лучшее совпадение',
     'reason.open_now': 'Открыто сейчас',
     'reason.closest_option': 'Ближайший вариант',
@@ -142,6 +168,11 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.dietary.gluten_free': 'خالٍ من الغلوتين',
     'card.dietary.gluten_free_maybe': 'ربما خالٍ من الغلوتين',
     'card.dietary.gluten_free_disclaimer': 'بناءً على إشارات نصية — غير مضمون',
+    'card.badge.near_you': 'بالقرب منك',
+    'card.hours.open_until': 'مفتوح حتى {time}',
+    'card.distance.meters_short': 'م',
+    'card.distance.km_short': 'كم',
+    'card.distance.minutes_short': 'د',
     'reason.best_match': 'أفضل تطابق',
     'reason.open_now': 'مفتوح الآن',
     'reason.closest_option': 'الخيار الأقرب',
@@ -167,6 +198,11 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.dietary.gluten_free': 'SG',
     'card.dietary.gluten_free_maybe': 'Peut-être SG',
     'card.dietary.gluten_free_disclaimer': 'Basé sur des signaux textuels — non garanti',
+    'card.badge.near_you': 'Tout près',
+    'card.hours.open_until': 'Ouvert jusqu\'à {time}',
+    'card.distance.meters_short': 'm',
+    'card.distance.km_short': 'km',
+    'card.distance.minutes_short': 'min',
     'reason.best_match': 'Meilleure correspondance',
     'reason.open_now': 'Ouvert maintenant',
     'reason.closest_option': 'Option la plus proche',
@@ -192,6 +228,11 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.dietary.gluten_free': 'SG',
     'card.dietary.gluten_free_maybe': 'Tal vez SG',
     'card.dietary.gluten_free_disclaimer': 'Basado en señales de texto — no garantizado',
+    'card.badge.near_you': 'Cerca de ti',
+    'card.hours.open_until': 'Abierto hasta {time}',
+    'card.distance.meters_short': 'm',
+    'card.distance.km_short': 'km',
+    'card.distance.minutes_short': 'min',
     'reason.best_match': 'Mejor coincidencia',
     'reason.open_now': 'Abierto ahora',
     'reason.closest_option': 'Opción más cercana',
@@ -217,6 +258,11 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.dietary.gluten_free': 'GF',
     'card.dietary.gluten_free_maybe': 'Vielleicht GF',
     'card.dietary.gluten_free_disclaimer': 'Basierend auf Textsignalen — nicht garantiert',
+    'card.badge.near_you': 'In der Nähe',
+    'card.hours.open_until': 'Geöffnet bis {time}',
+    'card.distance.meters_short': 'm',
+    'card.distance.km_short': 'km',
+    'card.distance.minutes_short': 'Min',
     'reason.best_match': 'Beste Übereinstimmung',
     'reason.open_now': 'Jetzt geöffnet',
     'reason.closest_option': 'Nächste Option',
@@ -242,6 +288,11 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.dietary.gluten_free': 'SG',
     'card.dietary.gluten_free_maybe': 'Forse SG',
     'card.dietary.gluten_free_disclaimer': 'Basato su segnali testuali — non garantito',
+    'card.badge.near_you': 'Vicino a te',
+    'card.hours.open_until': 'Aperto fino alle {time}',
+    'card.distance.meters_short': 'm',
+    'card.distance.km_short': 'km',
+    'card.distance.minutes_short': 'min',
     'reason.best_match': 'Migliore corrispondenza',
     'reason.open_now': 'Aperto ora',
     'reason.closest_option': 'Opzione più vicina',

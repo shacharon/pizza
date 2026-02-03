@@ -17,8 +17,9 @@ export type UILanguage = 'he' | 'en' | 'ru' | 'ar' | 'fr' | 'es' | 'de' | 'it';
 /**
  * Detected language of user's raw query (informational only)
  * Can be any language - used for logging and language-aware processing
+ * Note: Does not include 'other' or 'unknown' - use toRequestLanguage() to normalize
  */
-export type RequestLanguage = 'he' | 'en' | 'fr' | 'ar' | 'ru' | 'es' | 'de' | 'other';
+export type RequestLanguage = 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es' | 'de' | 'it';
 
 /**
  * Language parameter sent to Google Places API

@@ -74,6 +74,32 @@ export interface Restaurant {
 
   // NEW: Dietary hints (SOFT hints - no filtering)
   dietaryHints?: DietaryHints;
+
+  // NEW: Opening hours information (for "Open until" display)
+  currentOpeningHours?: CurrentOpeningHours;
+  regularOpeningHours?: RegularOpeningHours;
+}
+
+// Current opening hours with next close time
+export interface CurrentOpeningHours {
+  openNow?: boolean;
+  nextCloseTime?: string;  // ISO 8601 datetime string (e.g., "2024-03-15T22:00:00Z")
+}
+
+// Regular weekly opening hours
+export interface RegularOpeningHours {
+  periods?: OpeningPeriod[];
+  weekdayText?: string[];  // Formatted text (e.g., ["Monday: 9:00 AM – 10:00 PM"])
+}
+
+export interface OpeningPeriod {
+  open: OpeningTime;
+  close?: OpeningTime;
+}
+
+export interface OpeningTime {
+  day: number;  // 0-6 (Sunday=0)
+  time: string;  // HHmm format (e.g., "2200" for 10:00 PM)
 }
 
 // Dietary hints for SOFT preferences (metadata only)

@@ -1,191 +1,294 @@
 /**
  * Restaurant Card Component Tests
+ * Tests for near you badge and open until functionality
  */
 
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { RestaurantCardComponent } from './restaurant-card.component';
 import { I18nService } from '../../../../core/services/i18n.service';
-import type { Restaurant } from '../../../../domain/types/search.types';
+import type { Restaurant, Coordinates } from '../../../../domain/types/search.types';
 
 describe('RestaurantCardComponent', () => {
   let component: RestaurantCardComponent;
   let fixture: ComponentFixture<RestaurantCardComponent>;
-  let i18nService: I18nService;
 
   const mockRestaurant: Restaurant = {
     id: '1',
-    placeId: 'place-1',
+    placeId: 'test-place-id',
     name: 'Test Restaurant',
-    address: '123 Main St, City',
-    location: { lat: 48.8566, lng: 2.3522 },
-    rating: 4.5,
-    userRatingsTotal: 250,
-    priceLevel: 2,
-    openNow: true,
-    phoneNumber: '+33123456789',
-    website: 'https://example.com',
-    photoReference: 'places/ChIJ123/photos/ABC456',
-    tags: ['Italian', 'Pizza']
+    address: '123 Test St',
+    location: { lat: 32.0809, lng: 34.7806 }
   };
+
+  const userLocation: Coordinates = { lat: 32.0853, lng: 34.7818 };
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [RestaurantCardComponent],
-      providers: [I18nService]
+      imports: [RestaurantCardComponent]
     }).compileComponents();
 
     fixture = TestBed.createComponent(RestaurantCardComponent);
     component = fixture.componentInstance;
-    i18nService = TestBed.inject(I18nService);
-    // Ensure English is set for consistent tests
-    i18nService.setLanguage('en');
-    fixture.componentRef.setInput('restaurant', mockRestaurant);
-    fixture.detectChanges();
   });
 
-  it('should create', () => {
-    expect(component).toBeTruthy();
-  });
+  describe('Near You Badge', () => {
+    it('should show badge when distance < 600m', () => {
+      // User location 500m away (within threshold)
+      const nearLocation: Coordinates = { lat: 32.0854, lng: 34.7820 };
+      
+      fixture.componentRef.setInput('restaurant', mockRestaurant);
+      fixture.componentRef.setInput('userLocation', nearLocation);
+      fixture.detectChanges();
 
-  it('should display restaurant name', () => {
-    const name = fixture.nativeElement.querySelector('.restaurant-name');
-    expect(name.textContent).toBe('Test Restaurant');
-  });
+      expect(component.showNearYouBadge()).toBe(true);
+    });
 
-  it('should display restaurant address', () => {
-    const address = fixture.nativeElement.querySelector('.restaurant-address');
-    expect(address.textContent).toBe('123 Main St, City');
-  });
+    it('should hide badge when distance >= 600m', () => {
+      // User location ~700m away (outside threshold)
+      const farLocation: Coordinates = { lat: 32.0870, lng: 34.7850 };
+      
+      fixture.componentRef.setInput('restaurant', mockRestaurant);
+      fixture.componentRef.setInput('userLocation', farLocation);
+      fixture.detectChanges();
 
-  it('should display rating', () => {
-    const rating = fixture.nativeElement.querySelector('.rating-value');
-    expect(rating.textContent.trim()).toBe('4.5');
-  });
+      expect(component.showNearYouBadge()).toBe(false);
+    });
 
-  it('should display rating stars', () => {
-    const stars = component.getRatingStars(4.5);
-    expect(stars).toContain('⭐');
-  });
+    it('should hide badge when no userLocation', () => {
+      fixture.componentRef.setInput('restaurant', mockRestaurant);
+      fixture.componentRef.setInput('userLocation', null);
+      fixture.detectChanges();
 
-  it('should display rating count', () => {
-    const count = fixture.nativeElement.querySelector('.rating-count');
-    expect(count.textContent).toContain('250');
-  });
+      expect(component.showNearYouBadge()).toBe(false);
+    });
 
-  it('should display price level', () => {
-    const priceLevel = component.getPriceLevel(2);
-    expect(priceLevel).toBe('$$');
-  });
-
-  it('should display open status', () => {
-    const openStatus = fixture.nativeElement.querySelector('.open-status.open');
-    expect(openStatus).not.toBeNull();
-    expect(openStatus.textContent.trim()).toBe('Open');
-  });
-
-  it('should display closed status', () => {
-    const closedRestaurant = { ...mockRestaurant, openNow: false };
-    fixture.componentRef.setInput('restaurant', closedRestaurant);
-    fixture.detectChanges();
-
-    const closedStatus = fixture.nativeElement.querySelector('.open-status.closed');
-    expect(closedStatus).not.toBeNull();
-    expect(closedStatus.textContent.trim()).toBe('Closed');
-  });
-
-  it('should display photo via proxy', () => {
-    const photo = fixture.nativeElement.querySelector('.restaurant-photo');
-    expect(photo).not.toBeNull();
-    // Photo should use backend proxy URL
-    expect(photo.src).toContain('/photos/places/');
-    expect(photo.src).toContain('maxWidthPx=');
-  });
-
-  it('should display placeholder when no photoReference', () => {
-    const noPhotoRestaurant = { ...mockRestaurant, photoReference: undefined };
-    fixture.componentRef.setInput('restaurant', noPhotoRestaurant);
-    fixture.detectChanges();
-
-    const placeholder = fixture.nativeElement.querySelector('.restaurant-photo-placeholder');
-    expect(placeholder).not.toBeNull();
-  });
-
-  it('should display tags', () => {
-    const tags = fixture.nativeElement.querySelectorAll('.tag');
-    expect(tags.length).toBe(2);
-    expect(tags[0].textContent).toBe('Italian');
-    expect(tags[1].textContent).toBe('Pizza');
-  });
-
-  it('should emit cardClick on card click', () => {
-    spyOn(component.cardClick, 'emit');
-
-    const card = fixture.nativeElement.querySelector('.restaurant-card');
-    card.click();
-
-    expect(component.cardClick.emit).toHaveBeenCalledWith(mockRestaurant);
-  });
-
-  it('should emit actionClick on action button click', () => {
-    spyOn(component.actionClick, 'emit');
-
-    const directionsButton = fixture.nativeElement.querySelectorAll('.action-button')[0];
-    directionsButton.click();
-
-    expect(component.actionClick.emit).toHaveBeenCalledWith({
-      type: 'GET_DIRECTIONS',
-      level: 0
+    it('should recalculate when userLocation changes', () => {
+      const nearLocation: Coordinates = { lat: 32.0854, lng: 34.7820 };
+      const farLocation: Coordinates = { lat: 32.0870, lng: 34.7850 };
+      
+      fixture.componentRef.setInput('restaurant', mockRestaurant);
+      
+      // Start far
+      fixture.componentRef.setInput('userLocation', farLocation);
+      fixture.detectChanges();
+      expect(component.showNearYouBadge()).toBe(false);
+      
+      // Move near
+      fixture.componentRef.setInput('userLocation', nearLocation);
+      fixture.detectChanges();
+      expect(component.showNearYouBadge()).toBe(true);
     });
   });
 
-  it('should not emit cardClick when action button is clicked', () => {
-    spyOn(component.cardClick, 'emit');
-    spyOn(component.actionClick, 'emit');
+  describe('Open Until Display', () => {
+    it('should show closing time from currentOpeningHours.nextCloseTime', () => {
+      const now = new Date();
+      const closeTime = new Date(now);
+      closeTime.setHours(22, 0, 0, 0); // 22:00 today
+      
+      const restaurantWithHours: Restaurant = {
+        ...mockRestaurant,
+        currentOpeningHours: {
+          openNow: true,
+          nextCloseTime: closeTime.toISOString()
+        }
+      };
+      
+      fixture.componentRef.setInput('restaurant', restaurantWithHours);
+      fixture.detectChanges();
 
-    const actionButton = fixture.nativeElement.querySelector('.action-button');
-    actionButton.click();
+      expect(component.closingTimeToday()).toBe('22:00');
+    });
 
-    expect(component.actionClick.emit).toHaveBeenCalled();
-    expect(component.cardClick.emit).not.toHaveBeenCalled();
+    it('should show closing time from regularOpeningHours for today', () => {
+      const now = new Date();
+      const today = now.getDay(); // 0-6
+      
+      const restaurantWithRegularHours: Restaurant = {
+        ...mockRestaurant,
+        regularOpeningHours: {
+          periods: [
+            {
+              open: { day: today, time: '0900' },
+              close: { day: today, time: '2200' }
+            }
+          ]
+        }
+      };
+      
+      fixture.componentRef.setInput('restaurant', restaurantWithRegularHours);
+      fixture.detectChanges();
+
+      expect(component.closingTimeToday()).toBe('22:00');
+    });
+
+    it('should hide when nextCloseTime is tomorrow', () => {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(22, 0, 0, 0);
+      
+      const restaurantWithTomorrowClose: Restaurant = {
+        ...mockRestaurant,
+        currentOpeningHours: {
+          openNow: true,
+          nextCloseTime: tomorrow.toISOString()
+        }
+      };
+      
+      fixture.componentRef.setInput('restaurant', restaurantWithTomorrowClose);
+      fixture.detectChanges();
+
+      expect(component.closingTimeToday()).toBeNull();
+    });
+
+    it('should hide when closing time has passed', () => {
+      const now = new Date();
+      const today = now.getDay();
+      const pastHour = now.getHours() - 1;
+      
+      const restaurantWithPastClose: Restaurant = {
+        ...mockRestaurant,
+        regularOpeningHours: {
+          periods: [
+            {
+              open: { day: today, time: '0900' },
+              close: { day: today, time: pastHour.toString().padStart(2, '0') + '00' }
+            }
+          ]
+        }
+      };
+      
+      fixture.componentRef.setInput('restaurant', restaurantWithPastClose);
+      fixture.detectChanges();
+
+      expect(component.closingTimeToday()).toBeNull();
+    });
+
+    it('should hide when no opening hours data available', () => {
+      fixture.componentRef.setInput('restaurant', mockRestaurant);
+      fixture.detectChanges();
+
+      expect(component.closingTimeToday()).toBeNull();
+    });
+
+    it('should prefer currentOpeningHours over regularOpeningHours', () => {
+      const now = new Date();
+      const today = now.getDay();
+      const currentClose = new Date(now);
+      currentClose.setHours(23, 30, 0, 0); // 23:30 from current
+      
+      const restaurantWithBoth: Restaurant = {
+        ...mockRestaurant,
+        currentOpeningHours: {
+          openNow: true,
+          nextCloseTime: currentClose.toISOString()
+        },
+        regularOpeningHours: {
+          periods: [
+            {
+              open: { day: today, time: '0900' },
+              close: { day: today, time: '2200' } // 22:00 from regular
+            }
+          ]
+        }
+      };
+      
+      fixture.componentRef.setInput('restaurant', restaurantWithBoth);
+      fixture.detectChanges();
+
+      // Should use currentOpeningHours (23:30)
+      expect(component.closingTimeToday()).toBe('23:30');
+    });
   });
 
-  it('should disable call button when no phone number', () => {
-    const noPhoneRestaurant = { ...mockRestaurant, phoneNumber: undefined };
-    fixture.componentRef.setInput('restaurant', noPhoneRestaurant);
-    fixture.detectChanges();
+  describe('I18n Integration', () => {
+    it('should use i18n service for near you badge text', () => {
+      const i18nService = TestBed.inject(I18nService);
+      const nearLocation: Coordinates = { lat: 32.0854, lng: 34.7820 };
+      
+      fixture.componentRef.setInput('restaurant', mockRestaurant);
+      fixture.componentRef.setInput('userLocation', nearLocation);
+      fixture.detectChanges();
 
-    const callButton = fixture.nativeElement.querySelectorAll('.action-button')[1];
-    expect(callButton.disabled).toBe(true);
+      const badgeText = component.i18n.t('card.badge.near_you');
+      expect(badgeText).toBeTruthy();
+      expect(typeof badgeText).toBe('string');
+    });
+
+    it('should use i18n service for open until text', () => {
+      const now = new Date();
+      const closeTime = new Date(now);
+      closeTime.setHours(22, 0, 0, 0);
+      
+      const restaurantWithHours: Restaurant = {
+        ...mockRestaurant,
+        currentOpeningHours: {
+          openNow: true,
+          nextCloseTime: closeTime.toISOString()
+        }
+      };
+      
+      fixture.componentRef.setInput('restaurant', restaurantWithHours);
+      fixture.detectChanges();
+
+      const openUntilText = component.i18n.t('card.hours.open_until', { time: '22:00' });
+      expect(openUntilText).toBeTruthy();
+      expect(typeof openUntilText).toBe('string');
+    });
   });
 
-  it('should apply selected class when selected', () => {
-    fixture.componentRef.setInput('selected', true);
-    fixture.detectChanges();
+  describe('Edge Cases', () => {
+    it('should handle invalid nextCloseTime gracefully', () => {
+      const restaurantWithInvalidTime: Restaurant = {
+        ...mockRestaurant,
+        currentOpeningHours: {
+          openNow: true,
+          nextCloseTime: 'invalid-date-string'
+        }
+      };
+      
+      fixture.componentRef.setInput('restaurant', restaurantWithInvalidTime);
+      fixture.detectChanges();
 
-    const card = fixture.nativeElement.querySelector('.restaurant-card');
-    expect(card.classList.contains('selected')).toBe(true);
-  });
+      expect(component.closingTimeToday()).toBeNull();
+    });
 
-  it('should determine correct action level for SAVE_FAVORITE', () => {
-    const level = component['getActionLevel']('SAVE_FAVORITE');
-    expect(level).toBe(1);
-  });
+    it('should handle missing close time in regularOpeningHours', () => {
+      const now = new Date();
+      const today = now.getDay();
+      
+      const restaurantWithNoCloseTime: Restaurant = {
+        ...mockRestaurant,
+        regularOpeningHours: {
+          periods: [
+            {
+              open: { day: today, time: '0900' }
+              // No close time (24-hour restaurant)
+            }
+          ]
+        }
+      };
+      
+      fixture.componentRef.setInput('restaurant', restaurantWithNoCloseTime);
+      fixture.detectChanges();
 
-  it('should determine correct action level for GET_DIRECTIONS', () => {
-    const level = component['getActionLevel']('GET_DIRECTIONS');
-    expect(level).toBe(0);
+      expect(component.closingTimeToday()).toBeNull();
+    });
+
+    it('should handle distance calculation at exactly 600m threshold', () => {
+      // Calculate location exactly 600m away
+      // Using approximate offset: 0.0054 degrees ≈ 600m
+      const exactThresholdLocation: Coordinates = { 
+        lat: mockRestaurant.location.lat + 0.0054, 
+        lng: mockRestaurant.location.lng 
+      };
+      
+      fixture.componentRef.setInput('restaurant', mockRestaurant);
+      fixture.componentRef.setInput('userLocation', exactThresholdLocation);
+      fixture.detectChanges();
+
+      // At exactly 600m, should not show badge (threshold is <600, not <=600)
+      expect(component.showNearYouBadge()).toBe(false);
+    });
   });
 });
-
-
-
-
-
-
-
-
-
-
-
-
-

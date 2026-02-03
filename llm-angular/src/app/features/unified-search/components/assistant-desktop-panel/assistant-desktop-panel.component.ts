@@ -7,7 +7,7 @@
 import { Component, Input, Output, EventEmitter, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RestaurantCardComponent } from '../restaurant-card/restaurant-card.component';
-import type { Restaurant, AssistPayload, RefinementChip } from '../../../../domain/types/search.types';
+import type { Restaurant, AssistPayload, RefinementChip, Coordinates } from '../../../../domain/types/search.types';
 
 @Component({
   selector: 'app-assistant-desktop-panel',
@@ -21,6 +21,7 @@ export class AssistantDesktopPanelComponent {
   @Input({ required: true }) assist!: AssistPayload;
   @Input() chips: RefinementChip[] = [];
   @Input() highlightedResults: Restaurant[] = []; // Max 3
+  @Input() userLocation: Coordinates | null = null;
   
   @Output() chipClick = new EventEmitter<string>();
   @Output() restaurantClick = new EventEmitter<Restaurant>();

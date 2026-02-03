@@ -11,6 +11,7 @@ import { logger } from '../../../lib/logger/structured-logger.js';
 import { generateAndPublishAssistant } from './assistant/assistant-integration.js';
 import type { AssistantGateContext, AssistantClarifyContext, AssistantGenericQueryNarrationContext } from './assistant/assistant-llm.service.js';
 import { resolveAssistantLanguage, resolveSessionId, mapQueryLanguageToUILanguage } from './orchestrator.helpers.js';
+import { toRequestLanguage } from './orchestrator.early-context.js';
 import type { WebSocketManager } from '../../../infra/websocket/websocket-manager.js';
 
 /**
@@ -73,7 +74,7 @@ export async function handleGateStop(
         filters: {},
         languageContext: {
           uiLanguage,
-          requestLanguage: ctx.queryLanguage || 'en',
+          requestLanguage: toRequestLanguage(ctx.queryLanguage),
           googleLanguage
         },
         originalQuery: request.query
@@ -156,7 +157,7 @@ export async function handleGateClarify(
         filters: {},
         languageContext: {
           uiLanguage: uiLanguageClarify,
-          requestLanguage: ctx.queryLanguage || 'en',
+          requestLanguage: toRequestLanguage(ctx.queryLanguage),
           googleLanguage: googleLanguageClarify
         },
         originalQuery: request.query
@@ -240,7 +241,7 @@ export async function handleNearbyLocationGuard(
         filters: {},
         languageContext: {
           uiLanguage: uiLanguageGuard,
-          requestLanguage: intentDecision.language,
+          requestLanguage: toRequestLanguage(intentDecision.language),
           googleLanguage: googleLanguageGuard
         },
         originalQuery: request.query

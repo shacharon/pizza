@@ -8,10 +8,14 @@
 import { Component, input, output, ChangeDetectionStrategy, computed, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReasonLabelComponent } from '../reason-label/reason-label.component';
-import type { Restaurant } from '../../../../domain/types/search.types';
+import type { Restaurant, Coordinates } from '../../../../domain/types/search.types';
 import type { ActionType, ActionLevel } from '../../../../domain/types/action.types';
 import { buildPhotoSrc, getPhotoPlaceholder } from '../../../../utils/photo-src.util';
 import { I18nService } from '../../../../core/services/i18n.service';
+import { calculateDistance, calculateWalkingTime, formatDistance } from '../../../../utils/distance.util';
+
+// Near you badge threshold (meters)
+export const NEAR_THRESHOLD_METERS = 600;
 
 @Component({
   selector: 'app-restaurant-card',
@@ -22,7 +26,7 @@ import { I18nService } from '../../../../core/services/i18n.service';
   styleUrl: './restaurant-card.component.scss'
 })
 export class RestaurantCardComponent {
-  private i18n = inject(I18nService);
+  public readonly i18n = inject(I18nService);
 
   // Inputs
   readonly restaurant = input.required<Restaurant>();
@@ -30,6 +34,7 @@ export class RestaurantCardComponent {
   readonly isTopResult = input(false); // NEW: Mobile-first UX
   readonly showReasonLabel = input(false); // NEW: Mobile-first UX
   readonly compact = input(false); // NEW: For bottom sheet/panel cards
+  readonly userLocation = input<Coordinates | null>(null); // User's current location for ETA
 
   // Outputs
   readonly cardClick = output<Restaurant>();
@@ -167,6 +172,110 @@ export class RestaurantCardComponent {
     // MEDIUM/LOW confidence: "Maybe GF"
     return { text: this.i18n.t('card.dietary.gluten_free_maybe'), level: 'low' };
   });
+
+  /**
+   * Calculate distance and ETA from user location
+   * Returns null if userLocation is not available
+   */
+  readonly distanceInfo = computed(() => {
+    const userLoc = this.userLocation();
+    const placeLoc = this.restaurant().location;
+    
+    if (!userLoc) {
+      return null;
+    }
+
+    const distanceMeters = calculateDistance(userLoc, placeLoc);
+    const walkingMinutes = calculateWalkingTime(distanceMeters);
+    
+    // Get i18n units
+    const metersUnit = this.i18n.t('card.distance.meters_short');
+    const kmUnit = this.i18n.t('card.distance.km_short');
+    const minutesUnit = this.i18n.t('card.distance.minutes_short');
+    
+    const distanceText = formatDistance(distanceMeters, metersUnit, kmUnit);
+
+    return {
+      distanceMeters,
+      distanceText,
+      walkingMinutes,
+      minutesUnit
+    };
+  });
+
+  /**
+   * Show "Near you" badge if distance < NEAR_THRESHOLD_METERS
+   * Returns null if no distance info available
+   */
+  readonly showNearYouBadge = computed(() => {
+    const info = this.distanceInfo();
+    if (!info) {
+      return false;
+    }
+    return info.distanceMeters < NEAR_THRESHOLD_METERS;
+  });
+
+  /**
+   * Get closing time for today if available
+   * Returns formatted time string or null
+   */
+  readonly closingTimeToday = computed(() => {
+    const restaurant = this.restaurant();
+
+    // Priority 1: Use currentOpeningHours.nextCloseTime if available
+    if (restaurant.currentOpeningHours?.nextCloseTime) {
+      try {
+        const closeTime = new Date(restaurant.currentOpeningHours.nextCloseTime);
+        // Check if it's today
+        const now = new Date();
+        if (closeTime.toDateString() === now.toDateString()) {
+          return this.formatTime(closeTime);
+        }
+      } catch (e) {
+        console.warn('[RestaurantCard] Failed to parse nextCloseTime:', e);
+      }
+    }
+
+    // Priority 2: Derive from regularOpeningHours for today
+    if (restaurant.regularOpeningHours?.periods) {
+      const now = new Date();
+      const today = now.getDay(); // 0 = Sunday, 6 = Saturday
+      
+      // Find today's period
+      const todayPeriod = restaurant.regularOpeningHours.periods.find(p => p.open.day === today);
+      
+      if (todayPeriod?.close) {
+        try {
+          // Parse HHmm format (e.g., "2200" for 10:00 PM)
+          const closeTimeStr = todayPeriod.close.time;
+          const hours = parseInt(closeTimeStr.substring(0, 2), 10);
+          const minutes = parseInt(closeTimeStr.substring(2, 4), 10);
+          
+          const closeTime = new Date(now);
+          closeTime.setHours(hours, minutes, 0, 0);
+          
+          // Only show if closing time is in the future
+          if (closeTime > now) {
+            return this.formatTime(closeTime);
+          }
+        } catch (e) {
+          console.warn('[RestaurantCard] Failed to parse regular hours:', e);
+        }
+      }
+    }
+
+    return null;
+  });
+
+  /**
+   * Format time for display based on locale
+   * Uses 24h format for consistency
+   */
+  private formatTime(date: Date): string {
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    return `${hours}:${minutes}`;
+  }
 
   /**
    * Get gluten-free badge tooltip (i18n)

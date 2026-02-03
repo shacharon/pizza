@@ -57,6 +57,30 @@
         </div>
 
         <p class="restaurant-address">{{ restaurant().address }}</p>
+
+        <!-- Enhanced info line: distance/ETA, near badge, open until -->
+        <div class="restaurant-enhanced-info">
+          @if (distanceInfo()) {
+          <span class="distance-eta" [attr.aria-label]="'Distance: ' + distanceInfo()!.distanceText + ', Walking time: ' + distanceInfo()!.walkingMinutes + ' minutes'">
+            <span class="distance-icon">📍</span>
+            <span class="distance-value">{{ distanceInfo()!.distanceText }}</span>
+            <span class="eta-icon">🚶‍♂️</span>
+            <span class="eta-value">{{ distanceInfo()!.walkingMinutes }} {{ distanceInfo()!.minutesUnit }}</span>
+          </span>
+          }
+
+          @if (showNearYouBadge()) {
+          <span class="near-you-badge" [attr.aria-label]="i18n.t('card.badge.near_you')">
+            {{ i18n.t('card.badge.near_you') }}
+          </span>
+          }
+
+          @if (closingTimeToday()) {
+          <span class="open-until" [attr.aria-label]="i18n.t('card.hours.open_until', { time: closingTimeToday()! })">
+            {{ i18n.t('card.hours.open_until', { time: closingTimeToday()! }) }}
+          </span>
+          }
+        </div>
       </div>
     </div>
   </div>

@@ -12,6 +12,7 @@ import { startStage, endStage } from '../../../lib/telemetry/stage-timer.js';
 import { generateAndPublishAssistant, generateAndPublishAssistantDeferred } from './assistant/assistant-integration.js';
 import type { AssistantSummaryContext, AssistantGenericQueryNarrationContext } from './assistant/assistant-llm.service.js';
 import { resolveAssistantLanguage, resolveSessionId } from './orchestrator.helpers.js';
+import { toRequestLanguage } from './orchestrator.early-context.js';
 import type { WebSocketManager } from '../../../infra/websocket/websocket-manager.js';
 import { buildAppliedFiltersArray } from './orchestrator.filters.js';
 
@@ -36,10 +37,10 @@ export async function buildFinalResponse(
   const totalDurationMs = Date.now() - startTime;
 
   // Use intentDecision.language (not gateResult) - Intent stage has the actual detected language
-  const detectedLanguage = intentDecision.language;
-  // Map detected language to UI language (support all 8 languages)
-  const uiLanguage: 'he' | 'en' | 'ru' | 'ar' | 'fr' | 'es' | 'de' | 'it' =
-    detectedLanguage === 'other' ? 'en' : (detectedLanguage as any);
+  const detectedLanguageRaw = intentDecision.language;
+  // Normalize to RequestLanguage (handles 'other' by mapping to 'en')
+  const detectedLanguage = toRequestLanguage(detectedLanguageRaw);
+  const uiLanguage = detectedLanguage;
   const googleLanguage: 'he' | 'en' = detectedLanguage === 'he' ? 'he' : 'en';
 
   // Prepare assistant summary context
