@@ -77,6 +77,7 @@ export interface AssistantCardMessage {
   message: string;
   question: string | null;
   blocksSearch: boolean;
+  language?: 'he' | 'en' | 'ru' | 'ar' | 'fr' | 'es' | 'de' | 'it'; // Language for directionality
   requestId: string;
   timestamp: number;
 }

@@ -37,22 +37,29 @@ function getMessagePreview(text: string, maxChars: number = 80): string {
 
 /**
  * Publish assistant message to WebSocket
+ * @param assistantLanguage - The language used for the assistant message (he/en/ru/ar/fr/es)
  */
 export function publishAssistantMessage(
   wsManager: WebSocketManager,
   requestId: string,
   sessionId: string | undefined,
-  assistant: AssistantOutput
+  assistant: AssistantOutput,
+  assistantLanguage: 'he' | 'en' | 'ru' | 'ar' | 'fr' | 'es' | 'other'
 ): void {
   try {
     // SESSIONHASH FIX: Use shared utility for consistent hashing
     const sessionHash = hashSessionId(sessionId);
+
+    // Map 'other' to 'en' for wire protocol
+    const wireLanguage: 'he' | 'en' | 'ru' | 'ar' | 'fr' | 'es' | 'de' | 'it' = 
+      assistantLanguage === 'other' ? 'en' : assistantLanguage as any;
 
     logger.info({
       channel: ASSISTANT_WS_CHANNEL,
       requestId,
       sessionHash,
       payloadType: 'assistant',
+      assistantLanguage: wireLanguage,
       event: 'assistant_ws_publish'
     }, '[ASSISTANT] Publishing to WebSocket');
 
@@ -63,7 +70,8 @@ export function publishAssistantMessage(
         type: assistant.type,
         message: assistant.message,
         question: assistant.question,
-        blocksSearch: assistant.blocksSearch
+        blocksSearch: assistant.blocksSearch,
+        language: wireLanguage // CRITICAL: Include language in payload for frontend directionality
       }
     };
 

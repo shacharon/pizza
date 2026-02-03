@@ -168,6 +168,7 @@ export class SearchAssistantHandler {
       ts?: number;
       question?: string | null;
       blocksSearch?: boolean;
+      language?: 'he' | 'en' | 'ru' | 'ar' | 'fr' | 'es' | 'de' | 'it';
     } = {}
   ): RoutingDecision {
     // Generate stable messageId for deduplication
@@ -241,6 +242,7 @@ export class SearchAssistantHandler {
         message,
         question: payload.question || null,
         blocksSearch: payload.blocksSearch || false,
+        language: payload.language, // Pass language for directionality
         requestId,
         timestamp
       };
@@ -251,7 +253,8 @@ export class SearchAssistantHandler {
         type,
         message: message.substring(0, 100),
         totalCardMessages: this._cardMessages().length + 1,
-        blocksSearch: payload.blocksSearch
+        blocksSearch: payload.blocksSearch,
+        language: payload.language
       });
 
       // Update legacy state for backward compatibility

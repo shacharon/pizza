@@ -25,7 +25,7 @@
         } @else if (locationState() === 'ERROR') {
         <span class="location-text location-error">⚠️ Location unavailable</span>
         } @else {
-        <button class="location-link" (click)="onLocationToggle()">Enable location for better results</button>
+        <button class="location-link" (click)="onLocationToggle()">{{ i18n.t('location.enable_prompt') }}</button>
         }
       </div>
     </div>

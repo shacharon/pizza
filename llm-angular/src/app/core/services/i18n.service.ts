@@ -41,6 +41,9 @@ export interface I18nKeys {
   'filter.open_now_description': string;
   'filter.gluten_free': string;
   'filter.gluten_free_description': string;
+  
+  // Location prompt
+  'location.enable_prompt': string;
 }
 
 /**
@@ -67,7 +70,8 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'filter.open_now': '🟢 Open now',
     'filter.open_now_description': 'Showing only restaurants open now',
     'filter.gluten_free': 'Gluten-free (signals)',
-    'filter.gluten_free_description': 'Based on text signals — not guaranteed'
+    'filter.gluten_free_description': 'Based on text signals — not guaranteed',
+    'location.enable_prompt': 'Enable location for better results'
   },
   
   // Hebrew
@@ -90,7 +94,8 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'filter.open_now': '🟢 פתוח עכשיו',
     'filter.open_now_description': 'מציג רק מסעדות פתוחות עכשיו',
     'filter.gluten_free': 'ללא גלוטן (רמזים)',
-    'filter.gluten_free_description': 'מבוסס על רמזים בטקסט — לא מובטח'
+    'filter.gluten_free_description': 'מבוסס על רמזים בטקסט — לא מובטח',
+    'location.enable_prompt': 'הפעל מיקום לתוצאות טובות יותר'
   },
   
   // Russian
@@ -113,7 +118,8 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'filter.open_now': '🟢 Открыто сейчас',
     'filter.open_now_description': 'Показаны только открытые рестораны',
     'filter.gluten_free': 'Без глютена (сигналы)',
-    'filter.gluten_free_description': 'На основе текстовых сигналов — не гарантируется'
+    'filter.gluten_free_description': 'На основе текстовых сигналов — не гарантируется',
+    'location.enable_prompt': 'Включить местоположение для лучших результатов'
   },
   
   // Arabic
@@ -136,7 +142,8 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'filter.open_now': '🟢 مفتوح الآن',
     'filter.open_now_description': 'يعرض المطاعم المفتوحة فقط الآن',
     'filter.gluten_free': 'خالٍ من الغلوتين (إشارات)',
-    'filter.gluten_free_description': 'بناءً على إشارات نصية — غير مضمون'
+    'filter.gluten_free_description': 'بناءً على إشارات نصية — غير مضمون',
+    'location.enable_prompt': 'تمكين الموقع لنتائج أفضل'
   },
   
   // French
@@ -159,7 +166,8 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'filter.open_now': '🟢 Ouvert maintenant',
     'filter.open_now_description': 'Affichage des restaurants ouverts uniquement',
     'filter.gluten_free': 'Sans gluten (signaux)',
-    'filter.gluten_free_description': 'Basé sur des signaux textuels — non garanti'
+    'filter.gluten_free_description': 'Basé sur des signaux textuels — non garanti',
+    'location.enable_prompt': 'Activer la localisation pour de meilleurs résultats'
   },
   
   // Spanish
@@ -182,7 +190,8 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'filter.open_now': '🟢 Abierto ahora',
     'filter.open_now_description': 'Mostrando solo restaurantes abiertos ahora',
     'filter.gluten_free': 'Sin gluten (señales)',
-    'filter.gluten_free_description': 'Basado en señales de texto — no garantizado'
+    'filter.gluten_free_description': 'Basado en señales de texto — no garantizado',
+    'location.enable_prompt': 'Activar ubicación para mejores resultados'
   },
   
   // German
@@ -205,7 +214,8 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'filter.open_now': '🟢 Jetzt geöffnet',
     'filter.open_now_description': 'Zeigt nur jetzt geöffnete Restaurants',
     'filter.gluten_free': 'Glutenfrei (Signale)',
-    'filter.gluten_free_description': 'Basierend auf Textsignalen — nicht garantiert'
+    'filter.gluten_free_description': 'Basierend auf Textsignalen — nicht garantiert',
+    'location.enable_prompt': 'Standort aktivieren für bessere Ergebnisse'
   },
   
   // Italian
@@ -228,7 +238,8 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'filter.open_now': '🟢 Aperto ora',
     'filter.open_now_description': 'Mostra solo ristoranti aperti ora',
     'filter.gluten_free': 'Senza glutine (segnali)',
-    'filter.gluten_free_description': 'Basato su segnali testuali — non garantito'
+    'filter.gluten_free_description': 'Basato su segnali testuali — non garantito',
+    'location.enable_prompt': 'Abilita posizione per risultati migliori'
   }
 };
 

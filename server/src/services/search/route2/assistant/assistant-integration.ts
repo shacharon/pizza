@@ -39,8 +39,8 @@ export async function generateAndPublishAssistant(
     // Note: Invariants (blocksSearch, suggestedAction) are now enforced in generateAssistantMessage()
     // No need for duplicate enforcement here
 
-    // Publish to WebSocket (best-effort)
-    publishAssistantMessage(wsManager, requestId, sessionId, assistant);
+    // Publish to WebSocket (best-effort) with language metadata
+    publishAssistantMessage(wsManager, requestId, sessionId, assistant, context.language);
 
     // Return message for HTTP response
     return assistant.message || fallbackHttpMessage;
@@ -48,19 +48,19 @@ export async function generateAndPublishAssistant(
     const errorMsg = error instanceof Error ? error.message : String(error);
     const isTimeout = errorMsg.toLowerCase().includes('timeout') || errorMsg.toLowerCase().includes('abort');
     const isSchemaError = errorMsg.toLowerCase().includes('schema') || errorMsg.toLowerCase().includes('validation');
-    
+
     const errorCode = isTimeout ? 'LLM_TIMEOUT' : (isSchemaError ? 'SCHEMA_INVALID' : 'LLM_FAILED');
-    
+
     logger.warn({
       requestId,
       event: 'assistant_failed',
       errorCode,
       error: errorMsg
     }, '[ASSISTANT] Failed - publishing error event');
-    
+
     // Publish assistant_error event (no user-facing message in code)
     publishAssistantError(wsManager, requestId, sessionId, errorCode);
-    
+
     // Return fallback for HTTP only (WS clients get error event)
     return fallbackHttpMessage;
   }
@@ -84,7 +84,7 @@ export function generateAndPublishAssistantDeferred(
   // Fire and forget - don't await
   (async () => {
     const startTime = Date.now();
-    
+
     logger.info({
       requestId,
       assistantType: context.type,
@@ -107,16 +107,16 @@ export function generateAndPublishAssistantDeferred(
         event: 'assistant_deferred_done'
       }, '[ASSISTANT] Deferred generation completed');
 
-      // Publish to WebSocket
-      publishAssistantMessage(wsManager, requestId, sessionId, assistant);
+      // Publish to WebSocket with language metadata
+      publishAssistantMessage(wsManager, requestId, sessionId, assistant, context.language);
     } catch (error) {
       const durationMs = Date.now() - startTime;
       const errorMsg = error instanceof Error ? error.message : String(error);
       const isTimeout = errorMsg.toLowerCase().includes('timeout') || errorMsg.toLowerCase().includes('abort');
       const isSchemaError = errorMsg.toLowerCase().includes('schema') || errorMsg.toLowerCase().includes('validation');
-      
+
       const errorCode = isTimeout ? 'LLM_TIMEOUT' : (isSchemaError ? 'SCHEMA_INVALID' : 'LLM_FAILED');
-      
+
       logger.warn({
         requestId,
         event: 'assistant_deferred_error',
@@ -124,7 +124,7 @@ export function generateAndPublishAssistantDeferred(
         error: errorMsg,
         durationMs
       }, '[ASSISTANT] Deferred generation failed - publishing error event');
-      
+
       // Publish assistant_error event (no user-facing message)
       publishAssistantError(wsManager, requestId, sessionId, errorCode);
     }
@@ -207,20 +207,20 @@ export async function publishSearchFailedAssistant(
       language: resolvedLanguage
     }, '[ASSISTANT] Generated SEARCH_FAILED message via LLM');
 
-    publishAssistantMessage(wsManager, requestId, ctx.sessionId, assistant);
+    publishAssistantMessage(wsManager, requestId, ctx.sessionId, assistant, resolvedLanguage);
   } catch (assistErr) {
     // If LLM fails, publish assistant_error event (no deterministic fallback)
     const errorMsg = assistErr instanceof Error ? assistErr.message : String(assistErr);
     const isTimeout = errorMsg.toLowerCase().includes('timeout') || errorMsg.toLowerCase().includes('abort');
     const errorCode = isTimeout ? 'LLM_TIMEOUT' : 'LLM_FAILED';
-    
+
     logger.warn({
       requestId,
       event: 'search_failed_assistant_error',
       errorCode,
       error: errorMsg
     }, '[ASSISTANT] Failed to generate SEARCH_FAILED message - publishing error event');
-    
+
     publishAssistantError(wsManager, requestId, ctx.sessionId, errorCode);
   }
 }

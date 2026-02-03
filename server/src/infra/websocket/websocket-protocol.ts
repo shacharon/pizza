@@ -122,14 +122,12 @@ export interface WSServerAssistantSuggestion {
 export interface WSServerAssistant {
   type: 'assistant';
   requestId: string;
-  assistantLanguage?: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es';
-  uiLanguage?: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es';
   payload: {
     type: 'GATE_FAIL' | 'CLARIFY' | 'SUMMARY' | 'SEARCH_FAILED' | 'GENERIC_QUERY_NARRATION' | 'NUDGE_REFINE';
     message: string;
     question: string | null;
     blocksSearch: boolean;
-    language?: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es';
+    language: 'he' | 'en' | 'ru' | 'ar' | 'fr' | 'es' | 'de' | 'it'; // REQUIRED: Language of the assistant message (for directionality)
     suggestedAction?: 'REFINE_QUERY';
   };
 }

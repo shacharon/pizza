@@ -9,6 +9,7 @@ import { ActionService } from '../services/action.service';
 import { InputStateMachine } from '../services/input-state-machine.service';
 import { RecentSearchesService } from '../services/recent-searches.service';
 import { LocationService } from '../services/location.service';
+import { I18nService } from '../core/services/i18n.service';
 import { SearchStore } from '../state/search.store';
 import { SessionStore } from '../state/session.store';
 import { ActionsStore } from '../state/actions.store';
@@ -34,6 +35,7 @@ export class SearchFacade {
   private readonly inputStateMachine = inject(InputStateMachine);
   private readonly recentSearchesService = inject(RecentSearchesService);
   private readonly locationService = inject(LocationService);
+  private readonly i18nService = inject(I18nService);
   private readonly searchStore = inject(SearchStore);
   private readonly sessionStore = inject(SessionStore);
   private readonly actionsStore = inject(ActionsStore);
@@ -160,11 +162,11 @@ export class SearchFacade {
       // This prevents old results from showing during new search
       this.searchStore.clearState(); // Clear results, chips, assistant, error
       this.assistantHandler.reset(); // Clear all assistant messages
-      
+
       // CRITICAL: Clear currentRequestId BEFORE starting search
       // This ensures events from previous search are ignored immediately
       this.currentRequestId.set(undefined);
-      
+
       // CRITICAL: Clear all WS subscriptions to old requests
       // This prevents old events from being delivered after reconnection
       this.wsHandler.clearAllSubscriptions();
@@ -239,7 +241,7 @@ export class SearchFacade {
         this._cardState.set('STOP');
         return;
       }
-      
+
       // Handle other errors
       safeError('SearchFacade', 'Search error', { status: error?.status, code: error?.code, message: error?.message });
       const userMessage = error?.message || 'Search failed. Please try again.';
@@ -267,6 +269,16 @@ export class SearchFacade {
       requestId: response.requestId,
       resultCount: response.results.length
     });
+
+    // LANGUAGE SYNC: Update UI language from response
+    const uiLanguage = (response.query as any).parsed?.languageContext?.uiLanguage;
+    if (uiLanguage && this.i18nService.currentLang() !== uiLanguage) {
+      safeLog('SearchFacade', 'Syncing UI language from response', {
+        current: this.i18nService.currentLang(),
+        new: uiLanguage
+      });
+      this.i18nService.setLanguage(uiLanguage);
+    }
 
     // Store requestId if not already set
     if (!this.currentRequestId()) {
@@ -310,7 +322,7 @@ export class SearchFacade {
         onAssistantMessage: (msg) => {
           const narratorMsg = msg as any;
           const narrator = narratorMsg.payload;
-          
+
           // DEDUP FIX: Strict type validation - only LLM assistant messages
           // System notifications MUST NOT render as assistant messages
           const validTypes = ['CLARIFY', 'SUMMARY', 'GATE_FAIL'];
@@ -324,28 +336,34 @@ export class SearchFacade {
           // MULTI-MESSAGE: Add to message collection (accumulates, doesn't overwrite)
           const assistMessage = narrator.message || narrator.question || '';
           if (assistMessage) {
-            this.assistantHandler.addMessage(
+            // Extract language from payload (fallback to 'en' if not present)
+            const language = narrator.language || 'en';
+
+            this.assistantHandler.routeMessage(
               narrator.type as 'CLARIFY' | 'SUMMARY' | 'GATE_FAIL',
               assistMessage,
               narratorMsg.requestId,
-              narrator.question || null,
-              narrator.blocksSearch || false
+              {
+                question: narrator.question || null,
+                blocksSearch: narrator.blocksSearch || false,
+                language: language
+              }
             );
           }
 
           // CARD STATE: Map assistant message type to card state
           if (narrator.type === 'CLARIFY' && narrator.blocksSearch === true) {
             safeLog('SearchFacade', 'DONE_CLARIFY - stopping search, waiting for user input');
-            
+
             // Stop loading immediately
             this.searchStore.setLoading(false);
-            
+
             // CARD STATE: Set to CLARIFY (non-terminal, card stays active)
             this._cardState.set('CLARIFY');
-            
+
             // Cancel any pending polling
             this.apiHandler.cancelPolling();
-            
+
             // Set status for CLARIFY
             this.assistantHandler.setStatus('completed');
           } else if (narrator.type === 'GATE_FAIL') {
@@ -359,7 +377,7 @@ export class SearchFacade {
             // CARD STATE: SUMMARY, DIETARY_HINT, or other non-blocking types
             // Do NOT change card state - search continues normally
             this.assistantHandler.setStatus('completed');
-            
+
             // DEDUPE FIX: Clear any legacy error/status messages when SUMMARY arrives
             // SUMMARY from WS is the only result announcement - no duplicate banners
             if (narrator.type === 'SUMMARY') {

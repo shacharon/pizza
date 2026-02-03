@@ -1,0 +1,201 @@
+{
+  "description": "Example WebSocket assistant payload after language propagation fix",
+  "examples": [
+    {
+      "scenario": "Russian query - 'пицца рядом'",
+      "websocket_payload": {
+        "type": "assistant",
+        "requestId": "req-abc123-ru",
+        "payload": {
+          "type": "SUMMARY",
+          "message": "Нашёl 8 хороших ресторанов рядом с вами. Большинство открыты сейчас.",
+          "question": null,
+          "blocksSearch": false,
+          "language": "ru"
+        }
+      },
+      "verification": {
+        "payload_language": "ru",
+        "ui_labels": "Russian (Navigate → Навигация, Call → Позвонить)",
+        "assistant_directionality": "ltr",
+        "assistant_text_language": "Russian"
+      }
+    },
+    {
+      "scenario": "Hebrew query - 'פיצה בתל אביב'",
+      "websocket_payload": {
+        "type": "assistant",
+        "requestId": "req-def456-he",
+        "payload": {
+          "type": "SUMMARY",
+          "message": "מצאתי 12 מסעדות פיצה טובות בתל אביב. רובן פתוחות עכשיו.",
+          "question": null,
+          "blocksSearch": false,
+          "language": "he"
+        }
+      },
+      "verification": {
+        "payload_language": "he",
+        "ui_labels": "Hebrew (Navigate → נווט, Call → התקשר)",
+        "assistant_directionality": "rtl",
+        "assistant_text_language": "Hebrew"
+      }
+    },
+    {
+      "scenario": "Arabic query - 'بيتزا قريبة مني'",
+      "websocket_payload": {
+        "type": "assistant",
+        "requestId": "req-ghi789-ar",
+        "payload": {
+          "type": "SUMMARY",
+          "message": "وجدت 5 مطاعم بيتزا جيدة بالقرب منك. معظمها مفتوح الآن.",
+          "question": null,
+          "blocksSearch": false,
+          "language": "ar"
+        }
+      },
+      "verification": {
+        "payload_language": "ar",
+        "ui_labels": "Arabic (Navigate → التنقل, Call → اتصل)",
+        "assistant_directionality": "rtl",
+        "assistant_text_language": "Arabic"
+      }
+    },
+    {
+      "scenario": "English query - 'pizza near me'",
+      "websocket_payload": {
+        "type": "assistant",
+        "requestId": "req-jkl012-en",
+        "payload": {
+          "type": "SUMMARY",
+          "message": "Found 10 great pizza restaurants near you. Most are open now.",
+          "question": null,
+          "blocksSearch": false,
+          "language": "en"
+        }
+      },
+      "verification": {
+        "payload_language": "en",
+        "ui_labels": "English (Navigate → Navigate, Call → Call)",
+        "assistant_directionality": "ltr",
+        "assistant_text_language": "English"
+      }
+    },
+    {
+      "scenario": "French query - 'pizza près de moi'",
+      "websocket_payload": {
+        "type": "assistant",
+        "requestId": "req-mno345-fr",
+        "payload": {
+          "type": "CLARIFY",
+          "message": "Pour trouver des pizzerias près de vous, j'ai besoin de votre localisation.",
+          "question": "Pouvez-vous activer la localisation ou indiquer une ville/zone ?",
+          "blocksSearch": true,
+          "language": "fr"
+        }
+      },
+      "verification": {
+        "payload_language": "fr",
+        "ui_labels": "French (Navigate → Naviguer, Call → Appeler)",
+        "assistant_directionality": "ltr",
+        "assistant_text_language": "French"
+      }
+    },
+    {
+      "scenario": "Spanish query - 'pizza cerca de mí'",
+      "websocket_payload": {
+        "type": "assistant",
+        "requestId": "req-pqr678-es",
+        "payload": {
+          "type": "SUMMARY",
+          "message": "Encontré 7 buenas pizzerías cerca de ti. La mayoría están abiertas ahora.",
+          "question": null,
+          "blocksSearch": false,
+          "language": "es"
+        }
+      },
+      "verification": {
+        "payload_language": "es",
+        "ui_labels": "Spanish (Navigate → Navegar, Call → Llamar)",
+        "assistant_directionality": "ltr",
+        "assistant_text_language": "Spanish"
+      }
+    },
+    {
+      "scenario": "German query - 'pizza in meiner nähe'",
+      "websocket_payload": {
+        "type": "assistant",
+        "requestId": "req-stu901-de",
+        "payload": {
+          "type": "GATE_FAIL",
+          "message": "Dies sieht nicht wie eine Restaurant-/Essenssuche aus. Versuchen Sie zum Beispiel: 'Pizza in Tel Aviv'.",
+          "question": null,
+          "blocksSearch": true,
+          "language": "de"
+        }
+      },
+      "verification": {
+        "payload_language": "de",
+        "ui_labels": "German (Navigate → Navigieren, Call → Anrufen)",
+        "assistant_directionality": "ltr",
+        "assistant_text_language": "German"
+      }
+    },
+    {
+      "scenario": "Italian query - 'pizza vicino a me'",
+      "websocket_payload": {
+        "type": "assistant",
+        "requestId": "req-vwx234-it",
+        "payload": {
+          "type": "SUMMARY",
+          "message": "Ho trovato 9 ottime pizzerie vicino a te. La maggior parte è aperta ora.",
+          "question": null,
+          "blocksSearch": false,
+          "language": "it"
+        }
+      },
+      "verification": {
+        "payload_language": "it",
+        "ui_labels": "Italian (Navigate → Naviga, Call → Chiama)",
+        "assistant_directionality": "ltr",
+        "assistant_text_language": "Italian"
+      }
+    }
+  ],
+  "critical_fields": {
+    "payload_language": {
+      "field": "payload.language",
+      "type": "string",
+      "required": true,
+      "values": ["he", "en", "ru", "ar", "fr", "es", "de", "it"],
+      "purpose": "Determines assistant message directionality and indicates message language"
+    },
+    "search_response_uiLanguage": {
+      "field": "query.parsed.languageContext.uiLanguage",
+      "type": "string",
+      "required": true,
+      "values": ["he", "en", "ru", "ar", "fr", "es", "de", "it"],
+      "purpose": "Determines UI label language (Navigate, Call, Closed, etc.)"
+    }
+  },
+  "separation_of_concerns": {
+    "ui_labels": {
+      "source": "query.parsed.languageContext.uiLanguage",
+      "consumed_by": "I18nService",
+      "examples": ["Navigate", "Call", "Closed", "Hours unverified", "Open now"]
+    },
+    "assistant_messages": {
+      "source": "payload.language",
+      "consumed_by": "AssistantSummaryComponent",
+      "examples": [
+        "Нашёл 8 ресторанов...",
+        "מצאתי 12 מסעדות...",
+        "Found 10 restaurants..."
+      ]
+    }
+  },
+  "fallback_chain": {
+    "frontend": "payload.language → uiLanguage → 'en'",
+    "backend": "intent.language → queryLanguage → baseFilters.language → uiLanguage → 'en'"
+  }
+}

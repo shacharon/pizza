@@ -23,24 +23,24 @@ import type { AssistantCardMessage } from '../../../../facades/assistant-routing
 export class AssistantSummaryComponent {
   // CANONICAL ROUTING: Card messages only (SUMMARY, CLARIFY, GATE_FAIL)
   readonly cardMessages = input<AssistantCardMessage[]>([]);
-  
+
   // LEGACY: Old messages format (for backward compatibility)
   readonly messages = input<AssistantMessage[]>([]);
-  
+
   // Legacy: Single text input (for backward compatibility)
   readonly text = input<string>('');
   readonly status = input.required<AssistantStatus>();
   readonly error = input<string | undefined>(undefined);
-  
+
   // UI Language for RTL support
   readonly locale = input<string>('en');
-  
+
   readonly isIdle = computed(() => this.status() === 'idle');
   readonly isPending = computed(() => this.status() === 'pending');
   readonly isStreaming = computed(() => this.status() === 'streaming');
   readonly isCompleted = computed(() => this.status() === 'completed');
   readonly isFailed = computed(() => this.status() === 'failed');
-  
+
   // ROUTING: Prefer card messages (new routing system)
   readonly displayMessages = computed(() => {
     const cards = this.cardMessages();
@@ -50,20 +50,20 @@ export class AssistantSummaryComponent {
     // Fallback to legacy messages if no card messages
     return this.messages();
   });
-  
+
   // MULTI-MESSAGE: Determine display mode
   readonly useMultiMessage = computed(() => this.displayMessages().length > 0);
-  
+
   readonly hasContent = computed(() => {
     if (this.useMultiMessage()) {
       return this.displayMessages().length > 0;
     }
     return !this.isIdle() && (this.text().length > 0 || this.isFailed());
   });
-  
+
   // RTL support: Hebrew language
   readonly isRTL = computed(() => this.locale() === 'he');
-  
+
   /**
    * Get icon for message type
    */
@@ -75,11 +75,20 @@ export class AssistantSummaryComponent {
       default: return '💬';
     }
   }
-  
+
   /**
    * Get CSS class for message type
    */
   getMessageClass(type: string): string {
     return `message-type-${type.toLowerCase()}`;
+  }
+
+  /**
+   * Get directionality for message based on language
+   * Uses payload.language if available, falls back to uiLanguage, then 'ltr'
+   */
+  getMessageDir(msg: AssistantCardMessage): 'rtl' | 'ltr' {
+    const lang = msg.language || this.locale();
+    return ['he', 'ar'].includes(lang) ? 'rtl' : 'ltr';
   }
 }

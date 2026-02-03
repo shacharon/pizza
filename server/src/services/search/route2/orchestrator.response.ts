@@ -36,7 +36,9 @@ export async function buildFinalResponse(
   const totalDurationMs = Date.now() - startTime;
 
   const detectedLanguage = gateResult.gate.language;
-  const uiLanguage: 'he' | 'en' = detectedLanguage === 'he' ? 'he' : 'en';
+  // Map detected language to UI language (support all 8 languages)
+  const uiLanguage: 'he' | 'en' | 'ru' | 'ar' | 'fr' | 'es' | 'de' | 'it' = 
+    detectedLanguage === 'other' ? 'en' : (detectedLanguage as any);
   const googleLanguage: 'he' | 'en' = detectedLanguage === 'he' ? 'he' : 'en';
 
   // Prepare assistant summary context

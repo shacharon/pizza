@@ -157,6 +157,7 @@ export interface WSServerAssistant {
     message: string;
     question: string | null;
     blocksSearch: boolean;
+    language: 'he' | 'en' | 'ru' | 'ar' | 'fr' | 'es' | 'de' | 'it'; // Language of assistant message (for directionality)
   };
 }
 

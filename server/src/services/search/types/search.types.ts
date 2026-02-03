@@ -10,8 +10,9 @@
 /**
  * UI display language (chips, assistant, errors)
  * This determines the language of the app UI elements
+ * Supports 8 languages: he, en, ru, ar, fr, es, de, it
  */
-export type UILanguage = 'he' | 'en';
+export type UILanguage = 'he' | 'en' | 'ru' | 'ar' | 'fr' | 'es' | 'de' | 'it';
 
 /**
  * Detected language of user's raw query (informational only)
@@ -30,7 +31,7 @@ export type GoogleLanguage = 'he' | 'en';
  * Separates three distinct language concepts for consistent behavior
  */
 export interface LanguageContext {
-  uiLanguage: UILanguage;           // App display language (he|en only)
+  uiLanguage: UILanguage;           // App display language (8 languages: he, en, ru, ar, fr, es, de, it)
   requestLanguage: RequestLanguage; // Detected from query (any language)
   googleLanguage: GoogleLanguage;   // Sent to Google API (he if Hebrew, else en)
 }
