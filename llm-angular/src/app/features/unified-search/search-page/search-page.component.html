@@ -143,18 +143,18 @@
       <!-- Assistant SUMMARY message (from WS) is the only result announcement -->
       
       <div class="results-header">
-        <!-- Applied Filters Chips -->
+        <!-- Applied Filters Chips (i18n) -->
         <div class="applied-filters">
           @if (closedFilterActive() === 'open') {
           <span class="filter-chip open-now" 
-                [title]="facade.response()?.query?.language === 'he' ? 'מציג רק מסעדות פתוחות עכשיו' : 'Showing only restaurants open now'">
-            {{ facade.response()?.query?.language === 'he' ? '🟢 פתוח עכשיו' : '🟢 Open now' }}
+                [title]="i18n.t('filter.open_now_description')">
+            {{ i18n.t('filter.open_now') }}
           </span>
           }
           @if (glutenFreeFilterActive()) {
           <span class="filter-chip gluten-free" 
-                [title]="facade.response()?.query?.language === 'he' ? 'מבוסס על רמזים בטקסט — לא מובטח' : 'Based on text signals — not guaranteed'">
-            {{ facade.response()?.query?.language === 'he' ? 'ללא גלוטן (רמזים)' : 'Gluten-free (signals)' }}
+                [title]="i18n.t('filter.gluten_free_description')">
+            {{ i18n.t('filter.gluten_free') }}
           </span>
           }
         </div>

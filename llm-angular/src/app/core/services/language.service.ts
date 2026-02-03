@@ -7,7 +7,7 @@ import { Injectable, signal } from '@angular/core';
 import { DOCUMENT } from '@angular/common';
 import { inject } from '@angular/core';
 
-export type SupportedLang = 'he' | 'en' | 'ar' | 'ru';
+export type SupportedLang = 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es' | 'de' | 'it';
 export type TextDirection = 'rtl' | 'ltr';
 
 @Injectable({
@@ -44,6 +44,14 @@ export class LanguageService {
         return 'ar';
       case 'ru':
         return 'ru';
+      case 'fr':
+        return 'fr';
+      case 'es':
+        return 'es';
+      case 'de':
+        return 'de';
+      case 'it':
+        return 'it';
       case 'en':
       default:
         return 'en';
@@ -105,6 +113,14 @@ export class LanguageService {
         return 'ar';
       case 'ru':
         return 'ru';
+      case 'fr':
+        return 'fr';
+      case 'es':
+        return 'es';
+      case 'de':
+        return 'de';
+      case 'it':
+        return 'it';
       case 'en':
       default:
         return 'en';

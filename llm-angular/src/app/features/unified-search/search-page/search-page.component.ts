@@ -19,6 +19,7 @@ import { ClarificationBlockComponent } from '../components/clarification-block/c
 import { AssistantSummaryComponent } from '../components/assistant-summary/assistant-summary.component';
 import { LocationService } from '../../../services/location.service';
 import { PwaInstallService } from '../../../services/pwa-install.service';
+import { I18nService } from '../../../core/services/i18n.service';
 import type { Restaurant, ClarificationChoice, Coordinates } from '../../../domain/types/search.types';
 import type { ActionType, ActionLevel } from '../../../domain/types/action.types';
 // DEV: Import dev tools for testing (auto-loaded)
@@ -52,6 +53,7 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   readonly facade = inject(SearchFacade);
   private readonly locationService = inject(LocationService);
   readonly pwaInstall = inject(PwaInstallService);
+  readonly i18n = inject(I18nService);
 
   private cleanupInterval?: number;
 

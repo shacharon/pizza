@@ -5,12 +5,14 @@
 
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { RestaurantCardComponent } from './restaurant-card.component';
+import { I18nService } from '../../../../core/services/i18n.service';
 import { signal } from '@angular/core';
 import type { Restaurant } from '../../../../domain/types/search.types';
 
 describe('RestaurantCardComponent - Quick Actions', () => {
   let component: RestaurantCardComponent;
   let fixture: ComponentFixture<RestaurantCardComponent>;
+  let i18nService: I18nService;
 
   const mockRestaurant: Restaurant = {
     id: '1',
@@ -27,11 +29,15 @@ describe('RestaurantCardComponent - Quick Actions', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [RestaurantCardComponent]
+      imports: [RestaurantCardComponent],
+      providers: [I18nService]
     }).compileComponents();
 
     fixture = TestBed.createComponent(RestaurantCardComponent);
     component = fixture.componentInstance;
+    i18nService = TestBed.inject(I18nService);
+    // Ensure English is set for consistent tests
+    i18nService.setLanguage('en');
     component.restaurant = signal(mockRestaurant);
     fixture.detectChanges();
   });

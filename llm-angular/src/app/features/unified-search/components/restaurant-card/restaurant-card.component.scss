@@ -37,32 +37,38 @@
 
   // Compact mode (for mobile panels)
   &.compact {
+    .card-content {
+      padding: 0.75rem 0.875rem;
+    }
+
     .card-header {
-      gap: 0.875rem;
+      gap: 0.75rem;
     }
 
     .restaurant-photo,
     .restaurant-photo-placeholder {
-      width: 72px;
-      height: 72px;
-      min-width: 72px;
+      width: 64px;
+      height: 64px;
+      min-width: 64px;
+      border-radius: 6px;
     }
 
     .restaurant-name {
-      font-size: 1rem;
+      font-size: 0.9375rem;
     }
 
     .restaurant-meta {
-      font-size: 0.8125rem;
+      font-size: 0.75rem;
+      gap: 0.5rem;
     }
 
     .action-bar {
-      padding: 0.625rem;
-      gap: 0.5rem;
+      padding: 0.5rem 0.875rem;
+      gap: 0.375rem;
 
       .action-btn {
-        padding: 0.5rem 0.75rem;
-        font-size: 0.8125rem;
+        padding: 0.4375rem 0.75rem;
+        font-size: 0.75rem;
 
         .action-icon {
           width: 16px;
@@ -73,53 +79,53 @@
   }
 }
 
-// Main content area (clickable)
+// Main content area (clickable) - COMPACT
 .card-content {
   flex: 1;
-  padding: 1.25rem;
+  padding: 0.875rem 1rem;
   cursor: pointer;
 }
 
-// Header: photo + info in a row
+// Header: photo + info in a row - TIGHTER
 .card-header {
   display: flex;
-  gap: 1.125rem;
+  gap: 0.875rem;
   align-items: flex-start;
 }
 
-// Photo styling
+// Photo styling - SMALLER & SQUARE
 .restaurant-photo {
-  width: 96px;
-  height: 96px;
-  min-width: 96px;
+  width: 80px;
+  height: 80px;
+  min-width: 80px;
   object-fit: cover;
-  border-radius: 10px;
+  border-radius: 8px;
   flex-shrink: 0;
   background: #f3f4f6;
 }
 
 .restaurant-photo-placeholder {
-  width: 96px;
-  height: 96px;
-  min-width: 96px;
+  width: 80px;
+  height: 80px;
+  min-width: 80px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: linear-gradient(135deg, #f0f9ff 0%, #dbeafe 100%);
-  border-radius: 10px;
-  font-size: 2.25rem;
+  border-radius: 8px;
+  font-size: 2rem;
   color: #93c5fd;
   flex-shrink: 0;
   border: 1px dashed #d1d5db;
 }
 
-// Restaurant info
+// Restaurant info - TIGHTER SPACING
 .restaurant-info {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.375rem;
 }
 
 .restaurant-name-row {
@@ -131,10 +137,10 @@
 
 .restaurant-name {
   margin: 0;
-  font-size: 1.125rem;
+  font-size: 1.0625rem;
   font-weight: 600;
   color: #111827;
-  line-height: 1.4;
+  line-height: 1.35;
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
@@ -142,6 +148,7 @@
   -webkit-box-orient: vertical;
   flex: 1;
   min-width: 0;
+  letter-spacing: -0.01em;
 }
 
 // Dietary badges
@@ -172,48 +179,51 @@
   }
 }
 
-// Restaurant meta (rating, price, status)
+// Restaurant meta (rating, price, status) - IMPROVED HIERARCHY
 .restaurant-meta {
   display: flex;
-  gap: 0.75rem;
+  gap: 0.625rem;
   align-items: center;
   flex-wrap: wrap;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   color: #6b7280;
 }
 
 .rating {
   display: flex;
   align-items: center;
-  gap: 0.375rem;
+  gap: 0.3125rem;
   font-weight: 500;
-  color: #374151;
+  color: #111827;
 
   .rating-value {
-    font-weight: 600;
+    font-weight: 700;
+    font-size: 0.875rem;
   }
 
   .rating-count {
     color: #9ca3af;
     font-weight: 400;
+    font-size: 0.8125rem;
   }
 }
 
 .price-level {
   color: #6b7280;
-  font-weight: 500;
+  font-weight: 600;
+  font-size: 0.875rem;
 }
 
 .open-status {
-  font-weight: 500;
-  font-size: 0.8125rem;
+  font-weight: 600;
+  font-size: 0.75rem;
   
   &.open {
     color: #10b981;
   }
   
   &.closed {
-    color: #9ca3af;
+    color: #6b7280;
   }
   
   &.unknown {
@@ -222,12 +232,12 @@
   }
 }
 
-// Address
+// Address - BETTER CONTRAST
 .restaurant-address {
   margin: 0;
-  color: #6b7280;
-  font-size: 0.875rem;
-  line-height: 1.5;
+  color: #4b5563;
+  font-size: 0.8125rem;
+  line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -238,55 +248,59 @@
   display: none; // Hide tags in modern layout to reduce noise
 }
 
-// Bottom action bar (modern 2025 layout)
+// Bottom action bar - COMPACT PILL STYLE
 .action-bar {
   display: flex;
-  gap: 1px;
-  background: #f3f4f6;
-  border-top: 1px solid #e5e7eb;
-  padding: 0;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  background: transparent;
+  border-top: 1px solid #f3f4f6;
   
   .action-btn {
     flex: 1;
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 0.375rem;
-    padding: 0.875rem 1rem;
-    background: #fff;
-    border: none;
+    padding: 0.5rem 0.875rem;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 20px;
     color: #374151;
     font-family: inherit;
-    font-size: 0.875rem;
+    font-size: 0.8125rem;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.15s ease;
 
     &:hover:not(:disabled) {
-      background: #f9fafb;
+      background: #f3f4f6;
+      border-color: #d1d5db;
       color: #111827;
 
       .action-icon {
-        transform: scale(1.1);
+        transform: scale(1.08);
       }
     }
 
     &:active:not(:disabled) {
-      background: #f3f4f6;
+      background: #e5e7eb;
+      transform: scale(0.98);
     }
 
     &:disabled {
-      opacity: 0.4;
+      opacity: 0.35;
       cursor: not-allowed;
     }
 
     .action-icon {
       transition: transform 0.15s ease;
+      flex-shrink: 0;
     }
 
     .action-label {
       line-height: 1;
+      white-space: nowrap;
     }
   }
 }
@@ -298,19 +312,19 @@
   }
 
   .card-content {
-    padding: 1rem;
+    padding: 0.75rem 0.875rem;
   }
 
   .card-header {
-    gap: 1rem;
+    gap: 0.75rem;
   }
 
   .restaurant-photo,
   .restaurant-photo-placeholder {
-    width: 80px;
-    height: 80px;
-    min-width: 80px;
-    border-radius: 8px;
+    width: 72px;
+    height: 72px;
+    min-width: 72px;
+    border-radius: 7px;
   }
 
   .restaurant-name {
@@ -318,26 +332,28 @@
   }
 
   .restaurant-meta {
-    font-size: 0.8125rem;
-    gap: 0.625rem;
+    font-size: 0.75rem;
+    gap: 0.5rem;
   }
 
   .restaurant-address {
-    font-size: 0.8125rem;
+    font-size: 0.75rem;
   }
 
   .action-bar {
+    padding: 0.5rem 0.875rem;
+
     .action-btn {
-      padding: 0.75rem 0.875rem;
-      gap: 0.25rem;
+      padding: 0.4375rem 0.75rem;
+      gap: 0.3125rem;
 
       .action-icon {
-        width: 18px;
-        height: 18px;
+        width: 16px;
+        height: 16px;
       }
 
       .action-label {
-        font-size: 0.8125rem;
+        font-size: 0.75rem;
       }
     }
   }

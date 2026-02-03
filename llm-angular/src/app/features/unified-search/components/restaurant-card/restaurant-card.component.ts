@@ -5,12 +5,13 @@
  * P0 Security: Uses secure photo proxy (no API key exposure)
  */
 
-import { Component, input, output, ChangeDetectionStrategy, computed, signal } from '@angular/core';
+import { Component, input, output, ChangeDetectionStrategy, computed, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReasonLabelComponent } from '../reason-label/reason-label.component';
 import type { Restaurant } from '../../../../domain/types/search.types';
 import type { ActionType, ActionLevel } from '../../../../domain/types/action.types';
 import { buildPhotoSrc, getPhotoPlaceholder } from '../../../../utils/photo-src.util';
+import { I18nService } from '../../../../core/services/i18n.service';
 
 @Component({
   selector: 'app-restaurant-card',
@@ -21,6 +22,8 @@ import { buildPhotoSrc, getPhotoPlaceholder } from '../../../../utils/photo-src.
   styleUrl: './restaurant-card.component.scss'
 })
 export class RestaurantCardComponent {
+  private i18n = inject(I18nService);
+  
   // Inputs
   readonly restaurant = input.required<Restaurant>();
   readonly selected = input(false);
@@ -134,20 +137,20 @@ export class RestaurantCardComponent {
   }
 
   /**
-   * Get label for open status
+   * Get label for open status (i18n)
    */
   getOpenStatusLabel(): string {
     const status = this.getOpenStatus();
     switch (status) {
-      case 'open': return 'Open now';
-      case 'closed': return 'Closed';
-      case 'unknown': return 'Hours unverified';
+      case 'open': return this.i18n.t('card.status.open');
+      case 'closed': return this.i18n.t('card.status.closed');
+      case 'unknown': return this.i18n.t('card.status.hours_unverified');
       default: return '';
     }
   }
 
   /**
-   * NEW: Get gluten-free badge info (SOFT hints)
+   * NEW: Get gluten-free badge info (SOFT hints) - i18n
    * Returns badge text based on confidence level
    */
   readonly glutenFreeBadge = computed(() => {
@@ -158,27 +161,56 @@ export class RestaurantCardComponent {
 
     // HIGH confidence: "GF"
     if (hint.confidence === 'HIGH') {
-      return { text: 'GF', level: 'high' };
+      return { text: this.i18n.t('card.dietary.gluten_free'), level: 'high' };
     }
 
     // MEDIUM/LOW confidence: "Maybe GF"
-    return { text: 'Maybe GF', level: 'low' };
+    return { text: this.i18n.t('card.dietary.gluten_free_maybe'), level: 'low' };
   });
 
   /**
-   * Get gluten-free badge tooltip
+   * Get gluten-free badge tooltip (i18n)
    */
   getGlutenFreeTooltip(): string {
     const hint = this.restaurant().dietaryHints?.glutenFree;
     if (!hint) return '';
 
-    // Detect language from restaurant name (simple heuristic)
-    const hasHebrew = /[\u0590-\u05FF]/.test(this.restaurant().name);
+    return this.i18n.t('card.dietary.gluten_free_disclaimer');
+  }
 
-    if (hasHebrew) {
-      return 'מבוסס על רמזים בטקסט — לא מובטח';
-    }
-    return 'Based on text signals — not guaranteed';
+  /**
+   * Action button labels and tooltips (i18n)
+   */
+  getNavigateLabel(): string {
+    return this.i18n.t('card.action.navigate');
+  }
+
+  getCallLabel(): string {
+    return this.i18n.t('card.action.call');
+  }
+
+  getDirectionsTitle(): string {
+    return this.isActionAvailable('GET_DIRECTIONS')
+      ? this.i18n.t('card.action.get_directions')
+      : this.i18n.t('card.action.location_not_available');
+  }
+
+  getDirectionsAriaLabel(): string {
+    return this.isActionAvailable('GET_DIRECTIONS')
+      ? `${this.i18n.t('card.action.get_directions')} ${this.restaurant().name}`
+      : this.i18n.t('card.action.location_not_available');
+  }
+
+  getCallTitle(): string {
+    return this.isActionAvailable('CALL_RESTAURANT')
+      ? this.i18n.t('card.action.call_restaurant')
+      : this.i18n.t('card.action.phone_not_available');
+  }
+
+  getCallAriaLabel(): string {
+    return this.isActionAvailable('CALL_RESTAURANT')
+      ? `${this.i18n.t('card.action.call')} ${this.restaurant().name}`
+      : this.i18n.t('card.action.phone_not_available');
   }
 
   /**
