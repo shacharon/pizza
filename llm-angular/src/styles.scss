@@ -21,14 +21,13 @@
 body {
     background: var(--bg);
     color: var(--text);
-}
-
-html,
-body {
-    overflow-x: hidden;
-}
-
-
-app-root {
-    overflow-x: hidden;
+    /* PWA fixes: Prevent horizontal scroll and ensure proper viewport */
+    overflow-x: clip;
+    max-width: 100%;
+    /* Android PWA: Use dvh for proper keyboard handling */
+    min-height: 100vh;
+    min-height: 100dvh;
+    /* Reset default margins */
+    margin: 0;
+    padding: 0;
 }

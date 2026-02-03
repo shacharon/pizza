@@ -1,15 +1,28 @@
 .search-page {
+  /* Android PWA fix: Use dvh (dynamic viewport height) to handle keyboard */
+  /* Falls back to 100vh for browsers without dvh support */
   min-height: 100vh;
+  min-height: 100dvh;
   background: #f9fafb;
+  /* Prevent horizontal wiggle/scroll on PWA */
+  overflow-x: clip;
+  /* Ensure we use full width without forcing vw units */
+  max-width: 100%;
 }
 
 .search-header {
   background: linear-gradient(180deg, #ffffff 0%, #f9fafb 100%);
   padding: 1.5rem 1rem 1.25rem;
   border-bottom: 1px solid #e5e7eb;
+  /* Sticky positioning for scroll behavior */
   position: sticky;
   top: 0;
   z-index: 100;
+  /* Ensure header stays above content with solid backdrop */
+  backdrop-filter: blur(8px);
+  /* Prevent horizontal overflow in header */
+  width: 100%;
+  max-width: 100%;
 }
 
 // Hero Section (title + subtitle + location)
@@ -126,6 +139,9 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   overflow: visible;
   padding: 1rem;
+  /* Prevent horizontal overflow */
+  width: 100%;
+  min-width: 0;
 
   &:hover {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
@@ -170,6 +186,9 @@
   max-width: 1400px;
   margin: 0 auto;
   padding: 1.5rem 1rem;
+  /* Prevent horizontal overflow */
+  width: 100%;
+  min-width: 0;
 }
 
 // NEW: Mobile-First Layout

@@ -1,5 +1,10 @@
 :host {
     display: block;
+    /* PWA fixes: Ensure app-root doesn't interfere with sticky or scrolling */
+    width: 100%;
+    max-width: 100%;
+    /* Prevent transforms/filters that would break sticky positioning */
+    /* (none applied, just documented for clarity) */
 }
 
 .topbar {
