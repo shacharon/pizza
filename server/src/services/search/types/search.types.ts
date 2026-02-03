@@ -71,6 +71,10 @@ export interface ProviderState {
   status: 'PENDING' | 'FOUND' | 'NOT_FOUND';
   url: string | null;
   updatedAt?: string; // ISO timestamp of last update (optional, only in patches)
+  meta?: {
+    layerUsed?: 1 | 2 | 3; // Resolution layer: 1=CSE+city, 2=CSE, 3=internal search
+    source?: 'cse' | 'internal'; // Resolution source
+  };
 }
 
 // ============================================================================
@@ -195,6 +199,7 @@ export interface RestaurantResult {
   // External enrichments (async, non-blocking) - NEW structured format
   providers?: {
     wolt?: ProviderState;
+    tenbis?: ProviderState;
     // Future: tripadvisor?: ProviderState, etc.
   };
 

@@ -1,11 +1,11 @@
 /**
- * Wolt Worker - Background Job Processor (Enhanced)
+ * 10bis Worker - Background Job Processor (Enhanced)
  * 
- * Processes Wolt enrichment jobs with timeout/retry:
- * 1. Search for Wolt restaurant page (using search adapter) - with timeout
+ * Processes 10bis enrichment jobs with timeout/retry:
+ * 1. Search for 10bis restaurant page (using search adapter) - with timeout
  * 2. Match best result (using matcher)
- * 3. Write to Redis cache provider:wolt:{placeId} with TTL
- * 4. Publish WebSocket RESULT_PATCH with providers.wolt + updatedAt
+ * 3. Write to Redis cache provider:tenbis:{placeId} with TTL
+ * 4. Publish WebSocket RESULT_PATCH with providers.tenbis + updatedAt
  * 
  * Error Handling:
  * - Timeout: Write NOT_FOUND, publish patch, log timeout
@@ -13,8 +13,8 @@
  * - Permanent errors: Write NOT_FOUND, publish patch, no retry
  * 
  * Timeout Strategy:
- * - Overall job timeout: 30s (WOLT_JOB_CONFIG.JOB_TIMEOUT_MS)
- * - Search timeout: 20s (WOLT_JOB_CONFIG.SEARCH_TIMEOUT_MS)
+ * - Overall job timeout: 30s (TENBIS_JOB_CONFIG.JOB_TIMEOUT_MS)
+ * - Search timeout: 20s (TENBIS_JOB_CONFIG.SEARCH_TIMEOUT_MS)
  * - On timeout: Treated as transient error, eligible for retry
  * 
  * Retry Strategy:
@@ -27,20 +27,21 @@
 import type { Redis as RedisClient } from 'ioredis';
 import { logger } from '../../../../../lib/logger/structured-logger.js';
 import {
-  WOLT_REDIS_KEYS,
-  WOLT_CACHE_TTL_SECONDS,
-  WOLT_JOB_CONFIG,
-  type WoltCacheEntry,
-} from '../../../wolt/wolt-enrichment.contracts.js';
-import type { WSServerResultPatch } from '../../../../../infra/websocket/websocket-protocol.js';
+  TENBIS_REDIS_KEYS,
+  TENBIS_CACHE_TTL_SECONDS,
+  TENBIS_JOB_CONFIG,
+  type TenbisCacheEntry,
+} from './tenbis-enrichment.contracts.js';
 import { wsManager } from '../../../../../server.js';
+import type { TenbisSearchAdapter } from './tenbis-search.adapter.js';
+import { buildTenbisSearchQuery } from './tenbis-search.adapter.js';
+import { findBestMatch } from './tenbis-matcher.js';
 import { withTimeout } from '../../../../../lib/reliability/timeout-guard.js';
-import type { ProviderDeepLinkResolver } from '../provider-deeplink-resolver.js';
 
 /**
- * Wolt enrichment job
+ * 10bis enrichment job
  */
-export interface WoltEnrichmentJob {
+export interface TenbisEnrichmentJob {
   /**
    * Search request ID (for WS patch event)
    */
@@ -77,7 +78,7 @@ export interface JobResult {
   success: boolean;
 
   /**
-   * Wolt URL (if found)
+   * 10bis URL (if found)
    */
   url: string | null;
 
@@ -92,14 +93,6 @@ export interface JobResult {
   updatedAt: string;
 
   /**
-   * Resolution metadata
-   */
-  meta?: {
-    layerUsed: 1 | 2 | 3;
-    source: 'cse' | 'internal';
-  };
-
-  /**
    * Error message (if failed)
    */
   error?: string;
@@ -111,21 +104,21 @@ export interface JobResult {
 }
 
 /**
- * Wolt Worker - Processes enrichment jobs
+ * 10bis Worker - Processes enrichment jobs
  */
-export class WoltWorker {
+export class TenbisWorker {
   constructor(
     private redis: RedisClient,
-    private resolver: ProviderDeepLinkResolver
+    private searchAdapter: TenbisSearchAdapter
   ) {}
 
   /**
-   * Process a single Wolt enrichment job (with timeout and retry)
+   * Process a single 10bis enrichment job (with timeout and retry)
    * 
    * Steps:
-   * 1. Search for Wolt restaurant page (with timeout)
+   * 1. Search for 10bis restaurant page (with timeout)
    * 2. Match best result
-   * 3. Write to Redis cache provider:wolt:{placeId}
+   * 3. Write to Redis cache provider:tenbis:{placeId}
    * 4. Publish WebSocket RESULT_PATCH with updatedAt
    * 
    * Retry Strategy:
@@ -133,31 +126,31 @@ export class WoltWorker {
    * - No retry on: 4xx errors, invalid data, permanent failures
    * - Exponential backoff: 1s → 2s → 4s
    * 
-   * @param job - Wolt enrichment job
+   * @param job - 10bis enrichment job
    * @returns Job result with updatedAt
    */
-  async processJob(job: WoltEnrichmentJob): Promise<JobResult> {
+  async processJob(job: TenbisEnrichmentJob): Promise<JobResult> {
     const { requestId, placeId, name, cityText } = job;
 
     logger.info(
       {
-        event: 'wolt_job_started',
+        event: 'tenbis_job_started',
         requestId,
         placeId,
         restaurantName: name,
         cityText,
-        timeout: WOLT_JOB_CONFIG.JOB_TIMEOUT_MS,
-        maxRetries: WOLT_JOB_CONFIG.MAX_RETRIES,
+        timeout: TENBIS_JOB_CONFIG.JOB_TIMEOUT_MS,
+        maxRetries: TENBIS_JOB_CONFIG.MAX_RETRIES,
       },
-      '[WoltWorker] Processing job'
+      '[TenbisWorker] Processing job'
     );
 
     // Wrap entire job with timeout guard
     try {
       const result = await withTimeout(
         this.processJobInternal(job, 0),
-        WOLT_JOB_CONFIG.JOB_TIMEOUT_MS,
-        `Wolt job timeout for ${placeId}`
+        TENBIS_JOB_CONFIG.JOB_TIMEOUT_MS,
+        `10bis job timeout for ${placeId}`
       );
 
       return result;
@@ -168,30 +161,30 @@ export class WoltWorker {
 
       logger.error(
         {
-          event: 'wolt_job_failed',
+          event: 'tenbis_job_failed',
           requestId,
           placeId,
           error,
           isTimeout,
         },
-        '[WoltWorker] Job failed (final)'
+        '[TenbisWorker] Job failed (final)'
       );
 
-      // Write NOT_FOUND and publish patch (no meta on error)
+      // Write NOT_FOUND and publish patch
       const updatedAt = new Date().toISOString();
       try {
-        await this.writeCacheEntry(placeId, null, 'NOT_FOUND', undefined);
-        await this.publishPatchEvent(requestId, placeId, 'NOT_FOUND', null, updatedAt, undefined);
+        await this.writeCacheEntry(placeId, null, 'NOT_FOUND');
+        await this.publishPatchEvent(requestId, placeId, 'NOT_FOUND', null, updatedAt);
         await this.cleanupLock(placeId);
       } catch (cleanupErr) {
         logger.warn(
           {
-            event: 'wolt_error_cleanup_failed',
+            event: 'tenbis_error_cleanup_failed',
             requestId,
             placeId,
             error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
           },
-          '[WoltWorker] Failed to write NOT_FOUND on error (non-fatal)'
+          '[TenbisWorker] Failed to write NOT_FOUND on error (non-fatal)'
         );
       }
 
@@ -208,75 +201,87 @@ export class WoltWorker {
   /**
    * Internal job processing with retry logic
    * 
-   * @param job - Wolt enrichment job
+   * @param job - 10bis enrichment job
    * @param attemptNumber - Current attempt (0-indexed)
    * @returns Job result
    */
   private async processJobInternal(
-    job: WoltEnrichmentJob,
+    job: TenbisEnrichmentJob,
     attemptNumber: number
   ): Promise<JobResult> {
     const { requestId, placeId, name, cityText } = job;
 
     try {
-      // Step 1: Resolve Wolt deep link using 3-layer strategy
+      // Step 1: Search for 10bis restaurant page (with search-specific timeout)
+      const searchQuery = buildTenbisSearchQuery(name, cityText ?? null);
+      
       logger.debug(
         {
-          event: 'wolt_resolution_started',
+          event: 'tenbis_search_started',
           requestId,
           placeId,
-          name,
-          cityText,
+          query: searchQuery,
           attempt: attemptNumber + 1,
         },
-        '[WoltWorker] Starting resolution'
+        '[TenbisWorker] Starting search'
       );
 
-      const resolveResult = await withTimeout(
-        this.resolver.resolve({
-          provider: 'wolt',
-          name,
-          cityText: cityText ?? null,
-        }),
-        WOLT_JOB_CONFIG.SEARCH_TIMEOUT_MS,
-        `Wolt resolution timeout for ${placeId}`
+      const searchResults = await withTimeout(
+        this.searchAdapter.searchWeb(searchQuery, 5),
+        TENBIS_JOB_CONFIG.SEARCH_TIMEOUT_MS,
+        `10bis search timeout for ${placeId}`
       );
 
-      const { status, url, meta } = resolveResult;
+      logger.debug(
+        {
+          event: 'tenbis_search_completed',
+          requestId,
+          placeId,
+          query: searchQuery,
+          resultCount: searchResults.length,
+          attempt: attemptNumber + 1,
+        },
+        '[TenbisWorker] Search completed'
+      );
+
+      // Step 2: Match best result
+      const matchResult = findBestMatch(searchResults, name, cityText ?? null);
+
+      const status: 'FOUND' | 'NOT_FOUND' = matchResult.found ? 'FOUND' : 'NOT_FOUND';
+      const url = matchResult.url;
       const updatedAt = new Date().toISOString();
 
       logger.info(
         {
-          event: 'wolt_resolution_completed',
+          event: 'tenbis_match_completed',
           requestId,
           placeId,
           status,
           url,
-          layerUsed: meta.layerUsed,
-          source: meta.source,
+          bestScore: matchResult.bestScore?.score,
           attempt: attemptNumber + 1,
         },
-        '[WoltWorker] Resolution completed'
+        '[TenbisWorker] Match completed'
       );
 
-      // Step 2: Write to Redis cache (with meta)
-      await this.writeCacheEntry(placeId, url, status, meta);
+      // Step 3: Write to Redis cache
+      await this.writeCacheEntry(placeId, url, status);
 
-      // Step 3: Publish WebSocket RESULT_PATCH event with meta
-      await this.publishPatchEvent(requestId, placeId, status, url, updatedAt, meta);
+      // Step 4: Publish WebSocket RESULT_PATCH event with updatedAt
+      await this.publishPatchEvent(requestId, placeId, status, url, updatedAt);
 
-      // Step 4: Clean up lock (optional, TTL already exists)
+      // Step 5: Clean up lock (optional, TTL already exists)
       await this.cleanupLock(placeId);
 
       logger.info(
         {
-          event: 'wolt_job_completed',
+          event: 'tenbis_job_completed',
           requestId,
           placeId,
           status,
           attempts: attemptNumber + 1,
         },
-        '[WoltWorker] Job completed successfully'
+        '[TenbisWorker] Job completed successfully'
       );
 
       return {
@@ -284,7 +289,6 @@ export class WoltWorker {
         url,
         status,
         updatedAt,
-        meta,
         retries: attemptNumber,
       };
     } catch (err) {
@@ -294,32 +298,32 @@ export class WoltWorker {
 
       logger.warn(
         {
-          event: 'wolt_job_attempt_failed',
+          event: 'tenbis_job_attempt_failed',
           requestId,
           placeId,
           error,
           attempt: attemptNumber + 1,
-          maxRetries: WOLT_JOB_CONFIG.MAX_RETRIES,
+          maxRetries: TENBIS_JOB_CONFIG.MAX_RETRIES,
           isTimeout,
           isTransient,
         },
-        '[WoltWorker] Job attempt failed'
+        '[TenbisWorker] Job attempt failed'
       );
 
       // Retry logic
-      if (isTransient && attemptNumber < WOLT_JOB_CONFIG.MAX_RETRIES) {
-        const retryDelay = WOLT_JOB_CONFIG.RETRY_DELAY_MS * Math.pow(2, attemptNumber);
+      if (isTransient && attemptNumber < TENBIS_JOB_CONFIG.MAX_RETRIES) {
+        const retryDelay = TENBIS_JOB_CONFIG.RETRY_DELAY_MS * Math.pow(2, attemptNumber);
         
         logger.info(
           {
-            event: 'wolt_job_retrying',
+            event: 'tenbis_job_retrying',
             requestId,
             placeId,
             attempt: attemptNumber + 1,
             nextAttempt: attemptNumber + 2,
             retryDelayMs: retryDelay,
           },
-          '[WoltWorker] Retrying job after delay'
+          '[TenbisWorker] Retrying job after delay'
         );
 
         // Wait before retry (exponential backoff)
@@ -383,66 +387,60 @@ export class WoltWorker {
    * Write cache entry to Redis
    * 
    * @param placeId - Google Place ID
-   * @param url - Wolt URL (or null)
+   * @param url - 10bis URL (or null)
    * @param status - Match status
-   * @param meta - Resolution metadata
    */
   private async writeCacheEntry(
     placeId: string,
     url: string | null,
-    status: 'FOUND' | 'NOT_FOUND',
-    meta?: { layerUsed: 1 | 2 | 3; source: 'cse' | 'internal' }
+    status: 'FOUND' | 'NOT_FOUND'
   ): Promise<void> {
-    const cacheEntry: WoltCacheEntry & { meta?: any } = {
+    const cacheEntry: TenbisCacheEntry = {
       url,
       status,
       updatedAt: new Date().toISOString(),
-      ...(meta && { meta }),
     };
 
     const ttl =
       status === 'FOUND'
-        ? WOLT_CACHE_TTL_SECONDS.FOUND
-        : WOLT_CACHE_TTL_SECONDS.NOT_FOUND;
+        ? TENBIS_CACHE_TTL_SECONDS.FOUND
+        : TENBIS_CACHE_TTL_SECONDS.NOT_FOUND;
 
-    const key = WOLT_REDIS_KEYS.place(placeId);
+    const key = TENBIS_REDIS_KEYS.place(placeId);
 
     await this.redis.setex(key, ttl, JSON.stringify(cacheEntry));
 
     logger.debug(
       {
-        event: 'wolt_cache_written',
+        event: 'tenbis_cache_written',
         placeId,
         status,
         ttl,
-        meta,
       },
-      '[WoltWorker] Cache entry written'
+      '[TenbisWorker] Cache entry written'
     );
   }
 
   /**
-   * Publish WebSocket RESULT_PATCH event with updatedAt and meta
+   * Publish WebSocket RESULT_PATCH event with updatedAt
    * 
    * Uses unified wsManager.publishProviderPatch() method.
    * 
    * @param requestId - Search request ID
    * @param placeId - Google Place ID
    * @param status - Match status
-   * @param url - Wolt URL (or null)
+   * @param url - 10bis URL (or null)
    * @param updatedAt - ISO timestamp of enrichment completion
-   * @param meta - Resolution metadata
    */
   private async publishPatchEvent(
     requestId: string,
     placeId: string,
     status: 'FOUND' | 'NOT_FOUND',
     url: string | null,
-    updatedAt: string,
-    meta?: { layerUsed: 1 | 2 | 3; source: 'cse' | 'internal' }
+    updatedAt: string
   ): Promise<void> {
     // Use unified provider patch method (includes structured logging)
-    wsManager.publishProviderPatch('wolt', placeId, requestId, status, url, updatedAt, meta);
+    wsManager.publishProviderPatch('tenbis', placeId, requestId, status, url, updatedAt);
   }
 
   /**
@@ -452,25 +450,25 @@ export class WoltWorker {
    */
   private async cleanupLock(placeId: string): Promise<void> {
     try {
-      const lockKey = WOLT_REDIS_KEYS.lock(placeId);
+      const lockKey = TENBIS_REDIS_KEYS.lock(placeId);
       await this.redis.del(lockKey);
 
       logger.debug(
         {
-          event: 'wolt_lock_cleaned',
+          event: 'tenbis_lock_cleaned',
           placeId,
         },
-        '[WoltWorker] Lock key cleaned up'
+        '[TenbisWorker] Lock key cleaned up'
       );
     } catch (err) {
       // Non-fatal: Lock will expire via TTL anyway
       logger.warn(
         {
-          event: 'wolt_lock_cleanup_failed',
+          event: 'tenbis_lock_cleanup_failed',
           placeId,
           error: err instanceof Error ? err.message : String(err),
         },
-        '[WoltWorker] Lock cleanup failed (non-fatal)'
+        '[TenbisWorker] Lock cleanup failed (non-fatal)'
       );
     }
   }

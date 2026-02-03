@@ -36,6 +36,8 @@ import { shouldDebugStop, resolveSessionId } from './orchestrator.helpers.js';
 
 // Enrichment stages
 import { enrichWithWoltLinks } from './enrichment/wolt/wolt-enrichment.service.js';
+import { enrichWithTenbisLinks } from './enrichment/tenbis/tenbis-enrichment.service.js';
+import { getMetricsCollector } from './enrichment/metrics-collector.js';
 
 /**
  * Internal pipeline implementation (without timeout)
@@ -344,10 +346,36 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
       isGlutenFree: postConstraints.isGlutenFree ?? (finalFilters as any).isGlutenFree
     };
 
-    // STAGE 6.5: WOLT ENRICHMENT (async, non-blocking cache-first)
-    // Mutates finalResults in-place to attach wolt.status/url
+    // STAGE 6.5: PROVIDER ENRICHMENT (async, non-blocking cache-first)
+    // Mutates finalResults in-place to attach provider status/urls
+    // Cost controls: Cap at N results (default 10), max 3 concurrent jobs
     const cityText = (intentDecision as any).cityText ?? null;
-    await enrichWithWoltLinks(finalResults, requestId, cityText, ctx);
+    const maxResultsToEnrich = parseInt(process.env.MAX_RESULTS_TO_ENRICH || '10');
+    const resultsToEnrich = finalResults.slice(0, maxResultsToEnrich);
+    
+    // Initialize metrics tracking
+    const metricsCollector = getMetricsCollector();
+    metricsCollector.initRequest(requestId, resultsToEnrich.length);
+    
+    // Enrich with both providers in parallel (cache-first, idempotent)
+    await Promise.all([
+      enrichWithWoltLinks(resultsToEnrich, requestId, cityText, ctx),
+      enrichWithTenbisLinks(resultsToEnrich, requestId, cityText, ctx),
+    ]);
+    
+    // Finalize metrics after enrichment stage completes
+    metricsCollector.finalizeRequest(requestId);
+    
+    logger.info(
+      {
+        event: 'provider_enrichment_completed',
+        requestId,
+        totalResults: finalResults.length,
+        enrichedResults: resultsToEnrich.length,
+        cappedAt: maxResultsToEnrich,
+      },
+      '[ROUTE2] Provider enrichment stage completed'
+    );
 
     // STAGE 7: BUILD RESPONSE
     return await buildFinalResponse(

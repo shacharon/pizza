@@ -230,7 +230,7 @@ export async function callGooglePlacesSearchNearby(
   requestId: string
 ): Promise<any> {
   const url = 'https://places.googleapis.com/v1/places:searchNearby';
-  
+
   // Allow timeout to be configurable via env (default 8000ms)
   const timeoutMs = parseInt(process.env.GOOGLE_PLACES_TIMEOUT_MS || '8000', 10);
 
@@ -269,7 +269,7 @@ export async function callGooglePlacesSearchNearby(
       provider: 'google_places',
       enableDnsPreflight: process.env.ENABLE_DNS_PREFLIGHT === 'true'
     });
-    
+
     callDurationMs = Date.now() - callStartTime;
 
     if (!response.ok) {
@@ -297,7 +297,7 @@ export async function callGooglePlacesSearchNearby(
 
     const data = await response.json();
     callDurationMs = Date.now() - callStartTime;
-    
+
     // Threshold-based logging: INFO if slow (>2000ms), DEBUG otherwise
     const isSlow = callDurationMs > 2000;
     const logLevel = isSlow ? 'info' : 'debug';
@@ -311,17 +311,17 @@ export async function callGooglePlacesSearchNearby(
       event: 'google_api_call_success',
       ...(isSlow && { slow: true })
     }, '[GOOGLE] API call succeeded');
-    
+
     return data;
-    
+
   } catch (err) {
     callDurationMs = Date.now() - callStartTime;
-    
+
     // Extract error kind from TimeoutError if available
     if (!errorKind && err && typeof err === 'object' && 'errorKind' in err) {
       errorKind = (err as any).errorKind;
     }
-    
+
     // Log catch block error
     logger.error({
       requestId,
@@ -334,7 +334,7 @@ export async function callGooglePlacesSearchNearby(
       error: err instanceof Error ? err.message : String(err),
       event: 'google_api_call_failed'
     }, '[GOOGLE] API call failed in catch block');
-    
+
     throw err;
   }
 }
