@@ -1,24 +1,25 @@
 <!doctype html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8">
   <title>Piza Search</title>
   <base href="/">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#1976d2">
   <link rel="icon" type="image/x-icon" href="favicon.ico">
-  
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+
   <!-- Runtime API Base Override (for AWS/CDN deployments) -->
   <script>
     /**
      * Override API base URL for production deployments
-     * 
+     *
      * Local Dev: Leave undefined (defaults to /api/v1)
      * AWS/CDN: Set to your API Gateway/ALB URL
-     * 
+     *
      * Example for AWS:
      * window.__API_BASE_URL__ = 'https://api.piza.com/api/v1';
-     * 
+     *
      * IMPORTANT: Must include /api/v1 suffix (not legacy /api)
      * Legacy /api will trigger a console warning
      */
@@ -26,8 +27,10 @@
   </script>
   <link rel="manifest" href="manifest.webmanifest">
 </head>
+
 <body>
   <app-root></app-root>
   <noscript>Please enable JavaScript to continue using this application.</noscript>
 </body>
+
 </html>
