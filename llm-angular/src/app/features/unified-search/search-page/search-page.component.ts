@@ -203,7 +203,19 @@ export class SearchPageComponent implements OnInit, OnDestroy {
     // Legacy: show if requestId exists and assistant state is active
     const legacyActive = this.showAssistant() && this.assistantHasRequestId();
 
-    return hasCardMessages || legacyActive;
+    const shouldShow = hasCardMessages || legacyActive;
+
+    // TEMP DEBUG: Log assistant visibility
+    if (hasCardMessages || legacyActive) {
+      console.log('[SearchPage][DEBUG] Contextual assistant visibility:', {
+        shouldShow,
+        hasCardMessages,
+        legacyActive,
+        cardMessagesCount: this.contextualCardMessages().length
+      });
+    }
+
+    return shouldShow;
   });
 
   readonly showGlobalAssistant = computed(() => {
@@ -262,44 +274,60 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   // NEW: Mobile-first UX - Bottom sheet and flattened results
   readonly bottomSheetVisible = signal(false);
 
-  // Pagination: Display limit
-  private displayLimit = signal(10);
+  // Pagination: Visible count (starts at 10, increments by 5)
+  private visibleCount = signal(10);
 
+  // All results after filtering (not paginated)
+  private readonly allResults = computed(() => {
+    let results = this.facade.results();
+
+    // CLIENT-SIDE FILTERING: Apply openNow filter if active
+    const appliedFilters = this.response()?.meta?.appliedFilters || [];
+    if (appliedFilters.includes('open_now')) {
+      results = results.filter(r => r.openNow === true);
+    }
+
+    return results;
+  });
+
+  // Visible results (paginated)
+  readonly filteredResults = computed(() => {
+    const all = this.allResults();
+    const count = this.visibleCount();
+    return all.slice(0, Math.min(count, all.length));
+  });
+
+  // Flat results with pagination (for grouped view)
   readonly flatResults = computed(() => {
     const groups = this.response()?.groups;
     if (!groups) return [];
     // Flatten groups, preserving backend order
     let allResults = groups.flatMap(g => g.results);
-    
+
     // CLIENT-SIDE FILTERING: Apply openNow filter if active
-    // This ensures closed places are never shown when "Open now" is selected
     const appliedFilters = this.response()?.meta?.appliedFilters || [];
     if (appliedFilters.includes('open_now')) {
       allResults = allResults.filter(r => r.openNow === true);
     }
-    
-    // Apply display limit
-    return allResults.slice(0, this.displayLimit());
+
+    // Apply pagination
+    const count = this.visibleCount();
+    return allResults.slice(0, Math.min(count, allResults.length));
   });
 
-  // CLIENT-SIDE FILTERING: Filter results for non-grouped view
-  readonly filteredResults = computed(() => {
-    let results = this.facade.results();
-    
-    // Apply openNow filter if active
-    const appliedFilters = this.response()?.meta?.appliedFilters || [];
-    if (appliedFilters.includes('open_now')) {
-      results = results.filter(r => r.openNow === true);
-    }
-    
-    return results;
-  });
-
+  // Check if there are more results to show
   readonly hasMoreResults = computed(() => {
-    const groups = this.response()?.groups;
-    if (!groups) return false;
-    const totalResults = groups.flatMap(g => g.results).length;
-    return totalResults > this.displayLimit();
+    const totalResults = this.allResults().length;
+    const visible = this.visibleCount();
+    return visible < totalResults;
+  });
+
+  // Count of remaining results
+  readonly remainingResults = computed(() => {
+    const totalResults = this.allResults().length;
+    const visible = this.visibleCount();
+    const remaining = totalResults - visible;
+    return Math.min(remaining, 5); // Show +5 or remainder if less
   });
 
   readonly highlightedResults = computed(() => {
@@ -362,6 +390,12 @@ export class SearchPageComponent implements OnInit, OnDestroy {
     return appliedFilters.includes('gluten-free:soft');
   });
 
+  // Bottom placeholder: All card messages (contextual + global)
+  // TEMPORARILY DISABLED - see template comment
+  readonly allCardMessages = computed(() => {
+    return this.facade.assistantCardMessages();
+  });
+
   // Cuisine chips removed - discovery via free-text search + assistant only
 
   ngOnInit(): void {
@@ -385,8 +419,8 @@ export class SearchPageComponent implements OnInit, OnDestroy {
 
   onSearch(query: string): void {
     this.facade.search(query);
-    // Reset display limit on new search
-    this.displayLimit.set(10);
+    // Reset visible count on new search
+    this.visibleCount.set(10);
   }
 
   onClear(): void {
@@ -431,8 +465,8 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   onChipClick(chipId: string): void {
     // Trigger actual filtering/sorting via facade (single source of truth)
     this.facade.onChipClick(chipId);
-    // Reset display limit when filtering/sorting (new search pool)
-    this.displayLimit.set(10);
+    // Reset visible count when filtering/sorting (new search pool)
+    this.visibleCount.set(10);
   }
 
   closeBottomSheet(): void {
@@ -440,9 +474,10 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   }
 
   loadMore(): void {
-    // Increase display limit by 10
-    this.displayLimit.update(limit => limit + 10);
-    console.log('[SearchPage] Load more clicked, new limit:', this.displayLimit());
+    // Increase visible count by 5 (or show remaining if less than 5)
+    const totalResults = this.allResults().length;
+    this.visibleCount.update(current => Math.min(current + 5, totalResults));
+    console.log('[SearchPage] Load more clicked, new count:', this.visibleCount());
   }
 
   onAssistActionClick(query: string): void {

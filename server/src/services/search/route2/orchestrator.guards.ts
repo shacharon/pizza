@@ -10,7 +10,7 @@ import type { RouteLLMMapping } from './stages/route-llm/schemas.js';
 import { logger } from '../../../lib/logger/structured-logger.js';
 import { generateAndPublishAssistant } from './assistant/assistant-integration.js';
 import type { AssistantGateContext, AssistantClarifyContext, AssistantGenericQueryNarrationContext } from './assistant/assistant-llm.service.js';
-import { resolveAssistantLanguage, resolveSessionId } from './orchestrator.helpers.js';
+import { resolveAssistantLanguage, resolveSessionId, mapQueryLanguageToUILanguage } from './orchestrator.helpers.js';
 import type { WebSocketManager } from '../../../infra/websocket/websocket-manager.js';
 
 /**
@@ -58,6 +58,10 @@ export async function handleGateStop(
     wsManager
   );
 
+  // Derive UI language from query detection
+  const uiLanguage = mapQueryLanguageToUILanguage(ctx.queryLanguage);
+  const googleLanguage: 'he' | 'en' = ctx.queryLanguage === 'he' ? 'he' : 'en';
+
   return {
     requestId,
     sessionId,
@@ -68,9 +72,9 @@ export async function handleGateStop(
         searchMode: 'textsearch' as const,
         filters: {},
         languageContext: {
-          uiLanguage: 'he' as const,
-          requestLanguage: 'he' as const,
-          googleLanguage: 'he' as const
+          uiLanguage,
+          requestLanguage: ctx.queryLanguage || 'en',
+          googleLanguage
         },
         originalQuery: request.query
       },
@@ -137,6 +141,10 @@ export async function handleGateClarify(
     wsManager
   );
 
+  // Derive UI language from query detection
+  const uiLanguageClarify = mapQueryLanguageToUILanguage(ctx.queryLanguage);
+  const googleLanguageClarify: 'he' | 'en' = ctx.queryLanguage === 'he' ? 'he' : 'en';
+
   return {
     requestId,
     sessionId,
@@ -147,9 +155,9 @@ export async function handleGateClarify(
         searchMode: 'textsearch' as const,
         filters: {},
         languageContext: {
-          uiLanguage: 'he' as const,
-          requestLanguage: 'he' as const,
-          googleLanguage: 'he' as const
+          uiLanguage: uiLanguageClarify,
+          requestLanguage: ctx.queryLanguage || 'en',
+          googleLanguage: googleLanguageClarify
         },
         originalQuery: request.query
       },
@@ -217,6 +225,10 @@ export async function handleNearbyLocationGuard(
     wsManager
   );
 
+  // Derive UI language from intent decision
+  const uiLanguageGuard = mapQueryLanguageToUILanguage(intentDecision.language);
+  const googleLanguageGuard: 'he' | 'en' = intentDecision.language === 'he' ? 'he' : 'en';
+
   return {
     requestId,
     sessionId,
@@ -227,9 +239,9 @@ export async function handleNearbyLocationGuard(
         searchMode: 'textsearch' as const,
         filters: {},
         languageContext: {
-          uiLanguage: 'he' as const,
-          requestLanguage: 'he' as const,
-          googleLanguage: 'he' as const
+          uiLanguage: uiLanguageGuard,
+          requestLanguage: intentDecision.language,
+          googleLanguage: googleLanguageGuard
         },
         originalQuery: request.query
       },

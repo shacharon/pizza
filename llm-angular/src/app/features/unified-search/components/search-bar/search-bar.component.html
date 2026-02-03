@@ -1,29 +1,15 @@
 <div class="search-bar">
   <div class="search-input-container">
-    <input
-      #searchInput
-      type="text"
-      class="search-input"
-      [ngModel]="query()"
-      (ngModelChange)="onInput($event)"
-      (keydown.enter)="onSearchFromInput(searchInput.value)"
-      [disabled]="disabled()"
-      [placeholder]="placeholder()"
-      aria-label="Search for restaurants"
-    />
+    <input #searchInput type="text" class="search-input" [ngModel]="query()" (ngModelChange)="onInput($event)"
+      (keydown.enter)="onSearchFromInput(searchInput.value)" [disabled]="disabled()" [placeholder]="placeholder()"
+      aria-label="Search for restaurants" />
     @if (loading()) {
-      <span class="loading-indicator" aria-label="Loading"></span>
+    <span class="loading-indicator" aria-label="Loading"></span>
     }
     @if (query() && !loading()) {
-      <button
-        type="button"
-        class="clear-button"
-        (click)="onClear()"
-        [disabled]="disabled()"
-        aria-label="Clear search"
-      >
-        ✕
-      </button>
+    <button type="button" class="clear-button" (click)="onClear()" [disabled]="disabled()" aria-label="Clear search">
+      ✕
+    </button>
     }
   </div>
 </div>

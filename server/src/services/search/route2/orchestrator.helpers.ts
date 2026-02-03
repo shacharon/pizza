@@ -124,6 +124,33 @@ export function resolveAssistantLanguage(
 }
 
 /**
+ * Map query language to UI language (all 8 supported languages)
+ * Used for HTTP response languageContext.uiLanguage
+ */
+export function mapQueryLanguageToUILanguage(
+  queryLang: unknown
+): 'he' | 'en' | 'ru' | 'ar' | 'fr' | 'es' | 'de' | 'it' {
+  if (!queryLang || typeof queryLang !== 'string') {
+    return 'en'; // Default fallback
+  }
+
+  const normalized = queryLang.toLowerCase();
+
+  // Direct mappings for supported languages
+  if (normalized === 'he') return 'he';
+  if (normalized === 'en') return 'en';
+  if (normalized === 'ru') return 'ru';
+  if (normalized === 'ar') return 'ar';
+  if (normalized === 'fr') return 'fr';
+  if (normalized === 'es') return 'es';
+  if (normalized === 'de') return 'de';
+  if (normalized === 'it') return 'it';
+
+  // Fallback for 'unknown' or unsupported languages
+  return 'en';
+}
+
+/**
  * Resolve session ID from request or context
  * CRITICAL: ctx.sessionId (JWT) takes precedence over request.sessionId
  */

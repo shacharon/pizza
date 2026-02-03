@@ -8,6 +8,9 @@
   overflow-x: clip;
   /* Ensure we use full width without forcing vw units */
   max-width: 100%;
+  /* CRITICAL: Ensure background extends to bottom (no premature container end) */
+  display: flex;
+  flex-direction: column;
 }
 
 .search-header {
@@ -101,7 +104,7 @@
   padding: 0.5rem 1rem;
   border-radius: 6px;
   transition: all 0.2s ease;
-  
+
   // Subtle, low-contrast style
   &:hover {
     background: rgba(59, 130, 246, 0.05);
@@ -119,11 +122,11 @@
   // RTL support for Hebrew text
   direction: rtl;
   unicode-bidi: embed;
-  
+
   // Subtle animation on hover
   display: inline-block;
   transition: color 0.2s ease;
-  
+
   .pwa-install-button:hover & {
     color: #3b82f6;
   }
@@ -189,6 +192,8 @@
   /* Prevent horizontal overflow */
   width: 100%;
   min-width: 0;
+  /* CRITICAL: Grow to fill available space (prevents premature end) */
+  flex: 1;
 }
 
 // NEW: Mobile-First Layout

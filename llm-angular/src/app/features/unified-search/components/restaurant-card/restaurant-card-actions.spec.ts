@@ -49,10 +49,10 @@ describe('RestaurantCardComponent - Quick Actions', () => {
   describe('GET_DIRECTIONS Action', () => {
     it('should emit GET_DIRECTIONS action when directions button clicked', () => {
       spyOn(component.action, 'emit');
-      
+
       const event = new MouseEvent('click');
       component.onAction(event, 'GET_DIRECTIONS');
-      
+
       expect(component.action.emit).toHaveBeenCalledWith({
         type: 'GET_DIRECTIONS',
         restaurant: mockRestaurant
@@ -62,18 +62,18 @@ describe('RestaurantCardComponent - Quick Actions', () => {
     it('should stop event propagation on directions click', () => {
       const event = new MouseEvent('click');
       spyOn(event, 'stopPropagation');
-      
+
       component.onAction(event, 'GET_DIRECTIONS');
-      
+
       expect(event.stopPropagation).toHaveBeenCalled();
     });
 
     it('should prevent default on directions click', () => {
       const event = new MouseEvent('click');
       spyOn(event, 'preventDefault');
-      
+
       component.onAction(event, 'GET_DIRECTIONS');
-      
+
       expect(event.preventDefault).toHaveBeenCalled();
     });
 
@@ -97,10 +97,10 @@ describe('RestaurantCardComponent - Quick Actions', () => {
   describe('CALL_RESTAURANT Action', () => {
     it('should emit CALL_RESTAURANT action when call button clicked', () => {
       spyOn(component.action, 'emit');
-      
+
       const event = new MouseEvent('click');
       component.onAction(event, 'CALL_RESTAURANT');
-      
+
       expect(component.action.emit).toHaveBeenCalledWith({
         type: 'CALL_RESTAURANT',
         restaurant: mockRestaurant
@@ -110,16 +110,16 @@ describe('RestaurantCardComponent - Quick Actions', () => {
     it('should stop event propagation on call click', () => {
       const event = new MouseEvent('click');
       spyOn(event, 'stopPropagation');
-      
+
       component.onAction(event, 'CALL_RESTAURANT');
-      
+
       expect(event.stopPropagation).toHaveBeenCalled();
     });
 
     it('should disable call button when no phone number', () => {
       component.restaurant = signal({ ...mockRestaurant, phoneNumber: undefined });
       fixture.detectChanges();
-      
+
       const button = fixture.nativeElement.querySelector('[title="Call restaurant"]');
       expect(button.disabled).toBe(true);
     });
@@ -142,7 +142,7 @@ describe('RestaurantCardComponent - Quick Actions', () => {
     it('should handle empty phone number string', () => {
       component.restaurant = signal({ ...mockRestaurant, phoneNumber: '' });
       fixture.detectChanges();
-      
+
       const button = fixture.nativeElement.querySelector('[title="Call restaurant"]');
       expect(button.disabled).toBe(true);
     });
@@ -151,10 +151,10 @@ describe('RestaurantCardComponent - Quick Actions', () => {
   describe('SAVE_FAVORITE Action', () => {
     it('should emit SAVE_FAVORITE action when favorite button clicked', () => {
       spyOn(component.action, 'emit');
-      
+
       const event = new MouseEvent('click');
       component.onAction(event, 'SAVE_FAVORITE');
-      
+
       expect(component.action.emit).toHaveBeenCalledWith({
         type: 'SAVE_FAVORITE',
         restaurant: mockRestaurant
@@ -164,9 +164,9 @@ describe('RestaurantCardComponent - Quick Actions', () => {
     it('should stop event propagation on favorite click', () => {
       const event = new MouseEvent('click');
       spyOn(event, 'stopPropagation');
-      
+
       component.onAction(event, 'SAVE_FAVORITE');
-      
+
       expect(event.stopPropagation).toHaveBeenCalled();
     });
 
@@ -195,7 +195,7 @@ describe('RestaurantCardComponent - Quick Actions', () => {
 
     it('should have directions, call, and favorite buttons in that order', () => {
       const buttons = fixture.nativeElement.querySelectorAll('.action-button');
-      
+
       expect(buttons[0].textContent?.includes('📍')).toBe(true); // Directions
       expect(buttons[1].textContent?.includes('📞')).toBe(true); // Call
       expect(buttons[2].textContent?.includes('❤️')).toBe(true); // Favorite
@@ -203,7 +203,7 @@ describe('RestaurantCardComponent - Quick Actions', () => {
 
     it('should all be button elements', () => {
       const buttons = fixture.nativeElement.querySelectorAll('.action-button');
-      
+
       buttons.forEach((button: HTMLElement) => {
         expect(button.tagName.toLowerCase()).toBe('button');
         expect(button.getAttribute('type')).toBe('button');
@@ -214,27 +214,27 @@ describe('RestaurantCardComponent - Quick Actions', () => {
   describe('Multiple Action Clicks', () => {
     it('should handle clicking all actions sequentially', () => {
       spyOn(component.action, 'emit');
-      
+
       const event1 = new MouseEvent('click');
       const event2 = new MouseEvent('click');
       const event3 = new MouseEvent('click');
-      
+
       component.onAction(event1, 'GET_DIRECTIONS');
       component.onAction(event2, 'CALL_RESTAURANT');
       component.onAction(event3, 'SAVE_FAVORITE');
-      
+
       expect(component.action.emit).toHaveBeenCalledTimes(3);
     });
 
     it('should handle clicking the same action multiple times', () => {
       spyOn(component.action, 'emit');
-      
+
       const event1 = new MouseEvent('click');
       const event2 = new MouseEvent('click');
-      
+
       component.onAction(event1, 'SAVE_FAVORITE');
       component.onAction(event2, 'SAVE_FAVORITE');
-      
+
       expect(component.action.emit).toHaveBeenCalledTimes(2);
       expect(component.action.emit).toHaveBeenCalledWith({
         type: 'SAVE_FAVORITE',
@@ -246,12 +246,12 @@ describe('RestaurantCardComponent - Quick Actions', () => {
   describe('Event Propagation', () => {
     it('should NOT trigger card click when action clicked', () => {
       spyOn(component.restaurantClick, 'emit');
-      
+
       const event = new MouseEvent('click');
       spyOn(event, 'stopPropagation');
-      
+
       component.onAction(event, 'GET_DIRECTIONS');
-      
+
       expect(event.stopPropagation).toHaveBeenCalled();
       expect(component.restaurantClick.emit).not.toHaveBeenCalled();
     });
@@ -262,13 +262,13 @@ describe('RestaurantCardComponent - Quick Actions', () => {
         'CALL_RESTAURANT',
         'SAVE_FAVORITE'
       ];
-      
+
       actions.forEach(actionType => {
         const event = new MouseEvent('click');
         spyOn(event, 'stopPropagation');
-        
+
         component.onAction(event, actionType);
-        
+
         expect(event.stopPropagation).toHaveBeenCalled();
       });
     });
@@ -277,10 +277,10 @@ describe('RestaurantCardComponent - Quick Actions', () => {
   describe('Restaurant Data Binding', () => {
     it('should use current restaurant data in action emit', () => {
       spyOn(component.action, 'emit');
-      
+
       const event = new MouseEvent('click');
       component.onAction(event, 'GET_DIRECTIONS');
-      
+
       const emittedRestaurant = (component.action.emit as jasmine.Spy).calls.mostRecent().args[0].restaurant;
       expect(emittedRestaurant.id).toBe('1');
       expect(emittedRestaurant.name).toBe('Test Restaurant');
@@ -292,15 +292,15 @@ describe('RestaurantCardComponent - Quick Actions', () => {
         id: '2',
         name: 'Updated Restaurant'
       };
-      
+
       component.restaurant = signal(newRestaurant);
       fixture.detectChanges();
-      
+
       spyOn(component.action, 'emit');
-      
+
       const event = new MouseEvent('click');
       component.onAction(event, 'SAVE_FAVORITE');
-      
+
       const emittedRestaurant = (component.action.emit as jasmine.Spy).calls.mostRecent().args[0].restaurant;
       expect(emittedRestaurant.id).toBe('2');
       expect(emittedRestaurant.name).toBe('Updated Restaurant');
@@ -310,7 +310,7 @@ describe('RestaurantCardComponent - Quick Actions', () => {
   describe('Accessibility', () => {
     it('should have proper button types', () => {
       const buttons = fixture.nativeElement.querySelectorAll('.action-button');
-      
+
       buttons.forEach((button: HTMLElement) => {
         expect(button.getAttribute('type')).toBe('button');
       });
@@ -318,7 +318,7 @@ describe('RestaurantCardComponent - Quick Actions', () => {
 
     it('should have title attributes for tooltips', () => {
       const buttons = fixture.nativeElement.querySelectorAll('.action-button');
-      
+
       expect(buttons[0].getAttribute('title')).toBe('Get directions');
       expect(buttons[1].getAttribute('title')).toBe('Call restaurant');
       expect(buttons[2].getAttribute('title')).toBe('Save to favorites');
@@ -326,7 +326,7 @@ describe('RestaurantCardComponent - Quick Actions', () => {
 
     it('should have aria-labels', () => {
       const buttons = fixture.nativeElement.querySelectorAll('.action-button');
-      
+
       expect(buttons[0].getAttribute('aria-label')).toBeTruthy();
       expect(buttons[1].getAttribute('aria-label')).toBeTruthy();
       expect(buttons[2].getAttribute('aria-label')).toBeTruthy();
@@ -334,7 +334,7 @@ describe('RestaurantCardComponent - Quick Actions', () => {
 
     it('should be keyboard accessible', () => {
       const buttons = fixture.nativeElement.querySelectorAll('.action-button');
-      
+
       buttons.forEach((button: HTMLElement) => {
         // Buttons should not have negative tabindex
         const tabindex = button.getAttribute('tabindex');
@@ -347,7 +347,7 @@ describe('RestaurantCardComponent - Quick Actions', () => {
     it('should handle restaurant without rating', () => {
       component.restaurant = signal({ ...mockRestaurant, rating: undefined });
       fixture.detectChanges();
-      
+
       expect(() => {
         const event = new MouseEvent('click');
         component.onAction(event, 'SAVE_FAVORITE');
@@ -357,7 +357,7 @@ describe('RestaurantCardComponent - Quick Actions', () => {
     it('should handle restaurant without price level', () => {
       component.restaurant = signal({ ...mockRestaurant, priceLevel: undefined });
       fixture.detectChanges();
-      
+
       expect(() => {
         const event = new MouseEvent('click');
         component.onAction(event, 'GET_DIRECTIONS');
@@ -372,27 +372,27 @@ describe('RestaurantCardComponent - Quick Actions', () => {
         address: 'Minimal Address',
         location: { lat: 32, lng: 34 }
       };
-      
+
       component.restaurant = signal(minimalRestaurant);
       fixture.detectChanges();
-      
+
       spyOn(component.action, 'emit');
-      
+
       const event = new MouseEvent('click');
       component.onAction(event, 'GET_DIRECTIONS');
-      
+
       expect(component.action.emit).toHaveBeenCalled();
     });
 
     it('should handle rapid successive action clicks', () => {
       spyOn(component.action, 'emit');
-      
+
       // Simulate rapid clicking
       for (let i = 0; i < 10; i++) {
         const event = new MouseEvent('click');
         component.onAction(event, 'SAVE_FAVORITE');
       }
-      
+
       expect(component.action.emit).toHaveBeenCalledTimes(10);
     });
   });
@@ -401,7 +401,7 @@ describe('RestaurantCardComponent - Quick Actions', () => {
     it('should have CSS class for action buttons', () => {
       const buttons = fixture.nativeElement.querySelectorAll('.action-button');
       expect(buttons.length).toBeGreaterThan(0);
-      
+
       buttons.forEach((button: HTMLElement) => {
         expect(button.classList.contains('action-button')).toBe(true);
       });
@@ -417,31 +417,31 @@ describe('RestaurantCardComponent - Quick Actions', () => {
     it('should NOT emit restaurantClick when action clicked', () => {
       spyOn(component.restaurantClick, 'emit');
       spyOn(component.action, 'emit');
-      
+
       const event = new MouseEvent('click');
       component.onAction(event, 'GET_DIRECTIONS');
-      
+
       expect(component.action.emit).toHaveBeenCalled();
       expect(component.restaurantClick.emit).not.toHaveBeenCalled();
     });
 
     it('should emit restaurantClick when card body clicked', () => {
       spyOn(component.restaurantClick, 'emit');
-      
+
       component.onCardClick();
-      
+
       expect(component.restaurantClick.emit).toHaveBeenCalledWith(mockRestaurant);
     });
 
     it('should have separate click handlers for card and actions', () => {
       spyOn(component.restaurantClick, 'emit');
       spyOn(component.action, 'emit');
-      
+
       // Click card
       component.onCardClick();
       expect(component.restaurantClick.emit).toHaveBeenCalledTimes(1);
       expect(component.action.emit).not.toHaveBeenCalled();
-      
+
       // Click action
       const event = new MouseEvent('click');
       component.onAction(event, 'SAVE_FAVORITE');

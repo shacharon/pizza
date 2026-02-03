@@ -15,17 +15,17 @@ export type TextDirection = 'rtl' | 'ltr';
 })
 export class LanguageService {
   private document = inject(DOCUMENT);
-  
+
   // Reactive signals
   readonly currentLang = signal<SupportedLang>('en');
   readonly textDirection = signal<TextDirection>('ltr');
-  
+
   constructor() {
     // Initialize with browser language or default to English
     const browserLang = this.detectBrowserLanguage();
     this.setLanguage(browserLang);
   }
-  
+
   /**
    * Detect browser language and normalize to supported language
    */
@@ -33,9 +33,9 @@ export class LanguageService {
     if (typeof window === 'undefined' || !window.navigator) {
       return 'en';
     }
-    
+
     const browserLang = (window.navigator.language || 'en').toLowerCase().split('-')[0];
-    
+
     switch (browserLang) {
       case 'he':
       case 'iw': // Old Hebrew code
@@ -57,35 +57,35 @@ export class LanguageService {
         return 'en';
     }
   }
-  
+
   /**
    * Set application language and update text direction
    */
   setLanguage(lang: SupportedLang): void {
     this.currentLang.set(lang);
-    
+
     // Determine text direction
     const direction: TextDirection = (lang === 'he' || lang === 'ar') ? 'rtl' : 'ltr';
     this.textDirection.set(direction);
-    
+
     // Update HTML attributes
     this.updateHtmlAttributes(lang, direction);
-    
+
     console.log(`[LanguageService] Language set to: ${lang} (${direction})`);
   }
-  
+
   /**
    * Update HTML element attributes for language and direction
    */
   private updateHtmlAttributes(lang: string, direction: TextDirection): void {
     const html = this.document.documentElement;
-    
+
     if (html) {
       html.setAttribute('lang', lang);
       html.setAttribute('dir', direction);
     }
   }
-  
+
   /**
    * Get language from search response metadata
    * Call this when search results come back to sync language
@@ -98,13 +98,13 @@ export class LanguageService {
       }
     }
   }
-  
+
   /**
    * Normalize language string to supported lang
    */
   private normalizeLang(lang: string): SupportedLang {
     const normalized = lang.toLowerCase().split('-')[0];
-    
+
     switch (normalized) {
       case 'he':
       case 'iw':
@@ -126,7 +126,7 @@ export class LanguageService {
         return 'en';
     }
   }
-  
+
   /**
    * Check if current language is RTL
    */

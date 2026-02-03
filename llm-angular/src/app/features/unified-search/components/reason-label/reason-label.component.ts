@@ -19,7 +19,7 @@ import { I18nService } from '../../../../core/services/i18n.service';
 })
 export class ReasonLabelComponent {
   private i18n = inject(I18nService);
-  
+
   @Input({ required: true }) restaurant!: Restaurant;
 
   /**
@@ -28,11 +28,11 @@ export class ReasonLabelComponent {
    */
   readonly reasonText = computed(() => {
     const parts: string[] = [this.i18n.t('reason.best_match')];
-    
+
     // Use backend-provided match reasons if available
     if (this.restaurant.matchReasons && this.restaurant.matchReasons.length > 0) {
       const reasons = this.restaurant.matchReasons;
-      
+
       if (reasons.includes('open_now') && this.restaurant.openNow === true) {
         parts.push(this.i18n.t('reason.open_now'));
       }
@@ -53,7 +53,7 @@ export class ReasonLabelComponent {
         parts.push(`${this.restaurant.rating}⭐`);
       }
     }
-    
+
     return parts.join(' · ');
   });
 }

@@ -8,31 +8,33 @@ Open browser console and run these commands to switch languages:
 
 ```javascript
 // Get the I18nService instance
-const i18n = window.ng.getComponent(document.querySelector('app-root')).injector.get('I18nService');
+const i18n = window.ng
+  .getComponent(document.querySelector("app-root"))
+  .injector.get("I18nService");
 
 // Switch to Hebrew (RTL)
-i18n.setLanguage('he');
+i18n.setLanguage("he");
 
 // Switch to Russian
-i18n.setLanguage('ru');
+i18n.setLanguage("ru");
 
 // Switch to Arabic (RTL)
-i18n.setLanguage('ar');
+i18n.setLanguage("ar");
 
 // Switch to French
-i18n.setLanguage('fr');
+i18n.setLanguage("fr");
 
 // Switch to Spanish
-i18n.setLanguage('es');
+i18n.setLanguage("es");
 
 // Switch to German
-i18n.setLanguage('de');
+i18n.setLanguage("de");
 
 // Switch to Italian
-i18n.setLanguage('it');
+i18n.setLanguage("it");
 
 // Switch back to English
-i18n.setLanguage('en');
+i18n.setLanguage("en");
 ```
 
 ### 2. Manual Testing Checklist
@@ -40,11 +42,13 @@ i18n.setLanguage('en');
 For **each language** (he, en, ru, ar, fr, es, de, it):
 
 #### A. Restaurant Card - Status Labels
+
 - [ ] "Open now" displays in correct language
 - [ ] "Closed" displays in correct language
 - [ ] "Hours unverified" displays in correct language
 
 #### B. Restaurant Card - Action Buttons
+
 - [ ] "Navigate" button label in correct language
 - [ ] "Call" button label in correct language
 - [ ] "Get directions" tooltip in correct language
@@ -53,22 +57,26 @@ For **each language** (he, en, ru, ar, fr, es, de, it):
 - [ ] "Phone number not available" tooltip (for restaurants without phone)
 
 #### C. Restaurant Card - Dietary Badges
+
 - [ ] "GF" badge in correct language
 - [ ] "Maybe GF" badge in correct language
 - [ ] Gluten-free disclaimer tooltip in correct language
 
 #### D. Reason Labels (Top Result)
+
 - [ ] "Best match" in correct language
 - [ ] "Open now" reason in correct language
 - [ ] "Closest option" reason in correct language
 
 #### E. Filter Chips
+
 - [ ] "🟢 Open now" chip label in correct language
 - [ ] "Open now" chip tooltip in correct language
 - [ ] "Gluten-free (signals)" chip label in correct language
 - [ ] "Gluten-free" chip tooltip in correct language
 
 #### F. RTL Support (Hebrew & Arabic only)
+
 - [ ] Text direction is RTL (right-to-left)
 - [ ] HTML `dir` attribute is "rtl"
 - [ ] HTML `lang` attribute is "he" or "ar"
@@ -76,6 +84,7 @@ For **each language** (he, en, ru, ar, fr, es, de, it):
 - [ ] Icons and buttons maintain correct RTL layout
 
 #### G. LTR Support (All other languages)
+
 - [ ] Text direction is LTR (left-to-right)
 - [ ] HTML `dir` attribute is "ltr"
 - [ ] HTML `lang` attribute matches language code
@@ -93,6 +102,7 @@ npm test
 ```
 
 ### Expected Results
+
 - All tests should pass ✅
 - No console errors ✅
 - I18nService properly injected ✅
@@ -102,6 +112,7 @@ npm test
 ## Language-Specific Test Cases
 
 ### Hebrew (he) - RTL
+
 ```typescript
 i18n.setLanguage('he');
 
@@ -114,6 +125,7 @@ Expected:
 ```
 
 ### English (en) - LTR (Default)
+
 ```typescript
 i18n.setLanguage('en');
 
@@ -126,6 +138,7 @@ Expected:
 ```
 
 ### Russian (ru) - LTR
+
 ```typescript
 i18n.setLanguage('ru');
 
@@ -138,6 +151,7 @@ Expected:
 ```
 
 ### Arabic (ar) - RTL
+
 ```typescript
 i18n.setLanguage('ar');
 
@@ -150,6 +164,7 @@ Expected:
 ```
 
 ### French (fr) - LTR
+
 ```typescript
 i18n.setLanguage('fr');
 
@@ -162,6 +177,7 @@ Expected:
 ```
 
 ### Spanish (es) - LTR
+
 ```typescript
 i18n.setLanguage('es');
 
@@ -174,6 +190,7 @@ Expected:
 ```
 
 ### German (de) - LTR
+
 ```typescript
 i18n.setLanguage('de');
 
@@ -186,6 +203,7 @@ Expected:
 ```
 
 ### Italian (it) - LTR
+
 ```typescript
 i18n.setLanguage('it');
 
@@ -205,8 +223,8 @@ Expected:
 
 ```typescript
 // This should fall back to English
-i18n.currentLang.set('fr');
-const result = i18n.t('non.existent.key');
+i18n.currentLang.set("fr");
+const result = i18n.t("non.existent.key");
 // Expected: 'non.existent.key' (key itself if not found in English)
 ```
 
@@ -215,6 +233,7 @@ const result = i18n.t('non.existent.key');
 ## Visual Testing Checklist
 
 ### Restaurant Card Rendering
+
 1. [ ] Open the app and perform a search
 2. [ ] Verify restaurant cards display correctly
 3. [ ] Switch language using console command
@@ -223,6 +242,7 @@ const result = i18n.t('non.existent.key');
 6. [ ] Check aria-labels are translated (screen reader)
 
 ### RTL Layout Testing (Hebrew & Arabic)
+
 1. [ ] Switch to Hebrew or Arabic
 2. [ ] Verify HTML `dir="rtl"`
 3. [ ] Verify content flows right-to-left
@@ -231,6 +251,7 @@ const result = i18n.t('non.existent.key');
 6. [ ] Verify scrolling behavior is RTL-aware
 
 ### Filter Chips Testing
+
 1. [ ] Perform search that triggers "Open now" filter
 2. [ ] Verify chip label is translated
 3. [ ] Hover over chip, verify tooltip is translated
@@ -243,6 +264,7 @@ const result = i18n.t('non.existent.key');
 ## Regression Testing
 
 ### No UI/Layout Changes
+
 - [ ] Restaurant card layout unchanged
 - [ ] Action button positions unchanged
 - [ ] Filter chip layout unchanged
@@ -251,6 +273,7 @@ const result = i18n.t('non.existent.key');
 - [ ] No overflow issues
 
 ### No Functional Changes
+
 - [ ] Search functionality works
 - [ ] Action buttons trigger correctly
 - [ ] Filter chips toggle correctly
@@ -262,11 +285,13 @@ const result = i18n.t('non.existent.key');
 ## Performance Testing
 
 ### Load Time
+
 - [ ] Page load time unchanged
 - [ ] I18n service initializes quickly
 - [ ] No visible lag when switching languages
 
 ### Memory Usage
+
 - [ ] Memory footprint acceptable (~15KB for all translations)
 - [ ] No memory leaks when switching languages
 
@@ -275,16 +300,19 @@ const result = i18n.t('non.existent.key');
 ## Edge Cases
 
 ### Browser Language Detection
+
 1. [ ] Set browser language to Hebrew → App uses Hebrew
 2. [ ] Set browser language to Russian → App uses Russian
 3. [ ] Set browser language to unsupported (e.g., Japanese) → App uses English fallback
 
 ### Mixed Content
+
 1. [ ] Restaurant names remain in original language (not translated)
 2. [ ] Addresses remain in original language
 3. [ ] Only UI labels are translated
 
 ### Dynamic Content
+
 1. [ ] New search results update with current language
 2. [ ] Filter chips update when language changes
 3. [ ] Status labels update dynamically
@@ -303,12 +331,15 @@ const result = i18n.t('non.existent.key');
 ## Troubleshooting
 
 ### Issue: Labels not translating
+
 **Solution:** Check browser console for I18nService errors
 
 ### Issue: RTL not working for Hebrew/Arabic
+
 **Solution:** Verify LanguageService is setting `dir` attribute correctly
 
 ### Issue: Tests failing
+
 **Solution:** Ensure I18nService is injected and language set to 'en' in tests
 
 ---
@@ -325,10 +356,10 @@ After completing all tests, sign off below:
 - [ ] Unit tests passing
 - [ ] Performance acceptable
 
-**Tester Name:** _________________  
-**Date:** _________________  
+**Tester Name:** ********\_********  
+**Date:** ********\_********  
 **Status:** ☐ Pass ☐ Fail  
-**Notes:** _________________
+**Notes:** ********\_********
 
 ---
 

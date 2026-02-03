@@ -44,6 +44,9 @@ export interface I18nKeys {
   
   // Location prompt
   'location.enable_prompt': string;
+  
+  // Results pagination
+  'results.loadMore': string;
 }
 
 /**
@@ -71,7 +74,8 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'filter.open_now_description': 'Showing only restaurants open now',
     'filter.gluten_free': 'Gluten-free (signals)',
     'filter.gluten_free_description': 'Based on text signals — not guaranteed',
-    'location.enable_prompt': 'Enable location for better results'
+    'location.enable_prompt': 'Enable location for better results',
+    'results.loadMore': 'Load {count} more'
   },
   
   // Hebrew
@@ -95,7 +99,8 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'filter.open_now_description': 'מציג רק מסעדות פתוחות עכשיו',
     'filter.gluten_free': 'ללא גלוטן (רמזים)',
     'filter.gluten_free_description': 'מבוסס על רמזים בטקסט — לא מובטח',
-    'location.enable_prompt': 'הפעל מיקום לתוצאות טובות יותר'
+    'location.enable_prompt': 'הפעל מיקום לתוצאות טובות יותר',
+    'results.loadMore': 'עוד {count}'
   },
   
   // Russian
@@ -119,7 +124,8 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'filter.open_now_description': 'Показаны только открытые рестораны',
     'filter.gluten_free': 'Без глютена (сигналы)',
     'filter.gluten_free_description': 'На основе текстовых сигналов — не гарантируется',
-    'location.enable_prompt': 'Включить местоположение для лучших результатов'
+    'location.enable_prompt': 'Включить местоположение для лучших результатов',
+    'results.loadMore': 'Показать ещё {count}'
   },
   
   // Arabic
@@ -143,7 +149,8 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'filter.open_now_description': 'يعرض المطاعم المفتوحة فقط الآن',
     'filter.gluten_free': 'خالٍ من الغلوتين (إشارات)',
     'filter.gluten_free_description': 'بناءً على إشارات نصية — غير مضمون',
-    'location.enable_prompt': 'تمكين الموقع لنتائج أفضل'
+    'location.enable_prompt': 'تمكين الموقع لنتائج أفضل',
+    'results.loadMore': 'عرض {count} إضافية'
   },
   
   // French
@@ -167,7 +174,8 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'filter.open_now_description': 'Affichage des restaurants ouverts uniquement',
     'filter.gluten_free': 'Sans gluten (signaux)',
     'filter.gluten_free_description': 'Basé sur des signaux textuels — non garanti',
-    'location.enable_prompt': 'Activer la localisation pour de meilleurs résultats'
+    'location.enable_prompt': 'Activer la localisation pour de meilleurs résultats',
+    'results.loadMore': 'Afficher {count} de plus'
   },
   
   // Spanish
@@ -191,7 +199,8 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'filter.open_now_description': 'Mostrando solo restaurantes abiertos ahora',
     'filter.gluten_free': 'Sin gluten (señales)',
     'filter.gluten_free_description': 'Basado en señales de texto — no garantizado',
-    'location.enable_prompt': 'Activar ubicación para mejores resultados'
+    'location.enable_prompt': 'Activar ubicación para mejores resultados',
+    'results.loadMore': 'Mostrar {count} más'
   },
   
   // German
@@ -215,7 +224,8 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'filter.open_now_description': 'Zeigt nur jetzt geöffnete Restaurants',
     'filter.gluten_free': 'Glutenfrei (Signale)',
     'filter.gluten_free_description': 'Basierend auf Textsignalen — nicht garantiert',
-    'location.enable_prompt': 'Standort aktivieren für bessere Ergebnisse'
+    'location.enable_prompt': 'Standort aktivieren für bessere Ergebnisse',
+    'results.loadMore': '{count} weitere anzeigen'
   },
   
   // Italian
@@ -239,7 +249,8 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'filter.open_now_description': 'Mostra solo ristoranti aperti ora',
     'filter.gluten_free': 'Senza glutine (segnali)',
     'filter.gluten_free_description': 'Basato su segnali testuali — non garantito',
-    'location.enable_prompt': 'Abilita posizione per risultati migliori'
+    'location.enable_prompt': 'Abilita posizione per risultati migliori',
+    'results.loadMore': 'Mostra altre {count}'
   }
 };
 
@@ -272,18 +283,30 @@ export class I18nService {
   /**
    * Get translation for a key
    * Falls back to English if key not found
+   * Supports interpolation with params (e.g., {count})
    */
-  t(key: keyof I18nKeys): string {
+  t(key: keyof I18nKeys, params?: Record<string, string | number>): string {
     const translations = this.translations();
-    const value = translations[key];
+    let value = translations[key];
     
     // Fallback to English if key missing in current language
     if (!value && this.currentLang() !== 'en') {
       console.warn(`[I18nService] Missing translation for key "${key}" in language "${this.currentLang()}", using English fallback`);
-      return TRANSLATIONS.en[key] || key;
+      value = TRANSLATIONS.en[key] || key;
     }
     
-    return value || key;
+    if (!value) {
+      value = key;
+    }
+    
+    // Interpolate params if provided
+    if (params) {
+      return Object.entries(params).reduce((result, [paramKey, paramValue]) => {
+        return result.replace(new RegExp(`\\{${paramKey}\\}`, 'g'), String(paramValue));
+      }, value);
+    }
+    
+    return value;
   }
   
   /**

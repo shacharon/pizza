@@ -215,15 +215,15 @@
 .open-status {
   font-weight: 600;
   font-size: 0.75rem;
-  
+
   &.open {
     color: #10b981;
   }
-  
+
   &.closed {
     color: #6b7280;
   }
-  
+
   &.unknown {
     color: #9ca3af;
     font-style: italic;
@@ -253,7 +253,7 @@
   background: #f3f4f6;
   border-top: 1px solid #e5e7eb;
   padding: 0;
-  
+
   .action-btn {
     flex: 1;
     display: flex;

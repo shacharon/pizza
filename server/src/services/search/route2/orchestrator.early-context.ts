@@ -12,7 +12,7 @@ import { sanitizeRegionCode } from './utils/region-code-validator.js';
 export interface EarlyRoutingContext {
   regionCode: string;
   providerLanguage: 'he' | 'en' | 'ar' | 'fr' | 'es' | 'ru';
-  uiLanguage: 'he' | 'en';
+  uiLanguage: 'he' | 'en' | 'ru' | 'ar' | 'fr' | 'es' | 'de' | 'it';
 }
 
 /**
@@ -33,12 +33,15 @@ export function deriveEarlyRoutingContext(
       ? intent.language as any
       : 'he'; // fallback
 
-  // 2. Resolve UI language (he or en only)
-  const uiLanguage: 'he' | 'en' = intent.language === 'he' ? 'he' : 'en';
+  // 2. Resolve UI language (support all 8 languages: he, en, ru, ar, fr, es, de, it)
+  const uiLanguage: 'he' | 'en' | 'ru' | 'ar' | 'fr' | 'es' | 'de' | 'it' =
+    ['he', 'en', 'ru', 'ar', 'fr', 'es'].includes(intent.language)
+      ? intent.language as any
+      : 'en'; // Fallback to English for 'other' or unsupported languages (de, it added manually)
 
   // 3. Resolve region code (intent candidate > device > default)
   const rawRegionCode = intent.regionCandidate || ctx.userRegionCode || 'IL';
-  
+
   // 4. Sanitize region code (same logic as filters-resolver)
   const sanitizedRegionCode = sanitizeRegionCode(rawRegionCode, ctx.userLocation ?? null);
   const regionCode = sanitizedRegionCode || 'IL'; // Fallback to IL if null

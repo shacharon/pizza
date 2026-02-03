@@ -35,9 +35,10 @@ export async function buildFinalResponse(
   const responseBuildStart = startStage(ctx, 'response_build', { resultCount: finalResults.length });
   const totalDurationMs = Date.now() - startTime;
 
-  const detectedLanguage = gateResult.gate.language;
+  // Use intentDecision.language (not gateResult) - Intent stage has the actual detected language
+  const detectedLanguage = intentDecision.language;
   // Map detected language to UI language (support all 8 languages)
-  const uiLanguage: 'he' | 'en' | 'ru' | 'ar' | 'fr' | 'es' | 'de' | 'it' = 
+  const uiLanguage: 'he' | 'en' | 'ru' | 'ar' | 'fr' | 'es' | 'de' | 'it' =
     detectedLanguage === 'other' ? 'en' : (detectedLanguage as any);
   const googleLanguage: 'he' | 'en' = detectedLanguage === 'he' ? 'he' : 'en';
 
@@ -52,7 +53,7 @@ export async function buildFinalResponse(
   // INSIGHT METADATA: Calculate metadata for intelligent narration
   const openNowCount = finalResults.filter((r: any) => r.openNow === true).length;
   const closedCount = finalResults.filter((r: any) => r.openNow === false).length;
-  const openNowUnknownCount = finalResults.filter((r: any) => 
+  const openNowUnknownCount = finalResults.filter((r: any) =>
     r.openNow === 'UNKNOWN' || r.openNow === null || r.openNow === undefined
   ).length;
   const currentHour = new Date().getHours();

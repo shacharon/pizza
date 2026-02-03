@@ -23,7 +23,7 @@ import { I18nService } from '../../../../core/services/i18n.service';
 })
 export class RestaurantCardComponent {
   private i18n = inject(I18nService);
-  
+
   // Inputs
   readonly restaurant = input.required<Restaurant>();
   readonly selected = input(false);
