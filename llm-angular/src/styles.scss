@@ -22,3 +22,13 @@ body {
     background: var(--bg);
     color: var(--text);
 }
+
+html,
+body {
+    overflow-x: hidden;
+}
+
+
+app-root {
+    overflow-x: hidden;
+}
