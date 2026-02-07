@@ -165,11 +165,17 @@ export class SubscriptionManager {
     const requestIdHash = this.hashRequestId(requestId || 'unknown');
     const sessionHash = this.hashSessionId(connSessionId);
 
+    // Determine auth mode for debugging
+    const authMode = requireAuth 
+      ? (connSessionId !== 'anonymous' ? 'jwt' : 'none')
+      : 'none';
+
     logger.info({
       clientId,
       channel,
       requestIdHash,
       sessionHash,
+      authMode,
       event: 'ws_subscribe_attempt'
     }, 'WebSocket subscribe attempt');
 
@@ -205,6 +211,18 @@ export class SubscriptionManager {
       return { success: false };
     }
 
+    // Log expected owner for debugging
+    if (owner) {
+      const expectedSessionHash = owner.sessionId ? this.hashSessionId(owner.sessionId) : 'none';
+      logger.debug({
+        requestId: requestIdHash,
+        expectedSessionId: owner.sessionId || 'none',
+        expectedSessionHash,
+        expectedUserId: owner.userId || 'none',
+        event: 'request_owner_resolved'
+      }, '[WS] Request owner resolved from JobStore');
+    }
+
     // Step 4a: Owner exists - check match
     if (owner) {
       const ownerSessionId = owner.sessionId;
@@ -216,23 +234,50 @@ export class SubscriptionManager {
           clientId,
           channel,
           requestIdHash,
-          reason: 'session_mismatch',
-          event: 'ws_subscribe_nack'
+          expectedUserId: ownerUserId,
+          connUserId: connUserId || 'none',
+          reason: 'user_mismatch',
+          event: 'ws_subscribe_nack',
+          WS_REQUIRE_AUTH: requireAuth
         }, 'Subscribe rejected - user mismatch');
         return { success: false };
       }
 
       // Check sessionId match if owner has sessionId
-      if (ownerSessionId && ownerSessionId !== connSessionId) {
+      // DEV MODE FIX: Skip session check if WS_REQUIRE_AUTH=false and connection is anonymous
+      const skipSessionCheck = !requireAuth && connSessionId === 'anonymous';
+      
+      if (ownerSessionId && ownerSessionId !== connSessionId && !skipSessionCheck) {
+        const expectedSessionHash = this.hashSessionId(ownerSessionId);
         logger.warn({
           clientId,
           channel,
           requestIdHash,
           sessionHash,
+          expectedSessionHash,
+          authMode,
           reason: 'session_mismatch',
-          event: 'ws_subscribe_nack'
+          event: 'ws_subscribe_nack',
+          WS_REQUIRE_AUTH: requireAuth,
+          resolvedSessionHashSource: 'conn_context'
         }, 'Subscribe rejected - session mismatch');
         return { success: false };
+      }
+      
+      // Log session check decision for debugging
+      if (skipSessionCheck && ownerSessionId && ownerSessionId !== connSessionId) {
+        logger.info({
+          clientId,
+          channel,
+          requestIdHash,
+          sessionHash,
+          expectedSessionHash: this.hashSessionId(ownerSessionId),
+          authMode,
+          event: 'ws_subscribe_session_check_bypassed',
+          WS_REQUIRE_AUTH: requireAuth,
+          resolvedSessionHashSource: 'bypassed_dev_mode',
+          reason: 'dev_mode_anonymous_allowed'
+        }, '[DEV] Subscribe session mismatch bypassed (WS_REQUIRE_AUTH=false)');
       }
 
       // Owner matches - accept subscription

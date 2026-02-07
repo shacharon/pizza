@@ -497,4 +497,146 @@ describe('RestaurantCardComponent', () => {
       expect(component.showNearYouBadge()).toBe(false);
     });
   });
+
+  describe('Wolt CTA (Client-Side Deep-Link)', () => {
+    it('should build Wolt search URL with restaurant name and city', () => {
+      const restaurantWithCity: Restaurant = {
+        ...mockRestaurant,
+        name: 'Pizza Place',
+        address: '123 Main St, Tel Aviv, Israel'
+      };
+
+      fixture.componentRef.setInput('restaurant', restaurantWithCity);
+      fixture.detectChanges();
+
+      const cta = component.woltCta();
+      expect(cta).toBeTruthy();
+      expect(cta?.url).toContain('wolt.com');
+      expect(cta?.url).toContain('tel-aviv');
+      expect(cta?.url).toContain('Pizza%20Place');
+      expect(cta?.disabled).toBe(false);
+    });
+
+    it('should build Wolt URL with Hebrew language when i18n is Hebrew', () => {
+      const i18nService = TestBed.inject(I18nService);
+      i18nService.setLanguage('he');
+
+      const restaurantWithCity: Restaurant = {
+        ...mockRestaurant,
+        name: 'מסעדה',
+        address: 'רחוב ראשי 123, תל אביב, ישראל'
+      };
+
+      fixture.componentRef.setInput('restaurant', restaurantWithCity);
+      fixture.detectChanges();
+
+      const cta = component.woltCta();
+      expect(cta).toBeTruthy();
+      expect(cta?.url).toContain('wolt.com/he/isr');
+    });
+
+    it('should build Wolt URL with English language when i18n is English', () => {
+      const i18nService = TestBed.inject(I18nService);
+      i18nService.setLanguage('en');
+
+      const restaurantWithCity: Restaurant = {
+        ...mockRestaurant,
+        name: 'Pizza Place',
+        address: '123 Main St, Tel Aviv, Israel'
+      };
+
+      fixture.componentRef.setInput('restaurant', restaurantWithCity);
+      fixture.detectChanges();
+
+      const cta = component.woltCta();
+      expect(cta).toBeTruthy();
+      expect(cta?.url).toContain('wolt.com/en/isr');
+    });
+
+    it('should fallback to tel-aviv when city cannot be extracted', () => {
+      const restaurantNoCity: Restaurant = {
+        ...mockRestaurant,
+        name: 'Restaurant Name',
+        address: 'Just a street'
+      };
+
+      fixture.componentRef.setInput('restaurant', restaurantNoCity);
+      fixture.detectChanges();
+
+      const cta = component.woltCta();
+      expect(cta).toBeTruthy();
+      expect(cta?.url).toContain('tel-aviv');
+    });
+
+    it('should hide button when restaurant name is missing', () => {
+      const restaurantNoName: Restaurant = {
+        ...mockRestaurant,
+        name: '',
+        address: '123 Main St, Tel Aviv, Israel'
+      };
+
+      fixture.componentRef.setInput('restaurant', restaurantNoName);
+      fixture.detectChanges();
+
+      const cta = component.woltCta();
+      expect(cta).toBeNull();
+    });
+
+    it('should extract correct city slug for Jerusalem', () => {
+      const restaurantInJerusalem: Restaurant = {
+        ...mockRestaurant,
+        name: 'Shawarma King',
+        address: 'King David St, Jerusalem, Israel'
+      };
+
+      fixture.componentRef.setInput('restaurant', restaurantInJerusalem);
+      fixture.detectChanges();
+
+      const cta = component.woltCta();
+      expect(cta).toBeTruthy();
+      expect(cta?.url).toContain('jerusalem');
+    });
+
+    it('should extract correct city slug for Haifa', () => {
+      const restaurantInHaifa: Restaurant = {
+        ...mockRestaurant,
+        name: 'Falafel House',
+        address: 'Herzl St, Haifa, Israel'
+      };
+
+      fixture.componentRef.setInput('restaurant', restaurantInHaifa);
+      fixture.detectChanges();
+
+      const cta = component.woltCta();
+      expect(cta).toBeTruthy();
+      expect(cta?.url).toContain('haifa');
+    });
+
+    it('should use correct i18n labels', () => {
+      fixture.componentRef.setInput('restaurant', mockRestaurant);
+      fixture.detectChanges();
+
+      const cta = component.woltCta();
+      expect(cta).toBeTruthy();
+      expect(cta?.label).toBeTruthy();
+      expect(cta?.title).toBeTruthy();
+      expect(cta?.ariaLabel).toContain(mockRestaurant.name);
+    });
+
+    it('should use action-btn-wolt-search CSS class', () => {
+      fixture.componentRef.setInput('restaurant', mockRestaurant);
+      fixture.detectChanges();
+
+      const cta = component.woltCta();
+      expect(cta).toBeTruthy();
+      expect(cta?.className).toBe('action-btn action-btn-wolt-search');
+    });
+
+    it('should not show spinner', () => {
+      fixture.componentRef.setInput('restaurant', mockRestaurant);
+      fixture.detectChanges();      const cta = component.woltCta();
+      expect(cta).toBeTruthy();
+      expect(cta?.showSpinner).toBe(false);
+    });
+  });
 });

@@ -20,6 +20,9 @@ services:
       LOG_LEVEL: debug
       # Add your OpenAI key here or via environment variable
       OPENAI_API_KEY: ${OPENAI_API_KEY}
+      # Google Custom Search Engine (for provider deep link resolution)
+      GOOGLE_CSE_API_KEY: ${GOOGLE_CSE_API_KEY:-}
+      GOOGLE_CSE_ENGINE_ID: ${GOOGLE_CSE_ENGINE_ID:-}
     volumes:
       # Mount logs directory for persistence
       - ./logs:/app/logs

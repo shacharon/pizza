@@ -72,12 +72,12 @@
   }
 }
 
-// RTL support: Reverse icon position for Hebrew
-.assistant-summary.rtl {
-  .error-text {
-    flex-direction: row-reverse;
-  }
-}
+// RTL support: V1 - Disabled (English/LTR only)
+// .assistant-summary.rtl {
+//   .error-text {
+//     flex-direction: row-reverse;
+//   }
+// }
 
 // MULTI-MESSAGE: Stack messages vertically with visual separation
 .assistant-summary.multi-message {
@@ -90,20 +90,39 @@
   .assistant-message {
     display: flex;
     align-items: flex-start;
-    gap: 0.5rem;
-    padding: 0.5rem;
-    background: white;
-    border-radius: 4px;
-    transition: background 0.2s;
+    gap: 0.625rem;
+    padding: 0;
+    background: transparent;
+    border-radius: 0;
+    transition: none;
 
     &:hover {
-      background: #f0f0f0;
+      background: transparent;
     }
 
     .message-icon {
-      font-size: 1.25rem;
+      font-size: 1rem;
       flex-shrink: 0;
       line-height: 1;
+      
+      // AI/Sparkle icon styling - WHITE background with SOFT YELLOW sparkle
+      &.ai-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        background: #ffffff; // White background
+        border-radius: 6px;
+        border: none; // No border
+        color: #FCD34D; // Soft, subtle yellow sparkle
+        font-size: 0; // Remove emoji fallback size
+        
+        .ai-sparkle-svg {
+          width: 20px;
+          height: 20px;
+        }
+      }
     }
 
     .message-content {
@@ -111,49 +130,47 @@
       min-width: 0;
 
       .message-text {
-        margin-bottom: 0.25rem;
+        margin-bottom: 0;
+        color: #6b7280;
+        font-size: 0.9375rem;
+        line-height: 1.5;
+        font-weight: 400;
       }
 
       .message-question {
         font-style: italic;
-        color: #666;
-        font-size: 0.9rem;
+        color: #9ca3af;
+        font-size: 0.875rem;
       }
     }
 
-      // Type-specific styling
-      &.message-type-clarify {
-        border-left: 3px solid #ffc107;
-      }
-
-      &.message-type-summary {
-        border-left: 3px solid #28a745;
-      }
-
+      // Type-specific styling - removed colored borders for clean look
+      &.message-type-clarify,
+      &.message-type-summary,
       &.message-type-gate_fail {
-        border-left: 3px solid #dc3545;
-        background: #fff5f5;
+        border: none;
+        background: transparent;
       }
   }
   
-  // RTL support: Reverse message layout for Hebrew
-  &.rtl .assistant-message {
-    flex-direction: row-reverse;
-    
-    // Move colored border to right side for RTL
-    &.message-type-clarify {
-      border-left: none;
-      border-right: 3px solid #ffc107;
-    }
-
-    &.message-type-summary {
-      border-left: none;
-      border-right: 3px solid #28a745;
-    }
-
-    &.message-type-gate_fail {
-      border-left: none;
-      border-right: 3px solid #dc3545;
-    }
-  }
+  // RTL support: V1 - Disabled (English/LTR only)
+  // &.rtl .assistant-message {
+  //   flex-direction: row-reverse;
+  //   
+  //   // Move colored border to right side for RTL
+  //   &.message-type-clarify {
+  //     border-left: none;
+  //     border-right: 3px solid #ffc107;
+  //   }
+  //
+  //   &.message-type-summary {
+  //     border-left: none;
+  //     border-right: 3px solid #28a745;
+  //   }
+  //
+  //   &.message-type-gate_fail {
+  //     border-left: none;
+  //     border-right: 3px solid #dc3545;
+  //   }
+  // }
 }

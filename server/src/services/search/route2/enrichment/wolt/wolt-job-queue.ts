@@ -7,7 +7,7 @@
 
 import { logger } from '../../../../../lib/logger/structured-logger.js';
 import { getRedisClient } from '../../../../../lib/redis/redis-client.js';
-import type { WoltSearchAdapter } from './wolt-search.adapter.js';
+import type { ProviderDeepLinkResolver } from '../provider-deeplink-resolver.js';
 import { WoltWorker, type WoltEnrichmentJob } from './wolt-worker.js';
 
 /**
@@ -29,7 +29,7 @@ export class WoltJobQueue {
   private processing = false;
   private queue: WoltEnrichmentJob[] = [];
 
-  constructor(private searchAdapter: WoltSearchAdapter) {}
+  constructor(private resolver: ProviderDeepLinkResolver) {}
 
   /**
    * Initialize worker (lazy initialization)
@@ -57,7 +57,7 @@ export class WoltJobQueue {
       return null;
     }
 
-    this.worker = new WoltWorker(redis, this.searchAdapter);
+    this.worker = new WoltWorker(redis, this.resolver);
 
     logger.info(
       {

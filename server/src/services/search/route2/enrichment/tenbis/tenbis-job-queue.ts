@@ -7,7 +7,7 @@
 
 import { logger } from '../../../../../lib/logger/structured-logger.js';
 import { getRedisClient } from '../../../../../lib/redis/redis-client.js';
-import type { TenbisSearchAdapter } from './tenbis-search.adapter.js';
+import type { ProviderDeepLinkResolver } from '../provider-deeplink-resolver.js';
 import { TenbisWorker, type TenbisEnrichmentJob } from './tenbis-worker.js';
 
 /**
@@ -29,7 +29,7 @@ export class TenbisJobQueue {
   private processing = false;
   private queue: TenbisEnrichmentJob[] = [];
 
-  constructor(private searchAdapter: TenbisSearchAdapter) {}
+  constructor(private resolver: ProviderDeepLinkResolver) {}
 
   /**
    * Initialize worker (lazy initialization)
@@ -57,7 +57,7 @@ export class TenbisJobQueue {
       return null;
     }
 
-    this.worker = new TenbisWorker(redis, this.searchAdapter);
+    this.worker = new TenbisWorker(redis, this.resolver);
 
     logger.info(
       {

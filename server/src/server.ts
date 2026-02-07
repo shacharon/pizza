@@ -43,9 +43,122 @@ import { getConfig } from './config/env.js';
 import { logger } from './lib/logger/structured-logger.js';
 import { InMemoryRequestStore } from './infra/state/in-memory-request-store.js';
 import { WebSocketManager } from './infra/websocket/websocket-manager.js';
+import { getRedisClient, getExistingRedisClient } from './lib/redis/redis-client.js';
 
 // Phase 2: Initialize state store singleton
 export const requestStateStore = new InMemoryRequestStore(300, 60_000);
+
+// Get config early (used by Redis init and later by server setup)
+const config = getConfig();
+
+// Phase 2.5: EAGER Redis initialization (before HTTP server starts)
+// CRITICAL: Redis must be initialized BEFORE /ws-ticket route is registered
+// because ws-ticket endpoint depends on Redis for ticket storage
+async function initializeRedis() {
+  const wsRequiresAuth = process.env.WS_REQUIRE_AUTH !== 'false';
+  const redisRequired = config.enableRedisJobStore || config.enableRedisCache || wsRequiresAuth;
+
+  let redisInitialized = false;
+
+  if (redisRequired && config.redisUrl) {
+    logger.info(
+      {
+        event: 'redis_init_attempt',
+        pid: process.pid,
+        redisUrlHost: config.redisUrl.replace(/:[^:@]+@/, ':****@'),
+        enableRedisJobStore: config.enableRedisJobStore,
+        enableRedisCache: config.enableRedisCache,
+        wsRequiresAuth,
+      },
+      '[BOOT] Initializing Redis client (required for WS tickets)'
+    );
+
+    try {
+      const redis = await getRedisClient({
+        url: config.redisUrl,
+        maxRetriesPerRequest: 3,
+        connectTimeout: 2000,
+        commandTimeout: 2000,
+        enableOfflineQueue: false
+      });
+
+      redisInitialized = Boolean(redis);
+
+      logger.info(
+        {
+          event: 'redis_boot_status',
+          pid: process.pid,
+          redisUrlHost: config.redisUrl.replace(/:[^:@]+@/, ':****@').split('@')[1] || config.redisUrl.replace(/:[^:@]+@/, ':****@'),
+          redisEnabled: redisInitialized,
+          clientCreated: Boolean(redis),
+          clientConnected: redisInitialized,
+          wsRequiresAuth,
+        },
+        `[BOOT] Redis status: ${redisInitialized ? 'CONNECTED' : 'FAILED'}`
+      );
+
+      // Fail-fast if WS requires auth but Redis is down
+      if (!redisInitialized && wsRequiresAuth) {
+        if (config.env === 'production' || config.env === 'staging') {
+          logger.error(
+            {
+              event: 'redis_required_but_unavailable',
+              wsRequiresAuth: true,
+              redisConnected: false,
+              env: config.env,
+            },
+            '[BOOT] FATAL: Redis required for WS authentication but connection failed'
+          );
+          throw new Error('Redis connection required for WS_REQUIRE_AUTH=true');
+        } else {
+          logger.warn(
+            {
+              event: 'redis_unavailable_ws_auth_disabled',
+              wsRequiresAuth: true,
+              redisConnected: false,
+              env: config.env,
+            },
+            '[BOOT] WARNING: Redis unavailable, WS authentication will be disabled in dev'
+          );
+          // Override WS_REQUIRE_AUTH in dev when Redis is down
+          process.env.WS_REQUIRE_AUTH = 'false';
+        }
+      }
+    } catch (error) {
+      logger.error(
+        {
+          event: 'redis_boot_failed',
+          pid: process.pid,
+          error: error instanceof Error ? error.message : String(error),
+          wsRequiresAuth,
+        },
+        '[BOOT] Redis initialization failed'
+      );
+
+      // Re-throw in production/staging when WS requires auth
+      if ((config.env === 'production' || config.env === 'staging') && wsRequiresAuth) {
+        throw error;
+      }
+    }
+  } else {
+    logger.info(
+      {
+        event: 'redis_boot_status',
+        pid: process.pid,
+        redisUrlHost: null,
+        redisEnabled: false,
+        clientCreated: false,
+        clientConnected: false,
+        wsRequiresAuth,
+        reason: !config.redisUrl ? 'no_redis_url' : 'not_required',
+      },
+      '[BOOT] Redis not initialized (not required or not configured)'
+    );
+  }
+}
+
+// Initialize Redis before starting server
+await initializeRedis();
 
 
 function maskKey(k?: string) {
@@ -72,7 +185,9 @@ if (!googleKeyStatus.exists && process.env.SEARCH_PROVIDER !== 'stub') {
 // Assistant mode is now always enabled (no feature flags)
 logger.info('[Config] ASSISTANT_MODE = ENABLED (always on, LLM-first)');
 
-const { port, openaiApiKey, googleApiKey } = getConfig();
+const port = config.port;
+const openaiApiKey = config.openaiApiKey;
+const googleApiKey = config.googleApiKey;
 
 if (!openaiApiKey) {
   logger.warn('OPENAI_API_KEY is not set. /api/chat will fail until it is provided.');

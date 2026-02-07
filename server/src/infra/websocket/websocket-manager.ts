@@ -584,16 +584,22 @@ export class WebSocketManager {
     requestId: string,
     status: 'FOUND' | 'NOT_FOUND',
     url: string | null,
-    updatedAt?: string
+    updatedAt?: string,
+    meta?: { layerUsed: 1 | 2 | 3; source: 'cse' | 'internal' }
   ): PublishSummary {
     const timestamp = updatedAt || new Date().toISOString();
 
-    // Build provider state with updatedAt
-    const providerState = {
+    // Build provider state with updatedAt and meta
+    const providerState: any = {
       status,
       url,
       updatedAt: timestamp,
     };
+
+    // Add meta if provided
+    if (meta) {
+      providerState.meta = meta;
+    }
 
     // Build RESULT_PATCH message
     const patchEvent: any = {
@@ -624,6 +630,7 @@ export class WebSocketManager {
         status,
         url: url ? 'present' : 'null', // Don't log full URL for privacy
         updatedAt: timestamp,
+        meta,
         requestId,
       },
       `[WebSocketManager] Publishing provider patch: ${provider}`

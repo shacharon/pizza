@@ -1,68 +1,69 @@
 <div class="search-page">
-  <!-- Hero Section (collapses on scroll) -->
-  <div class="hero-section" [class.collapsed]="isHeroCollapsed()">
-    <h1 class="page-title">Search food the way you think</h1>
-    <p class="page-subtitle">Natural food search. Just tell us what you're in the mood for.</p>
+  <header class="search-header">
+    <div class="hero-section">
+      <h1 class="page-title">Search food the way you think</h1>
+      <p class="page-subtitle">Search for food naturally, in any language.
+        Just say what you’re in the mood for.</p>
 
-    <!-- PWA Install Prompt (V1: English only) -->
-    <div class="pwa-install-prompt">
-      <button class="pwa-install-button" (click)="onInstallPwa()" type="button">
-        <span class="pwa-install-text">Put us on your plate 🍽️</span>
-      </button>
+      <!-- PWA Install Prompt (V1: English only) -->
+      <!--  @if (pwaInstall.canInstall() && !pwaInstall.isInstalled()) {-->
+      <div class="pwa-install-prompt">
+        <button class="pwa-install-button" (click)="onInstallPwa()" type="button">
+          <span class="pwa-install-text">Put us on your plate 🍽️</span>
+        </button>
+      </div>
+    <!-- } -->
+
+      <!-- Location Status (automatic, inline) -->
+      <div class="location-status">
+        @if (locationState() === 'ON') {
+        <span class="location-text">📍 Using your location</span>
+        } @else if (locationState() === 'REQUESTING') {
+        <span class="location-text">⏳ Getting location...</span>
+        } @else if (locationState() === 'DENIED') {
+        <span class="location-text location-error">🚫 Location access denied</span>
+        } @else if (locationState() === 'ERROR') {
+        <span class="location-text location-error">⚠️ Location unavailable</span>
+        } @else {
+        <button class="location-link" (click)="onLocationToggle()">Enable location for better results</button>
+        }
+      </div>
     </div>
 
-    <!-- Location Status (automatic, inline) -->
-    <div class="location-status">
-      @if (locationState() === 'ON') {
-      <span class="location-text">📍 Using your location</span>
-      } @else if (locationState() === 'REQUESTING') {
-      <span class="location-text">⏳ Getting location...</span>
-      } @else if (locationState() === 'DENIED') {
-      <span class="location-text location-error">🚫 Location access denied</span>
-      } @else if (locationState() === 'ERROR') {
-      <span class="location-text location-error">⚠️ Location unavailable</span>
-      } @else {
-      <button class="location-link" (click)="onLocationToggle()">Enable location for better results</button>
+    <!-- Search Card: Assistant Messages ABOVE Input -->
+    <div class="search-card">
+      <!-- CANONICAL ROUTING: Contextual Assistant (inside search-card when bound to requestId) -->
+      <!-- Shows ONLY card messages: SUMMARY, CLARIFY, GATE_FAIL -->
+      @if (showContextualAssistant()) {
+      <div class="assistant-message-container">
+        <app-assistant-summary [cardMessages]="contextualCardMessages()" [messages]="contextualMessages()"
+          [text]="asyncAssistantMessage()" [status]="facade.assistantState()" [error]="facade.assistantError()"
+          [locale]="'en'" />
+      </div>
       }
-    </div>
-  </div>
 
-  <!-- SearchDock (sticky on scroll) -->
-  <div class="search-dock">
-    <!-- CANONICAL ROUTING: Contextual Assistant (compact in dock) -->
-    @if (showContextualAssistant()) {
-    <div class="assistant-message-container compact">
-      <app-assistant-summary [cardMessages]="contextualCardMessages()" [messages]="contextualMessages()"
-        [text]="asyncAssistantMessage()" [status]="facade.assistantState()" [error]="facade.assistantError()"
-        [locale]="'en'" />
-    </div>
-    }
+      <!-- Assistant Line (always shown - includes WS status) -->
+      @if (facade.assistantLineMessages().length > 0) {
+      <div class="assistant-line-container">
+        <app-assistant-line />
+      </div>
+      }
 
-    <!-- Assistant Line (always shown - includes WS status) -->
-    @if (facade.assistantLineMessages().length > 0) {
-    <div class="assistant-line-container compact">
-      <app-assistant-line />
-    </div>
-    }
-
-    <!-- Reply Box Input -->
-    <div class="search-input-wrapper">
+      <!-- Reply Box Input (user's answer to assistant) -->
       <app-search-bar [value]="facade.query()" [loading]="facade.loading()"
         (search)="onSearch($event)" (inputChange)="onInputChange($event)" (clear)="onClear()" />
     </div>
 
-    <!-- CANONICAL ROUTING: Global/System Assistant -->
+    <!-- CANONICAL ROUTING: Global/System Assistant (outside search-card, no requestId) -->
+    <!-- Shows ONLY card messages: SUMMARY, CLARIFY, GATE_FAIL -->
     @if (showGlobalAssistant()) {
-    <div class="assistant-message-container compact">
-      <app-assistant-summary [cardMessages]="globalCardMessages()" [messages]="globalMessages()"
-        [text]="asyncAssistantMessage()" [status]="facade.assistantState()" [error]="facade.assistantError()"
-        [locale]="'en'" />
-    </div>
+    <app-assistant-summary [cardMessages]="globalCardMessages()" [messages]="globalMessages()"
+      [text]="asyncAssistantMessage()" [status]="facade.assistantState()" [error]="facade.assistantError()"
+      [locale]="'en'" />
     }
-  </div>
+  </header>
 
-  <!-- Results Frame (normal page flow) -->
-  <main class="results-frame">
+  <main class="search-content">
     <!-- Recent Searches (shown when input is empty) -->
     @if (facade.showRecentSearches() && facade.hasRecentSearches()) {
     <section class="recent-searches">
@@ -82,6 +83,8 @@
       </ul>
     </section>
     }
+
+    <!-- Cuisine chips removed - discovery via free-text search + assistant only -->
 
     <!-- Loading State -->
     @if (facade.loading()) {
@@ -103,13 +106,13 @@
     </div>
     }
 
-    <!-- Clarification Block -->
+    <!-- NEW: Clarification Block (Answer-First UX) -->
     @if (facade.requiresClarification() && facade.clarification() && !facade.loading()) {
     <app-clarification-block [clarification]="facade.clarification()!"
       (choiceSelected)="onClarificationChoice($event)" />
     }
 
-    <!-- Mode Indicators -->
+    <!-- Phase 5: Mode Indicators (subtle, non-intrusive) -->
     @if (isRecoveryMode() && !facade.loading()) {
     <div class="mode-indicator recovery">
       <span class="mode-icon">🔄</span>
@@ -124,9 +127,13 @@
     </div>
     }
 
-    <!-- Results Section -->
+    <!-- GATE_FAIL UX: Hide results section if GATE_FAIL with no results -->
+    <!-- Fallback: Flat Results Grid (backward compatibility) -->
     @if (shouldShowResults() && !facade.hasGroups() && !facade.loading()) {
     <section class="results-section">
+      <!-- DEDUPE FIX: Removed "Found X restaurants" header -->
+      <!-- Assistant SUMMARY message (from WS) is the only result announcement -->
+
       <div class="results-header">
         <!-- Applied Filters Chips (V1: English only) -->
         <div class="applied-filters">
@@ -143,7 +150,7 @@
         </div>
       </div>
 
-      <!-- Results Container -->
+      <!-- Results Container: extends to viewport bottom with persistent gutter -->
       <div class="results-container">
         <div class="results-grid">
           @for (restaurant of filteredResults(); track trackByRestaurant($index, restaurant)) {
@@ -153,7 +160,7 @@
           }
         </div>
 
-        <!-- Load More Button -->
+        <!-- Load More Button (above gutter) -->
         @if (hasMoreResults()) {
         <div class="load-more-container">
           <button class="load-more-btn" (click)="loadMore()">
@@ -162,13 +169,13 @@
         </div>
         }
 
-        <!-- Bottom Gutter -->
+        <!-- Bottom Gutter: persistent spacer to prevent spill-under -->
         <div class="results-bottom-gutter"></div>
       </div>
     </section>
     }
 
-    <!-- Mobile: Bottom Sheet -->
+    <!-- Mobile: Bottom Sheet (Conditional - only when contextual assistant shown) -->
     @if (showContextualAssistant()) {
     <app-assistant-bottom-sheet [visible]="bottomSheetVisible()" [highlightedResults]="highlightedResults()"
       [userLocation]="locationCoords()" (close)="closeBottomSheet()"
@@ -198,4 +205,10 @@
     </aside>
     }
   </main>
+
+  <!-- Bottom Placeholder: TEMPORARILY DISABLED to restore baseline UX -->
+  <!-- FIXME: Re-enable after resolving duplication with assistant-summary -->
+  <!-- <app-assistant-bottom-placeholder 
+    [cardMessages]="allCardMessages()"
+    [locale]="facade.locale()" /> -->
 </div>

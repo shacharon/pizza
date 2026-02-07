@@ -118,6 +118,15 @@ export class AuthService {
   }
 
   /**
+   * Get current sessionId from localStorage (PUBLIC API)
+   * This is the same sessionId used by HTTP requests and should be used for WS subscriptions
+   * @returns sessionId or empty string if not available
+   */
+  getSessionId(): string {
+    return this.getExistingSessionId() || '';
+  }
+
+  /**
    * Get existing sessionId from localStorage
    * This is the same sessionId used by api-session.interceptor
    */

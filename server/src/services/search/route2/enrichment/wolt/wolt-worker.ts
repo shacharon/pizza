@@ -36,6 +36,7 @@ import type { WSServerResultPatch } from '../../../../../infra/websocket/websock
 import { wsManager } from '../../../../../server.js';
 import { withTimeout } from '../../../../../lib/reliability/timeout-guard.js';
 import type { ProviderDeepLinkResolver } from '../provider-deeplink-resolver.js';
+import { getMetricsCollector } from '../metrics-collector.js';
 
 /**
  * Wolt enrichment job
@@ -244,6 +245,22 @@ export class WoltWorker {
 
       const { status, url, meta } = resolveResult;
       const updatedAt = new Date().toISOString();
+
+      // Track CSE usage in metrics if CSE was used (L1 or L2)
+      if (meta.source === 'cse') {
+        const metricsCollector = getMetricsCollector();
+        metricsCollector.recordCseCall(requestId);
+        
+        logger.debug(
+          {
+            event: 'wolt_cse_call_tracked',
+            requestId,
+            placeId,
+            layerUsed: meta.layerUsed,
+          },
+          '[WoltWorker] CSE call tracked in metrics'
+        );
+      }
 
       logger.info(
         {

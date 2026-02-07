@@ -13,6 +13,7 @@ import type { ActionType, ActionLevel } from '../../../../domain/types/action.ty
 import { buildPhotoSrc, getPhotoPlaceholder } from '../../../../utils/photo-src.util';
 import { I18nService } from '../../../../core/services/i18n.service';
 import { calculateDistance, calculateWalkingTime, formatDistance } from '../../../../utils/distance.util';
+import { buildWoltSearchUrl, extractCitySlug, extractCityText } from '../../../../utils/wolt-deeplink.util';
 
 // Near you badge threshold (meters)
 export const NEAR_THRESHOLD_METERS = 600;
@@ -633,92 +634,46 @@ export class RestaurantCardComponent {
 
   /**
    * Wolt CTA configuration
-   * Returns button configuration based on enrichment status
-   * Uses new providers.wolt field (with legacy fallback)
+   * NEW: Uses local deep-link builder instead of CSE enrichment
+   * Always shows "Search on Wolt" button (no CSE dependency)
    */
   readonly woltCta = computed(() => {
-    // NEW: Use providers.wolt field (fallback to legacy wolt)
-    const wolt = this.restaurant().providers?.wolt || this.restaurant().wolt;
-    if (!wolt) {
-      return null; // No enrichment data
+    const restaurant = this.restaurant();
+    const restaurantName = restaurant.name;
+    const address = restaurant.address;
+
+    // Get current UI language
+    const currentLang = this.i18n.currentLang();
+    const lang: 'he' | 'en' = currentLang === 'he' ? 'he' : 'en';
+
+    // Extract city slug and text from address
+    const citySlug = extractCitySlug(address);
+    const cityText = extractCityText(address);
+
+    // Build Wolt search URL (returns null if name is missing)
+    const woltSearchUrl = buildWoltSearchUrl(restaurantName, citySlug, cityText || undefined, lang);
+
+    // If we can't build a URL (missing name), don't show button
+    if (!woltSearchUrl) {
+      return null;
     }
 
-    const cityText = this.extractCityFromAddress();
-
-    // FOUND: Primary CTA - Order via Wolt
-    if (wolt.status === 'FOUND' && wolt.url) {
-      return {
-        className: 'action-btn action-btn-wolt-primary',
-        label: this.i18n.t('card.action.order_wolt'),
-        disabled: false,
-        showSpinner: false,
-        url: wolt.url,
-        title: this.i18n.t('card.action.order_wolt_title'),
-        ariaLabel: `${this.i18n.t('card.action.order_wolt')} ${this.restaurant().name}`,
-      };
-    }
-
-    // PENDING: Disabled CTA with spinner
-    if (wolt.status === 'PENDING') {
-      return {
-        className: 'action-btn action-btn-wolt-pending',
-        label: this.i18n.t('card.action.checking_wolt'),
-        disabled: true,
-        showSpinner: true,
-        url: null,
-        title: this.i18n.t('card.action.checking_wolt_title'),
-        ariaLabel: this.i18n.t('card.action.checking_wolt'),
-      };
-    }
-
-    // NOT_FOUND: Fallback CTA - Search on Wolt
-    if (wolt.status === 'NOT_FOUND' || !wolt.url) {
-      const searchQuery = this.buildWoltSearchQuery(cityText);
-      const woltSearchUrl = `https://wolt.com/en/discovery/q/${encodeURIComponent(searchQuery)}`;
-
-      return {
-        className: 'action-btn action-btn-wolt-search',
-        label: this.i18n.t('card.action.search_wolt'),
-        disabled: false,
-        showSpinner: false,
-        url: woltSearchUrl,
-        title: this.i18n.t('card.action.search_wolt_title'),
-        ariaLabel: `${this.i18n.t('card.action.search_wolt')} ${this.restaurant().name}`,
-      };
-    }
-
-    return null;
+    // Always show "Search on Wolt" CTA with locally built URL
+    return {
+      className: 'action-btn action-btn-wolt-search',
+      label: this.i18n.t('card.action.search_wolt'),
+      disabled: false,
+      showSpinner: false,
+      url: woltSearchUrl,
+      title: this.i18n.t('card.action.search_wolt_title'),
+      ariaLabel: `${this.i18n.t('card.action.search_wolt')} ${restaurantName}`,
+    };
   });
 
-  /**
-   * Extract city from address (simple heuristic)
-   * Returns null if city cannot be determined
-   */
-  private extractCityFromAddress(): string | null {
-    const address = this.restaurant().address;
-    if (!address) return null;
-
-    // Simple heuristic: Split by comma, take second-to-last part
-    // Example: "123 Main St, Tel Aviv, Israel" → "Tel Aviv"
-    const parts = address.split(',').map(p => p.trim());
-    if (parts.length >= 2) {
-      return parts[parts.length - 2]; // Second-to-last part
-    }
-
-    return null;
-  }
-
-  /**
-   * Build Wolt search query
-   * Format: "${restaurantName} ${cityText}"
-   */
-  private buildWoltSearchQuery(cityText: string | null): string {
-    const name = this.restaurant().name;
-    return cityText ? `${name} ${cityText}` : name;
-  }
 
   /**
    * Handle Wolt action click
+   * Opens Wolt search URL in new tab
    */
   onWoltAction(event: Event): void {
     event.stopPropagation();
@@ -731,9 +686,9 @@ export class RestaurantCardComponent {
     // Open Wolt URL in new tab
     window.open(cta.url, '_blank', 'noopener,noreferrer');
 
-    console.log('[RestaurantCard] Wolt action clicked', {
+    console.log('[RestaurantCard] Wolt search clicked', {
       placeId: this.restaurant().placeId,
-      status: this.restaurant().providers?.wolt?.status || this.restaurant().wolt?.status,
+      name: this.restaurant().name,
       url: cta.url,
     });
   }

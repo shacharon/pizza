@@ -556,14 +556,12 @@ function validateAndEnforceCorrectness(
   let useFallback = false;
   const validationIssues: string[] = [];
 
-  // 1) Language validation (script-based)
+  // 1) Language validation (script-based) - ONLY check message field
   const msgLang = detectMessageLanguage(output.message);
-  const qLang = output.question ? detectMessageLanguage(output.question) : null;
 
   const messageMismatch = detectMismatch(msgLang, requestedLanguage);
-  const questionMismatch = qLang !== null && detectMismatch(qLang, requestedLanguage);
 
-  if (messageMismatch || questionMismatch) {
+  if (messageMismatch) {
     validationIssues.push(`language_mismatch (requested=${requestedLanguage}, detected=${msgLang})`);
     useFallback = true;
 
@@ -573,11 +571,23 @@ function validateAndEnforceCorrectness(
         event: 'assistant_language_mismatch_debug',
         requestedLang: requestedLanguage,
         messageDetected: msgLang,
-        questionDetected: qLang,
+        checkedField: 'message',
         messagePreview: getMessagePreview(output.message),
         willUseFallback: true
-      }, '[ASSISTANT_DEBUG] Language mismatch detected');
+      }, '[ASSISTANT_DEBUG] Language mismatch detected in message field');
     }
+  }
+
+  // Debug log for successful validation (when enabled)
+  if (!messageMismatch && ASSISTANT_LANG_DEBUG) {
+    logger.info({
+      requestId,
+      event: 'assistant_language_validated',
+      requestedLang: requestedLanguage,
+      messageDetected: msgLang,
+      checkedField: 'message',
+      messagePreview: getMessagePreview(output.message)
+    }, '[ASSISTANT_DEBUG] Language validation passed');
   }
 
   // 2) Format validation
@@ -668,25 +678,37 @@ export async function generateAssistantMessage(
 
     const withInvariants = enforceInvariants(result.data, context, requestId);
 
+    // Track whether fallback was used during validation
+    let usedFallback = false;
+    const beforeValidation = JSON.stringify(withInvariants);
+    
     const validated = validateAndEnforceCorrectness(
       withInvariants,
       requestedLanguage,
       context,
       requestId
     );
+    
+    // Check if validation replaced content with fallback
+    const afterValidation = JSON.stringify(validated);
+    usedFallback = beforeValidation !== afterValidation;
 
     logger.info({
       requestId,
       stage: 'assistant_llm',
-      event: 'assistant_llm_success',
+      event: usedFallback ? 'assistant_llm_parsed_json' : 'assistant_llm_success',
       type: validated.type,
       questionLanguage: requestedLanguage,
       suggestedAction: validated.suggestedAction,
       blocksSearch: validated.blocksSearch,
+      validated: !usedFallback,
+      usedFallback,
       durationMs,
       usage: result.usage,
       model: result.model
-    }, '[ASSISTANT] LLM generated and validated message');
+    }, usedFallback 
+      ? '[ASSISTANT] LLM parsed JSON successfully (validation failed, used fallback)' 
+      : '[ASSISTANT] LLM generated and validated message');
 
     return validated;
   } catch (error) {

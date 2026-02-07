@@ -50,8 +50,21 @@ export class WSSubscriptionManager {
    * Subscribe to a request ID (using canonical envelope)
    * - Records subscription intent
    * - Sends immediately if connected, otherwise queues for later
+   * GUARD: Throws error if sessionId is empty (prevents anonymous subscriptions)
    */
   subscribe(params: WSSubscribeParams): void {
+    // CRITICAL GUARD: Prevent subscribing with empty/anonymous sessionId
+    if (!params.sessionId || params.sessionId === 'anonymous') {
+      console.error('[WS] subscribe_blocked_anonymous', {
+        requestId: params.requestId,
+        channel: params.channel,
+        sessionId: params.sessionId || 'empty',
+        reason: 'Cannot subscribe with anonymous/empty sessionId',
+        timestamp: new Date().toISOString()
+      });
+      throw new Error('WS subscribe requires valid sessionId (not anonymous/empty)');
+    }
+
     this.lastRequestId = params.requestId;
 
     const key = this.makeKey(params);
@@ -65,11 +78,32 @@ export class WSSubscriptionManager {
 
     this.sendOrQueue('subscribe', key, message);
 
-    console.log('[WS] Subscribed to', {
-      requestId: params.requestId,
+    // Compute session hash for logging (same as backend)
+    const sessionHash = this.hashSessionId(params.sessionId);
+
+    console.log('[WS] subscribe_sent', {
+      requestId: params.requestId.substring(0, 20) + '...',
       channel: params.channel,
-      sessionId: params.sessionId,
+      sessionId: params.sessionId.substring(0, 20) + '...',
+      sessionHash,
+      timestamp: new Date().toISOString()
     });
+  }
+
+  /**
+   * Hash sessionId for logging (matches backend implementation)
+   */
+  private hashSessionId(sessionId: string): string {
+    if (!sessionId) return 'none';
+    
+    // Simple hash for client-side logging (matches server-side for comparison)
+    let hash = 0;
+    for (let i = 0; i < sessionId.length; i++) {
+      const char = sessionId.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    return Math.abs(hash).toString(16).substring(0, 12);
   }
 
   /**

@@ -204,7 +204,9 @@ export class SearchFacade {
         safeLog('SearchFacade', 'Async 202 accepted', { requestId, resultUrl });
 
         // Subscribe to WebSocket for real-time updates
-        this.wsHandler.subscribeToRequest(requestId, this.conversationId());
+        // Note: sessionId is now fetched from JWT localStorage, not conversationId
+        // This call blocks until WS is connected and authenticated
+        await this.wsHandler.subscribeToRequest(requestId);
 
         // Defer polling start (if WS delivers first, polling never starts)
         this.apiHandler.startPolling(

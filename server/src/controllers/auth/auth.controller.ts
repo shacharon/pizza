@@ -182,16 +182,18 @@ router.post('/ws-ticket', authenticateJWT, async (req: Request, res: Response) =
       });
     }
 
-    // Get Redis client
+    // Get Redis client (must be initialized at boot, not lazy-loaded)
     const redis = getExistingRedisClient();
 
     if (!redis) {
       logger.error(
         {
+          event: 'ws_ticket_redis_unavailable',
           traceId,
-          sessionId
+          sessionId,
+          pid: process.pid,
         },
-        '[WSTicket] Redis client not available'
+        '[WSTicket] Redis client not available - check boot logs for redis_boot_status'
       );
 
       return res.status(503).json({

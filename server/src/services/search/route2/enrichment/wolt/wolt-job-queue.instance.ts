@@ -5,9 +5,7 @@
  */
 
 import { WoltJobQueue } from './wolt-job-queue.js';
-import { StubSearchAdapter } from './wolt-search.mock.js';
-import type { WoltSearchAdapter } from './wolt-search.adapter.js';
-import { createGoogleCSEAdapterFromEnv } from '../google-cse.adapter.js';
+import { createResolverFromEnv } from '../provider-deeplink-resolver.js';
 import { logger } from '../../../../../lib/logger/structured-logger.js';
 
 /**
@@ -25,39 +23,21 @@ export function getWoltJobQueue(): WoltJobQueue {
     return queueInstance;
   }
 
-  // Create search adapter with fallback to stub
-  let searchAdapter: WoltSearchAdapter;
-  const googleCseAdapter = createGoogleCSEAdapterFromEnv();
+  // Create resolver (handles CSE + 3-layer fallback internally)
+  const resolver = createResolverFromEnv();
   
-  if (googleCseAdapter) {
-    // Production: Use Google Custom Search API
-    searchAdapter = googleCseAdapter as any; // Cast to WoltSearchAdapter (compatible interface)
-    
-    logger.info(
-      {
-        event: 'wolt_worker_boot',
-        adapterType: 'google_cse',
-        enabledFlag: process.env.ENABLE_WOLT_ENRICHMENT === 'true',
-      },
-      '[BOOT] Wolt job queue created with Google CSE adapter'
-    );
-  } else {
-    // Fallback: Use stub adapter
-    searchAdapter = new StubSearchAdapter();
-    
-    logger.warn(
-      {
-        event: 'wolt_worker_boot',
-        adapterType: 'stub',
-        reason: 'missing_google_cse_config',
-        enabledFlag: process.env.ENABLE_WOLT_ENRICHMENT === 'true',
-      },
-      '[BOOT] Wolt job queue created with STUB adapter (configure GOOGLE_CSE_API_KEY and GOOGLE_CSE_ENGINE_ID)'
-    );
-  }
+  logger.info(
+    {
+      event: 'wolt_worker_boot',
+      resolverType: 'provider_deeplink_resolver',
+      enabledFlag: process.env.ENABLE_WOLT_ENRICHMENT === 'true',
+      hasCSE: Boolean(process.env.GOOGLE_CSE_API_KEY && process.env.GOOGLE_CSE_ENGINE_ID),
+    },
+    '[BOOT] Wolt job queue created with ProviderDeepLinkResolver'
+  );
 
   // Create queue instance
-  queueInstance = new WoltJobQueue(searchAdapter);
+  queueInstance = new WoltJobQueue(resolver);
 
   return queueInstance;
 }

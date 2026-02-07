@@ -81,6 +81,18 @@ export class ProviderDeepLinkResolver {
     const { provider, name, cityText } = input;
     const config = PROVIDER_CONFIGS[provider];
 
+    // Log context at resolve start (requested diagnostic)
+    logger.debug(
+      {
+        event: 'provider_resolver_context',
+        hasCseClient: this.cseClient !== null,
+        provider,
+        hasCityText: cityText !== null && cityText !== undefined,
+        restaurantName: name,
+      },
+      `[ProviderResolver] Resolve context: CSE=${this.cseClient ? 'YES' : 'NO'}, provider=${provider}, city=${cityText ? 'YES' : 'NO'}`
+    );
+
     // Guard: No CSE client available
     if (!this.cseClient) {
       logger.warn(
@@ -317,7 +329,8 @@ export class ProviderDeepLinkResolver {
   private getPrimaryHost(provider: Provider): string {
     const config = PROVIDER_CONFIGS[provider];
     // Return first non-wildcard host
-    return config.allowedHosts.find((h) => !h.startsWith('*')) || config.allowedHosts[0];
+    const nonWildcardHost = config.allowedHosts.find((h) => !h.startsWith('*'));
+    return nonWildcardHost || config.allowedHosts[0] || '';
   }
 
   /**
@@ -376,8 +389,27 @@ export class ProviderDeepLinkResolver {
 export function createResolverFromEnv(): ProviderDeepLinkResolver {
   const apiKey = process.env.GOOGLE_CSE_API_KEY;
   const searchEngineId = process.env.GOOGLE_CSE_ENGINE_ID;
+  const nodeEnv = process.env.NODE_ENV || 'development';
 
   let cseClient: GoogleCSEClient | null = null;
+  
+  // BOOT log: CSE client initialization status
+  const cseEnabled = Boolean(apiKey && searchEngineId);
+  const apiKeyPresent = Boolean(apiKey);
+  const engineIdPresent = Boolean(searchEngineId);
+  
+  logger.info(
+    {
+      event: 'cse_client_status',
+      cseEnabled,
+      apiKeyPresent,
+      engineIdPresent,
+      nodeEnv,
+      apiKeyLength: apiKey ? apiKey.length : 0, // Don't log the actual key
+      engineIdLength: searchEngineId ? searchEngineId.length : 0,
+    },
+    `[BOOT] CSE Client Status: ${cseEnabled ? 'ENABLED' : 'DISABLED'} (API Key: ${apiKeyPresent ? 'present' : 'missing'}, Engine ID: ${engineIdPresent ? 'present' : 'missing'})`
+  );
   
   if (apiKey && searchEngineId) {
     cseClient = new GoogleCSEClient({
@@ -386,14 +418,27 @@ export function createResolverFromEnv(): ProviderDeepLinkResolver {
       timeoutMs: 5000,
       maxRetries: 2,
     });
+    
+    logger.info(
+      {
+        event: 'cse_client_created',
+        timeoutMs: 5000,
+        maxRetries: 2,
+      },
+      '[BOOT] CSE Client created successfully'
+    );
   } else {
     logger.warn(
       {
         event: 'provider_resolver_no_cse',
-        hasApiKey: Boolean(apiKey),
-        hasEngineId: Boolean(searchEngineId),
+        cseEnabled: false,
+        reason: !apiKey && !searchEngineId 
+          ? 'both_missing' 
+          : !apiKey 
+            ? 'api_key_missing' 
+            : 'engine_id_missing',
       },
-      '[ProviderResolver] CSE not configured, will use L3 fallback only'
+      '[BOOT] CSE not configured, resolver will use L3 fallback only'
     );
   }
 

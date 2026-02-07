@@ -1,38 +1,67 @@
 .search-page {
-  /* Android PWA fix: Use dvh (dynamic viewport height) to handle keyboard */
-  /* Falls back to 100vh for browsers without dvh support */
+  /* Standard page scroll (no height constraint) */
   min-height: 100vh;
-  min-height: 100dvh;
   background: #f9fafb;
-  /* Prevent horizontal wiggle/scroll on PWA */
-  overflow-x: clip;
-  /* Ensure we use full width without forcing vw units */
-  max-width: 100%;
-  /* CRITICAL: Ensure background extends to bottom (no premature container end) */
-  display: flex;
-  flex-direction: column;
-}
-
-.search-header {
-  background: linear-gradient(180deg, #ffffff 0%, #f9fafb 100%);
-  padding: 1.5rem 1rem 1.25rem;
-  border-bottom: 1px solid #e5e7eb;
-  /* Sticky positioning for scroll behavior */
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  /* Ensure header stays above content with solid backdrop */
-  backdrop-filter: blur(8px);
-  /* Prevent horizontal overflow in header */
-  width: 100%;
   max-width: 100%;
 }
 
-// Hero Section (title + subtitle + location)
+// Hero Section (collapsible on scroll)
 .hero-section {
   text-align: center;
-  margin: 0 auto 1rem;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 1.25rem;
   max-width: 700px;
+  background: linear-gradient(180deg, #ffffff 0%, #f9fafb 100%);
+  transition: max-height 0.3s ease, opacity 0.3s ease, margin 0.3s ease, padding 0.3s ease;
+  overflow: hidden;
+  
+  &.collapsed {
+    max-height: 0;
+    opacity: 0;
+    margin: 0;
+    padding: 0;
+    pointer-events: none;
+  }
+}
+
+// SearchDock (sticky on page scroll)
+.search-dock {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 1rem;
+  padding-top: max(1rem, env(safe-area-inset-top)); // Safe area for notch
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  
+  .search-input-wrapper {
+    max-width: 700px;
+    margin: 0 auto;
+  }
+  
+  // Compact assistant in dock
+  .assistant-message-container.compact,
+  .assistant-line-container.compact {
+    max-width: 700px;
+    margin: 0 auto 0.75rem;
+    
+    ::ng-deep .assistant-summary .message-text,
+    ::ng-deep .assistant-summary .streaming-text,
+    ::ng-deep .assistant-summary .completed-text {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
+}
+
+// Results Frame (normal flow, no internal scroll)
+.results-frame {
+  background: #f9fafb;
+  padding: 1.5rem 1rem;
 }
 
 .page-title {
@@ -132,34 +161,126 @@
   }
 }
 
-// Search Card: Unified container for input + assistant line
-.search-card {
-  max-width: 700px;
-  margin: 0 auto;
-  background: white;
-  border: 2px solid #e5e7eb;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  overflow: visible;
-  padding: 1rem;
-  /* Prevent horizontal overflow */
-  width: 100%;
-  min-width: 0;
+// Legacy .search-card removed - now using .search-dock
 
-  &:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-    border-color: #d1d5db;
+// Assistant Message Container (ABOVE input) - V1: English/LTR only
+.assistant-message-container {
+  margin-bottom: 0.875rem;
+  padding: 0.875rem 1rem;
+  background: #ffffff;
+  border: 1px solid #f3f4f6;
+  border-radius: 8px;
+  direction: ltr;
+  text-align: left;
+
+  // Override component styles - simple inline message
+  ::ng-deep .assistant-summary {
+    background: transparent !important;
+    padding: 0;
+    margin: 0;
+    
+    &.multi-message .assistant-message {
+      background: transparent;
+      padding: 0;
+      gap: 0.75rem;
+      
+      // Remove colored borders - clean inline style
+      &.message-type-clarify,
+      &.message-type-summary,
+      &.message-type-gate_fail {
+        border: none !important;
+        background: transparent !important;
+      }
+      
+      .message-icon {
+        font-size: 1rem;
+        
+        // AI icon - WHITE background with SOFT YELLOW sparkle
+        &.ai-icon {
+          width: 32px;
+          height: 32px;
+          background: #ffffff;
+          border-radius: 6px;
+          border: none;
+          color: #FCD34D; // Soft, subtle yellow for sparkle
+          
+          .ai-sparkle-svg {
+            width: 20px;
+            height: 20px;
+          }
+        }
+      }
+      
+      .message-content {
+        .message-text {
+          color: #374151;
+          font-size: 0.9375rem;
+          line-height: 1.5;
+          font-weight: 400;
+        }
+      }
+      
+      &:hover {
+        background: transparent;
+      }
+    }
+    
+    .streaming-text,
+    .completed-text {
+      color: #374151;
+      font-size: 0.9375rem;
+    }
+  }
+  
+  // Compact mode in SearchDock
+  &.compact {
+    padding: 0.5rem 1rem;
+    margin-bottom: 0.5rem;
+    
+    ::ng-deep .assistant-summary {
+      .message-text,
+      .streaming-text,
+      .completed-text {
+        font-size: 0.875rem;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      
+      .message-icon.ai-icon {
+        width: 24px;
+        height: 24px;
+        
+        .ai-sparkle-svg {
+          width: 14px;
+          height: 14px;
+        }
+      }
+    }
   }
 }
 
-// Meta Row: Assistant line (always shown - includes WS status)
-.search-meta-row {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.75rem 0 0.25rem;
-  min-height: 32px;
+// Assistant Line Container (ABOVE input, if present)
+.assistant-line-container {
+  margin-bottom: 0.75rem;
+  padding: 0.625rem 1rem;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  direction: rtl;
+  text-align: right;
+  
+  ::ng-deep .assistant-line {
+    .assistant-text {
+      color: #6b7280;
+      font-size: 0.875rem;
+    }
+  }
 }
+
+// Legacy .search-meta-row removed
 
 // Applied Filters
 .applied-filters {
@@ -705,8 +826,12 @@
     font-size: 0.875rem;
   }
 
-  .search-content {
+  .results-frame {
     padding: 1rem;
+  }
+  
+  .search-dock {
+    padding: 0.75rem;
   }
 
   .pending-actions-panel {

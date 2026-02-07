@@ -5,9 +5,7 @@
  */
 
 import { TenbisJobQueue } from './tenbis-job-queue.js';
-import { StubSearchAdapter } from './tenbis-search.mock.js';
-import type { TenbisSearchAdapter } from './tenbis-search.adapter.js';
-import { createGoogleCSEAdapterFromEnv } from '../google-cse.adapter.js';
+import { createResolverFromEnv } from '../provider-deeplink-resolver.js';
 import { logger } from '../../../../../lib/logger/structured-logger.js';
 
 /**
@@ -25,39 +23,21 @@ export function getTenbisJobQueue(): TenbisJobQueue {
     return queueInstance;
   }
 
-  // Create search adapter with fallback to stub
-  let searchAdapter: TenbisSearchAdapter;
-  const googleCseAdapter = createGoogleCSEAdapterFromEnv();
+  // Create resolver (handles CSE + 3-layer fallback internally)
+  const resolver = createResolverFromEnv();
   
-  if (googleCseAdapter) {
-    // Production: Use Google Custom Search API
-    searchAdapter = googleCseAdapter as any; // Cast to TenbisSearchAdapter (compatible interface)
-    
-    logger.info(
-      {
-        event: 'tenbis_worker_boot',
-        adapterType: 'google_cse',
-        enabledFlag: process.env.ENABLE_TENBIS_ENRICHMENT === 'true',
-      },
-      '[BOOT] 10bis job queue created with Google CSE adapter'
-    );
-  } else {
-    // Fallback: Use stub adapter
-    searchAdapter = new StubSearchAdapter();
-    
-    logger.warn(
-      {
-        event: 'tenbis_worker_boot',
-        adapterType: 'stub',
-        reason: 'missing_google_cse_config',
-        enabledFlag: process.env.ENABLE_TENBIS_ENRICHMENT === 'true',
-      },
-      '[BOOT] 10bis job queue created with STUB adapter (configure GOOGLE_CSE_API_KEY and GOOGLE_CSE_ENGINE_ID)'
-    );
-  }
+  logger.info(
+    {
+      event: 'tenbis_worker_boot',
+      resolverType: 'provider_deeplink_resolver',
+      enabledFlag: process.env.ENABLE_TENBIS_ENRICHMENT === 'true',
+      hasCSE: Boolean(process.env.GOOGLE_CSE_API_KEY && process.env.GOOGLE_CSE_ENGINE_ID),
+    },
+    '[BOOT] 10bis job queue created with ProviderDeepLinkResolver'
+  );
 
   // Create queue instance
-  queueInstance = new TenbisJobQueue(searchAdapter);
+  queueInstance = new TenbisJobQueue(resolver);
 
   return queueInstance;
 }

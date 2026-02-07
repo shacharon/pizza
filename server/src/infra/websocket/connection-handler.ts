@@ -54,6 +54,12 @@ export function setupConnection(
 
   // SESSIONHASH FIX: Use shared utility for consistent hashing
   const sessionHash = hashSessionId(ctx.sessionId);
+  
+  // Determine auth mode for logging
+  const requireAuth = process.env.WS_REQUIRE_AUTH !== 'false';
+  const authMode = requireAuth 
+    ? (ctx.sessionId !== 'anonymous' ? 'ticket' : 'none')
+    : 'none';
 
   logger.info(
     {
@@ -61,7 +67,9 @@ export function setupConnection(
       ip,
       originHost,
       sessionHash,
+      authMode,
       hasUserId: !!ctx.userId,
+      WS_REQUIRE_AUTH: requireAuth,
       event: 'ws_conn_ctx_set'
     },
     'WebSocket connection context established'

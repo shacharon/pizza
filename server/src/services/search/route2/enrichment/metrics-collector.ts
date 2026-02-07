@@ -190,7 +190,9 @@ export class MetricsCollector {
     // Clean up old metrics (keep last 100 requests)
     if (this.metrics.size > 100) {
       const oldestKey = this.metrics.keys().next().value;
-      this.metrics.delete(oldestKey);
+      if (oldestKey) {
+        this.metrics.delete(oldestKey);
+      }
     }
   }
 

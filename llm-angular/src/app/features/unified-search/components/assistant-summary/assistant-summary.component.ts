@@ -62,7 +62,7 @@ export class AssistantSummaryComponent {
   });
 
   // RTL support: Hebrew language
-  readonly isRTL = computed(() => this.locale() === 'he');
+  readonly isRTL = computed(() => false); // V1: Always LTR (English only)
 
   /**
    * Get icon for message type
@@ -85,10 +85,9 @@ export class AssistantSummaryComponent {
 
   /**
    * Get directionality for message based on language
-   * Uses payload.language if available, falls back to uiLanguage, then 'ltr'
+   * V1: Always LTR (English only)
    */
   getMessageDir(msg: AssistantCardMessage): 'rtl' | 'ltr' {
-    const lang = msg.language || this.locale();
-    return ['he', 'ar'].includes(lang) ? 'rtl' : 'ltr';
+    return 'ltr';
   }
 }

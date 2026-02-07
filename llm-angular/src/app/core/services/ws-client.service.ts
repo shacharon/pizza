@@ -47,6 +47,10 @@ export class WsClientService {
   private messagesSubject = new Subject<WSServerMessage>();
   readonly messages$ = this.messagesSubject.asObservable();
 
+  // Auth tracking (internal)
+  private connectionPromise: Promise<void> | null = null;
+  private isAuthenticated = false;
+
   // SOLID Modules (internal)
   private readonly connection: WSConnection;
   private readonly router: WSRouter;
@@ -74,7 +78,7 @@ export class WsClientService {
     const connectionCallbacks: WSConnectionCallbacks = {
       onOpen: () => this.handleConnectionOpen(),
       onMessage: (event) => this.router.handleMessage(event),
-      onClose: (event) => { /* handled internally by connection */ },
+      onClose: (event) => this.handleConnectionClose(),
       onError: (event) => { /* handled internally by connection */ },
       onStatusChange: (status) => this.connectionStatus.set(status)
     };
@@ -95,7 +99,46 @@ export class WsClientService {
    * Safe to call multiple times (idempotent)
    */
   async connect(): Promise<void> {
-    await this.connection.connect();
+    // Return existing promise if connection is in progress
+    if (this.connectionPromise) {
+      return this.connectionPromise;
+    }
+
+    // Create new connection promise
+    this.connectionPromise = this.connection.connect()
+      .then(() => {
+        this.isAuthenticated = true;
+        console.log('[WsClient] Connection authenticated');
+      })
+      .catch((error) => {
+        console.error('[WsClient] Connection failed', error);
+        this.connectionPromise = null;
+        this.isAuthenticated = false;
+        throw error;
+      });
+
+    return this.connectionPromise;
+  }
+
+  /**
+   * Ensure WebSocket is connected and authenticated (PUBLIC API)
+   * Blocks until connection is ready for subscriptions
+   * @returns Promise that resolves when WS is ready
+   */
+  async ensureWsAuthed(): Promise<void> {
+    // If already authenticated and connected, return immediately
+    if (this.isAuthenticated && this.connection.isOpen()) {
+      return;
+    }
+
+    // If connection is in progress, wait for it
+    if (this.connectionPromise) {
+      await this.connectionPromise;
+      return;
+    }
+
+    // Otherwise, initiate connection
+    await this.connect();
   }
 
   /**
@@ -156,9 +199,22 @@ export class WsClientService {
    * Auto-resubscribe to last requestId if present
    */
   private handleConnectionOpen(): void {
+    this.isAuthenticated = true;
+    console.log('[WsClient] Connection open and authenticated');
+    
     const lastRequestId = this.subscriptionManager.getLastRequestId();
     if (lastRequestId) {
       this.subscribe(lastRequestId);
     }
+  }
+
+  /**
+   * Handle connection close event
+   * Reset auth state
+   */
+  private handleConnectionClose(): void {
+    this.isAuthenticated = false;
+    this.connectionPromise = null;
+    console.log('[WsClient] Connection closed, auth reset');
   }
 }

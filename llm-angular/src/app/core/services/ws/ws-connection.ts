@@ -72,7 +72,14 @@ export class WSConnection {
       // STEP 2: Request NEW one-time ticket (CRITICAL: fetch fresh ticket every time)
       let ticketResponse: any;
       try {
+        console.log('[WS] ws_ticket_requested', {
+          timestamp: new Date().toISOString()
+        });
         ticketResponse = await this.ticketProvider.requestTicket();
+        console.log('[WS] ws_ticket_received', {
+          expiresInSeconds: ticketResponse.expiresInSeconds,
+          timestamp: new Date().toISOString()
+        });
       } catch (error: any) {
         // Handle EmptyError as retryable
         if (error?.name === 'EmptyError' || error?.message?.includes('no elements in sequence')) {
@@ -97,7 +104,10 @@ export class WSConnection {
       this.ws = new WebSocket(wsUrl);
 
       this.ws.onopen = () => {
-        console.log('[WS] Connected');
+        console.log('[WS] ws_connected', {
+          timestamp: new Date().toISOString(),
+          url: wsUrl.split('?')[0] + '?ticket=***' // Log URL without exposing ticket
+        });
         this.callbacks.onStatusChange('connected');
         this.connectInFlight = false;
         this.reconnectAttempts = 0; // Reset counter on successful connection

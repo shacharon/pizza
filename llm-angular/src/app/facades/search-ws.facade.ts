@@ -5,6 +5,7 @@
 
 import { Injectable, inject } from '@angular/core';
 import { WsClientService } from '../core/services/ws-client.service';
+import { AuthService } from '../core/auth/auth.service';
 import type { WSServerMessage } from '../core/models/ws-protocol.types';
 import type { SearchResponse } from '../domain/types/search.types';
 
@@ -17,6 +18,7 @@ export interface SearchEventHandlers {
 @Injectable()
 export class SearchWsHandler {
   private readonly wsClient = inject(WsClientService);
+  private readonly authService = inject(AuthService);
 
   // Connection status
   readonly connectionStatus = this.wsClient.connectionStatus;
@@ -24,8 +26,16 @@ export class SearchWsHandler {
   /**
    * Connect to WebSocket
    */
-  connect(): void {
-    this.wsClient.connect();
+  async connect(): Promise<void> {
+    await this.wsClient.connect();
+  }
+
+  /**
+   * Ensure WebSocket is connected and authenticated
+   * Blocks until ready for subscriptions
+   */
+  async ensureConnected(): Promise<void> {
+    await this.wsClient.ensureWsAuthed();
   }
 
   /**
@@ -37,12 +47,55 @@ export class SearchWsHandler {
 
   /**
    * Subscribe to channels for a request
+   * CRITICAL: Uses JWT sessionId from localStorage (same as HTTP requests)
+   * Ensures WS is connected and authenticated before subscribing
+   * @param requestId - The search request ID to subscribe to
+   * @param _legacySessionId - DEPRECATED, not used (kept for backward compatibility)
    */
-  subscribeToRequest(requestId: string, sessionId: string): void {
+  async subscribeToRequest(requestId: string, _legacySessionId?: string): Promise<void> {
+    // STEP 1: Ensure WS is connected and authenticated (blocks until ready)
+    try {
+      console.log('[SearchWsHandler] Ensuring WS auth before subscribe', {
+        requestId: requestId.substring(0, 20) + '...',
+        timestamp: new Date().toISOString()
+      });
+      await this.ensureConnected();
+      console.log('[SearchWsHandler] WS auth confirmed, proceeding with subscribe', {
+        requestId: requestId.substring(0, 20) + '...',
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('[SearchWsHandler] Failed to connect WS, cannot subscribe', {
+        requestId,
+        error,
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
+    // STEP 2: Get JWT sessionId from localStorage (same as HTTP requests)
+    const jwtSessionId = this.authService.getSessionId();
+
+    // Guard: Prevent subscribing with empty/anonymous session
+    if (!jwtSessionId) {
+      console.error('[SearchWsHandler] CRITICAL: Cannot subscribe without JWT sessionId', {
+        requestId,
+        hint: 'Ensure AuthService.getToken() is called before subscribing'
+      });
+      return;
+    }
+
+    // Log for debugging session_mismatch issues
+    console.log('[SearchWsHandler] Subscribing with JWT sessionId', {
+      requestId: requestId.substring(0, 20) + '...',
+      sessionId: jwtSessionId.substring(0, 20) + '...'
+    });
+
+    // STEP 3: Subscribe to channels (now guaranteed to have auth)
     // Subscribe to 'search' channel for progress/status/ready
-    this.wsClient.subscribe(requestId, 'search', sessionId);
+    this.wsClient.subscribe(requestId, 'search', jwtSessionId);
     // Subscribe to 'assistant' channel for narrator messages
-    this.wsClient.subscribe(requestId, 'assistant', sessionId);
+    this.wsClient.subscribe(requestId, 'assistant', jwtSessionId);
   }
 
   /**

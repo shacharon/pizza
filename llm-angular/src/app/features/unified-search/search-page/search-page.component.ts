@@ -3,7 +3,7 @@
  * Main container for unified search experience
  */
 
-import { Component, inject, OnInit, OnDestroy, ChangeDetectionStrategy, computed, signal } from '@angular/core';
+import { Component, inject, OnInit, OnDestroy, ChangeDetectionStrategy, computed, signal, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { SearchFacade } from '../../../facades/search.facade';
 import { SearchApiHandler } from '../../../facades/search-api.facade';
@@ -56,6 +56,9 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   readonly i18n = inject(I18nService);
 
   private cleanupInterval?: number;
+
+  // Scroll collapse state
+  readonly isHeroCollapsed = signal(false);
 
   // Location state
   readonly locationState = this.locationService.state;
@@ -567,6 +570,17 @@ export class SearchPageComponent implements OnInit, OnDestroy {
    */
   onDismissInstall(): void {
     this.pwaInstall.hidePrompt();
+  }
+
+  /**
+   * Handle window scroll to collapse hero
+   */
+  @HostListener('window:scroll', ['$event'])
+  onWindowScroll(): void {
+    const scrollTop = window.scrollY || document.documentElement.scrollTop;
+    
+    // Collapse hero when scrolled more than 8px
+    this.isHeroCollapsed.set(scrollTop > 8);
   }
 }
 

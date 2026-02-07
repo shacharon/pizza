@@ -254,7 +254,7 @@
   font-size: 0.75rem; // 12px - small and compact
   white-space: nowrap; // Prevent wrapping
   flex-shrink: 0; // Never shrink, always visible
-  
+
   // RTL-safe: the text "ממך" is in Hebrew, numbers are LTR
   // Uses logical properties via flex parent
   unicode-bidi: plaintext;
@@ -280,7 +280,7 @@
   margin: 0;
   white-space: nowrap; // Prevent wrapping
   flex-shrink: 0; // Never shrink, always visible
-  
+
   // RTL-safe: respect parent directionality but keep time values stable
   unicode-bidi: plaintext;
 
@@ -410,6 +410,7 @@
   from {
     transform: rotate(0deg);
   }
+
   to {
     transform: rotate(360deg);
   }

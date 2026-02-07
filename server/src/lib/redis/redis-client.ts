@@ -110,10 +110,20 @@ export async function getRedisClient(options: RedisClientOptions): Promise<Redis
 }
 
 /**
- * Get existing Redis client (must be initialized first)
+ * Get existing Redis client (must be initialized first via getRedisClient)
  * @returns Redis client or null
  */
 export function getExistingRedisClient(): RedisClient | null {
+  if (!redisClientInstance && !redisInitialized) {
+    logger.warn(
+      {
+        event: 'redis_client_not_initialized',
+        pid: process.pid,
+        stack: new Error().stack?.split('\n').slice(2, 4).join('\n'),
+      },
+      '[Redis] getExistingRedisClient called before initialization - caller should use getRedisClient first'
+    );
+  }
   return redisClientInstance;
 }
 

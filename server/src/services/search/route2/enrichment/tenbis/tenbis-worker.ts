@@ -33,10 +33,9 @@ import {
   type TenbisCacheEntry,
 } from './tenbis-enrichment.contracts.js';
 import { wsManager } from '../../../../../server.js';
-import type { TenbisSearchAdapter } from './tenbis-search.adapter.js';
-import { buildTenbisSearchQuery } from './tenbis-search.adapter.js';
-import { findBestMatch } from './tenbis-matcher.js';
 import { withTimeout } from '../../../../../lib/reliability/timeout-guard.js';
+import type { ProviderDeepLinkResolver } from '../provider-deeplink-resolver.js';
+import { getMetricsCollector } from '../metrics-collector.js';
 
 /**
  * 10bis enrichment job
@@ -93,6 +92,14 @@ export interface JobResult {
   updatedAt: string;
 
   /**
+   * Resolution metadata
+   */
+  meta?: {
+    layerUsed: 1 | 2 | 3;
+    source: 'cse' | 'internal';
+  };
+
+  /**
    * Error message (if failed)
    */
   error?: string;
@@ -109,7 +116,7 @@ export interface JobResult {
 export class TenbisWorker {
   constructor(
     private redis: RedisClient,
-    private searchAdapter: TenbisSearchAdapter
+    private resolver: ProviderDeepLinkResolver
   ) {}
 
   /**
@@ -170,11 +177,11 @@ export class TenbisWorker {
         '[TenbisWorker] Job failed (final)'
       );
 
-      // Write NOT_FOUND and publish patch
+      // Write NOT_FOUND and publish patch (no meta on error)
       const updatedAt = new Date().toISOString();
       try {
-        await this.writeCacheEntry(placeId, null, 'NOT_FOUND');
-        await this.publishPatchEvent(requestId, placeId, 'NOT_FOUND', null, updatedAt);
+        await this.writeCacheEntry(placeId, null, 'NOT_FOUND', undefined);
+        await this.publishPatchEvent(requestId, placeId, 'NOT_FOUND', null, updatedAt, undefined);
         await this.cleanupLock(placeId);
       } catch (cleanupErr) {
         logger.warn(
@@ -212,65 +219,69 @@ export class TenbisWorker {
     const { requestId, placeId, name, cityText } = job;
 
     try {
-      // Step 1: Search for 10bis restaurant page (with search-specific timeout)
-      const searchQuery = buildTenbisSearchQuery(name, cityText ?? null);
-      
+      // Step 1: Resolve 10bis deep link using 3-layer strategy
       logger.debug(
         {
-          event: 'tenbis_search_started',
+          event: 'tenbis_resolution_started',
           requestId,
           placeId,
-          query: searchQuery,
+          name,
+          cityText,
           attempt: attemptNumber + 1,
         },
-        '[TenbisWorker] Starting search'
+        '[TenbisWorker] Starting resolution'
       );
 
-      const searchResults = await withTimeout(
-        this.searchAdapter.searchWeb(searchQuery, 5),
+      const resolveResult = await withTimeout(
+        this.resolver.resolve({
+          provider: 'tenbis',
+          name,
+          cityText: cityText ?? null,
+        }),
         TENBIS_JOB_CONFIG.SEARCH_TIMEOUT_MS,
-        `10bis search timeout for ${placeId}`
+        `10bis resolution timeout for ${placeId}`
       );
 
-      logger.debug(
-        {
-          event: 'tenbis_search_completed',
-          requestId,
-          placeId,
-          query: searchQuery,
-          resultCount: searchResults.length,
-          attempt: attemptNumber + 1,
-        },
-        '[TenbisWorker] Search completed'
-      );
-
-      // Step 2: Match best result
-      const matchResult = findBestMatch(searchResults, name, cityText ?? null);
-
-      const status: 'FOUND' | 'NOT_FOUND' = matchResult.found ? 'FOUND' : 'NOT_FOUND';
-      const url = matchResult.url;
+      const { status, url, meta } = resolveResult;
       const updatedAt = new Date().toISOString();
+
+      // Track CSE usage in metrics if CSE was used (L1 or L2)
+      if (meta.source === 'cse') {
+        const metricsCollector = getMetricsCollector();
+        metricsCollector.recordCseCall(requestId);
+        
+        logger.debug(
+          {
+            event: 'tenbis_cse_call_tracked',
+            requestId,
+            placeId,
+            layerUsed: meta.layerUsed,
+          },
+          '[TenbisWorker] CSE call tracked in metrics'
+        );
+      }
 
       logger.info(
         {
-          event: 'tenbis_match_completed',
+          event: 'tenbis_resolution_completed',
           requestId,
           placeId,
           status,
           url,
-          bestScore: matchResult.bestScore?.score,
+          layerUsed: meta.layerUsed,
+          source: meta.source,
           attempt: attemptNumber + 1,
         },
-        '[TenbisWorker] Match completed'
+        '[TenbisWorker] Resolution completed'
       );
 
-      // Step 3: Write to Redis cache
-      await this.writeCacheEntry(placeId, url, status);
+      // Step 2: Write to Redis cache (with meta)
+      await this.writeCacheEntry(placeId, url, status, meta);
 
-      // Step 4: Publish WebSocket RESULT_PATCH event with updatedAt
-      await this.publishPatchEvent(requestId, placeId, status, url, updatedAt);
+      // Step 3: Publish WebSocket RESULT_PATCH event with meta
+      await this.publishPatchEvent(requestId, placeId, status, url, updatedAt, meta);
 
-      // Step 5: Clean up lock (optional, TTL already exists)
+      // Step 4: Clean up lock (optional, TTL already exists)
       await this.cleanupLock(placeId);
 
       logger.info(
@@ -289,6 +300,7 @@ export class TenbisWorker {
         url,
         status,
         updatedAt,
+        meta,
         retries: attemptNumber,
       };
     } catch (err) {
@@ -389,16 +401,19 @@ export class TenbisWorker {
    * @param placeId - Google Place ID
    * @param url - 10bis URL (or null)
    * @param status - Match status
+   * @param meta - Resolution metadata
    */
   private async writeCacheEntry(
     placeId: string,
     url: string | null,
-    status: 'FOUND' | 'NOT_FOUND'
+    status: 'FOUND' | 'NOT_FOUND',
+    meta?: { layerUsed: 1 | 2 | 3; source: 'cse' | 'internal' }
   ): Promise<void> {
-    const cacheEntry: TenbisCacheEntry = {
+    const cacheEntry: TenbisCacheEntry & { meta?: any } = {
       url,
       status,
       updatedAt: new Date().toISOString(),
+      ...(meta && { meta }),
     };
 
     const ttl =
@@ -416,13 +431,14 @@ export class TenbisWorker {
         placeId,
         status,
         ttl,
+        meta,
       },
       '[TenbisWorker] Cache entry written'
     );
   }
 
   /**
-   * Publish WebSocket RESULT_PATCH event with updatedAt
+   * Publish WebSocket RESULT_PATCH event with updatedAt and meta
    * 
    * Uses unified wsManager.publishProviderPatch() method.
    * 
@@ -431,16 +447,18 @@ export class TenbisWorker {
    * @param status - Match status
    * @param url - 10bis URL (or null)
    * @param updatedAt - ISO timestamp of enrichment completion
+   * @param meta - Resolution metadata
    */
   private async publishPatchEvent(
     requestId: string,
     placeId: string,
     status: 'FOUND' | 'NOT_FOUND',
     url: string | null,
-    updatedAt: string
+    updatedAt: string,
+    meta?: { layerUsed: 1 | 2 | 3; source: 'cse' | 'internal' }
   ): Promise<void> {
     // Use unified provider patch method (includes structured logging)
-    wsManager.publishProviderPatch('tenbis', placeId, requestId, status, url, updatedAt);
+    wsManager.publishProviderPatch('tenbis', placeId, requestId, status, url, updatedAt, meta);
   }
 
   /**
