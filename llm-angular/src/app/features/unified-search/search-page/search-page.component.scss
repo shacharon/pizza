@@ -5,22 +5,47 @@
   max-width: 100%;
 }
 
-// Hero Section (collapsible on scroll)
+// Shared horizontal constraint: chat-like focused column
+.content-column {
+  max-width: 760px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+// Hero Section (collapsible on scroll with smooth animation)
 .hero-section {
   text-align: center;
   margin: 0 auto;
   padding: 1.5rem 1rem 1.25rem;
   max-width: 700px;
   background: linear-gradient(180deg, #ffffff 0%, #f9fafb 100%);
-  transition: max-height 0.3s ease, opacity 0.3s ease, margin 0.3s ease, padding 0.3s ease;
-  overflow: hidden;
   
+  // Smooth fade + slide transition (NO layout changes)
+  transition: 
+    opacity 200ms ease-out,
+    transform 200ms ease-out,
+    filter 200ms ease-out;
+  
+  // Performance hint
+  will-change: transform;
+  
+  // Expanded state (default)
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+  filter: blur(0);
+  
+  // Collapsed state (keeps space, only visual fade)
   &.collapsed {
-    max-height: 0;
     opacity: 0;
-    margin: 0;
-    padding: 0;
-    pointer-events: none;
+    transform: translateY(-8px); // Subtle upward slide
+    pointer-events: none; // Prevent interaction when hidden
+    filter: blur(2px); // Gentle blur effect
+  }
+  
+  // Respect prefers-reduced-motion: instant transitions
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
   }
 }
 
@@ -35,16 +60,16 @@
   padding-top: max(1rem, env(safe-area-inset-top)); // Safe area for notch
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   
+  // Apply shared horizontal constraint
   .search-input-wrapper {
-    max-width: 700px;
-    margin: 0 auto;
+    @extend .content-column;
   }
   
-  // Compact assistant in dock
+  // Compact assistant in dock - shared horizontal constraint
   .assistant-message-container.compact,
   .assistant-line-container.compact {
-    max-width: 700px;
-    margin: 0 auto 0.75rem;
+    @extend .content-column;
+    margin-bottom: 0.75rem;
     
     ::ng-deep .assistant-summary .message-text,
     ::ng-deep .assistant-summary .streaming-text,
@@ -383,9 +408,8 @@
 
 // NEW: Recent Searches (Phase B)
 .recent-searches {
+  @extend .content-column;
   padding: 2rem 0;
-  max-width: 600px;
-  margin: 0 auto;
 
   .section-header {
     display: flex;
@@ -457,6 +481,7 @@
 
 // Loading State
 .loading-state {
+  @extend .content-column;
   text-align: center;
   padding: 5rem 2rem;
 }
@@ -482,13 +507,12 @@
 
 // Error State
 .error-state {
+  @extend .content-column;
   text-align: center;
   padding: 4rem 2rem;
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 16px;
-  max-width: 550px;
-  margin: 0 auto;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 
   h2 {
@@ -532,6 +556,7 @@
 
 // Phase 5: Mode Indicators (subtle, non-intrusive)
 .mode-indicator {
+  @extend .content-column;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -685,6 +710,7 @@
 }
 
 .results-header {
+  @extend .content-column;
   margin-bottom: 2rem;
 
   h2 {
@@ -714,6 +740,7 @@
 }
 
 .results-grid {
+  @extend .content-column;
   display: grid;
   gap: 1.5rem;
   grid-template-columns: 1fr;
@@ -843,6 +870,7 @@
 
 // Load More Button (now inside results-container, above bottom gutter)
 .load-more-container {
+  @extend .content-column;
   display: flex;
   justify-content: center;
   padding: 2rem 0;

@@ -5,22 +5,36 @@
  * ROUTING:
  * - Shows ONLY: SUMMARY, CLARIFY, GATE_FAIL (card types)
  * - Never shows: PRESENCE, WS_STATUS, PROGRESS (those are line types)
+ * 
+ * STREAMING:
+ * - Configurable streaming modes: instant, sentence, word
+ * - Click-to-reveal full text
+ * - Respects prefers-reduced-motion
+ * - Cancels on new messages
  */
 
-import { Component, input, computed } from '@angular/core';
+import { Component, input, computed, effect, signal, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import type { AssistantStatus } from '../../../../core/models/ws-protocol.types';
 import type { AssistantMessage } from '../../../../facades/search-assistant.facade';
 import type { AssistantCardMessage } from '../../../../facades/assistant-routing.types';
+import { AssistantStreamingService, type StreamingState } from '../../services/assistant-streaming.service';
+
+interface MessageStreamState {
+  messageId: string;
+  state: ReturnType<typeof signal<StreamingState>>;
+  cancel: () => void;
+}
 
 @Component({
   selector: 'app-assistant-summary',
   standalone: true,
   imports: [CommonModule],
+  providers: [AssistantStreamingService],
   templateUrl: './assistant-summary.component.html',
   styleUrl: './assistant-summary.component.scss'
 })
-export class AssistantSummaryComponent {
+export class AssistantSummaryComponent implements OnDestroy {
   // CANONICAL ROUTING: Card messages only (SUMMARY, CLARIFY, GATE_FAIL)
   readonly cardMessages = input<AssistantCardMessage[]>([]);
 
@@ -64,6 +78,82 @@ export class AssistantSummaryComponent {
   // RTL support: Hebrew language
   readonly isRTL = computed(() => false); // V1: Always LTR (English only)
 
+  // STREAMING: Track streaming state for each message
+  private messageStreams = new Map<string, MessageStreamState>();
+
+  constructor(private streamingService: AssistantStreamingService) {
+    // Watch for message changes and start streaming
+    effect(() => {
+      const messages = this.displayMessages();
+      this.handleMessagesChange(messages);
+    });
+  }
+
+  /**
+   * Handle changes to messages: start streaming for new messages
+   */
+  private handleMessagesChange(messages: (AssistantCardMessage | AssistantMessage)[]): void {
+    // Cancel existing streams
+    this.cancelAllStreams();
+
+    // Start streaming for each message
+    messages.forEach(msg => {
+      const messageId = msg.id;
+      const messageText = msg.message;
+
+      if (!messageText) return;
+
+      const { state, cancel } = this.streamingService.startStreaming(messageText);
+
+      this.messageStreams.set(messageId, {
+        messageId,
+        state,
+        cancel
+      });
+    });
+  }
+
+  /**
+   * Cancel all active streams
+   */
+  private cancelAllStreams(): void {
+    this.messageStreams.forEach(stream => stream.cancel());
+    this.messageStreams.clear();
+    this.streamingService.cancelAllStreams();
+  }
+
+  /**
+   * Get visible text for a message
+   */
+  getMessageVisibleText(msg: AssistantCardMessage | AssistantMessage): string {
+    const stream = this.messageStreams.get(msg.id);
+    if (stream) {
+      return stream.state().visibleText;
+    }
+    return msg.message;
+  }
+
+  /**
+   * Check if a message is currently streaming
+   */
+  isMessageStreaming(msg: AssistantCardMessage | AssistantMessage): boolean {
+    const stream = this.messageStreams.get(msg.id);
+    if (stream) {
+      return stream.state().isStreaming;
+    }
+    return false;
+  }
+
+  /**
+   * Handle click on message: reveal full text immediately
+   */
+  onMessageClick(msg: AssistantCardMessage | AssistantMessage): void {
+    const stream = this.messageStreams.get(msg.id);
+    if (stream && stream.state().isStreaming) {
+      this.streamingService.revealFull(stream.state);
+    }
+  }
+
   /**
    * Get icon for message type
    */
@@ -89,5 +179,12 @@ export class AssistantSummaryComponent {
    */
   getMessageDir(msg: AssistantCardMessage): 'rtl' | 'ltr' {
     return 'ltr';
+  }
+
+  /**
+   * Cleanup: Cancel all streams on destroy to prevent memory leaks
+   */
+  ngOnDestroy(): void {
+    this.cancelAllStreams();
   }
 }

@@ -12,8 +12,9 @@ import type { Restaurant, Coordinates } from '../../../../domain/types/search.ty
 import type { ActionType, ActionLevel } from '../../../../domain/types/action.types';
 import { buildPhotoSrc, getPhotoPlaceholder } from '../../../../utils/photo-src.util';
 import { I18nService } from '../../../../core/services/i18n.service';
-import { calculateDistance, calculateWalkingTime, formatDistance } from '../../../../utils/distance.util';
+import { calculateDistance, calculateWalkingTime, formatDistance, formatDistanceWithIntent } from '../../../../utils/distance.util';
 import { buildWoltSearchUrl, extractCitySlug, extractCityText } from '../../../../utils/wolt-deeplink.util';
+import { formatTimeFromDate, formatTimeFromRaw } from '../../../../shared/utils/time-formatter';
 
 // Near you badge threshold (meters)
 export const NEAR_THRESHOLD_METERS = 600;
@@ -30,9 +31,10 @@ export function formatOpenStatusLine(params: {
   closeTime: string | null;          // HH:mm format
   nextOpenTime: string | null;        // HH:mm format
   hoursRange: string | null;          // e.g., "09:00–22:00"
+  isClosingSoon: boolean;             // true if closing in < 1 hour
   i18nGetText: (key: string, vars?: Record<string, string>) => string;
-}): { text: string; tone: 'open' | 'closed' | 'neutral' } {
-  const { isOpenNow, closeTime, nextOpenTime, hoursRange, i18nGetText } = params;
+}): { text: string; tone: 'open' | 'closed' | 'closing-soon' | 'neutral' } {
+  const { isOpenNow, closeTime, nextOpenTime, hoursRange, isClosingSoon, i18nGetText } = params;
 
   // Handle UNKNOWN or undefined status
   if (isOpenNow === 'UNKNOWN' || isOpenNow === undefined) {
@@ -42,8 +44,14 @@ export function formatOpenStatusLine(params: {
     };
   }
 
-  // OPEN: Show "Open now · until HH:mm" if closeTime exists, else just "Open now"
+  // OPEN: Check if closing soon (< 1 hour)
   if (isOpenNow === true) {
+    if (closeTime && isClosingSoon) {
+      return {
+        text: i18nGetText('card.hours.closing_soon', { time: closeTime }),
+        tone: 'closing-soon'
+      };
+    }
     if (closeTime) {
       return {
         text: i18nGetText('card.hours.open_now_until', { time: closeTime }),
@@ -243,8 +251,13 @@ export class RestaurantCardComponent {
   });
 
   /**
-   * Calculate distance and ETA from user location
+   * Calculate distance and ETA from user location with intent-based formatting
    * Returns null if userLocation is not available
+   * 
+   * Distance modes:
+   * - Walking (< 1 km): Shows walking time (e.g., "~10 min walk")
+   * - Short drive (1-5 km): Shows rounded km (e.g., "~3 km")
+   * - Far (> 5 km): Shows rounded km (e.g., "~30 km")
    */
   readonly distanceInfo = computed(() => {
     const userLoc = this.userLocation();
@@ -255,18 +268,12 @@ export class RestaurantCardComponent {
     }
 
     const distanceMeters = calculateDistance(userLoc, placeLoc);
-    const distanceKm = distanceMeters / 1000;
-    const walkingMinutes = calculateWalkingTime(distanceMeters);
     
-    // Get i18n units
-    const metersUnit = this.i18n.t('card.distance.meters_short');
-    const kmUnit = this.i18n.t('card.distance.km_short');
-    const minutesUnit = this.i18n.t('card.distance.minutes_short');
-    
-    const distanceText = formatDistance(distanceMeters, metersUnit, kmUnit);
-
-    // GUARDRAIL: Hide ETA if too far (> 60 min OR > 5 km)
-    const shouldShowEta = walkingMinutes <= 60 && distanceKm <= 5;
+    // Use intent-based formatting (no decimals, no "from me")
+    const formatted = formatDistanceWithIntent(
+      distanceMeters,
+      (key, params) => this.i18n.t(key as keyof import('../../../../core/services/i18n.service').I18nKeys, params)
+    );
 
     // TEMP DEBUG: Log once per card (remove after debugging)
     const cardId = this.restaurant().placeId;
@@ -275,9 +282,9 @@ export class RestaurantCardComponent {
       console.log('[RestaurantCard DEBUG]', {
         name: this.restaurant().name,
         distanceMeters,
-        distanceKm: distanceKm.toFixed(2),
-        etaMinutes: walkingMinutes,
-        shouldShowEta,
+        distanceKm: (distanceMeters / 1000).toFixed(2),
+        formattedText: formatted.text,
+        mode: formatted.mode,
         openNow: this.restaurant().openNow,
         hasCurrentOpeningHours: !!this.restaurant().currentOpeningHours,
         currentNextCloseTime: this.restaurant().currentOpeningHours?.nextCloseTime,
@@ -289,11 +296,8 @@ export class RestaurantCardComponent {
 
     return {
       distanceMeters,
-      distanceKm,
-      distanceText,
-      walkingMinutes,
-      shouldShowEta,
-      minutesUnit
+      text: formatted.text,
+      mode: formatted.mode
     };
   });
 
@@ -403,13 +407,77 @@ export class RestaurantCardComponent {
   });
 
   /**
+   * Check if restaurant is closing soon (less than 1 hour)
+   * Returns true if open AND closing in < 60 minutes
+   */
+  readonly isClosingSoon = computed(() => {
+    const restaurant = this.restaurant();
+    const openStatus = this.getOpenStatus();
+    
+    // Only applicable if currently open
+    if (openStatus !== 'open') {
+      return false;
+    }
+
+    const now = new Date();
+
+    // Priority 1: Check currentOpeningHours.nextCloseTime
+    if (restaurant.currentOpeningHours?.nextCloseTime) {
+      try {
+        const closeTime = new Date(restaurant.currentOpeningHours.nextCloseTime);
+        const timeDiffMs = closeTime.getTime() - now.getTime();
+        const timeDiffMinutes = timeDiffMs / (60 * 1000);
+        
+        // Closing soon if within next 60 minutes
+        return timeDiffMinutes > 0 && timeDiffMinutes <= 60;
+      } catch (e) {
+        // Parsing error, skip
+      }
+    }
+
+    // Priority 2: Check regularOpeningHours for today
+    if (restaurant.regularOpeningHours?.periods) {
+      const today = now.getDay();
+      const todayPeriods = restaurant.regularOpeningHours.periods.filter(p => p.open.day === today);
+      
+      if (todayPeriods.length === 1) {
+        const todayPeriod = todayPeriods[0];
+        if (todayPeriod?.close?.time) {
+          try {
+            const closeTimeStr = todayPeriod.close.time;
+            const hours = parseInt(closeTimeStr.substring(0, 2), 10);
+            const minutes = parseInt(closeTimeStr.substring(2, 4), 10);
+            
+            const closeTime = new Date(now);
+            closeTime.setHours(hours, minutes, 0, 0);
+            
+            // Handle after-midnight closing times
+            if (hours < 6 && closeTime <= now) {
+              closeTime.setDate(closeTime.getDate() + 1);
+            }
+            
+            const timeDiffMs = closeTime.getTime() - now.getTime();
+            const timeDiffMinutes = timeDiffMs / (60 * 1000);
+            
+            // Closing soon if within next 60 minutes
+            return timeDiffMinutes > 0 && timeDiffMinutes <= 60;
+          } catch (e) {
+            // Parsing error, skip
+          }
+        }
+      }
+    }
+
+    return false;
+  });
+
+  /**
    * Format time for display based on locale
    * Uses 24h format for consistency
+   * Applies closing time formatting (00:00 → 24:00)
    */
   private formatTime(date: Date): string {
-    const hours = date.getHours().toString().padStart(2, '0');
-    const minutes = date.getMinutes().toString().padStart(2, '0');
-    return `${hours}:${minutes}`;
+    return formatTimeFromDate(date);
   }
 
   /**
@@ -447,9 +515,9 @@ export class RestaurantCardComponent {
         const hours = parseInt(openTimeStr.substring(0, 2), 10);
         const minutes = parseInt(openTimeStr.substring(2, 4), 10);
         const openTimeMinutes = hours * 60 + minutes;
-
+        
         if (openTimeMinutes > currentTimeMinutes) {
-          return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+          return formatTimeFromRaw(openTimeStr);
         }
       }
 
@@ -468,9 +536,7 @@ export class RestaurantCardComponent {
           return null;
         }
         
-        const hours = parseInt(openTimeStr.substring(0, 2), 10);
-        const minutes = parseInt(openTimeStr.substring(2, 4), 10);
-        return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+        return formatTimeFromRaw(openTimeStr);
       }
     }
 
@@ -502,12 +568,10 @@ export class RestaurantCardComponent {
             return null;
           }
           
-          const openHours = openTimeStr.substring(0, 2);
-          const openMinutes = openTimeStr.substring(2, 4);
-          const closeHours = closeTimeStr.substring(0, 2);
-          const closeMinutes = closeTimeStr.substring(2, 4);
+          const openTime = formatTimeFromRaw(openTimeStr);
+          const closeTime = formatTimeFromRaw(closeTimeStr);
           
-          return `${openHours}:${openMinutes}–${closeHours}:${closeMinutes}`;
+          return `${openTime}–${closeTime}`;
         }
       }
     }
@@ -526,12 +590,14 @@ export class RestaurantCardComponent {
     const closeTime = this.closingTimeToday();
     const nextOpenTime = this.getNextOpenTime();
     const hoursRange = this.getTodayHoursRange();
+    const isClosingSoon = this.isClosingSoon();
 
     return formatOpenStatusLine({
       isOpenNow,
       closeTime,
       nextOpenTime,
       hoursRange,
+      isClosingSoon,
       i18nGetText: (key, vars) => this.i18n.t(key as keyof import('../../../../core/services/i18n.service').I18nKeys, vars)
     });
   });

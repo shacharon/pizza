@@ -20,7 +20,7 @@ import { FormsModule } from '@angular/forms';
 export class SearchBarComponent {
   // Inputs
   readonly value = input<string>(''); // CONTROLLED: Parent provides the query value
-  readonly placeholder = input('Put us on your plate.');
+  readonly placeholder = input('Tell me what you want to eat…');
   readonly disabled = input(false);
   readonly loading = input(false);
 

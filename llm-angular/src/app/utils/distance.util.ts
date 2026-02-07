@@ -66,6 +66,56 @@ export function getDistanceComponents(distanceMeters: number): { value: string; 
 }
 
 /**
+ * Format distance with intent-based logic (no decimals, no "from me")
+ * Implements 3 distance modes:
+ * 1) Walking mode (< 1 km): Show walking time
+ * 2) Short drive (1-5 km): Show rounded km
+ * 3) Far (> 5 km): Show rounded km (least prominent)
+ * 
+ * @param distanceMeters Distance in meters
+ * @param i18nGetText Function to get i18n text (key, params?) => string
+ * @returns Formatted distance with mode indicator
+ */
+export function formatDistanceWithIntent(
+  distanceMeters: number,
+  i18nGetText: (key: string, params?: Record<string, string>) => string
+): { text: string; mode: 'walking' | 'short-drive' | 'far' } {
+  const distanceKm = distanceMeters / 1000;
+  
+  // Mode 1: Walking (< 1 km) - show walking time
+  if (distanceKm < 1) {
+    const walkingMinutes = calculateWalkingTime(distanceMeters);
+    
+    return {
+      text: i18nGetText('card.distance.walk_time', { 
+        minutes: String(walkingMinutes) 
+      }),
+      mode: 'walking'
+    };
+  }
+  
+  // Mode 2: Short drive (1-5 km) - show rounded km
+  if (distanceKm <= 5) {
+    const roundedKm = Math.round(distanceKm);
+    return {
+      text: i18nGetText('card.distance.rounded_km', { 
+        km: String(roundedKm) 
+      }),
+      mode: 'short-drive'
+    };
+  }
+  
+  // Mode 3: Far (> 5 km) - show rounded km (least prominent)
+  const roundedKm = Math.round(distanceKm);
+  return {
+    text: i18nGetText('card.distance.rounded_km', { 
+      km: String(roundedKm) 
+    }),
+    mode: 'far'
+  };
+}
+
+/**
  * Convert degrees to radians
  */
 function toRadians(degrees: number): number {

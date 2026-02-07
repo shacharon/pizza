@@ -261,6 +261,34 @@ describe('RestaurantCardComponent', () => {
       expect(component.closingTimeToday()).toBe('02:00');
     });
 
+    it('should format midnight closing time as "24:00"', () => {
+      // Set up restaurant with regularOpeningHours that closes at midnight (0000)
+      const now = new Date();
+      now.setHours(22, 0, 0, 0); // 10 PM - restaurant is still open
+      jasmine.clock().mockDate(now);
+      
+      const today = now.getDay();
+
+      const restaurantWithMidnightClose: Restaurant = {
+        ...mockRestaurant,
+        openNow: true,
+        regularOpeningHours: {
+          periods: [
+            {
+              open: { day: today, time: '0900' },
+              close: { day: today, time: '0000' } // Closes at midnight
+            }
+          ]
+        }
+      };
+
+      fixture.componentRef.setInput('restaurant', restaurantWithMidnightClose);
+      fixture.detectChanges();
+
+      // Should display as "24:00" not "00:00"
+      expect(component.closingTimeToday()).toBe('24:00');
+    });
+
     it('should hide when closing time has passed', () => {
       const now = new Date();
       const today = now.getDay();

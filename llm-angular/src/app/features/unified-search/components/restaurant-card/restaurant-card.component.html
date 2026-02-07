@@ -25,7 +25,9 @@
 
           @if (statusLine().text) {
           <span class="status-line" [class.open]="statusLine().tone === 'open'"
-            [class.closed]="statusLine().tone === 'closed'" [class.neutral]="statusLine().tone === 'neutral'"
+            [class.closed]="statusLine().tone === 'closed'" 
+            [class.closing-soon]="statusLine().tone === 'closing-soon'"
+            [class.neutral]="statusLine().tone === 'neutral'"
             [attr.aria-label]="statusLine().text">
             {{ statusLine().text }}
           </span>
@@ -58,8 +60,12 @@
           </div>
 
           @if (distanceInfo()) {
-          <span class="distance-text" [attr.aria-label]="'Distance: ' + distanceInfo()!.distanceText">
-            {{ distanceInfo()!.distanceText }} ממך
+          <span class="distance-text" 
+                [class.mode-walking]="distanceInfo()!.mode === 'walking'"
+                [class.mode-short-drive]="distanceInfo()!.mode === 'short-drive'"
+                [class.mode-far]="distanceInfo()!.mode === 'far'"
+                [attr.aria-label]="'Distance: ' + distanceInfo()!.text">
+            {{ distanceInfo()!.text }}
           </span>
           }
         </div>

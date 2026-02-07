@@ -100,6 +100,24 @@
       background: transparent;
     }
 
+    // Clickable streaming messages
+    &.clickable {
+      cursor: pointer;
+      
+      &:hover .message-content {
+        opacity: 0.8;
+      }
+    }
+
+    // Streaming state
+    &.streaming .message-text {
+      .cursor-blink {
+        animation: blink 1s infinite;
+        color: var(--color-primary, #1976d2);
+        margin-left: 2px;
+      }
+    }
+
     .message-icon {
       font-size: 1rem;
       flex-shrink: 0;

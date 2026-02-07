@@ -47,8 +47,8 @@
 
     <!-- Reply Box Input -->
     <div class="search-input-wrapper">
-      <app-search-bar [value]="facade.query()" [loading]="facade.loading()"
-        (search)="onSearch($event)" (inputChange)="onInputChange($event)" (clear)="onClear()" />
+      <app-search-bar [value]="facade.query()" [loading]="facade.loading()" (search)="onSearch($event)"
+        (inputChange)="onInputChange($event)" (clear)="onClear()" />
     </div>
 
     <!-- CANONICAL ROUTING: Global/System Assistant -->
@@ -157,7 +157,7 @@
         @if (hasMoreResults()) {
         <div class="load-more-container">
           <button class="load-more-btn" (click)="loadMore()">
-            Load {{ remainingResults() }} more
+            Load more
           </button>
         </div>
         }

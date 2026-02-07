@@ -10,7 +10,7 @@
 .search-input {
   width: 100%;
   min-height: 96px;
-  padding: 20px 3.5rem 20px 3.5rem;
+  padding: 20px 5rem 20px 20px; // More space on right for buttons
   font-size: 1rem;
   font-family: inherit;
   line-height: 1.4;
@@ -52,7 +52,7 @@
 
 .clear-button {
   position: absolute;
-  left: 0.75rem;
+  right: 3rem; // Position to the left of send button
   top: 50%;
   transform: translateY(-50%);
   width: 28px;
@@ -157,7 +157,7 @@
 @media (max-width: 600px) {
   .search-input {
     min-height: 80px;
-    padding: 16px 3.5rem 16px 3.5rem;
+    padding: 16px 5rem 16px 16px; // More space on right for buttons
     font-size: 16px; // Prevents zoom on iOS
     
     &::placeholder {

@@ -236,7 +236,7 @@
   }
 
   &.closed {
-    color: #6b7280;
+    color: #dc2626; // Red-600 for closed status
   }
 
   &.unknown {
@@ -247,17 +247,33 @@
 
 // Distance text (inline with rating/price on Row 2)
 // PLACEMENT: Right side of meta row, same hierarchy as address
-// STYLING: Small, muted, RTL-safe
+// STYLING: Intent-based - walking mode is most prominent, far is least
 .distance-text {
-  color: #6b7280; // Gray-500 (same muted tone as address)
+  color: #6b7280; // Default: Gray-500 (muted)
   font-weight: 500;
   font-size: 0.75rem; // 12px - small and compact
   white-space: nowrap; // Prevent wrapping
   flex-shrink: 0; // Never shrink, always visible
+  unicode-bidi: plaintext; // RTL-safe
 
-  // RTL-safe: the text "ממך" is in Hebrew, numbers are LTR
-  // Uses logical properties via flex parent
-  unicode-bidi: plaintext;
+  // Walking mode (< 1 km): Most prominent - indicates walkability
+  &.mode-walking {
+    color: #059669; // Emerald-600 (brand green for walkable)
+    font-weight: 600;
+  }
+
+  // Short drive (1-5 km): Default muted style
+  &.mode-short-drive {
+    color: #6b7280; // Gray-500
+    font-weight: 500;
+  }
+
+  // Far (> 5 km): Least prominent - de-emphasize distant options
+  &.mode-far {
+    color: #9ca3af; // Gray-400 (lighter)
+    font-size: 0.6875rem; // 11px - smaller
+    opacity: 0.9;
+  }
 }
 
 // Address - BETTER CONTRAST
@@ -289,9 +305,15 @@
     color: #059669; // Emerald-600 (brand green)
   }
 
-  // Muted gray for closed status
+  // Amber/orange for closing soon (< 1 hour)
+  &.closing-soon {
+    color: #d97706; // Amber-600 (warning color)
+    font-weight: 600;
+  }
+
+  // Red for closed status
   &.closed {
-    color: #6b7280; // Gray-500 (subtle, not alarming)
+    color: #dc2626; // Red-600 (clear indication of closed)
   }
 
   // Neutral italic for unknown/unverified
@@ -448,6 +470,11 @@
 
   .status-line {
     font-size: 0.75rem; // Slightly smaller on mobile
+
+    // Keep closing-soon prominent on mobile
+    &.closing-soon {
+      font-weight: 600;
+    }
   }
 
   .restaurant-meta {
@@ -457,6 +484,17 @@
 
   .distance-text {
     font-size: 0.6875rem; // Even smaller on mobile (11px)
+
+    // Walking mode stays prominent on mobile
+    &.mode-walking {
+      font-size: 0.75rem; // Keep readable on mobile
+      font-weight: 600;
+    }
+
+    // Far mode gets even smaller on mobile
+    &.mode-far {
+      font-size: 0.625rem; // 10px on mobile
+    }
   }
 
   .restaurant-address {

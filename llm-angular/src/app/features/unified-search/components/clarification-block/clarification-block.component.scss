@@ -1,8 +1,10 @@
 .clarification-block {
+  max-width: 760px;
+  width: 100%;
+  margin: 2rem auto;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   border-radius: 16px;
   padding: 2rem;
-  margin: 2rem 0;
   box-shadow: 0 4px 20px rgba(102, 126, 234, 0.25);
   animation: slideIn 0.3s ease-out;
 }
