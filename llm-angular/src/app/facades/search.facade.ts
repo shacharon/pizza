@@ -206,7 +206,8 @@ export class SearchFacade {
         // Subscribe to WebSocket for real-time updates
         // Note: sessionId is now fetched from JWT localStorage, not conversationId
         // This call blocks until WS is connected and authenticated
-        await this.wsHandler.subscribeToRequest(requestId);
+        // Pass assistantHandler for SSE routing (feature flag controlled)
+        await this.wsHandler.subscribeToRequest(requestId, undefined, this.assistantHandler);
 
         // Defer polling start (if WS delivers first, polling never starts)
         this.apiHandler.startPolling(

@@ -5,8 +5,11 @@
 
 export const environment = {
   production: false,
-  apiUrl: 'http://localhost:3000',
+  apiUrl: '',  // Empty = same origin (uses Angular proxy in dev)
   apiBasePath: '/api/v1',
-  wsBaseUrl: 'ws://localhost:3000',
-  environmentName: 'local'
+  wsBaseUrl: 'ws://localhost:4200',  // WS also goes through proxy
+  environmentName: 'local',
+  features: {
+    useSseAssistant: true  // Use SSE for assistant instead of WebSocket
+  }
 };

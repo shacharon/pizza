@@ -15,7 +15,7 @@
  */
 
 import { Injectable, signal } from '@angular/core';
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, HttpHeaders } from '@angular/common/http';
 import { ENDPOINTS } from '../../shared/api/api.config';
 import { firstValueFrom } from 'rxjs';
 
@@ -40,6 +40,10 @@ export class AuthService {
     const stored = this.loadTokenFromStorage();
     if (stored) {
       this.tokenCache.set(stored);
+      // Request session cookie for SSE (async, non-blocking)
+      this.requestSessionCookie(stored).catch((error: unknown) => {
+        console.warn('[Auth] Failed to obtain session cookie on startup:', error);
+      });
     }
   }
 
@@ -139,6 +143,31 @@ export class AuthService {
   }
 
   /**
+   * Request session cookie from backend
+   * Called after JWT token is obtained to enable SSE authentication
+   */
+  private async requestSessionCookie(token: string): Promise<void> {
+    try {
+      const headers = new HttpHeaders({
+        'Authorization': `Bearer ${token}`
+      });
+
+      await firstValueFrom(
+        this.http.post<{ ok: boolean; sessionId: string }>(
+          ENDPOINTS.AUTH_TOKEN.replace('/token', '/session'),
+          {},
+          { headers, withCredentials: true }  // CRITICAL: withCredentials to store cookie
+        )
+      );
+
+      console.log('[Auth] ✅ Session cookie obtained');
+    } catch (error) {
+      console.error('[Auth] Failed to obtain session cookie:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Fetch JWT token from backend
    * Sends existing sessionId if available
    */
@@ -182,6 +211,13 @@ export class AuthService {
       }
       
       console.log('[Auth] ✅ JWT token acquired');
+      
+      // Request session cookie for SSE authentication
+      // This is done in background - don't block token return
+      this.requestSessionCookie(token).catch((error: unknown) => {
+        console.warn('[Auth] Failed to obtain session cookie (SSE auth may fail):', error);
+      });
+      
       return token;
       
     } catch (error) {

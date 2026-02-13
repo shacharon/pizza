@@ -21,5 +21,8 @@ export const environment = {
   apiUrl,
   apiBasePath: '/api/v1',
   wsBaseUrl,
-  environmentName: 'prod'
+  environmentName: 'prod',
+  features: {
+    useSseAssistant: true  // Use SSE for assistant instead of WebSocket
+  }
 };

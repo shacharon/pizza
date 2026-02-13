@@ -8,5 +8,8 @@ export const environment = {
   apiUrl: 'https://api.going2eat.food',
   apiBasePath: '/api/v1',
   wsBaseUrl: 'wss://api.going2eat.food',
-  environmentName: 'dev'
+  environmentName: 'dev',
+  features: {
+    useSseAssistant: true  // Use SSE for assistant instead of WebSocket
+  }
 };

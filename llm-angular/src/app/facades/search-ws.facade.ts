@@ -6,8 +6,11 @@
 import { Injectable, inject } from '@angular/core';
 import { WsClientService } from '../core/services/ws-client.service';
 import { AuthService } from '../core/auth/auth.service';
+import { AssistantSseService } from '../core/services/assistant-sse.service';
 import type { WSServerMessage } from '../core/models/ws-protocol.types';
 import type { SearchResponse } from '../domain/types/search.types';
+import { environment } from '../../environments/environment';
+import type { Subscription } from 'rxjs';
 
 export interface SearchEventHandlers {
   onSearchResponse: (response: SearchResponse, query: string) => void;
@@ -19,6 +22,10 @@ export interface SearchEventHandlers {
 export class SearchWsHandler {
   private readonly wsClient = inject(WsClientService);
   private readonly authService = inject(AuthService);
+  private readonly assistantSse = inject(AssistantSseService);
+  
+  // Track SSE subscription for cleanup
+  private sseSubscription: Subscription | null = null;
 
   // Connection status
   readonly connectionStatus = this.wsClient.connectionStatus;
@@ -51,8 +58,13 @@ export class SearchWsHandler {
    * Ensures WS is connected and authenticated before subscribing
    * @param requestId - The search request ID to subscribe to
    * @param _legacySessionId - DEPRECATED, not used (kept for backward compatibility)
+   * @param assistantHandler - Optional handler for assistant messages (for SSE routing)
    */
-  async subscribeToRequest(requestId: string, _legacySessionId?: string): Promise<void> {
+  async subscribeToRequest(
+    requestId: string, 
+    _legacySessionId?: string,
+    assistantHandler?: { routeMessage: (type: any, message: string, requestId: string, payload: any) => void }
+  ): Promise<void> {
     // STEP 1: Ensure WS is connected and authenticated (blocks until ready)
     try {
       console.log('[SearchWsHandler] Ensuring WS auth before subscribe', {
@@ -94,8 +106,68 @@ export class SearchWsHandler {
     // STEP 3: Subscribe to channels (now guaranteed to have auth)
     // Subscribe to 'search' channel for progress/status/ready
     this.wsClient.subscribe(requestId, 'search', jwtSessionId);
-    // Subscribe to 'assistant' channel for narrator messages
-    this.wsClient.subscribe(requestId, 'assistant', jwtSessionId);
+    
+    // FEATURE FLAG: Use SSE for assistant if enabled
+    const useSseAssistant = environment.features?.useSseAssistant ?? false;
+    
+    if (useSseAssistant && assistantHandler) {
+      console.log('[SearchWsHandler] Using SSE for assistant (WS assistant disabled)', { requestId: requestId.substring(0, 20) + '...' });
+      
+      // Clean up previous SSE subscription
+      this.cleanupSse();
+      
+      // Subscribe to SSE for assistant messages
+      this.sseSubscription = this.assistantSse.connect(requestId).subscribe({
+        next: (event) => {
+          if (event.type === 'message') {
+            const payload = event.data;
+            console.log('[SearchWsHandler] SSE assistant message', {
+              type: payload.type,
+              requestId: requestId.substring(0, 20) + '...',
+              preview: payload.message.substring(0, 50) + '...'
+            });
+            
+            // Route to assistant handler (same as WS assistant messages)
+            assistantHandler.routeMessage(
+              payload.type,
+              payload.message,
+              requestId,
+              {
+                question: payload.question,
+                blocksSearch: payload.blocksSearch,
+                language: payload.language as any,
+                ts: Date.now()
+              }
+            );
+          } else if (event.type === 'error') {
+            console.error('[SearchWsHandler] SSE error', event.data);
+          } else if (event.type === 'done') {
+            console.log('[SearchWsHandler] SSE complete', { requestId: requestId.substring(0, 20) + '...' });
+          }
+        },
+        error: (err) => {
+          console.error('[SearchWsHandler] SSE connection error', err);
+        },
+        complete: () => {
+          console.log('[SearchWsHandler] SSE connection closed', { requestId: requestId.substring(0, 20) + '...' });
+        }
+      });
+    } else {
+      // Fallback: Use WebSocket for assistant (legacy)
+      console.log('[SearchWsHandler] Using WS for assistant (legacy)', { requestId: requestId.substring(0, 20) + '...' });
+      this.wsClient.subscribe(requestId, 'assistant', jwtSessionId);
+    }
+  }
+  
+  /**
+   * Clean up SSE subscription
+   */
+  private cleanupSse(): void {
+    if (this.sseSubscription) {
+      console.log('[SearchWsHandler] Cleaning up previous SSE subscription');
+      this.sseSubscription.unsubscribe();
+      this.sseSubscription = null;
+    }
   }
 
   /**
@@ -104,6 +176,7 @@ export class SearchWsHandler {
    */
   clearAllSubscriptions(): void {
     this.wsClient.clearAllSubscriptions();
+    this.cleanupSse();
   }
 
   /**

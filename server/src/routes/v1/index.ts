@@ -3,9 +3,12 @@
  * Centralizes all v1 API routes under /api/v1
  * 
  * Route Structure:
- * - /api/v1/auth                POST /token (public - generates JWT)
+ * - /api/v1/auth/token          POST / (public - generates JWT)
+ * - /api/v1/auth/session        POST / (protected - issues session cookie, requires Bearer JWT)
  * - /api/v1/auth/ws-ticket      POST / (protected - generates WS ticket)
- * - /api/v1/search              POST /, GET /stats (protected)
+ * - /api/v1/auth/whoami         GET / (protected - returns auth context, accepts cookie or Bearer JWT)
+ * - /api/v1/search              POST /, GET /stats (protected - accepts Bearer JWT or session cookie)
+ * - /api/v1/stream/assistant/*  GET /:requestId (protected - SSE endpoint, accepts cookie or Bearer JWT)
  * - /api/v1/analytics/*         POST /events, GET /events, GET /stats, DELETE /events (protected)
  * - /api/v1/photos/*            GET /* (proxy to Google Places photos, public)
  * - /api/v1/chat                POST /chat, POST /restaurants/search, etc.
@@ -18,6 +21,7 @@ import searchRouter from '../../controllers/search/search.controller.js';
 import analyticsRouter from '../../controllers/analytics/analytics.controller.js';
 import photosRouter from '../../controllers/photos/photos.controller.js';
 import authRouter from '../../controllers/auth/auth.controller.js';
+import assistantSSERouter from '../../controllers/stream/assistant-sse.controller.js';
 import { authenticateJWT } from '../../middleware/auth.middleware.js';
 import { createRateLimiter } from '../../middleware/rate-limit.middleware.js';
 import { getConfig } from '../../config/env.js';
@@ -39,6 +43,10 @@ export function createV1Router(): Router {
   // P0 Security: Protected search endpoint
   // Requires JWT authentication
   router.use('/search', authenticateJWT, searchRateLimiter, searchRouter);
+
+  // SSE streaming endpoint for assistant (cookie-first auth)
+  // No rate limiting for SSE (long-lived connections)
+  router.use('/stream', assistantSSERouter);
 
   // P0 Security: Protected analytics endpoint
   // Requires JWT authentication

@@ -106,6 +106,44 @@ function validateJwtSecret(): string {
     return jwtSecret;
 }
 
+/**
+ * P0 Security: Validate SESSION_COOKIE_SECRET in production/staging
+ * FAIL-FAST: Throws error on boot if SESSION_COOKIE_SECRET is invalid in production/staging
+ * MUST be different from JWT_SECRET
+ */
+function validateSessionCookieSecret(jwtSecret: string): string {
+    const sessionSecret = process.env.SESSION_COOKIE_SECRET;
+
+    // Always require SESSION_COOKIE_SECRET to be set and >= 32 chars
+    if (!sessionSecret || sessionSecret.trim() === '' || sessionSecret.length < 32) {
+        const errorMsg = '[P0 Security] SESSION_COOKIE_SECRET must be set and at least 32 characters';
+
+        // FAIL-FAST in production/staging
+        if (isProdOrStaging()) {
+            throw new Error(`${errorMsg} (${CURRENT_ENV} boot blocked)`);
+        }
+
+        // In dev/test, log error but allow (will fail session cookie auth)
+        console.error(`${errorMsg} - session cookie auth will fail`);
+
+        return '__SESSION_COOKIE_SECRET_MISSING__';
+    }
+
+    // MUST be different from JWT_SECRET
+    if (sessionSecret === jwtSecret) {
+        const errorMsg = '[P0 Security] SESSION_COOKIE_SECRET must be different from JWT_SECRET';
+
+        // FAIL-FAST in production/staging
+        if (isProdOrStaging()) {
+            throw new Error(`${errorMsg} (${CURRENT_ENV} boot blocked)`);
+        }
+
+        console.error(`${errorMsg} - session cookies will use same secret as JWT (insecure)`);
+    }
+
+    return sessionSecret;
+}
+
 function validateRedisUrl(redisUrl: string, enabled: boolean): boolean {
     if (!enabled) return true;
 
@@ -180,6 +218,28 @@ export function getConfig() {
     const jwtSecret = validateJwtSecret();
 
     /**
+     * P0 Security: Session Cookie Secret (fail-fast in production)
+     */
+    const sessionCookieSecret = validateSessionCookieSecret(jwtSecret);
+    const sessionCookieTtlSeconds = mustNumber('SESSION_COOKIE_TTL_SECONDS', 3600); // default 1 hour
+
+    /**
+     * Cookie Configuration
+     */
+    const cookieDomain = process.env.COOKIE_DOMAIN || ''; // Empty = host-only cookie
+    const cookieSameSite = (process.env.COOKIE_SAMESITE || 'Lax') as 'Strict' | 'Lax' | 'None';
+
+    // Validate SameSite value
+    if (!['Strict', 'Lax', 'None'].includes(cookieSameSite)) {
+        console.error(`[Config] Invalid COOKIE_SAMESITE value: ${cookieSameSite}, defaulting to Lax`);
+    }
+
+    // Warn if SameSite=None without Secure in production
+    if (isProd() && cookieSameSite === 'None') {
+        console.warn('[Config] COOKIE_SAMESITE=None requires Secure flag in production (cross-site cookies)');
+    }
+
+    /**
      * Redis
      */
     const enableRedisJobStore = process.env.ENABLE_REDIS_JOBSTORE === 'true';
@@ -239,6 +299,10 @@ export function getConfig() {
             openaiApiKey,
             googleApiKey,
             jwtSecret,
+            sessionCookieSecret,
+            sessionCookieTtlSeconds,
+            cookieDomain,
+            cookieSameSite,
             enableRedisJobStore,
             enableRedisCache,
             redisUrl,
@@ -275,6 +339,9 @@ export function getConfig() {
     console.info('[Config] Loaded', {
         env: CURRENT_ENV,
         port,
+        sessionCookieTtlSeconds,
+        cookieDomain: cookieDomain || '(host-only)',
+        cookieSameSite,
         enableRedisJobStore,
         enableRedisCache,
         redisHost,

@@ -44,6 +44,26 @@ export class AuthApiService {
   }
 
   /**
+   * Request session cookie
+   * Protected endpoint - requires JWT Authorization header
+   * Sets HttpOnly session cookie via Set-Cookie header
+   * 
+   * This is called automatically after JWT token is obtained
+   * to enable cookie-based authentication for SSE endpoints
+   */
+  requestSessionCookie(token: string): Observable<{ ok: boolean; sessionId: string }> {
+    const headers = new HttpHeaders({
+      'Authorization': `Bearer ${token}`
+    });
+
+    return this.http.post<{ ok: boolean; sessionId: string }>(
+      `${this.baseUrl}/auth/session`,
+      {},
+      { headers, withCredentials: true }  // CRITICAL: withCredentials to store cookie
+    );
+  }
+
+  /**
    * Request a one-time WebSocket ticket
    * Protected endpoint - requires JWT Authorization header
    * 
