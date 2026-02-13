@@ -11,51 +11,42 @@ import { logger } from '../../lib/logger/structured-logger.js';
 import type { WSClientMessage, WSServerMessage, WSChannel } from './websocket-protocol.js';
 import { isWSClientMessage } from './websocket-protocol.js';
 import Redis from 'ioredis';
-import { HARD_CLOSE_REASONS, SOFT_CLOSE_REASONS } from './ws-close-reasons.js';
+import { HARD_CLOSE_REASONS } from './ws-close-reasons.js';
 
 // Extracted modules
 import { resolveWebSocketConfig, validateRedisForAuth } from './websocket.config.js';
 import { verifyClient } from './auth-verifier.js';
-import { setupConnection, handleClose, handleError, executeHeartbeat } from './connection-handler.js';
-import { BacklogManager } from './backlog-manager.js';
+import { handleClose, handleError } from './connection-handler.js';
 import { PendingSubscriptionsManager } from './pending-subscriptions.js';
 import { SubscriptionManager } from './subscription-manager.js';
 import type {
   WebSocketManagerConfig,
   SubscriptionKey,
-  WebSocketContext,
   PublishSummary,
   WebSocketStats
 } from './websocket.types.js';
-import { hashSessionId } from './websocket.types.js';
+
+// SOLID extracted modules
+import { RateLimiter } from './rate-limiter.js';
+import { PublishManager } from './publish-manager.js';
+import { LifecycleHandler } from './lifecycle-handler.js';
 
 // Re-export for backward compatibility
 export type { WebSocketManagerConfig };
 
-// PROD Hardening: Per-socket subscribe rate limit (token bucket)
-interface SocketRateLimit {
-  tokens: number;
-  lastRefill: number;
-}
-
 export class WebSocketManager {
   private wss: WebSocketServer;
-  private heartbeatInterval: NodeJS.Timeout | undefined;
   private config: WebSocketManagerConfig;
   private redis: Redis.Redis | null = null;
 
   // Extracted module instances
-  private backlogManager: BacklogManager;
   private pendingSubscriptionsManager: PendingSubscriptionsManager;
   private subscriptionManager: SubscriptionManager;
   
-  // PROD Hardening: Per-socket rate limiting
-  private socketRateLimits = new WeakMap<WebSocket, SocketRateLimit>();
-  private readonly SUBSCRIBE_RATE_LIMIT = {
-    maxTokens: 10, // 10 subscribes
-    refillRate: 10 / 60, // per second (10/min)
-    refillInterval: 1000 // Check every second
-  };
+  // SOLID modules
+  private rateLimiter: RateLimiter;
+  private publishManager: PublishManager;
+  private lifecycleHandler: LifecycleHandler;
 
   constructor(server: HTTPServer, config?: Partial<WebSocketManagerConfig>) {
     // 1. Resolve and validate configuration
@@ -77,14 +68,21 @@ export class WebSocketManager {
     validateRedisForAuth(!!this.redis);
 
     // 4. Initialize extracted modules
-    this.backlogManager = new BacklogManager();
     this.pendingSubscriptionsManager = new PendingSubscriptionsManager();
     this.subscriptionManager = new SubscriptionManager(
       this.config.requestStateStore,
       this.config.jobStore
     );
 
-    // 5. Init WebSocket server with Security Limits
+    // 5. Initialize SOLID modules
+    this.rateLimiter = new RateLimiter({
+      maxTokens: 10,
+      refillRate: 10 / 60,
+      refillInterval: 1000
+    });
+    this.publishManager = new PublishManager(this.subscriptionManager);
+    
+    // 6. Init WebSocket server with Security Limits
     this.wss = new WebSocketServer({
       server,
       path: this.config.path,
@@ -99,6 +97,16 @@ export class WebSocketManager {
       maxPayload: 64 * 1024, // PROD Hardening: 64KB max payload (down from 1MB)
     });
 
+    // 7. Initialize lifecycle handler after WSS is created
+    this.lifecycleHandler = new LifecycleHandler(
+      this.wss,
+      this.subscriptionManager,
+      this.config.heartbeatIntervalMs,
+      this.handleMessage.bind(this),
+      this.handleCloseEvent.bind(this),
+      this.handleErrorEvent.bind(this)
+    );
+
     this.wss.on('connection', this.handleConnection.bind(this));
     this.startHeartbeat();
 
@@ -106,16 +114,7 @@ export class WebSocketManager {
   }
 
   private handleConnection(ws: WebSocket, req: any): void {
-    setupConnection(
-      ws,
-      req,
-      this.handleMessage.bind(this),
-      this.handleCloseEvent.bind(this),
-      this.handleErrorEvent.bind(this)
-    );
-
-    // DISABLED: No ws_status broadcasts to clients (UI doesn't show connection status)
-    // this.sendConnectionStatus(ws, 'connected');
+    this.lifecycleHandler.handleConnection(ws, req);
   }
 
 
@@ -208,31 +207,7 @@ export class WebSocketManager {
    * PROD Hardening: Check and consume rate limit token
    */
   private checkRateLimit(ws: WebSocket): boolean {
-    let limit = this.socketRateLimits.get(ws);
-    const now = Date.now();
-
-    if (!limit) {
-      limit = {
-        tokens: this.SUBSCRIBE_RATE_LIMIT.maxTokens,
-        lastRefill: now
-      };
-      this.socketRateLimits.set(ws, limit);
-    }
-
-    // Refill tokens based on elapsed time
-    const elapsed = now - limit.lastRefill;
-    const tokensToAdd = (elapsed / this.SUBSCRIBE_RATE_LIMIT.refillInterval) * this.SUBSCRIBE_RATE_LIMIT.refillRate;
-    limit.tokens = Math.min(this.SUBSCRIBE_RATE_LIMIT.maxTokens, limit.tokens + tokensToAdd);
-    limit.lastRefill = now;
-
-    // Check if we have tokens available
-    if (limit.tokens < 1) {
-      return false; // Rate limited
-    }
-
-    // Consume one token
-    limit.tokens -= 1;
-    return true; // Allowed
+    return this.rateLimiter.checkRateLimit(ws);
   }
 
   private async handleClientMessage(
@@ -327,15 +302,15 @@ export class WebSocketManager {
 
 
   private handleCloseEvent(ws: WebSocket, clientId: string, code: number, reasonBuffer: Buffer): void {
-    handleClose(ws, clientId, code, reasonBuffer, this.cleanup.bind(this));
+    handleClose(ws, clientId, code, reasonBuffer, this.lifecycleHandler.cleanup.bind(this.lifecycleHandler));
   }
 
   private handleErrorEvent(ws: WebSocket, err: Error, clientId: string): void {
-    handleError(ws, err, clientId, this.cleanup.bind(this));
+    handleError(ws, err, clientId, this.lifecycleHandler.cleanup.bind(this.lifecycleHandler));
   }
 
   private cleanup(ws: WebSocket): void {
-    this.subscriptionManager.cleanup(ws);
+    this.lifecycleHandler.cleanup(ws);
   }
 
   private async handleSubscribeRequest(
@@ -377,7 +352,7 @@ export class WebSocketManager {
         result.requestId!,
         result.sessionId
       );
-      this.backlogManager.drain(key, ws, result.channel!, result.requestId!, this.cleanup.bind(this));
+      this.publishManager.drainBacklog(key, ws, result.channel!, result.requestId!, this.cleanup.bind(this));
 
       // Late-subscriber replay for search channel
       if (result.channel === 'search') {
@@ -446,7 +421,7 @@ export class WebSocketManager {
       this.sendSubAck.bind(this),
       this.sendSubNack.bind(this),
       (key: SubscriptionKey, ws: WebSocket, channel: WSChannel, reqId: string) => {
-        this.backlogManager.drain(key, ws, channel, reqId, this.cleanup.bind(this));
+        this.publishManager.drainBacklog(key, ws, channel, reqId, this.cleanup.bind(this));
       },
       this.subscriptionManager.buildSubscriptionKey.bind(this.subscriptionManager)
     );
@@ -469,92 +444,7 @@ export class WebSocketManager {
     sessionId: string | undefined,
     message: WSServerMessage
   ): PublishSummary {
-    const startTime = performance.now();
-    const key = this.subscriptionManager.buildSubscriptionKey(channel, requestId, sessionId);
-
-    // SESSIONHASH FIX: Use shared utility for consistent hashing
-    const sessionHash = hashSessionId(sessionId);
-
-    // Cleanup expired backlogs
-    this.backlogManager.cleanupExpired();
-
-    const clients = this.subscriptionManager.getSubscribers(key);
-
-    const data = JSON.stringify(message);
-    const payloadBytes = Buffer.byteLength(data, 'utf8');
-
-    // If no subscribers, enqueue to backlog
-    if (!clients || clients.size === 0) {
-      this.backlogManager.enqueue(key, message, channel, requestId);
-
-      logger.debug({
-        channel,
-        requestId,
-        sessionHash,
-        subscriptionKey: key,
-        clientCount: 0,
-        payloadBytes,
-        payloadType: message.type,
-        enqueued: true,
-        event: 'websocket_published'
-      }, 'websocket_published');
-
-      return { attempted: 0, sent: 0, failed: 0 };
-    }
-
-    // Send to active subscribers
-    let attempted = 0;
-    let sent = 0;
-    let failed = 0;
-
-    for (const client of clients) {
-      if (client.readyState === WebSocket.OPEN) {
-        attempted++;
-        try {
-          client.send(data);
-          sent++;
-          this.backlogManager.incrementSent();
-        } catch (err) {
-          failed++;
-          this.backlogManager.incrementFailed();
-          logger.warn({
-            clientId: (client as any).clientId,
-            requestId,
-            channel,
-            error: err instanceof Error ? err.message : 'unknown'
-          }, 'WebSocket send failed in publishToChannel');
-          this.cleanup(client);
-        }
-      }
-    }
-
-    const durationMs = Math.round(performance.now() - startTime);
-
-    const errorDetails = message.type === 'error' && 'code' in message
-      ? {
-        errorType: (message as any).code,
-        errorMessage: (message as any).message?.substring(0, 100),
-        errorStage: (message as any).stage,
-        errorKind: (message as any).errorKind
-      }
-      : {};
-
-    // Log at INFO for errors, DEBUG for status/progress/ready
-    const level = message.type === 'error' ? 'info' : 'debug';
-    logger[level]({
-      channel,
-      requestId,
-      sessionHash,
-      subscriptionKey: key,
-      clientCount: sent,
-      ...(failed > 0 && { failedCount: failed }),
-      payloadBytes,
-      payloadType: message.type,
-      durationMs,
-      ...errorDetails
-    }, 'websocket_published');
-
-    return { attempted, sent, failed };
+    return this.publishManager.publishToChannel(channel, requestId, sessionId, message);
   }
 
   /**
@@ -587,79 +477,11 @@ export class WebSocketManager {
     updatedAt?: string,
     meta?: { layerUsed: 1 | 2 | 3; source: 'cse' | 'internal' }
   ): PublishSummary {
-    const timestamp = updatedAt || new Date().toISOString();
-
-    // Build provider state with updatedAt and meta
-    const providerState: any = {
-      status,
-      url,
-      updatedAt: timestamp,
-    };
-
-    // Add meta if provided
-    if (meta) {
-      providerState.meta = meta;
-    }
-
-    // Build RESULT_PATCH message
-    const patchEvent: any = {
-      type: 'RESULT_PATCH',
-      requestId,
-      placeId,
-      patch: {
-        // NEW: Structured providers field
-        providers: {
-          [provider]: providerState,
-        },
-        // DEPRECATED: Legacy field for backward compatibility (only for 'wolt')
-        ...(provider === 'wolt' && {
-          wolt: {
-            status,
-            url,
-          },
-        }),
-      },
-    };
-
-    // Structured logging BEFORE publish
-    logger.info(
-      {
-        event: 'provider_patch_published',
-        provider,
-        placeId,
-        status,
-        url: url ? 'present' : 'null', // Don't log full URL for privacy
-        updatedAt: timestamp,
-        meta,
-        requestId,
-      },
-      `[WebSocketManager] Publishing provider patch: ${provider}`
-    );
-
-    // Publish to 'search' channel
-    const result = this.publishToChannel('search', requestId, undefined, patchEvent);
-
-    return result;
+    return this.publishManager.publishProviderPatch(provider, placeId, requestId, status, url, updatedAt, meta);
   }
 
   private sendTo(ws: WebSocket, message: WSServerMessage): boolean {
-    if (ws.readyState === WebSocket.OPEN) {
-      try {
-        ws.send(JSON.stringify(message));
-        this.backlogManager.incrementSent();
-        return true;
-      } catch (err) {
-        this.backlogManager.incrementFailed();
-        logger.warn({
-          error: err instanceof Error ? err.message : 'unknown',
-          messageType: message.type,
-          clientId: (ws as any).clientId
-        }, 'WebSocket send failed in sendTo');
-        this.cleanup(ws);
-        return false;
-      }
-    }
-    return false;
+    return this.publishManager.sendTo(ws, message);
   }
 
   private sendError(ws: WebSocket, error: string, message: string): void {
@@ -675,9 +497,9 @@ export class WebSocketManager {
     if (ws.readyState === WebSocket.OPEN) {
       try {
         ws.send(JSON.stringify(errorPayload));
-        this.backlogManager.incrementSent();
+        this.publishManager.getBacklogManager().incrementSent();
       } catch (err) {
-        this.backlogManager.incrementFailed();
+        this.publishManager.getBacklogManager().incrementFailed();
         logger.warn({
           error: err instanceof Error ? err.message : 'unknown',
           clientId: (ws as any).clientId
@@ -688,72 +510,19 @@ export class WebSocketManager {
   }
 
   private startHeartbeat(): void {
-    this.heartbeatInterval = setInterval(() => {
-      executeHeartbeat(this.wss.clients, this.cleanup.bind(this));
-      
-      // NO ws_status broadcast on heartbeat - only send on lifecycle events
-      // This prevents infinite "connecting" spam from heartbeat pings
-      
-      // Cleanup expired pending subscriptions
-      this.pendingSubscriptionsManager.cleanupExpired(this.sendSubNack.bind(this));
-
-      // Cleanup expired backlogs
-      this.backlogManager.cleanupExpired();
-    }, this.config.heartbeatIntervalMs);
-
-    this.heartbeatInterval.unref();
-  }
-
-  /**
-   * Send connection status to a specific client (lifecycle events only)
-   * Used by app-assistant-line to show stable WS status
-   */
-  private sendConnectionStatus(ws: WebSocket, state: 'connected' | 'reconnecting' | 'offline'): void {
-    if (ws.readyState !== WebSocket.OPEN) {
-      return;
-    }
-
-    const statusEvent: WSServerMessage = {
-      type: 'ws_status',
-      state,
-      ts: new Date().toISOString()
-    };
-
-    try {
-      ws.send(JSON.stringify(statusEvent));
-      logger.debug({
-        state,
-        clientId: (ws as any).clientId
-      }, '[WS] Sent connection status (lifecycle event)');
-    } catch (err) {
-      logger.warn({
-        error: err instanceof Error ? err.message : 'unknown',
-        clientId: (ws as any).clientId
-      }, '[WS] Failed to send ws_status event');
-    }
+    this.lifecycleHandler.startHeartbeat(
+      this.cleanup.bind(this),
+      this.sendSubNack.bind(this),
+      () => this.pendingSubscriptionsManager.cleanupExpired(this.sendSubNack.bind(this)),
+      () => this.publishManager.cleanupExpiredBacklogs()
+    );
   }
 
   /**
    * Shutdown: Close all connections and cleanup
    */
   shutdown(): void {
-    if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval);
-      this.heartbeatInterval = undefined;
-    }
-
-    const clientCount = this.wss.clients.size;
-
-    this.wss.clients.forEach(ws => {
-      this.cleanup(ws);
-      ws.close(1001, SOFT_CLOSE_REASONS.SERVER_SHUTDOWN);
-    });
-
-    this.wss.close();
-
-    logger.info({
-      closedConnections: clientCount
-    }, 'WebSocketManager shutdown');
+    this.lifecycleHandler.shutdown();
   }
 
   private hashRequestId(requestId?: string): string {
@@ -766,13 +535,13 @@ export class WebSocketManager {
    */
   getStats(): WebSocketStats {
     const subStats = this.subscriptionManager.getStats();
-    const msgStats = this.backlogManager.getStats();
+    const msgStats = this.publishManager.getStats();
 
     return {
       connections: this.wss.clients.size,
       subscriptions: subStats.subscriptions,
       requestIdsTracked: subStats.requestIdsTracked,
-      backlogCount: this.backlogManager.getSize(),
+      backlogCount: this.publishManager.getBacklogSize(),
       messagesSent: msgStats.sent,
       messagesFailed: msgStats.failed
     };

@@ -263,6 +263,11 @@ export function getConfig() {
         : mustNumber('CACHE_INTENT_TTL', 600000) / 1000;
 
     /**
+     * Assistant LLM Shadow Mode (for A/B testing validation strategies)
+     */
+    const assistantRefactorShadow = process.env.ASSISTANT_REFACTOR_SHADOW === 'true';
+
+    /**
      * Redis safety gate (NODE_ENV / ENV aware) - FAIL-SAFE
      */
     const redisValid = validateRedisUrl(redisUrl, enableRedisJobStore || enableRedisCache);
@@ -310,7 +315,8 @@ export function getConfig() {
             redisJobTtlSeconds,
             googleCacheTtlSeconds,
             cacheIntentEnabled,
-            cacheIntentTtlSeconds
+            cacheIntentTtlSeconds,
+            assistantRefactorShadow
         };
     }
 
