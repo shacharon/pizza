@@ -11,7 +11,7 @@
  * Backward Compatible: Updates both providers.wolt (new) and wolt (legacy) fields
  */
 
-import type { RestaurantResult } from '../../../types/search.types.js';
+import type { RestaurantResult } from '../../../types/restaurant.types.js';
 import type { Route2Context } from '../../types.js';
 import { logger } from '../../../../../lib/logger/structured-logger.js';
 import { getRedisClient } from '../../../../../lib/redis/redis-client.js';
@@ -22,6 +22,7 @@ import {
   type WoltCacheEntry,
   type WoltEnrichment,
 } from '../../../wolt/wolt-enrichment.contracts.js';
+import { tryAcquireLock, type LockResult } from '../lock-service.js';
 
 /**
  * Structured log event types
@@ -189,52 +190,6 @@ async function checkWoltCache(
   }
 }
 
-/**
- * Lock acquisition result
- */
-interface LockResult {
-  acquired: boolean;
-  reason: 'acquired' | 'held' | 'error';
-  error?: string;
-}
-
-/**
- * Attempt to acquire lock for background job
- * Returns lock acquisition result with reason
- */
-async function tryAcquireLock(
-  redis: RedisClient,
-  placeId: string
-): Promise<LockResult> {
-  try {
-    const lockKey = WOLT_REDIS_KEYS.lock(placeId);
-    const result = await redis.set(
-      lockKey,
-      '1',
-      'EX',
-      WOLT_CACHE_TTL_SECONDS.LOCK,
-      'NX'
-    );
-
-    // Redis SET with NX returns 'OK' if set, null if key already exists
-    if (result === 'OK') {
-      return { acquired: true, reason: 'acquired' };
-    } else {
-      return { acquired: false, reason: 'held' };
-    }
-  } catch (err) {
-    const error = err instanceof Error ? err.message : String(err);
-    logger.warn(
-      {
-        event: 'wolt_lock_error',
-        placeId,
-        error,
-      },
-      '[WoltEnrichment] Lock acquisition error (non-fatal)'
-    );
-    return { acquired: false, reason: 'error', error };
-  }
-}
 
 // Lazy-initialized job queue
 let jobQueueInstance: any = null;
@@ -402,7 +357,14 @@ async function enrichSingleRestaurant(
   });
 
   // 2. Attempt to acquire lock
-  const lockResult = await tryAcquireLock(redis, placeId);
+  const lockKey = WOLT_REDIS_KEYS.lock(placeId);
+  const lockResult = await tryAcquireLock(
+    redis,
+    lockKey,
+    WOLT_CACHE_TTL_SECONDS.LOCK,
+    'wolt',
+    placeId
+  );
 
   if (lockResult.acquired) {
     // Lock ACQUIRED: Trigger background job

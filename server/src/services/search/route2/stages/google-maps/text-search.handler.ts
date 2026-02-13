@@ -10,6 +10,7 @@ import { generateTextSearchCacheKey } from '../../../../../lib/cache/googleCache
 import { getCacheService, raceWithCleanup } from './cache-manager.js';
 import { mapGooglePlaceToResult } from './result-mapper.js';
 import type { RouteLLMMapping, Route2Context } from '../../types.js';
+import { retryWithBackoff } from '../../../../../lib/reliability/retry-handler.js';
 
 // Field mask for Google Places API (New) - includes opening hours data
 const PLACES_FIELD_MASK = 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.priceLevel,places.currentOpeningHours,places.regularOpeningHours,places.utcOffsetMinutes,places.photos,places.types,places.googleMapsUri';
@@ -426,6 +427,36 @@ export async function callGooglePlacesSearchText(
   // Allow timeout to be configurable via env (default 8000ms)
   const timeoutMs = parseInt(process.env.GOOGLE_PLACES_TIMEOUT_MS || '8000', 10);
 
+  // Retry configuration: 3 attempts with exponential backoff [0ms, 500ms, 1000ms]
+  const maxAttempts = 3;
+  const backoffMs = [0, 500, 1000];
+
+  // Retry predicate: only retry on 429 (rate limit) or 5xx (server errors)
+  const isRetryable = (err: any, attempt: number) => {
+    // Check for HTTP status in error message or status property
+    const errorMsg = err?.message || '';
+    const status = err?.status;
+
+    // Rate limiting (429) or server errors (5xx)
+    const isRateLimitError = errorMsg.includes('HTTP 429') || status === 429;
+    const isServerError = /HTTP 5\d\d/.test(errorMsg) || (typeof status === 'number' && status >= 500 && status < 600);
+
+    return isRateLimitError || isServerError;
+  };
+
+  // Retry callback for logging
+  const onRetry = (err: any, attempt: number, nextDelay: number) => {
+    logger.warn({
+      requestId,
+      provider: 'google_places_new',
+      providerMethod: 'searchText',
+      attempt: attempt + 1,
+      maxAttempts,
+      nextDelayMs: nextDelay,
+      error: err?.message || String(err)
+    }, '[GOOGLE] Retriable error - will retry after delay');
+  };
+
   // Pre-request diagnostics (safe logging - no secrets)
   const callStartTime = Date.now();
   logger.debug({
@@ -442,93 +473,104 @@ export async function callGooglePlacesSearchText(
     event: 'google_api_call_start'
   }, '[GOOGLE] Starting API call');
 
-  let errorKind: FetchErrorKind | undefined;
-  let callDurationMs: number;
+  // Execute with retry
+  return await retryWithBackoff({
+    maxAttempts,
+    backoffMs,
+    isRetryable,
+    onRetry,
+    fn: async () => {
+      let errorKind: FetchErrorKind | undefined;
+      let callDurationMs: number;
 
-  try {
-    const response = await fetchWithTimeout(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Goog-Api-Key': apiKey,
-        'X-Goog-FieldMask': PLACES_FIELD_MASK
-      },
-      body: JSON.stringify(body)
-    }, {
-      timeoutMs,
-      requestId,
-      stage: 'google_maps',
-      provider: 'google_places',
-      enableDnsPreflight: process.env.ENABLE_DNS_PREFLIGHT === 'true'
-    });
+      try {
+        const response = await fetchWithTimeout(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': apiKey,
+            'X-Goog-FieldMask': PLACES_FIELD_MASK
+          },
+          body: JSON.stringify(body)
+        }, {
+          timeoutMs,
+          requestId,
+          stage: 'google_maps',
+          provider: 'google_places',
+          enableDnsPreflight: process.env.ENABLE_DNS_PREFLIGHT === 'true'
+        });
 
-    callDurationMs = Date.now() - callStartTime;
+        callDurationMs = Date.now() - callStartTime;
 
-    if (!response.ok) {
-      callDurationMs = Date.now() - callStartTime;
-      const errorText = await response.text();
-      errorKind = 'HTTP_ERROR';
+        if (!response.ok) {
+          callDurationMs = Date.now() - callStartTime;
+          const errorText = await response.text();
+          errorKind = 'HTTP_ERROR';
 
-      // Log error details with guidance
-      logger.error({
-        requestId,
-        provider: 'google_places_new',
-        providerMethod: 'searchText',
-        endpoint: 'searchText',
-        status: response.status,
-        errorKind,
-        host: 'places.googleapis.com',
-        timeoutMs,
-        durationMs: callDurationMs,
-        errorBody: errorText.substring(0, 200),
-        guidance: 'Check: 1) API key has Places API (New) enabled, 2) Billing is active, 3) Outbound HTTPS access'
-      }, '[GOOGLE] Text Search API HTTP error');
+          // Log error details with guidance
+          logger.error({
+            requestId,
+            provider: 'google_places_new',
+            providerMethod: 'searchText',
+            endpoint: 'searchText',
+            status: response.status,
+            errorKind,
+            host: 'places.googleapis.com',
+            timeoutMs,
+            durationMs: callDurationMs,
+            errorBody: errorText.substring(0, 200),
+            guidance: 'Check: 1) API key has Places API (New) enabled, 2) Billing is active, 3) Outbound HTTPS access'
+          }, '[GOOGLE] Text Search API HTTP error');
 
-      throw new Error(`Google Places API (New) searchText failed: HTTP ${response.status} - Check API key permissions and billing`);
+          const error = new Error(`Google Places API (New) searchText failed: HTTP ${response.status} - Check API key permissions and billing`);
+          (error as any).status = response.status;
+          throw error;
+        }
+
+        const data = await response.json();
+        callDurationMs = Date.now() - callStartTime;
+
+        // Threshold-based logging: INFO if slow (>2000ms), DEBUG otherwise
+        const isSlow = callDurationMs > 2000;
+        const logLevel = isSlow ? 'info' : 'debug';
+
+        logger[logLevel]({
+          requestId,
+          provider: 'google_places_new',
+          providerMethod: 'searchText',
+          durationMs: callDurationMs,
+          placesCount: data.places?.length || 0,
+          event: 'google_api_call_success',
+          ...(isSlow && { slow: true })
+        }, '[GOOGLE] API call succeeded');
+
+        return data;
+
+      } catch (err) {
+        callDurationMs = Date.now() - callStartTime;
+
+        // Extract error kind from TimeoutError if available
+        if (!errorKind && err && typeof err === 'object' && 'errorKind' in err) {
+          errorKind = (err as any).errorKind;
+        }
+
+        // Log catch block error
+        logger.error({
+          requestId,
+          provider: 'google_places_new',
+          providerMethod: 'searchText',
+          errorKind: errorKind || 'UNKNOWN',
+          host: 'places.googleapis.com',
+          timeoutMs,
+          durationMs: callDurationMs,
+          error: err instanceof Error ? err.message : String(err),
+          event: 'google_api_call_failed'
+        }, '[GOOGLE] API call failed in catch block');
+
+        throw err;
+      }
     }
-
-    const data = await response.json();
-    callDurationMs = Date.now() - callStartTime;
-
-    // Threshold-based logging: INFO if slow (>2000ms), DEBUG otherwise
-    const isSlow = callDurationMs > 2000;
-    const logLevel = isSlow ? 'info' : 'debug';
-
-    logger[logLevel]({
-      requestId,
-      provider: 'google_places_new',
-      providerMethod: 'searchText',
-      durationMs: callDurationMs,
-      placesCount: data.places?.length || 0,
-      event: 'google_api_call_success',
-      ...(isSlow && { slow: true })
-    }, '[GOOGLE] API call succeeded');
-
-    return data;
-
-  } catch (err) {
-    callDurationMs = Date.now() - callStartTime;
-
-    // Extract error kind from TimeoutError if available
-    if (!errorKind && err && typeof err === 'object' && 'errorKind' in err) {
-      errorKind = (err as any).errorKind;
-    }
-
-    // Log catch block error
-    logger.error({
-      requestId,
-      provider: 'google_places_new',
-      providerMethod: 'searchText',
-      errorKind: errorKind || 'UNKNOWN',
-      host: 'places.googleapis.com',
-      timeoutMs,
-      durationMs: callDurationMs,
-      error: err instanceof Error ? err.message : String(err),
-      event: 'google_api_call_failed'
-    }, '[GOOGLE] API call failed in catch block');
-
-    throw err;
-  }
+  });
 }
 
 /**

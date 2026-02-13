@@ -5,6 +5,7 @@
 
 import { logger } from '../logger/structured-logger.js';
 import { recordProviderCall } from '../audit/providerAudit.store.js';
+import { calculateOpenAICost as computeCost } from '../../llm/cost-calculator.js';
 
 export type ProviderName = 'openai' | 'anthropic' | 'google_places' | 'google_geocoding';
 
@@ -165,42 +166,14 @@ export function sanitizeErrorReason(message: string): string {
 
 /**
  * Calculate estimated cost for OpenAI API calls
- * Based on model and token usage
  * 
- * Pricing as of January 2025 (USD per 1M tokens):
- * Returns null if model pricing unknown
+ * @deprecated Use cost-calculator.ts directly for new code
+ * Re-exported for backward compatibility
  */
 export function calculateOpenAICost(
   model: string,
   tokensIn: number,
   tokensOut: number
 ): number | null {
-  const pricing = {
-    'gpt-4o-mini': { input: 0.150, output: 0.600 },
-    'gpt-4o': { input: 2.50, output: 10.00 },
-    'gpt-4-turbo': { input: 10.00, output: 30.00 },
-    'gpt-4-turbo-preview': { input: 10.00, output: 30.00 },
-    'gpt-4': { input: 30.00, output: 60.00 },
-    'gpt-3.5-turbo': { input: 0.50, output: 1.50 },
-    'gpt-3.5-turbo-16k': { input: 3.00, output: 4.00 },
-  };
-
-
-  // Find matching pricing (handle model variants like gpt-4o-2024-08-06)
-  let rates: { input: number; output: number } | null = null;
-  for (const [key, value] of Object.entries(pricing)) {
-    if (model.includes(key)) {
-      rates = value;
-      break;
-    }
-  }
-
-  if (!rates) {
-    return null; // Unknown model
-  }
-
-  const costIn = (tokensIn / 1_000_000) * rates.input;
-  const costOut = (tokensOut / 1_000_000) * rates.output;
-
-  return costIn + costOut;
+  return computeCost(model, tokensIn, tokensOut);
 }

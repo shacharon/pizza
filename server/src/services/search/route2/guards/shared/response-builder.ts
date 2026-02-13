@@ -15,8 +15,8 @@ export interface GuardResponseParams {
   sessionId: string;
   assistMessage: string;
   assistType: 'guide' | 'clarify';
-  gateLanguage: string;
-  sourceLanguage: 'he' | 'en' | 'ar' | 'ru' | 'other';
+  gateLanguage: string; // Flexible string type (accepts Gate2Language)
+  sourceLanguage: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es' | 'other' | 'unknown' | undefined;
   confidence: number;
   source: string;
   failureReason: 'LOW_CONFIDENCE' | 'LOCATION_REQUIRED';
@@ -40,8 +40,9 @@ export function buildGuardResponse(params: GuardResponseParams): SearchResponse 
     failureReason
   } = params;
 
-  // Derive UI language from source language
-  const uiLanguage = mapQueryLanguageToUILanguage(sourceLanguage);
+  // Derive UI language from source language (default to 'he' if undefined/unknown)
+  const normalizedLanguage = sourceLanguage || 'he';
+  const uiLanguage = mapQueryLanguageToUILanguage(normalizedLanguage as any);
   const googleLanguage: 'he' | 'en' = sourceLanguage === 'he' ? 'he' : 'en';
 
   return {

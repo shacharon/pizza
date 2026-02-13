@@ -3,8 +3,8 @@
  * Handles GATE2 STOP (not food related)
  */
 
-import type { SearchRequest } from '../../../types/search-request.dto.js';
-import type { SearchResponse } from '../../../types/search-response.dto.js';
+import type { SearchRequest } from '../../types/search-request.dto.js';
+import type { SearchResponse } from '../../types/search-response.dto.js';
 import type { Route2Context, Gate2StageOutput } from '../types.js';
 import type { WebSocketManager } from '../../../../infra/websocket/websocket-manager.js';
 import { logger } from '../../../../lib/logger/structured-logger.js';
@@ -56,7 +56,7 @@ export async function handleGateStop(
     assistMessage: message,
     assistType: 'guide',
     gateLanguage: gateResult.gate.language,
-    sourceLanguage: ctx.queryLanguage,
+    sourceLanguage: ctx.queryLanguage as any,
     confidence: gateResult.gate.confidence,
     source: 'route2_gate_stop',
     failureReason: 'LOW_CONFIDENCE'

@@ -10,7 +10,7 @@
  * Non-blocking: Always returns immediately with enriched results
  */
 
-import type { RestaurantResult } from '../../../types/search.types.js';
+import type { RestaurantResult } from '../../../types/restaurant.types.js';
 import type { Route2Context } from '../../types.js';
 import { logger } from '../../../../../lib/logger/structured-logger.js';
 import { getRedisClient } from '../../../../../lib/redis/redis-client.js';
@@ -21,6 +21,7 @@ import {
   type TenbisCacheEntry,
   type TenbisEnrichment,
 } from './tenbis-enrichment.contracts.js';
+import { tryAcquireLock, type LockResult } from '../lock-service.js';
 
 /**
  * Structured log event types
@@ -188,52 +189,6 @@ async function checkTenbisCache(
   }
 }
 
-/**
- * Lock acquisition result
- */
-interface LockResult {
-  acquired: boolean;
-  reason: 'acquired' | 'held' | 'error';
-  error?: string;
-}
-
-/**
- * Attempt to acquire lock for background job
- * Returns lock acquisition result with reason
- */
-async function tryAcquireLock(
-  redis: RedisClient,
-  placeId: string
-): Promise<LockResult> {
-  try {
-    const lockKey = TENBIS_REDIS_KEYS.lock(placeId);
-    const result = await redis.set(
-      lockKey,
-      '1',
-      'EX',
-      TENBIS_CACHE_TTL_SECONDS.LOCK,
-      'NX'
-    );
-
-    // Redis SET with NX returns 'OK' if set, null if key already exists
-    if (result === 'OK') {
-      return { acquired: true, reason: 'acquired' };
-    } else {
-      return { acquired: false, reason: 'held' };
-    }
-  } catch (err) {
-    const error = err instanceof Error ? err.message : String(err);
-    logger.warn(
-      {
-        event: 'tenbis_lock_error',
-        placeId,
-        error,
-      },
-      '[TenbisEnrichment] Lock acquisition error (non-fatal)'
-    );
-    return { acquired: false, reason: 'error', error };
-  }
-}
 
 // Lazy-initialized job queue
 let jobQueueInstance: any = null;
@@ -395,7 +350,14 @@ async function enrichSingleRestaurant(
   });
 
   // 2. Attempt to acquire lock
-  const lockResult = await tryAcquireLock(redis, placeId);
+  const lockKey = TENBIS_REDIS_KEYS.lock(placeId);
+  const lockResult = await tryAcquireLock(
+    redis,
+    lockKey,
+    TENBIS_CACHE_TTL_SECONDS.LOCK,
+    'tenbis',
+    placeId
+  );
 
   if (lockResult.acquired) {
     // Lock ACQUIRED: Trigger background job
