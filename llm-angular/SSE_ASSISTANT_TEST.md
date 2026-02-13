@@ -7,6 +7,7 @@
 ## Changes Summary
 
 ### 1. New Service: AssistantSseService
+
 **File:** `src/app/core/services/assistant-sse.service.ts`
 
 - Wraps EventSource API for SSE connection
@@ -17,11 +18,12 @@
 - Auto-cleanup on unsubscribe
 
 ### 2. Feature Flag
+
 **Files:** `src/environments/environment*.ts`
 
 ```typescript
 features: {
-  useSseAssistant: true  // Use SSE for assistant instead of WebSocket
+  useSseAssistant: true; // Use SSE for assistant instead of WebSocket
 }
 ```
 
@@ -29,6 +31,7 @@ features: {
 - Set to `false` to fallback to legacy WebSocket assistant
 
 ### 3. Modified: SearchWsHandler
+
 **File:** `src/app/facades/search-ws.facade.ts`
 
 - Checks feature flag `environment.features.useSseAssistant`
@@ -38,6 +41,7 @@ features: {
 - Cleanup: Unsubscribes from SSE when clearing subscriptions
 
 ### 4. Modified: SearchFacade
+
 **File:** `src/app/facades/search.facade.ts`
 
 - Passes `assistantHandler` to `subscribeToRequest()` for SSE routing
@@ -197,6 +201,7 @@ Open: `http://localhost:4200`
 **Cause:** Feature flag disabled or SSE service not injected
 
 **Fix:**
+
 - Check `environment.ts` has `useSseAssistant: true`
 - Restart `ng serve`
 
@@ -207,6 +212,7 @@ Open: `http://localhost:4200`
 **Cause:** Backend not sending events, or job not ready
 
 **Fix:**
+
 - Check backend logs for `assistant_sse_started`, `assistant_sse_narration_sent`
 - Ensure search request is async (`mode=async`)
 - Check Redis is running (for job store)
@@ -218,6 +224,7 @@ Open: `http://localhost:4200`
 **Cause:** CORS credentials not configured
 
 **Fix:**
+
 - Backend `.env`: Ensure `FRONTEND_ORIGINS=http://localhost:4200`
 - Backend CORS: Check `Access-Control-Allow-Credentials: true`
 - EventSource: Already uses `withCredentials: true`
@@ -229,6 +236,7 @@ Open: `http://localhost:4200`
 **Cause:** Results not ready within timeout (20s)
 
 **Fix:**
+
 - Check backend logs for `assistant_sse_timeout`
 - Increase `ASSISTANT_SSE_TIMEOUT_MS` in backend `.env`
 - Check search pipeline is completing (results arriving?)
@@ -240,6 +248,7 @@ Open: `http://localhost:4200`
 **Cause:** Dedup not working, or both WS and SSE enabled
 
 **Fix:**
+
 - Check feature flag is `true` (only SSE for assistant)
 - Check console logs: Should see "Using SSE for assistant (WS assistant disabled)"
 - If both WS and SSE are active, verify feature flag logic
@@ -251,6 +260,7 @@ Open: `http://localhost:4200`
 ### SSE Request (Chrome DevTools):
 
 **General:**
+
 ```
 Request URL: http://localhost:3000/api/v1/stream/assistant/req-abc123...
 Request Method: GET
@@ -258,12 +268,14 @@ Status Code: 200 OK
 ```
 
 **Request Headers:**
+
 ```
 Accept: text/event-stream
 Cookie: session=eyJhbGc...   ← Session cookie sent!
 ```
 
 **Response Headers:**
+
 ```
 Content-Type: text/event-stream
 Cache-Control: no-cache
@@ -273,6 +285,7 @@ Access-Control-Allow-Credentials: true   ← CORS credentials enabled
 ```
 
 **Response (EventStream tab):**
+
 ```
 event: meta
 data: {"requestId":"req-...","language":"en","startedAt":"2026-02-13T..."}
@@ -297,11 +310,12 @@ If issues arise, disable the feature flag:
 
 ```typescript
 features: {
-  useSseAssistant: false  // Fallback to WebSocket assistant
+  useSseAssistant: false; // Fallback to WebSocket assistant
 }
 ```
 
 **Result:**
+
 - WS will handle both search and assistant channels (legacy behavior)
 - SSE service not used
 - No code changes required (feature flag controlled)
@@ -314,9 +328,10 @@ features: {
 ✅ **WS for search results** - Unchanged  
 ✅ **Feature flag** - Easy rollback  
 ✅ **Backward compatible** - Legacy WS still works  
-✅ **No breaking changes** - Existing UI and state management reused  
+✅ **No breaking changes** - Existing UI and state management reused
 
 **Test now:**
+
 1. Run search
 2. Check console for SSE logs
 3. Verify narration appears immediately
@@ -324,6 +339,7 @@ features: {
 5. Confirm WS still delivers results
 
 **Next steps (after testing):**
+
 - Monitor production SSE performance
 - Remove WS assistant code (if SSE stable)
 - Add SSE reconnection logic (optional enhancement)

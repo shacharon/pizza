@@ -8,7 +8,7 @@ import type { Logger } from 'pino';
 import type { AssistantContext, AssistantLanguage } from '../../../services/search/route2/assistant/assistant-llm.service.js';
 
 export class AssistantContextBuilder {
-  constructor(private readonly logger: Logger) {}
+  constructor(private readonly logger: Logger) { }
 
   /**
    * Reconstruct AssistantContext from job/result
@@ -25,7 +25,7 @@ export class AssistantContextBuilder {
     // If result has results array, try to build SUMMARY context
     if (result && result.results && Array.isArray(result.results)) {
       const resultCount = result.results.length;
-      
+
       // Extract top 3 restaurant names
       const top3Names = result.results
         .slice(0, 3)

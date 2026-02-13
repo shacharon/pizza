@@ -7,12 +7,14 @@ Complete test suite for verifying session cookie authentication end-to-end.
 ## Prerequisites
 
 1. **Start the server:**
+
    ```bash
    cd server
    npm run dev
    ```
 
 2. **Ensure `.env` has:**
+
    ```bash
    JWT_SECRET=your-jwt-secret-here-must-be-at-least-32-chars-long
    SESSION_COOKIE_SECRET=your-session-cookie-secret-here-must-be-at-least-32-chars
@@ -36,6 +38,7 @@ curl -X POST http://localhost:3000/api/v1/auth/token \
 ```
 
 **Expected Response (200 OK):**
+
 ```json
 {
   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzZXNzaW9uSWQiOiJzZXNzXzEyMy4uLiIsImlhdCI6MTczOTQ1NjcwMCwiZXhwIjoxNzQyMDQ4NzAwfQ...",
@@ -45,6 +48,7 @@ curl -X POST http://localhost:3000/api/v1/auth/token \
 ```
 
 **Save the token:**
+
 ```bash
 TOKEN=$(curl -s -X POST http://localhost:3000/api/v1/auth/token \
   -H "Content-Type: application/json" -d '{}' | jq -r '.token')
@@ -62,6 +66,7 @@ curl -v -X POST http://localhost:3000/api/v1/auth/session \
 ```
 
 **Expected Response (200 OK):**
+
 ```json
 {
   "ok": true,
@@ -72,11 +77,13 @@ curl -v -X POST http://localhost:3000/api/v1/auth/session \
 ```
 
 **Expected Set-Cookie Header:**
+
 ```
 < Set-Cookie: session=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...; HttpOnly; Path=/; Max-Age=3600; SameSite=Lax
 ```
 
 **Verify cookie attributes:**
+
 - ✅ `HttpOnly` - JavaScript cannot access
 - ✅ `Path=/` - Applies to all routes
 - ✅ `Max-Age=3600` - Matches SESSION_COOKIE_TTL_SECONDS
@@ -84,6 +91,7 @@ curl -v -X POST http://localhost:3000/api/v1/auth/session \
 - ✅ `Secure` - Only in production (HTTPS)
 
 **Server Log (Expected):**
+
 ```
 [SessionCookie] Session cookie issued {
   sessionId: 'sess_abc-123-def-456',
@@ -95,11 +103,13 @@ curl -v -X POST http://localhost:3000/api/v1/auth/session \
 ```
 
 **Verify cookie file created:**
+
 ```bash
 cat cookies.txt
 ```
 
 Expected format:
+
 ```
 # Netscape HTTP Cookie File
 localhost	FALSE	/	FALSE	<timestamp>	session	<token>
@@ -117,6 +127,7 @@ curl -X GET http://localhost:3000/api/v1/auth/whoami \
 ```
 
 **Expected Response (200 OK):**
+
 ```json
 {
   "authenticated": true,
@@ -131,6 +142,7 @@ curl -X GET http://localhost:3000/api/v1/auth/whoami \
 ```
 
 **Key Assertions:**
+
 - ✅ HTTP 200 OK (authenticated)
 - ✅ `authSource: "cookie"` - Cookie was used
 - ✅ `hasCookieHeader: true` - Cookie present
@@ -138,6 +150,7 @@ curl -X GET http://localhost:3000/api/v1/auth/whoami \
 - ✅ `sessionId` matches original token
 
 **Server Log (Expected):**
+
 ```
 [Auth] Session cookie authenticated {
   sessionId: 'sess_abc-123-def-456',
@@ -163,6 +176,7 @@ curl -X POST http://localhost:3000/api/v1/search?mode=sync \
 ```
 
 **Expected Response (200 OK):**
+
 ```json
 {
   "requestId": "req-...",
@@ -174,6 +188,7 @@ curl -X POST http://localhost:3000/api/v1/search?mode=sync \
 ```
 
 **Success Criteria:**
+
 - ✅ HTTP 200 OK
 - ✅ No `Authorization` header required
 - ✅ Cookie automatically authenticated
@@ -186,11 +201,13 @@ curl -X POST http://localhost:3000/api/v1/search?mode=sync \
 ### Step 1: Set short TTL (dev only)
 
 **Update `.env`:**
+
 ```bash
 SESSION_COOKIE_TTL_SECONDS=60  # 1 minute
 ```
 
 **Restart server:**
+
 ```bash
 npm run dev
 ```
@@ -207,6 +224,7 @@ curl -X POST http://localhost:3000/api/v1/auth/session \
 ```
 
 **Verify expiresAt is ~1 minute from now:**
+
 ```bash
 curl -s -X POST http://localhost:3000/api/v1/auth/session \
   -H "Authorization: Bearer $TOKEN" | jq '.expiresAt'
@@ -220,6 +238,7 @@ curl -X GET http://localhost:3000/api/v1/auth/whoami \
 ```
 
 **Expected Response (200 OK):**
+
 ```json
 {
   "authenticated": true,
@@ -239,6 +258,7 @@ curl -X GET http://localhost:3000/api/v1/auth/whoami \
 ```
 
 **Expected Response (401 Unauthorized):**
+
 ```json
 {
   "error": "Unauthorized",
@@ -248,6 +268,7 @@ curl -X GET http://localhost:3000/api/v1/auth/whoami \
 ```
 
 **Server Log (Expected):**
+
 ```
 [SessionCookie] Token expired { reason: 'expired' }
 [Auth] Session cookie invalid, trying JWT fallback
@@ -258,12 +279,14 @@ curl -X GET http://localhost:3000/api/v1/auth/whoami \
 ```
 
 **Success Criteria:**
+
 - ✅ Cookie works before expiry (< 60s)
 - ✅ Cookie rejected after expiry (> 60s)
 - ✅ HTTP 401 returned
 - ✅ Log shows `session_cookie_auth_failed { reason: 'expired' }`
 
 **Cleanup:**
+
 ```bash
 # Restore original TTL
 # Update .env: SESSION_COOKIE_TTL_SECONDS=3600
@@ -296,6 +319,7 @@ curl -X GET http://localhost:3000/api/v1/auth/whoami \
 ```
 
 **Expected Response (200 OK):**
+
 ```json
 {
   "authenticated": true,
@@ -310,12 +334,14 @@ curl -X GET http://localhost:3000/api/v1/auth/whoami \
 ```
 
 **Key Assertion:**
+
 - ✅ `authSource: "cookie"` - Cookie used (not Bearer JWT)
 - ✅ `hasCookieHeader: true` - Cookie present
 - ✅ `hasBearerHeader: true` - Bearer present
 - ✅ **Cookie takes precedence** (middleware checks cookie first)
 
 **Server Log (Expected):**
+
 ```
 [Auth] Session cookie authenticated {
   sessionId: 'sess_abc-123-def-456',
@@ -338,6 +364,7 @@ curl -X GET http://localhost:3000/api/v1/auth/whoami \
 ```
 
 **Expected Response (200 OK):**
+
 ```json
 {
   "authenticated": true,
@@ -349,10 +376,12 @@ curl -X GET http://localhost:3000/api/v1/auth/whoami \
 ```
 
 **Key Assertion:**
+
 - ✅ `authSource: "bearer"` - Fell back to JWT
 - ✅ HTTP 200 OK (authenticated via fallback)
 
 **Server Log (Expected):**
+
 ```
 [SessionCookie] Token verification failed { reason: 'invalid_signature' }
 [Auth] Session cookie invalid, trying JWT fallback
@@ -373,12 +402,14 @@ If frontend runs on `http://localhost:4200` and backend on `http://localhost:300
 #### Backend (Server)
 
 **1. CORS Configuration (`.env`):**
+
 ```bash
 FRONTEND_ORIGINS=http://localhost:4200
 CORS_ALLOW_NO_ORIGIN=false
 ```
 
 **2. Server must respond with:**
+
 ```http
 Access-Control-Allow-Origin: http://localhost:4200
 Access-Control-Allow-Credentials: true
@@ -407,7 +438,7 @@ this.http.post('http://localhost:3000/api/v1/auth/session', {}, {
   withCredentials: true  // Receive Set-Cookie
 }).subscribe(response => {
   console.log('Session cookie set:', response);
-  
+
   // Future requests automatically send cookie
   this.http.get('http://localhost:3000/api/v1/auth/whoami', {
     withCredentials: true  // Cookie sent automatically
@@ -437,6 +468,7 @@ curl -v http://localhost:3000/api/v1/auth/whoami \
 ### Success Flow:
 
 **1. Cookie Issuance:**
+
 ```
 [SessionCookie] Session cookie issued {
   sessionId: 'sess_...',
@@ -448,6 +480,7 @@ curl -v http://localhost:3000/api/v1/auth/whoami \
 ```
 
 **2. Cookie Authentication:**
+
 ```
 [Auth] Session cookie authenticated {
   sessionId: 'sess_...',
@@ -460,6 +493,7 @@ curl -v http://localhost:3000/api/v1/auth/whoami \
 ### Failure Flow (with Fallback):
 
 **1. Invalid Cookie (Fallback to JWT):**
+
 ```
 [SessionCookie] Token verification failed {
   reason: 'invalid_signature',
@@ -473,6 +507,7 @@ curl -v http://localhost:3000/api/v1/auth/whoami \
 ```
 
 **2. Expired Cookie (Fallback to JWT):**
+
 ```
 [SessionCookie] Token expired { reason: 'expired' }
 [Auth] Session cookie invalid, trying JWT fallback
@@ -480,6 +515,7 @@ curl -v http://localhost:3000/api/v1/auth/whoami \
 ```
 
 **3. Both Invalid (Unauthorized):**
+
 ```
 [SessionCookie] Token expired { reason: 'expired' }
 [Auth] Session cookie invalid, trying JWT fallback
@@ -488,6 +524,7 @@ curl -v http://localhost:3000/api/v1/auth/whoami \
 ```
 
 **4. Missing All Auth (Unauthorized):**
+
 ```
 [Auth] No valid session cookie or Bearer token {
   event: 'auth_failed_no_credentials',
@@ -497,15 +534,15 @@ curl -v http://localhost:3000/api/v1/auth/whoami \
 
 ### Logging Reasons (session_cookie_auth_failed):
 
-| Reason | Description | Cause |
-|--------|-------------|-------|
-| `expired` | Token TTL exceeded | Wait > SESSION_COOKIE_TTL_SECONDS |
-| `invalid_signature` | Wrong secret or corrupted | SESSION_COOKIE_SECRET mismatch |
-| `missing_sessionId` | Required claim missing | Malformed token |
-| `missing_exp` | Expiration claim missing | Malformed token |
-| `missing_iat` | Issued-at claim missing | Malformed token |
-| `invalid_typ` | Token type mismatch | Not a session cookie (typ ≠ "session_cookie") |
-| `unknown_error` | Unexpected error | Check error logs |
+| Reason              | Description               | Cause                                         |
+| ------------------- | ------------------------- | --------------------------------------------- |
+| `expired`           | Token TTL exceeded        | Wait > SESSION_COOKIE_TTL_SECONDS             |
+| `invalid_signature` | Wrong secret or corrupted | SESSION_COOKIE_SECRET mismatch                |
+| `missing_sessionId` | Required claim missing    | Malformed token                               |
+| `missing_exp`       | Expiration claim missing  | Malformed token                               |
+| `missing_iat`       | Issued-at claim missing   | Malformed token                               |
+| `invalid_typ`       | Token type mismatch       | Not a session cookie (typ ≠ "session_cookie") |
+| `unknown_error`     | Unexpected error          | Check error logs                              |
 
 ---
 
@@ -533,6 +570,7 @@ Run all tests automatically:
 ### "Unauthorized" even with valid cookie
 
 **Check:**
+
 1. Cookie not expired: `jq '.expiresAt'` from `/auth/session` response
 2. SESSION_COOKIE_SECRET matches between issuance and validation
 3. Cookie being sent: `curl -v` shows `Cookie: session=...`
@@ -541,6 +579,7 @@ Run all tests automatically:
 ### "Set-Cookie not received"
 
 **Check:**
+
 1. Response includes `Set-Cookie` header: `curl -v`
 2. For cross-origin: CORS configured with `Access-Control-Allow-Credentials: true`
 3. Frontend uses `withCredentials: true`
@@ -548,6 +587,7 @@ Run all tests automatically:
 ### Cookie not sent automatically (Angular)
 
 **Check:**
+
 1. All HTTP requests include `withCredentials: true`
 2. CORS configured correctly on backend
 3. Cookie domain matches (use host-only in dev, set COOKIE_DOMAIN in prod)
@@ -561,6 +601,6 @@ Run all tests automatically:
 ✅ **Test B**: Use cookie-only on protected endpoint  
 ✅ **Test C**: Verify cookie expiry (401 after TTL)  
 ✅ **Test D**: Cookie precedence over Bearer JWT  
-✅ **Test E**: Cross-origin documentation (CORS + withCredentials)  
+✅ **Test E**: Cross-origin documentation (CORS + withCredentials)
 
 All tests verify proper logging with `session_cookie_issued`, `session_cookie_auth_ok`, and `session_cookie_auth_failed` events.

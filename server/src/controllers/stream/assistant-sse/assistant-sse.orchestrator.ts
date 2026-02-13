@@ -1,7 +1,7 @@
 /**
- * Assistant SSE Orchestrator
- * Coordinates the SSE assistant flow
- * Single responsibility: Flow orchestration and decision logic
+ * Assistant SSE Orchestrator (Thin Coordinator)
+ * Coordinates the SSE assistant flow using state machine
+ * Single responsibility: Flow orchestration via state machine
  */
 
 import type { Logger } from 'pino';
@@ -15,7 +15,9 @@ import { SseWriter } from './sse-writer.js';
 import { NarrationTemplates } from './narration-templates.js';
 import { OwnershipValidator } from './ownership-validator.js';
 import { AssistantContextBuilder } from './assistant-context-builder.js';
-import { ResultWaiter } from './result-waiter.js';
+import { SseStateMachine, SseState } from './sse-state-machine.js';
+import { PollingStrategy } from './polling-strategy.js';
+import { handleSseError } from './sse-error-handler.js';
 
 export interface AssistantSseOrchestratorConfig {
   timeoutMs: number;
@@ -26,7 +28,7 @@ export class AssistantSseOrchestrator {
   private readonly narrationTemplates: NarrationTemplates;
   private readonly ownershipValidator: OwnershipValidator;
   private readonly contextBuilder: AssistantContextBuilder;
-  private readonly resultWaiter: ResultWaiter;
+  private readonly pollingStrategy: PollingStrategy;
 
   constructor(
     private readonly jobStore: ISearchJobStore,
@@ -37,11 +39,13 @@ export class AssistantSseOrchestrator {
     this.narrationTemplates = new NarrationTemplates();
     this.ownershipValidator = new OwnershipValidator(jobStore, logger);
     this.contextBuilder = new AssistantContextBuilder(logger);
-    this.resultWaiter = new ResultWaiter(
+    this.pollingStrategy = new PollingStrategy(
       jobStore,
       logger,
-      config.pollIntervalMs,
-      config.timeoutMs
+      {
+        pollIntervalMs: config.pollIntervalMs,
+        timeoutMs: config.timeoutMs
+      }
     );
   }
 
@@ -125,7 +129,19 @@ export class AssistantSseOrchestrator {
       const result = await this.jobStore.getResult(requestId);
       const assistantLanguage: AssistantLanguage = ((result as any)?.query?.language || 'en') as AssistantLanguage;
 
-      // Send meta event
+      // Determine flow type and initialize state machine
+      const isClarify = jobStatus === 'DONE_CLARIFY';
+      const isStopped = jobStatus === 'DONE_STOPPED';
+      const flowType = (isClarify || isStopped) ? 'CLARIFY_STOPPED' : 'SEARCH';
+      const stateMachine = new SseStateMachine(flowType);
+
+      this.logger.debug(
+        { requestId, jobStatus, flowType },
+        '[AssistantSSE] Flow type determined'
+      );
+
+      // Transition: START → META_SENT
+      stateMachine.transition(SseState.META_SENT);
       writer.sendMeta({
         requestId,
         language: assistantLanguage,
@@ -139,19 +155,10 @@ export class AssistantSseOrchestrator {
         return;
       }
 
-      // Determine decision type
-      const isClarify = jobStatus === 'DONE_CLARIFY';
-      const isStopped = jobStatus === 'DONE_STOPPED';
-      const isSearch = !isClarify && !isStopped; // Default to SEARCH (safe)
-
-      this.logger.debug(
-        { requestId, jobStatus, isClarify, isStopped, isSearch },
-        '[AssistantSSE] Decision type determined'
-      );
-
       // Branch: CLARIFY or STOPPED
-      if (isClarify || isStopped) {
-        await this.handleClarifyOrStopped(
+      if (flowType === 'CLARIFY_STOPPED') {
+        await this.executeClarifyStoppedFlow(
+          stateMachine,
           requestId,
           traceId,
           authReq,
@@ -167,7 +174,8 @@ export class AssistantSseOrchestrator {
       }
 
       // Branch: SEARCH
-      await this.handleSearch(
+      await this.executeSearchFlow(
+        stateMachine,
         requestId,
         traceId,
         authReq,
@@ -180,21 +188,23 @@ export class AssistantSseOrchestrator {
         startTime
       );
     } catch (error) {
-      this.handleError(
+      handleSseError(
         error,
         requestId,
         startTime,
         clientDisconnected,
         abortController.signal.aborted,
-        writer
+        writer,
+        this.logger
       );
     }
   }
 
   /**
-   * Handle CLARIFY or STOPPED flow
+   * Execute CLARIFY or STOPPED flow
    */
-  private async handleClarifyOrStopped(
+  private async executeClarifyStoppedFlow(
+    stateMachine: SseStateMachine,
     requestId: string,
     traceId: string,
     authReq: AuthenticatedRequest,
@@ -230,7 +240,8 @@ export class AssistantSseOrchestrator {
       return;
     }
 
-    // Send message event
+    // Transition: META_SENT → MESSAGE_SENT
+    stateMachine.transition(SseState.MESSAGE_SENT);
     writer.sendMessage({
       type: assistant.type,
       message: assistant.message,
@@ -244,7 +255,8 @@ export class AssistantSseOrchestrator {
       '[AssistantSSE] CLARIFY/STOPPED message sent'
     );
 
-    // Send done
+    // Transition: MESSAGE_SENT → DONE
+    stateMachine.transition(SseState.DONE);
     writer.sendDone();
 
     const durationMs = Date.now() - startTime;
@@ -257,9 +269,10 @@ export class AssistantSseOrchestrator {
   }
 
   /**
-   * Handle SEARCH flow
+   * Execute SEARCH flow
    */
-  private async handleSearch(
+  private async executeSearchFlow(
+    stateMachine: SseStateMachine,
     requestId: string,
     traceId: string,
     authReq: AuthenticatedRequest,
@@ -271,7 +284,10 @@ export class AssistantSseOrchestrator {
     isClientDisconnected: () => boolean,
     startTime: number
   ): Promise<void> {
+    // Transition: META_SENT → NARRATION_SENT
     // Step 1: Send immediate narration template (no LLM)
+    stateMachine.transition(SseState.NARRATION_SENT);
+    
     const narrationMessage: AssistantOutput = {
       type: 'GENERIC_QUERY_NARRATION',
       message: this.narrationTemplates.getNarrationTemplate(assistantLanguage),
@@ -300,8 +316,11 @@ export class AssistantSseOrchestrator {
       return;
     }
 
+    // Transition: NARRATION_SENT → WAITING
     // Step 2: Poll for results readiness
-    const pollResult = await this.resultWaiter.waitForResults(
+    stateMachine.transition(SseState.WAITING);
+    
+    const pollResult = await this.pollingStrategy.waitForResults(
       requestId,
       jobStatus,
       abortSignal,
@@ -317,6 +336,9 @@ export class AssistantSseOrchestrator {
 
     // Step 3: Generate SUMMARY if results ready, else timeout message
     if (pollResult.resultsReady) {
+      // Transition: WAITING → SUMMARY_SENT
+      stateMachine.transition(SseState.SUMMARY_SENT);
+      
       await this.sendSummaryMessage(
         requestId,
         traceId,
@@ -328,6 +350,7 @@ export class AssistantSseOrchestrator {
         isClientDisconnected
       );
     } else {
+      // Transition: WAITING → DONE (timeout case, no summary)
       this.sendTimeoutMessage(
         requestId,
         pollResult.latestStatus,
@@ -336,7 +359,11 @@ export class AssistantSseOrchestrator {
       );
     }
 
-    // Send done
+    // Transition: SUMMARY_SENT/WAITING → DONE
+    if (stateMachine.getState() !== SseState.DONE) {
+      stateMachine.transition(SseState.DONE);
+    }
+    
     writer.sendDone();
 
     const durationMs = Date.now() - startTime;
@@ -432,50 +459,4 @@ export class AssistantSseOrchestrator {
     );
   }
 
-  /**
-   * Handle errors
-   */
-  private handleError(
-    error: unknown,
-    requestId: string,
-    startTime: number,
-    clientDisconnected: boolean,
-    aborted: boolean,
-    writer: SseWriter
-  ): void {
-    const durationMs = Date.now() - startTime;
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    const isTimeout = errorMsg.toLowerCase().includes('timeout');
-    const isAborted = errorMsg.toLowerCase().includes('abort');
-
-    // Don't send error if client already disconnected
-    if (clientDisconnected || aborted) {
-      this.logger.debug(
-        { requestId, durationMs },
-        '[AssistantSSE] Client disconnected during error handling'
-      );
-      writer.end();
-      return;
-    }
-
-    const errorCode = isTimeout ? 'LLM_TIMEOUT' : (isAborted ? 'ABORTED' : 'LLM_FAILED');
-
-    writer.sendError({
-      code: errorCode,
-      message: 'Failed to generate assistant message'
-    });
-
-    this.logger.error(
-      {
-        requestId,
-        durationMs,
-        errorCode,
-        error: errorMsg,
-        event: 'assistant_sse_error'
-      },
-      '[AssistantSSE] SSE stream failed'
-    );
-
-    writer.end();
-  }
 }

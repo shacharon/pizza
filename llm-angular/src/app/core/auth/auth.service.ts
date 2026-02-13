@@ -67,7 +67,7 @@ export class AuthService {
 
     // Fetch new token
     this.fetchPromise = this.fetchTokenFromBackend();
-    
+
     try {
       const token = await this.fetchPromise;
       return token;
@@ -174,11 +174,11 @@ export class AuthService {
   private async fetchTokenFromBackend(): Promise<string> {
     try {
       console.log('[Auth] Fetching JWT token from backend...');
-      
+
       // Include existing sessionId if available (for continuity)
       const existingSessionId = this.getExistingSessionId();
       const body = existingSessionId ? { sessionId: existingSessionId } : {};
-      
+
       // Use proper auth token endpoint
       let response: TokenResponse;
       try {
@@ -195,11 +195,11 @@ export class AuthService {
       }
 
       const { token, sessionId } = response;
-      
+
       // Update cache and storage
       this.tokenCache.set(token);
       this.saveTokenToStorage(token);
-      
+
       // Update sessionId in localStorage if backend provided a new one
       if (sessionId && sessionId !== existingSessionId) {
         try {
@@ -209,20 +209,20 @@ export class AuthService {
           console.warn('[Auth] Failed to save sessionId', error);
         }
       }
-      
+
       console.log('[Auth] ✅ JWT token acquired');
-      
+
       // Request session cookie for SSE authentication
       // This is done in background - don't block token return
       this.requestSessionCookie(token).catch((error: unknown) => {
         console.warn('[Auth] Failed to obtain session cookie (SSE auth may fail):', error);
       });
-      
+
       return token;
-      
+
     } catch (error) {
       console.error('[Auth] Failed to fetch token from backend', error);
-      
+
       // Re-throw with better context
       if (error instanceof HttpErrorResponse) {
         throw new Error(`Failed to authenticate: ${error.status} ${error.statusText}`);

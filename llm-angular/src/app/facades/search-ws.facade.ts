@@ -23,7 +23,7 @@ export class SearchWsHandler {
   private readonly wsClient = inject(WsClientService);
   private readonly authService = inject(AuthService);
   private readonly assistantSse = inject(AssistantSseService);
-  
+
   // Track SSE subscription for cleanup
   private sseSubscription: Subscription | null = null;
 
@@ -61,7 +61,7 @@ export class SearchWsHandler {
    * @param assistantHandler - Optional handler for assistant messages (for SSE routing)
    */
   async subscribeToRequest(
-    requestId: string, 
+    requestId: string,
     _legacySessionId?: string,
     assistantHandler?: { routeMessage: (type: any, message: string, requestId: string, payload: any) => void }
   ): Promise<void> {
@@ -106,16 +106,16 @@ export class SearchWsHandler {
     // STEP 3: Subscribe to channels (now guaranteed to have auth)
     // Subscribe to 'search' channel for progress/status/ready
     this.wsClient.subscribe(requestId, 'search', jwtSessionId);
-    
+
     // FEATURE FLAG: Use SSE for assistant if enabled
     const useSseAssistant = environment.features?.useSseAssistant ?? false;
-    
+
     if (useSseAssistant && assistantHandler) {
       console.log('[SearchWsHandler] Using SSE for assistant (WS assistant disabled)', { requestId: requestId.substring(0, 20) + '...' });
-      
+
       // Clean up previous SSE subscription
       this.cleanupSse();
-      
+
       // Subscribe to SSE for assistant messages
       this.sseSubscription = this.assistantSse.connect(requestId).subscribe({
         next: (event) => {
@@ -126,7 +126,7 @@ export class SearchWsHandler {
               requestId: requestId.substring(0, 20) + '...',
               preview: payload.message.substring(0, 50) + '...'
             });
-            
+
             // Route to assistant handler (same as WS assistant messages)
             assistantHandler.routeMessage(
               payload.type,
@@ -158,7 +158,7 @@ export class SearchWsHandler {
       this.wsClient.subscribe(requestId, 'assistant', jwtSessionId);
     }
   }
-  
+
   /**
    * Clean up SSE subscription
    */

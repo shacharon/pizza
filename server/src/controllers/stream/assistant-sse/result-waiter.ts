@@ -14,7 +14,7 @@ export class ResultWaiter {
     private readonly logger: Logger,
     private readonly pollIntervalMs: number,
     private readonly timeoutMs: number
-  ) {}
+  ) { }
 
   /**
    * Sleep helper for polling

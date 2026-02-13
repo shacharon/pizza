@@ -3,6 +3,7 @@
 ## Architecture
 
 ### Development (Same Origin via Proxy) ✅
+
 - **Frontend**: `http://localhost:4200` (Angular dev server)
 - **Backend**: `http://localhost:3000` (Express)
 - **Cookie Domain**: Empty (host-only, no COOKIE_DOMAIN env var needed)
@@ -12,11 +13,14 @@
 ### Production (Two Options)
 
 #### Option A: Same Domain (RECOMMENDED) ✅
+
 **Setup:**
+
 - **Frontend**: `https://app.example.com` (static hosting: Netlify/Vercel/S3+CloudFront)
 - **Backend**: `https://app.example.com/api` (reverse proxy: Nginx/CloudFront)
 
 **Configuration:**
+
 ```bash
 # Backend .env (production)
 COOKIE_DOMAIN=  # Empty or omit = host-only cookie
@@ -24,17 +28,19 @@ COOKIE_SAMESITE=Lax
 ```
 
 **Frontend environment.production.ts:**
+
 ```typescript
 export const environment = {
   production: true,
-  apiUrl: '',  // Empty = same origin
-  apiBasePath: '/api/v1',
-  wsBaseUrl: 'wss://app.example.com',
-  features: { useSseAssistant: true }
+  apiUrl: "", // Empty = same origin
+  apiBasePath: "/api/v1",
+  wsBaseUrl: "wss://app.example.com",
+  features: { useSseAssistant: true },
 };
 ```
 
 **Nginx Example:**
+
 ```nginx
 server {
   listen 443 ssl;
@@ -70,10 +76,12 @@ server {
 #### Option B: Subdomain (If Separate Deployments)
 
 **Setup:**
+
 - **Frontend**: `https://app.example.com`
 - **Backend**: `https://api.example.com`
 
 **Configuration:**
+
 ```bash
 # Backend .env (production)
 COOKIE_DOMAIN=.example.com  # Parent domain (note the leading dot)
@@ -82,31 +90,38 @@ COOKIE_SAMESITE=None  # Required for cross-site cookies
 ```
 
 **Backend CORS (server/src/config/cors.ts or app.ts):**
+
 ```typescript
-app.use(cors({
-  origin: 'https://app.example.com',  // Specific origin (NEVER use '*' with credentials)
-  credentials: true  // Allow cookies
-}));
+app.use(
+  cors({
+    origin: "https://app.example.com", // Specific origin (NEVER use '*' with credentials)
+    credentials: true, // Allow cookies
+  }),
+);
 ```
 
 **Frontend environment.production.ts:**
+
 ```typescript
 export const environment = {
   production: true,
-  apiUrl: 'https://api.example.com',
-  apiBasePath: '/api/v1',
-  wsBaseUrl: 'wss://api.example.com',
-  features: { useSseAssistant: true }
+  apiUrl: "https://api.example.com",
+  apiBasePath: "/api/v1",
+  wsBaseUrl: "wss://api.example.com",
+  features: { useSseAssistant: true },
 };
 ```
 
 **Frontend HTTP Service (ensure credentials):**
+
 ```typescript
 // All HTTP requests must include:
-{ withCredentials: true }
+{
+  withCredentials: true;
+}
 
 // EventSource (SSE) must include:
-new EventSource(url, { withCredentials: true })
+new EventSource(url, { withCredentials: true });
 ```
 
 **Result**: Cross-origin with shared parent domain cookie
@@ -116,6 +131,7 @@ new EventSource(url, { withCredentials: true })
 ## Security Checklist
 
 ### Required for Production:
+
 - [ ] `SESSION_COOKIE_SECRET` is strong (32+ chars, crypto-random)
 - [ ] `SESSION_COOKIE_SECRET` ≠ `JWT_SECRET` (different secrets)
 - [ ] `Secure` flag enabled (auto in production if `NODE_ENV=production`)
@@ -126,6 +142,7 @@ new EventSource(url, { withCredentials: true })
 - [ ] CORS allows specific origin, not `*` (if using credentials)
 
 ### Never in Production:
+
 - ❌ `COOKIE_DOMAIN=localhost`
 - ❌ `COOKIE_SAMESITE=Lax` with cross-origin setup
 - ❌ CORS `origin: '*'` with `credentials: true`
@@ -136,6 +153,7 @@ new EventSource(url, { withCredentials: true })
 ## Testing
 
 ### Development (After Changes):
+
 ```bash
 # Backend (server will auto-reload)
 cd server
@@ -147,6 +165,7 @@ ng serve  # Proxy now active!
 ```
 
 **Verify Cookie:**
+
 1. Open DevTools (F12) → Application → Cookies → `http://localhost:4200`
 2. After calling `/api/v1/auth/session`, you should see:
    - Name: `session`
@@ -156,11 +175,13 @@ ng serve  # Proxy now active!
    - SameSite: Lax
 
 **Verify SSE:**
+
 1. Run a search
 2. Check browser Network tab → `assistant/req-xxx` → 200 OK (not 401)
 3. Check server logs: `hasCookieHeader: true`, `sessionCookieVerifyOk: true`
 
 ### Production (Pre-Deploy Checklist):
+
 1. Set `COOKIE_DOMAIN` correctly (or leave empty if same-origin)
 2. Verify `environment.production.ts` has correct `apiUrl`
 3. Build: `ng build --configuration=production`
@@ -172,13 +193,16 @@ ng serve  # Proxy now active!
 ## Troubleshooting
 
 ### Issue: 401 on SSE in Production
+
 **Causes:**
+
 - Cookie domain mismatch (`COOKIE_DOMAIN` incorrect)
 - CORS not allowing credentials
 - Frontend not sending `withCredentials: true`
 - Cookie expired or signature invalid
 
 **Debug:**
+
 ```bash
 # Backend logs (look for):
 sse_auth_debug { hasCookieHeader, hasSessionCookie, sessionCookieVerifyOk }
@@ -188,7 +212,9 @@ sse_auth_debug { hasCookieHeader, hasSessionCookie, sessionCookieVerifyOk }
 ```
 
 ### Issue: Cookie not being set
+
 **Causes:**
+
 - `COOKIE_SAMESITE=Lax` with cross-origin requests (must be `None`)
 - Missing `Secure` flag on HTTPS cross-origin
 - CORS not allowing credentials
@@ -198,11 +224,12 @@ sse_auth_debug { hasCookieHeader, hasSessionCookie, sessionCookieVerifyOk }
 ## Migration Path (Existing Deployments)
 
 1. **Update Backend .env:**
+
    ```bash
    # If same-origin deployment:
    COOKIE_DOMAIN=  # Empty or remove line
    COOKIE_SAMESITE=Lax
-   
+
    # If cross-origin deployment:
    COOKIE_DOMAIN=.example.com
    COOKIE_SAMESITE=None

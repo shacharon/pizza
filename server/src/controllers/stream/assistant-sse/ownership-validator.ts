@@ -13,7 +13,7 @@ export class OwnershipValidator {
   constructor(
     private readonly jobStore: ISearchJobStore,
     private readonly logger: Logger
-  ) {}
+  ) { }
 
   /**
    * Best-effort ownership validation

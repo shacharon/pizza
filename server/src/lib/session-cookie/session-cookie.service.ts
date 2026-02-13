@@ -33,7 +33,7 @@ export function signSessionCookie(
   options: SessionCookieOptions
 ): string {
   const now = Math.floor(Date.now() / 1000);
-  
+
   const payload = {
     sessionId,
     ...(userId && { userId }),
@@ -78,9 +78,9 @@ export function verifySessionCookie(
 
     // Validate typ claim (must be session_cookie)
     if (decoded.typ !== 'session_cookie') {
-      logger.warn({ 
-        reason: 'invalid_typ', 
-        typ: decoded.typ 
+      logger.warn({
+        reason: 'invalid_typ',
+        typ: decoded.typ
       }, '[SessionCookie] Token has invalid typ claim');
       return null;
     }
@@ -93,18 +93,18 @@ export function verifySessionCookie(
     }
 
     if (error instanceof jwt.JsonWebTokenError) {
-      logger.debug({ 
+      logger.debug({
         reason: 'invalid_signature',
-        message: error.message 
+        message: error.message
       }, '[SessionCookie] Token verification failed');
       return null;
     }
 
-    logger.warn({ 
+    logger.warn({
       reason: 'unknown_error',
       error: error instanceof Error ? error.message : 'unknown'
     }, '[SessionCookie] Unexpected verification error');
-    
+
     return null;
   }
 }
@@ -119,7 +119,7 @@ export function extractSessionCookieFromHeader(cookieHeader: string | undefined)
 
   // Parse cookies from header (format: "name1=value1; name2=value2")
   const cookies = cookieHeader.split(';').map(c => c.trim());
-  
+
   for (const cookie of cookies) {
     const [name, value] = cookie.split('=');
     if (name === 'session' && value) {

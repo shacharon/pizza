@@ -1,9 +1,11 @@
 # Assistant SSE Controller Refactor - Summary
 
 ## Overview
+
 Refactored the monolithic `assistant-sse.controller.ts` (578 lines) into a clean, SOLID/OOP architecture with single-responsibility modules.
 
 ## ✅ No Behavior Changes
+
 - **Same routes**: `GET /api/v1/stream/assistant/:requestId`
 - **Same SSE events**: `meta` → `message` → `done` (or `error`)
 - **Same payload shapes**: All SSE event payloads unchanged
@@ -14,6 +16,7 @@ Refactored the monolithic `assistant-sse.controller.ts` (578 lines) into a clean
 ## File Structure
 
 ### Created Files (7 new files)
+
 ```
 server/src/controllers/stream/assistant-sse/
 ├── assistant-sse.router.ts          # Express router wiring (56 lines)
@@ -28,9 +31,11 @@ server/src/controllers/stream/assistant-sse/
 ```
 
 ### Modified Files (1)
+
 - `server/src/routes/v1/index.ts` - Updated import path
 
 ### Deleted Files (1)
+
 - `server/src/controllers/stream/assistant-sse.controller.ts` - Replaced by new module structure
 
 ## Architecture
@@ -108,6 +113,7 @@ constructor(
 ## Flow Preservation
 
 ### CLARIFY/STOPPED Flow
+
 ```
 1. Validate ownership
 2. Send meta event
@@ -117,6 +123,7 @@ constructor(
 ```
 
 ### SEARCH Flow
+
 ```
 1. Validate ownership
 2. Send meta event
@@ -130,12 +137,14 @@ constructor(
 ## Error Handling
 
 Centralized error mapping in orchestrator:
+
 - `LLM_TIMEOUT` - LLM timeout errors
 - `ABORTED` - Aborted requests
 - `LLM_FAILED` - Other LLM errors
 - `UNAUTHORIZED` - Ownership validation failures
 
 Preserves existing behavior:
+
 - Never sends SSE error after client disconnect
 - Uses `AbortController` for cleanup
 - Checks `clientDisconnected` flag throughout flow
@@ -143,12 +152,14 @@ Preserves existing behavior:
 ## Verification
 
 ### TypeScript Build
+
 ```bash
 ✅ npm run build - Success (no errors)
 ✅ No linter errors
 ```
 
 ### Expected SSE Flow (unchanged)
+
 1. **CLARIFY/STOP**: `meta` → `message(CLARIFY/STOP)` → `done`
 2. **SEARCH**: `meta` → `message(GENERIC_QUERY_NARRATION)` → `message(SUMMARY)` → `done`
 3. **SEARCH (timeout)**: `meta` → `message(GENERIC_QUERY_NARRATION)` → `message(timeout)` → `done`
@@ -156,6 +167,7 @@ Preserves existing behavior:
 ## Code Quality Improvements
 
 ✅ **SOLID Principles**
+
 - Single Responsibility: Each class has one clear purpose
 - Open/Closed: Easy to extend (e.g., add new templates)
 - Liskov Substitution: Interfaces properly abstracted
@@ -163,17 +175,20 @@ Preserves existing behavior:
 - Dependency Inversion: Constructor injection, no globals
 
 ✅ **KISS (Keep It Simple)**
+
 - No over-engineering
 - Clear naming conventions
 - Minimal abstractions (no unnecessary layers)
 
 ✅ **OOP Best Practices**
+
 - Constructor injection
 - Private methods for internal logic
 - Public API surface minimal and clear
 - No static "god util" files
 
 ✅ **Testability**
+
 - Easy to mock dependencies
 - Each module can be unit tested independently
 - No global state
@@ -181,6 +196,7 @@ Preserves existing behavior:
 ## Migration Notes
 
 No migration required - this is a drop-in replacement:
+
 - Same route path
 - Same exported router
 - Same middleware usage
@@ -190,6 +206,7 @@ No migration required - this is a drop-in replacement:
 ## Performance Impact
 
 **None** - Identical runtime behavior:
+
 - Same number of LLM calls
 - Same polling intervals
 - Same timeout semantics
@@ -198,6 +215,7 @@ No migration required - this is a drop-in replacement:
 ## Future Extensibility
 
 Easy to extend:
+
 1. Add new language templates (modify `NarrationTemplates`)
 2. Add new ownership rules (modify `OwnershipValidator`)
 3. Add new decision types (modify `AssistantSseOrchestrator`)
@@ -207,6 +225,7 @@ Easy to extend:
 ---
 
 **Total Lines of Code**
+
 - Before: 578 lines (1 monolithic file)
 - After: 895 lines (8 modular files + types)
 - Added: 317 lines (mostly type safety and better structure)

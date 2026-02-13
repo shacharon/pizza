@@ -11,9 +11,9 @@ import { getCacheService, raceWithCleanup } from './cache-manager.js';
 import { mapGooglePlaceToResult } from './result-mapper.js';
 import type { RouteLLMMapping, Route2Context } from '../../types.js';
 import { retryWithBackoff } from '../../../../../lib/reliability/retry-handler.js';
-
-// Field mask for Google Places API (New) - includes opening hours data
-const PLACES_FIELD_MASK = 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.priceLevel,places.currentOpeningHours,places.regularOpeningHours,places.utcOffsetMinutes,places.photos,places.types,places.googleMapsUri';
+import { geocodeCity } from './textsearch/geocoding-service.js';
+import { validateLocationBias } from './textsearch/location-bias-validator.js';
+import { getTextSearchFieldMask } from './textsearch/field-mask-builder.js';
 
 /**
  * Execute Google Places Text Search (New API)
@@ -123,7 +123,7 @@ export async function executeTextSearch(
             lng: mapping.bias.center.lng,
             radiusMeters: mapping.bias.radiusMeters
           } : null,
-          fieldMask: PLACES_FIELD_MASK,
+          fieldMask: getTextSearchFieldMask(),
           pipelineVersion: 'route2'
         });
         const ttl = cache.getTTL(mapping.textQuery);
@@ -193,7 +193,7 @@ export async function executeTextSearch(
       method: 'searchText',
       durationMs,
       resultCount: results.length,
-      fieldMaskUsed: PLACES_FIELD_MASK,
+      fieldMaskUsed: getTextSearchFieldMask(),
       servedFrom
     }, '[GOOGLE] Text Search completed');
 
@@ -231,7 +231,7 @@ async function executeTextSearchAttempt(
   let enrichedMapping = mapping;
   if (mapping.cityText && !mapping.bias) {
     try {
-      const cityCoords = await callGoogleGeocodingAPI(
+      const cityCoords = await geocodeCity(
         mapping.cityText,
         mapping.region,
         apiKey,
@@ -374,44 +374,6 @@ function buildTextSearchBody(
   return body;
 }
 
-/**
- * Validate location bias coordinates
- * Returns validated coordinates or null if invalid
- */
-function validateLocationBias(
-  center: { lat: number; lng: number },
-  requestId?: string
-): { lat: number; lng: number } | null {
-  const { lat, lng } = center;
-
-  // Check valid ranges
-  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-    logger.warn({
-      requestId,
-      event: 'bias_invalid_discarded',
-      reason: 'out_of_range',
-      lat,
-      lng
-    }, '[GOOGLE] Invalid bias coordinates discarded');
-    return null;
-  }
-
-  // Detect potential swapped coordinates for Israel region
-  // Israel: lat ~29-33, lng ~34-36
-  // If both values are ~34-35, likely swapped or invalid
-  if (Math.abs(lat - lng) < 0.5 && lat > 32 && lat < 36 && lng > 32 && lng < 36) {
-    logger.warn({
-      requestId,
-      event: 'bias_invalid_discarded',
-      reason: 'suspicious_duplicate_values',
-      lat,
-      lng
-    }, '[GOOGLE] Suspicious bias coordinates (possible swap) discarded');
-    return null;
-  }
-
-  return { lat, lng };
-}
 
 /**
  * Call Google Places Search Text API (New API)
@@ -489,7 +451,7 @@ export async function callGooglePlacesSearchText(
           headers: {
             'Content-Type': 'application/json',
             'X-Goog-Api-Key': apiKey,
-            'X-Goog-FieldMask': PLACES_FIELD_MASK
+            'X-Goog-FieldMask': getTextSearchFieldMask()
           },
           body: JSON.stringify(body)
         }, {
@@ -573,66 +535,3 @@ export async function callGooglePlacesSearchText(
   });
 }
 
-/**
- * Call Google Geocoding API to get coordinates for a location query
- * (Geocoding API remains unchanged - uses legacy endpoint)
- */
-async function callGoogleGeocodingAPI(
-  address: string,
-  region: string | null,
-  apiKey: string,
-  requestId: string
-): Promise<{ lat: number; lng: number } | null> {
-  const params = new URLSearchParams({
-    key: apiKey,
-    address: address
-  });
-
-  if (region) {
-    params.append('region', region.toLowerCase());
-  }
-
-  const url = `https://maps.googleapis.com/maps/api/geocode/json?${params.toString()}`;
-
-  const response = await fetchWithTimeout(url, {
-    method: 'GET',
-    headers: {
-      'Accept': 'application/json'
-    }
-  }, {
-    timeoutMs: 8000,
-    requestId,
-    stage: 'google_maps',
-    provider: 'google_geocoding'
-  });
-
-  if (!response.ok) {
-    throw new Error(`Google Geocoding API HTTP ${response.status}: ${response.statusText}`);
-  }
-
-  const data = await response.json();
-
-  if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
-    logger.warn({
-      requestId,
-      provider: 'google_geocoding',
-      status: data.status,
-      errorMessage: data.error_message
-    }, '[GOOGLE] Geocoding non-OK status');
-
-    if (data.status === 'REQUEST_DENIED' || data.status === 'INVALID_REQUEST') {
-      throw new Error(`Google Geocoding API error: ${data.status} - ${data.error_message || 'no details'}`);
-    }
-  }
-
-  if (data.status === 'ZERO_RESULTS' || !data.results || data.results.length === 0) {
-    return null;
-  }
-
-  // Return the first result's location
-  const location = data.results[0].geometry.location;
-  return {
-    lat: location.lat,
-    lng: location.lng
-  };
-}

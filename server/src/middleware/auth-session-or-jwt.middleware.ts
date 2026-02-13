@@ -54,7 +54,7 @@ export function authSessionOrJwt(
     const hasReqCookies = Boolean((req as any).cookies); // Check if cookie-parser ran
     const sessionToken = extractSessionCookieFromHeader(cookieHeader);
     const hasSessionCookie = Boolean(sessionToken);
-    
+
     logger.info(
       {
         traceId,

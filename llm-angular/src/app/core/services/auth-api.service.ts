@@ -157,7 +157,7 @@ export class AuthApiService {
         // Handle 503: Redis not ready - retry with backoff
         if (error instanceof HttpErrorResponse && error.status === 503) {
           const errorCode = (error.error as any)?.code;
-          
+
           // Check if this is a Redis not ready error
           if (errorCode === 'WS_TICKET_REDIS_NOT_READY' && attemptNumber < 3) {
             const backoffDelays = [200, 500, 1000]; // 200ms, 500ms, 1s
@@ -193,7 +193,7 @@ export class AuthApiService {
               attemptNumber: attemptNumber + 1
             });
           }
-          
+
           // Re-throw error if not retrying
           return throwError(() => error);
         }
