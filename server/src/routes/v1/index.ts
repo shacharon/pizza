@@ -21,7 +21,7 @@ import searchRouter from '../../controllers/search/search.controller.js';
 import analyticsRouter from '../../controllers/analytics/analytics.controller.js';
 import photosRouter from '../../controllers/photos/photos.controller.js';
 import authRouter from '../../controllers/auth/auth.controller.js';
-import assistantSSERouter from '../../controllers/stream/assistant-sse.controller.js';
+import assistantSSERouter from '../../controllers/stream/assistant-sse/assistant-sse.router.js';
 import { authenticateJWT } from '../../middleware/auth.middleware.js';
 import { createRateLimiter } from '../../middleware/rate-limit.middleware.js';
 import { getConfig } from '../../config/env.js';
