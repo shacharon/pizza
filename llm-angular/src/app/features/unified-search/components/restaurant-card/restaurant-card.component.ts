@@ -700,113 +700,93 @@ export class RestaurantCardComponent {
   }
 
   /**
-   * Generic provider CTA configuration
-   * Handles all providers: wolt, tenbis, mishloha
-   * Returns array of provider CTAs to display
+   * Provider links (Wolt, 10bis, Mishloha) - inline text links
+   * Only shows providers when status === FOUND and url is valid
+   * Returns array of provider links to display (empty array if none)
    */
-  readonly providerCtas = computed(() => {
+  readonly providerLinks = computed(() => {
     const restaurant = this.restaurant();
     const restaurantName = restaurant.name;
-    const address = restaurant.address;
     const providers = restaurant.providers || {};
 
-    // Get current UI language
-    const currentLang = this.i18n.currentLang();
-    const lang: 'he' | 'en' = currentLang === 'he' ? 'he' : 'en';
-
-    // Provider configurations
+    // Provider configurations (Wolt, 10bis, Mishloha)
     const providerConfigs: Array<{
       id: 'wolt' | 'tenbis' | 'mishloha';
       label: string;
-      searchLabel: string;
-      buildSearchUrl: (name: string, address: string, lang?: 'he' | 'en') => string;
+      urlPrefix: string;
     }> = [
       {
         id: 'wolt',
         label: 'Wolt',
-        searchLabel: this.i18n.t('card.action.search_on', { provider: 'Wolt' }),
-        buildSearchUrl: (name, addr, l) => buildWoltSearchUrl(name, addr, l)
+        urlPrefix: 'https://wolt.com/'
       },
       {
         id: 'tenbis',
         label: '10bis',
-        searchLabel: this.i18n.t('card.action.search_on', { provider: '10bis' }),
-        buildSearchUrl: buildTenbisSearchUrl
+        urlPrefix: 'https://www.10bis.co.il/next/'
       },
       {
         id: 'mishloha',
         label: 'Mishloha',
-        searchLabel: this.i18n.t('card.action.search_on', { provider: 'Mishloha' }),
-        buildSearchUrl: buildMishlohaSearchUrl
+        urlPrefix: 'https://www.mishloha.co.il/now/r/'
       }
     ];
 
-    return providerConfigs.map(config => {
-      const providerState = providers[config.id];
-      
-      // FOUND: Show "Order on {Provider}" button with direct link
-      if (providerState?.status === 'FOUND' && providerState.url) {
-        return {
-          id: config.id,
-          className: `action-btn action-btn-${config.id}-primary`,
-          label: this.i18n.t('card.action.order_on', { provider: config.label }),
-          disabled: false,
-          showSpinner: false,
-          url: providerState.url,
-          title: this.i18n.t('card.action.order_on', { provider: config.label }),
-          ariaLabel: `${this.i18n.t('card.action.order')} ${restaurantName} ${this.i18n.t('card.action.on')} ${config.label}`,
-        };
-      }
+    // Only include providers with FOUND status and valid URLs
+    const validLinks = providerConfigs
+      .map(config => {
+        const providerState = providers[config.id];
+        
+        // Only show if status is FOUND and url exists
+        if (providerState?.status !== 'FOUND' || !providerState.url) {
+          return null;
+        }
 
-      // PENDING: Show disabled button with spinner
-      if (providerState?.status === 'PENDING') {
+        // URL validation (optional safety check)
+        const url = providerState.url;
+        if (!url.startsWith(config.urlPrefix)) {
+          // Log validation failure in development mode only
+          if (typeof ngDevMode !== 'undefined' && ngDevMode) {
+            console.warn(`[RestaurantCard] Invalid ${config.label} URL for ${restaurantName}:`, {
+              url,
+              expectedPrefix: config.urlPrefix
+            });
+          }
+          return null;
+        }
+
         return {
           id: config.id,
-          className: `action-btn action-btn-${config.id}-pending`,
           label: config.label,
-          disabled: true,
-          showSpinner: true,
-          url: null,
-          title: this.i18n.t('card.action.loading'),
-          ariaLabel: `${this.i18n.t('card.action.loading')} ${config.label}`,
+          url: url,
         };
-      }
+      })
+      .filter((link): link is NonNullable<typeof link> => link !== null);
 
-      // NOT_FOUND or no state: Show "Search on {Provider}" fallback
-      const searchUrl = config.buildSearchUrl(restaurantName, address, lang);
-      return {
-        id: config.id,
-        className: `action-btn action-btn-${config.id}-search`,
-        label: config.searchLabel,
-        disabled: false,
-        showSpinner: false,
-        url: searchUrl,
-        title: config.searchLabel,
-        ariaLabel: `${config.searchLabel} ${restaurantName}`,
-      };
-    });
+    return validLinks;
   });
 
   /**
-   * Handle provider action click
+   * Handle provider link click
    * Opens provider URL in new tab
    */
-  onProviderAction(event: Event, providerId: 'wolt' | 'tenbis' | 'mishloha'): void {
+  onProviderLinkClick(event: Event, providerId: 'wolt' | 'tenbis' | 'mishloha'): void {
     event.stopPropagation();
+    event.preventDefault();
 
-    const cta = this.providerCtas().find(c => c.id === providerId);
-    if (!cta || cta.disabled || !cta.url) {
+    const link = this.providerLinks().find(l => l.id === providerId);
+    if (!link || !link.url) {
       return;
     }
 
     // Open provider URL in new tab
-    window.open(cta.url, '_blank', 'noopener,noreferrer');
+    window.open(link.url, '_blank', 'noopener,noreferrer');
 
-    console.log('[RestaurantCard] Provider action clicked', {
+    console.log('[RestaurantCard] Provider link clicked', {
       placeId: this.restaurant().placeId,
       name: this.restaurant().name,
       providerId,
-      url: cta.url.substring(0, 100),
+      url: link.url.substring(0, 100),
     });
   }
 

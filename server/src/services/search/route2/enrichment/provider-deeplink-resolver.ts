@@ -1,10 +1,10 @@
 /**
  * Provider Deep Link Resolver
  * 
- * Resolves restaurant deep links using 3-layer strategy:
+ * Resolves restaurant deep links using "verified deep-links only" policy:
  * - L1: Search API with city (site:<host> "<name>" "<city>")
  * - L2: Search API without city (site:<host> "<name>")
- * - L3: Internal search fallback (https://<host>/search?q=<name>)
+ * - L3: NOT_FOUND with url=null (no fallback URLs)
  * 
  * Supports both Brave Search (preferred) and Google CSE (legacy fallback)
  */
@@ -66,12 +66,12 @@ const PROVIDER_CONFIGS: Record<Provider, ProviderConfig> = {
   tenbis: {
     allowedHosts: ['10bis.co.il', '*.10bis.co.il'],
     internalSearchUrl: 'https://www.10bis.co.il/search',
-    requiredPathSegments: ['/restaurant/'], // Only match restaurant pages
+    requiredPathSegments: ['/next/'], // Strict validation: only /next/(he|en)/r* restaurant pages
   },
   mishloha: {
     allowedHosts: ['mishloha.co.il', '*.mishloha.co.il'],
     internalSearchUrl: 'https://www.mishloha.co.il/search',
-    requiredPathSegments: ['/restaurant/'], // Only match restaurant pages
+    requiredPathSegments: ['/now/r/'], // Strict validation: only /now/r/* restaurant pages
   },
 };
 
@@ -379,31 +379,28 @@ export class ProviderDeepLinkResolver {
   }
 
   /**
-   * L3: Internal search fallback
-   * Always returns a result (status=NOT_FOUND, but url=search link)
+   * L3: No fallback - return NOT_FOUND with null URL
+   * Enforces "verified deep-links only" policy
    */
   private buildL3Fallback(
     provider: Provider,
     name: string,
     config: ProviderConfig
   ): ResolveResult {
-    const searchUrl = `${config.internalSearchUrl}?q=${encodeURIComponent(name)}`;
-
     logger.info(
       {
-        event: 'provider_link_resolved',
+        event: 'provider_not_found_no_url',
         provider,
         status: 'NOT_FOUND',
-        layerUsed: 3,
-        source: 'internal',
-        urlHost: new URL(searchUrl).hostname,
+        restaurantName: name,
+        reason: 'no_verified_deeplink',
       },
-      '[ProviderResolver] L3 fallback (internal search)'
+      '[ProviderResolver] NOT_FOUND: No verified deep-link found (no fallback)'
     );
 
     return {
-      status: 'NOT_FOUND', // L3 is NOT_FOUND but provides search URL
-      url: searchUrl,
+      status: 'NOT_FOUND',
+      url: null, // No fallback URL - verified deep-links only
       meta: {
         layerUsed: 3,
         source: 'internal',

@@ -329,6 +329,91 @@
   display: none; // Hide tags in modern layout to reduce noise
 }
 
+// Provider links (10bis, Mishloha) - Tailwind mobile-first spacing
+.provider-links-tailwind {
+  // mt-2: Tailwind mobile-first (0.5rem = 8px)
+  margin-top: 0.5rem;
+  
+  display: flex;
+  align-items: center;
+  gap: 0.5rem; // gap-2
+  
+  padding: 0 1rem;
+  padding-bottom: 0.75rem; // pb-3
+  
+  font-size: 0.875rem; // text-sm (14px)
+  color: #6b7280; // text-muted-foreground
+}
+
+.provider-icon {
+  flex-shrink: 0;
+  opacity: 0.7; // opacity-70
+  color: #6b7280;
+}
+
+.provider-content {
+  min-width: 0; // min-w-0 for text truncation
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem; // gap-2
+}
+
+.provider-label {
+  white-space: nowrap;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.provider-list {
+  // ml-2: margin-left 0.5rem
+  margin-left: 0.5rem;
+  
+  display: inline-flex;
+  flex-wrap: wrap; // Mobile: wrap on narrow screens
+  align-items: center;
+  gap: 0.5rem 0.5rem; // gap-x-2 gap-y-1 (0.5rem horizontal, 0.25rem vertical)
+}
+
+.provider-link-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem; // gap between logo and text
+  color: #6b7280;
+  text-decoration: none;
+  font-weight: 500;
+  transition: all 0.15s ease;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline; // hover:underline
+    color: #374151;
+
+    .provider-logo {
+      transform: scale(1.1);
+    }
+  }
+
+  &:active {
+    color: #111827;
+  }
+}
+
+.provider-logo {
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+.provider-name {
+  // Text label for provider
+}
+
+.provider-separator-tw {
+  opacity: 0.6; // opacity-60
+  color: #9ca3af;
+  user-select: none;
+}
+
 // Bottom action bar - ORIGINAL LAYOUT (icon above label, centered) - COMPACT
 .action-bar {
   display: flex;
@@ -378,141 +463,6 @@
 
     .action-label {
       line-height: 1;
-    }
-
-    // Wolt primary button (FOUND status)
-    &.action-btn-wolt-primary {
-      background: linear-gradient(135deg, #009de0 0%, #0086c3 100%);
-      color: #fff;
-      font-weight: 600;
-
-      &:hover:not(:disabled) {
-        background: linear-gradient(135deg, #0086c3 0%, #007ab8 100%);
-        transform: translateY(-1px);
-        box-shadow: 0 2px 8px rgba(0, 157, 224, 0.3);
-      }
-
-      &:active:not(:disabled) {
-        transform: translateY(0);
-      }
-
-      .action-icon {
-        color: #fff;
-      }
-    }
-
-    // Wolt pending button (PENDING status)
-    &.action-btn-wolt-pending {
-      background: #f3f4f6;
-      color: #6b7280;
-      cursor: wait;
-
-      .action-spinner {
-        animation: spin 1s linear infinite;
-      }
-    }
-
-    // Wolt search button (NOT_FOUND status)
-    &.action-btn-wolt-search {
-      background: #fff;
-      border: 1px solid #e5e7eb;
-      color: #374151;
-
-      &:hover:not(:disabled) {
-        background: #f9fafb;
-        border-color: #009de0;
-        color: #009de0;
-      }
-    }
-
-    // TenBis primary button (FOUND status)
-    &.action-btn-tenbis-primary {
-      background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%);
-      color: #fff;
-      font-weight: 600;
-
-      &:hover:not(:disabled) {
-        background: linear-gradient(135deg, #f7931e 0%, #f58220 100%);
-        transform: translateY(-1px);
-        box-shadow: 0 2px 8px rgba(255, 107, 53, 0.3);
-      }
-
-      &:active:not(:disabled) {
-        transform: translateY(0);
-      }
-
-      .action-icon {
-        color: #fff;
-      }
-    }
-
-    // TenBis pending button (PENDING status)
-    &.action-btn-tenbis-pending {
-      background: #f3f4f6;
-      color: #6b7280;
-      cursor: wait;
-
-      .action-spinner {
-        animation: spin 1s linear infinite;
-      }
-    }
-
-    // TenBis search button (NOT_FOUND status)
-    &.action-btn-tenbis-search {
-      background: #fff;
-      border: 1px solid #e5e7eb;
-      color: #374151;
-
-      &:hover:not(:disabled) {
-        background: #f9fafb;
-        border-color: #ff6b35;
-        color: #ff6b35;
-      }
-    }
-
-    // Mishloha primary button (FOUND status)
-    &.action-btn-mishloha-primary {
-      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-      color: #fff;
-      font-weight: 600;
-
-      &:hover:not(:disabled) {
-        background: linear-gradient(135deg, #059669 0%, #047857 100%);
-        transform: translateY(-1px);
-        box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
-      }
-
-      &:active:not(:disabled) {
-        transform: translateY(0);
-      }
-
-      .action-icon {
-        color: #fff;
-      }
-    }
-
-    // Mishloha pending button (PENDING status)
-    &.action-btn-mishloha-pending {
-      background: #f3f4f6;
-      color: #6b7280;
-      cursor: wait;
-
-      .action-spinner {
-        animation: spin 1s linear infinite;
-      }
-    }
-
-    // Mishloha search button (NOT_FOUND status)
-    &.action-btn-mishloha-search {
-      background: #fff;
-      border: 1px solid #e5e7eb;
-      color: #374151;
-
-      &:hover:not(:disabled) {
-        background: #f9fafb;
-        border-color: #10b981;
-        color: #10b981;
-      }
     }
   }
 }

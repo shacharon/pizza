@@ -61,8 +61,17 @@ export function mapGooglePlaceToResult(place: any): any {
     googleMapsUrl: place.googleMapsUri || `https://www.google.com/maps/place/?q=place_id:${placeId}`,
     tags: place.types || [],
     // NEW: Structured provider enrichments
+    // Initialize all providers as PENDING (will be enriched asynchronously)
     providers: {
       wolt: {
+        status: 'PENDING' as const,
+        url: null
+      },
+      tenbis: {
+        status: 'PENDING' as const,
+        url: null
+      },
+      mishloha: {
         status: 'PENDING' as const,
         url: null
       }

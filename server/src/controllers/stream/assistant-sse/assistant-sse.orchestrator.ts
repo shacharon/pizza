@@ -18,6 +18,7 @@ import { AssistantContextBuilder } from './assistant-context-builder.js';
 import { SseStateMachine, SseState } from './sse-state-machine.js';
 import { PollingStrategy } from './polling-strategy.js';
 import { handleSseError } from './sse-error-handler.js';
+import { getExistingRedisClient } from '../../../lib/redis/redis-client.js';
 
 export interface AssistantSseOrchestratorConfig {
   timeoutMs: number;
@@ -29,6 +30,7 @@ export class AssistantSseOrchestrator {
   private readonly ownershipValidator: OwnershipValidator;
   private readonly contextBuilder: AssistantContextBuilder;
   private readonly pollingStrategy: PollingStrategy;
+  private readonly ASSISTANT_LOCK_TTL_SECONDS = 30; // 30 second lock TTL
 
   constructor(
     private readonly jobStore: ISearchJobStore,
@@ -47,6 +49,96 @@ export class AssistantSseOrchestrator {
         timeoutMs: config.timeoutMs
       }
     );
+  }
+
+  /**
+   * Acquire Redis lock for assistant generation idempotency
+   * Prevents duplicate LLM calls if multiple SSE connections occur
+   * 
+   * @param requestId - Request ID
+   * @returns True if lock acquired, false if already locked
+   */
+  private async acquireAssistantLock(requestId: string): Promise<boolean> {
+    const redis = getExistingRedisClient();
+    
+    // Graceful degradation: If Redis unavailable, allow generation
+    if (!redis) {
+      this.logger.debug(
+        { requestId, event: 'assistant_lock_skipped_no_redis' },
+        '[AssistantSSE] Redis unavailable, skipping lock (degraded mode)'
+      );
+      return true;
+    }
+
+    const lockKey = `assistant:lock:${requestId}`;
+    
+    try {
+      // SET NX EX: Set if Not eXists with EXpiration
+      const result = await redis.set(lockKey, '1', 'EX', this.ASSISTANT_LOCK_TTL_SECONDS, 'NX');
+      
+      const acquired = result === 'OK';
+      
+      if (!acquired) {
+        this.logger.info(
+          { 
+            requestId,
+            lockKey,
+            event: 'assistant_generation_deduped'
+          },
+          '[AssistantSSE] Lock already held, skipping duplicate LLM call'
+        );
+      }
+      
+      return acquired;
+    } catch (err) {
+      this.logger.warn(
+        {
+          requestId,
+          lockKey,
+          error: err instanceof Error ? err.message : String(err),
+          event: 'assistant_lock_error'
+        },
+        '[AssistantSSE] Failed to acquire lock, allowing generation (fail-open)'
+      );
+      // Fail-open: Allow generation if lock acquisition fails
+      return true;
+    }
+  }
+
+  /**
+   * Release assistant generation lock
+   * Best-effort cleanup (TTL handles expiration anyway)
+   * 
+   * @param requestId - Request ID
+   */
+  private async releaseAssistantLock(requestId: string): Promise<void> {
+    const redis = getExistingRedisClient();
+    
+    if (!redis) {
+      return;
+    }
+
+    const lockKey = `assistant:lock:${requestId}`;
+    
+    try {
+      await redis.del(lockKey);
+      
+      this.logger.debug(
+        { requestId, lockKey, event: 'assistant_lock_released' },
+        '[AssistantSSE] Lock released'
+      );
+    } catch (err) {
+      // Non-fatal: Lock will expire via TTL
+      this.logger.debug(
+        {
+          requestId,
+          lockKey,
+          error: err instanceof Error ? err.message : String(err),
+          event: 'assistant_lock_release_failed'
+        },
+        '[AssistantSSE] Failed to release lock (non-fatal, TTL will expire)'
+      );
+    }
   }
 
   /**
@@ -87,6 +179,7 @@ export class AssistantSseOrchestrator {
       this.logger.info(
         {
           requestId,
+          traceId,
           durationMs,
           event: 'assistant_sse_client_closed'
         },
@@ -111,6 +204,7 @@ export class AssistantSseOrchestrator {
         this.logger.warn(
           {
             requestId,
+            traceId,
             reason: ownership.reason,
             event: 'assistant_sse_error'
           },
@@ -125,9 +219,76 @@ export class AssistantSseOrchestrator {
       const job = await this.jobStore.getJob(requestId);
       const jobStatus: JobStatus | null = job?.status || null;
       
-      // Detect language (best-effort)
+      // TRACE CONSISTENCY: Reuse traceId from job if available, otherwise generate and persist
+      let resolvedTraceId = job?.traceId || traceId;
+      
+      // If job exists but has no traceId, and we have one from request, persist it
+      if (job && !job.traceId && traceId !== 'unknown') {
+        resolvedTraceId = traceId;
+        // Note: We don't update job here to avoid complexity, traceId will be used for logs only
+      }
+      
+      // If neither job nor request has traceId, generate a unique one
+      if (!resolvedTraceId || resolvedTraceId === 'unknown') {
+        resolvedTraceId = `trace_${requestId.substring(0, 8)}_${Date.now()}`;
+      }
+      
+      this.logger.debug(
+        {
+          requestId,
+          traceId: resolvedTraceId,
+          source: job?.traceId ? 'job' : traceId !== 'unknown' ? 'request' : 'generated',
+          event: 'assistant_sse_trace_resolved'
+        },
+        `[AssistantSSE] Trace ID resolved: ${resolvedTraceId}`
+      );
+      
+      // Use resolved traceId for all subsequent operations
+      const finalTraceId = resolvedTraceId;
+      
+      // Load result for language resolution
       const result = await this.jobStore.getResult(requestId);
-      const assistantLanguage: AssistantLanguage = ((result as any)?.query?.language || 'en') as AssistantLanguage;
+      
+      // LANGUAGE RESOLUTION: Priority-based cascade
+      // Priority: assistantLanguage > intent.language > queryDetectedLanguage > result.query.language > 'en'
+      const candidates = {
+        assistantLanguage: (job as any)?.assistantLanguage as AssistantLanguage | undefined,
+        intentLanguage: (job as any)?.intent?.language as AssistantLanguage | undefined,
+        queryDetectedLanguage: (job as any)?.queryDetectedLanguage as AssistantLanguage | undefined,
+        resultQueryLanguage: ((result as any)?.query?.language as AssistantLanguage | undefined),
+        uiLanguage: ((result as any)?.query?.languageContext?.uiLanguage as AssistantLanguage | undefined)
+      };
+
+      const chosenLanguage: AssistantLanguage =
+        candidates.assistantLanguage ??
+        candidates.intentLanguage ??
+        candidates.queryDetectedLanguage ??
+        candidates.resultQueryLanguage ??
+        candidates.uiLanguage ??
+        'en';
+
+      // Determine source for logging
+      const languageSource = 
+        candidates.assistantLanguage ? 'job.assistantLanguage' :
+        candidates.intentLanguage ? 'job.intent.language' :
+        candidates.queryDetectedLanguage ? 'job.queryDetectedLanguage' :
+        candidates.resultQueryLanguage ? 'result.query.language' :
+        candidates.uiLanguage ? 'result.query.languageContext.uiLanguage' :
+        'fallback';
+
+      this.logger.info(
+        {
+          requestId,
+          traceId: finalTraceId,
+          event: 'assistant_sse_language_resolved',
+          chosen: chosenLanguage,
+          source: languageSource,
+          candidates
+        },
+        `[AssistantSSE] Language resolved: ${chosenLanguage} (from ${languageSource})`
+      );
+
+      const assistantLanguage = chosenLanguage;
 
       // Determine flow type and initialize state machine
       const isClarify = jobStatus === 'DONE_CLARIFY';
@@ -136,7 +297,7 @@ export class AssistantSseOrchestrator {
       const stateMachine = new SseStateMachine(flowType);
 
       this.logger.debug(
-        { requestId, jobStatus, flowType },
+        { requestId, traceId: finalTraceId, jobStatus, flowType },
         '[AssistantSSE] Flow type determined'
       );
 
@@ -150,7 +311,7 @@ export class AssistantSseOrchestrator {
 
       // Check for client disconnect
       if (clientDisconnected || abortController.signal.aborted) {
-        this.logger.debug({ requestId }, '[AssistantSSE] Client disconnected after meta');
+        this.logger.debug({ requestId, traceId: finalTraceId }, '[AssistantSSE] Client disconnected after meta');
         writer.end();
         return;
       }
@@ -160,7 +321,7 @@ export class AssistantSseOrchestrator {
         await this.executeClarifyStoppedFlow(
           stateMachine,
           requestId,
-          traceId,
+          finalTraceId,
           authReq,
           job,
           result,
@@ -177,7 +338,7 @@ export class AssistantSseOrchestrator {
       await this.executeSearchFlow(
         stateMachine,
         requestId,
-        traceId,
+        finalTraceId,
         authReq,
         job,
         jobStatus,
@@ -216,26 +377,41 @@ export class AssistantSseOrchestrator {
     isClientDisconnected: () => boolean,
     startTime: number
   ): Promise<void> {
-    // Generate assistant message with LLM for CLARIFY/STOPPED
-    const context = await this.contextBuilder.buildContext(requestId, job, result);
+    // IDEMPOTENCY: Acquire lock before LLM call
+    const lockAcquired = await this.acquireAssistantLock(requestId);
     
-    const llmProvider = this.createLLMProvider();
-    if (!llmProvider) {
-      throw new Error('LLM provider not available');
+    if (!lockAcquired) {
+      // Another SSE connection is already generating, skip LLM call
+      // Return empty response (SSE will timeout or client will retry)
+      this.logger.warn(
+        { requestId, traceId, event: 'assistant_sse_deduped_clarify' },
+        '[AssistantSSE] Duplicate CLARIFY/STOPPED request detected, closing stream'
+      );
+      writer.end();
+      return;
     }
 
-    const assistant = await generateAssistantMessage(
-      context,
-      llmProvider,
-      requestId,
-      { 
-        traceId,
-        ...(authReq.sessionId && { sessionId: authReq.sessionId })
+    try {
+      // Generate assistant message with LLM for CLARIFY/STOPPED
+      const context = await this.contextBuilder.buildContext(requestId, job, result);
+      
+      const llmProvider = this.createLLMProvider();
+      if (!llmProvider) {
+        throw new Error('LLM provider not available');
       }
-    );
+
+      const assistant = await generateAssistantMessage(
+        context,
+        llmProvider,
+        requestId,
+        { 
+          traceId,
+          ...(authReq.sessionId && { sessionId: authReq.sessionId })
+        }
+      );
 
     if (isClientDisconnected() || abortSignal.aborted) {
-      this.logger.debug({ requestId }, '[AssistantSSE] Client disconnected after CLARIFY/STOPPED generation');
+      this.logger.debug({ requestId, traceId }, '[AssistantSSE] Client disconnected after CLARIFY/STOPPED generation');
       writer.end();
       return;
     }
@@ -251,7 +427,7 @@ export class AssistantSseOrchestrator {
     });
 
     this.logger.info(
-      { requestId, type: assistant.type, language: assistantLanguage },
+      { requestId, traceId, type: assistant.type, language: assistantLanguage },
       '[AssistantSSE] CLARIFY/STOPPED message sent'
     );
 
@@ -260,12 +436,16 @@ export class AssistantSseOrchestrator {
     writer.sendDone();
 
     const durationMs = Date.now() - startTime;
-    this.logger.info(
-      { requestId, durationMs, flow: 'clarify_stopped', event: 'assistant_sse_completed' },
-      '[AssistantSSE] SSE stream completed'
-    );
+      this.logger.info(
+        { requestId, durationMs, flow: 'clarify_stopped', event: 'assistant_sse_completed' },
+        '[AssistantSSE] SSE stream completed'
+      );
 
-    writer.end();
+      writer.end();
+    } finally {
+      // Release lock (best-effort, TTL handles cleanup)
+      await this.releaseAssistantLock(requestId);
+    }
   }
 
   /**
@@ -305,13 +485,13 @@ export class AssistantSseOrchestrator {
     });
 
     this.logger.info(
-      { requestId, language: assistantLanguage, event: 'assistant_sse_narration_sent' },
+      { requestId, traceId, language: assistantLanguage, event: 'assistant_sse_narration_sent' },
       '[AssistantSSE] Narration template sent'
     );
 
     // Check for client disconnect
     if (isClientDisconnected() || abortSignal.aborted) {
-      this.logger.debug({ requestId }, '[AssistantSSE] Client disconnected after narration');
+      this.logger.debug({ requestId, traceId }, '[AssistantSSE] Client disconnected after narration');
       writer.end();
       return;
     }
@@ -329,7 +509,7 @@ export class AssistantSseOrchestrator {
 
     // Check for client disconnect after polling
     if (isClientDisconnected() || abortSignal.aborted) {
-      this.logger.debug({ requestId }, '[AssistantSSE] Client disconnected after poll');
+      this.logger.debug({ requestId, traceId }, '[AssistantSSE] Client disconnected after poll');
       writer.end();
       return;
     }
@@ -353,6 +533,7 @@ export class AssistantSseOrchestrator {
       // Transition: WAITING → DONE (timeout case, no summary)
       this.sendTimeoutMessage(
         requestId,
+        traceId,
         pollResult.latestStatus,
         assistantLanguage,
         writer
@@ -368,7 +549,7 @@ export class AssistantSseOrchestrator {
 
     const durationMs = Date.now() - startTime;
     this.logger.info(
-      { requestId, durationMs, resultsReady: pollResult.resultsReady, flow: 'search', event: 'assistant_sse_completed' },
+      { requestId, traceId, durationMs, resultsReady: pollResult.resultsReady, flow: 'search', event: 'assistant_sse_completed' },
       '[AssistantSSE] SSE stream completed'
     );
 
@@ -388,24 +569,38 @@ export class AssistantSseOrchestrator {
     abortSignal: AbortSignal,
     isClientDisconnected: () => boolean
   ): Promise<void> {
-    // Load fresh result
-    const freshResult = await this.jobStore.getResult(requestId);
-    const summaryContext = await this.contextBuilder.buildContext(requestId, job, freshResult);
-
-    const llmProvider = this.createLLMProvider();
-    if (!llmProvider) {
-      throw new Error('LLM provider not available');
+    // IDEMPOTENCY: Acquire lock before LLM call
+    const lockAcquired = await this.acquireAssistantLock(requestId);
+    
+    if (!lockAcquired) {
+      // Another SSE connection is already generating, skip LLM call
+      this.logger.info(
+        { requestId, traceId, event: 'assistant_sse_deduped_summary' },
+        '[AssistantSSE] Duplicate SUMMARY request detected, skipping LLM generation'
+      );
+      // Don't send message, just return (stream continues without summary)
+      return;
     }
 
-    const summaryAssistant = await generateAssistantMessage(
-      summaryContext,
-      llmProvider,
-      requestId,
-      { 
-        traceId,
-        ...(authReq.sessionId && { sessionId: authReq.sessionId })
+    try {
+      // Load fresh result
+      const freshResult = await this.jobStore.getResult(requestId);
+      const summaryContext = await this.contextBuilder.buildContext(requestId, job, freshResult);
+
+      const llmProvider = this.createLLMProvider();
+      if (!llmProvider) {
+        throw new Error('LLM provider not available');
       }
-    );
+
+      const summaryAssistant = await generateAssistantMessage(
+        summaryContext,
+        llmProvider,
+        requestId,
+        { 
+          traceId,
+          ...(authReq.sessionId && { sessionId: authReq.sessionId })
+        }
+      );
 
     if (isClientDisconnected() || abortSignal.aborted) {
       this.logger.debug({ requestId }, '[AssistantSSE] Client disconnected after SUMMARY generation');
@@ -422,10 +617,14 @@ export class AssistantSseOrchestrator {
       language: assistantLanguage
     });
 
-    this.logger.info(
-      { requestId, type: summaryAssistant.type, language: assistantLanguage, event: 'assistant_sse_summary_sent' },
-      '[AssistantSSE] SUMMARY message sent'
-    );
+      this.logger.info(
+        { requestId, traceId, type: summaryAssistant.type, language: assistantLanguage, event: 'assistant_sse_summary_sent' },
+        '[AssistantSSE] SUMMARY message sent'
+      );
+    } finally {
+      // Release lock (best-effort, TTL handles cleanup)
+      await this.releaseAssistantLock(requestId);
+    }
   }
 
   /**
@@ -433,6 +632,7 @@ export class AssistantSseOrchestrator {
    */
   private sendTimeoutMessage(
     requestId: string,
+    traceId: string,
     latestStatus: string | null,
     assistantLanguage: AssistantLanguage,
     writer: SseWriter
@@ -454,7 +654,7 @@ export class AssistantSseOrchestrator {
     });
 
     this.logger.warn(
-      { requestId, latestStatus, language: assistantLanguage, event: 'assistant_sse_timeout' },
+      { requestId, traceId, latestStatus, language: assistantLanguage, event: 'assistant_sse_timeout' },
       '[AssistantSSE] Timeout waiting for results'
     );
   }

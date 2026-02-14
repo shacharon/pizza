@@ -273,6 +273,18 @@ export class BraveSearchAdapter {
       });
 
       if (!hostMatches) {
+        logger.info(
+          {
+            event: 'provider_url_rejected',
+            provider: config.provider,
+            url,
+            hostname,
+            allowedHosts: config.allowedHosts,
+            reason: 'host_not_in_allowlist',
+          },
+          '[BraveAdapter] URL rejected: host not in allowlist'
+        );
+        
         return false;
       }
 
@@ -283,14 +295,14 @@ export class BraveSearchAdapter {
         );
         
         if (!hasRequiredPath) {
-          logger.debug(
+          logger.info(
             {
-              event: 'search_adapter_path_filter',
+              event: 'provider_url_rejected',
               provider: config.provider,
               url,
               pathname,
               requiredSegments: config.requiredPathSegments,
-              matched: false,
+              reason: 'missing_required_path_segment',
             },
             '[BraveAdapter] URL rejected: missing required path segment'
           );

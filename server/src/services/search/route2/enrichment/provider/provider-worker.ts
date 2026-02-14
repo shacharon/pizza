@@ -368,16 +368,16 @@ export class ProviderWorker {
 
     await this.redis.setex(key, ttl, JSON.stringify(cacheEntry));
 
-    logger.debug(
+    logger.info(
       {
         event: 'provider_cache_written',
         providerId,
         placeId,
         status,
-        ttl,
+        ttlSeconds: ttl,
         meta,
       },
-      `[ProviderWorker:${providerId}] Cache entry written`
+      `[ProviderWorker:${providerId}] Cache entry written (TTL: ${ttl}s)`
     );
   }
 

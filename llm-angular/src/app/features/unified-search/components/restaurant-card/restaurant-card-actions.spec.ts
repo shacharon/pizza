@@ -449,5 +449,228 @@ describe('RestaurantCardComponent - Quick Actions', () => {
       expect(component.restaurantClick.emit).toHaveBeenCalledTimes(1); // Still 1, not 2
     });
   });
+
+  describe('Provider Buttons (10bis, Mishloha)', () => {
+    it('should NOT render provider buttons when no providers field exists', () => {
+      const restaurantWithoutProviders: Restaurant = {
+        ...mockRestaurant,
+        providers: undefined
+      };
+      component.restaurant = signal(restaurantWithoutProviders);
+      fixture.detectChanges();
+
+      const providerButtons = fixture.nativeElement.querySelectorAll('[class*="action-btn-tenbis"], [class*="action-btn-mishloha"]');
+      expect(providerButtons.length).toBe(0);
+    });
+
+    it('should NOT render provider buttons when status is PENDING', () => {
+      const restaurantWithPending: Restaurant = {
+        ...mockRestaurant,
+        providers: {
+          tenbis: { status: 'PENDING', url: null },
+          mishloha: { status: 'PENDING', url: null }
+        }
+      };
+      component.restaurant = signal(restaurantWithPending);
+      fixture.detectChanges();
+
+      const providerButtons = fixture.nativeElement.querySelectorAll('[class*="action-btn-tenbis"], [class*="action-btn-mishloha"]');
+      expect(providerButtons.length).toBe(0);
+    });
+
+    it('should NOT render provider buttons when status is NOT_FOUND', () => {
+      const restaurantWithNotFound: Restaurant = {
+        ...mockRestaurant,
+        providers: {
+          tenbis: { status: 'NOT_FOUND', url: null },
+          mishloha: { status: 'NOT_FOUND', url: null }
+        }
+      };
+      component.restaurant = signal(restaurantWithNotFound);
+      fixture.detectChanges();
+
+      const providerButtons = fixture.nativeElement.querySelectorAll('[class*="action-btn-tenbis"], [class*="action-btn-mishloha"]');
+      expect(providerButtons.length).toBe(0);
+    });
+
+    it('should render 10bis button when status is FOUND with valid URL', () => {
+      const restaurantWithTenbis: Restaurant = {
+        ...mockRestaurant,
+        providers: {
+          tenbis: { 
+            status: 'FOUND', 
+            url: 'https://www.10bis.co.il/next/restaurants/menu/delivery/12345/test-restaurant'
+          }
+        }
+      };
+      component.restaurant = signal(restaurantWithTenbis);
+      fixture.detectChanges();
+
+      const tenbisButtons = fixture.nativeElement.querySelectorAll('[class*="action-btn-tenbis-primary"]');
+      expect(tenbisButtons.length).toBe(1);
+    });
+
+    it('should render Mishloha button when status is FOUND with valid URL', () => {
+      const restaurantWithMishloha: Restaurant = {
+        ...mockRestaurant,
+        providers: {
+          mishloha: { 
+            status: 'FOUND', 
+            url: 'https://www.mishloha.co.il/now/r/test-restaurant-12345'
+          }
+        }
+      };
+      component.restaurant = signal(restaurantWithMishloha);
+      fixture.detectChanges();
+
+      const mishlohaButtons = fixture.nativeElement.querySelectorAll('[class*="action-btn-mishloha-primary"]');
+      expect(mishlohaButtons.length).toBe(1);
+    });
+
+    it('should render both provider buttons when both have FOUND status with valid URLs', () => {
+      const restaurantWithBoth: Restaurant = {
+        ...mockRestaurant,
+        providers: {
+          tenbis: { 
+            status: 'FOUND', 
+            url: 'https://www.10bis.co.il/next/restaurants/menu/delivery/12345/test-restaurant'
+          },
+          mishloha: { 
+            status: 'FOUND', 
+            url: 'https://www.mishloha.co.il/now/r/test-restaurant-12345'
+          }
+        }
+      };
+      component.restaurant = signal(restaurantWithBoth);
+      fixture.detectChanges();
+
+      const providerCtas = component.providerCtas();
+      expect(providerCtas.length).toBe(2);
+      expect(providerCtas[0].id).toBe('tenbis');
+      expect(providerCtas[1].id).toBe('mishloha');
+    });
+
+    it('should NOT render button when FOUND but URL is invalid (wrong prefix)', () => {
+      const restaurantWithInvalidUrl: Restaurant = {
+        ...mockRestaurant,
+        providers: {
+          tenbis: { 
+            status: 'FOUND', 
+            url: 'https://wrong-domain.com/some-path'
+          }
+        }
+      };
+      component.restaurant = signal(restaurantWithInvalidUrl);
+      fixture.detectChanges();
+
+      const providerCtas = component.providerCtas();
+      expect(providerCtas.length).toBe(0);
+    });
+
+    it('should NOT render button when FOUND but URL is empty string', () => {
+      const restaurantWithEmptyUrl: Restaurant = {
+        ...mockRestaurant,
+        providers: {
+          tenbis: { 
+            status: 'FOUND', 
+            url: ''
+          }
+        }
+      };
+      component.restaurant = signal(restaurantWithEmptyUrl);
+      fixture.detectChanges();
+
+      const providerCtas = component.providerCtas();
+      expect(providerCtas.length).toBe(0);
+    });
+
+    it('should handle mixed provider states (one FOUND, one PENDING)', () => {
+      const restaurantMixed: Restaurant = {
+        ...mockRestaurant,
+        providers: {
+          tenbis: { 
+            status: 'FOUND', 
+            url: 'https://www.10bis.co.il/next/restaurants/menu/delivery/12345/test-restaurant'
+          },
+          mishloha: { 
+            status: 'PENDING', 
+            url: null
+          }
+        }
+      };
+      component.restaurant = signal(restaurantMixed);
+      fixture.detectChanges();
+
+      const providerCtas = component.providerCtas();
+      expect(providerCtas.length).toBe(1);
+      expect(providerCtas[0].id).toBe('tenbis');
+    });
+
+    it('should open provider URL in new tab when button is clicked', () => {
+      const restaurantWithTenbis: Restaurant = {
+        ...mockRestaurant,
+        providers: {
+          tenbis: { 
+            status: 'FOUND', 
+            url: 'https://www.10bis.co.il/next/restaurants/menu/delivery/12345/test-restaurant'
+          }
+        }
+      };
+      component.restaurant = signal(restaurantWithTenbis);
+      fixture.detectChanges();
+
+      spyOn(window, 'open');
+      const event = new MouseEvent('click');
+      component.onProviderAction(event, 'tenbis');
+
+      expect(window.open).toHaveBeenCalledWith(
+        'https://www.10bis.co.il/next/restaurants/menu/delivery/12345/test-restaurant',
+        '_blank',
+        'noopener,noreferrer'
+      );
+    });
+
+    it('should validate 10bis URL prefix correctly', () => {
+      const valid10bisUrl = 'https://www.10bis.co.il/next/restaurants/menu/delivery/12345/test-restaurant';
+      const invalid10bisUrl = 'https://10bis.co.il/restaurants/test'; // Wrong prefix
+
+      const validRestaurant: Restaurant = {
+        ...mockRestaurant,
+        providers: { tenbis: { status: 'FOUND', url: valid10bisUrl } }
+      };
+      component.restaurant = signal(validRestaurant);
+      let providerCtas = component.providerCtas();
+      expect(providerCtas.length).toBe(1);
+
+      const invalidRestaurant: Restaurant = {
+        ...mockRestaurant,
+        providers: { tenbis: { status: 'FOUND', url: invalid10bisUrl } }
+      };
+      component.restaurant = signal(invalidRestaurant);
+      providerCtas = component.providerCtas();
+      expect(providerCtas.length).toBe(0);
+    });
+
+    it('should validate Mishloha URL prefix correctly', () => {
+      const validMishlohaUrl = 'https://www.mishloha.co.il/now/r/test-restaurant-12345';
+      const invalidMishlohaUrl = 'https://mishloha.co.il/restaurant/test'; // Wrong prefix
+
+      const validRestaurant: Restaurant = {
+        ...mockRestaurant,
+        providers: { mishloha: { status: 'FOUND', url: validMishlohaUrl } }
+      };
+      component.restaurant = signal(validRestaurant);
+      let providerCtas = component.providerCtas();
+      expect(providerCtas.length).toBe(1);
+
+      const invalidRestaurant: Restaurant = {
+        ...mockRestaurant,
+        providers: { mishloha: { status: 'FOUND', url: invalidMishlohaUrl } }
+      };
+      component.restaurant = signal(invalidRestaurant);
+      providerCtas = component.providerCtas();
+      expect(providerCtas.length).toBe(0);
+    });
+  });
 });
 

@@ -84,47 +84,76 @@ export async function buildFinalResponse(
     } : {})
   };
 
-  // NON-BLOCKING: Fire assistant generation asynchronously (deferred)
-  // Don't await - results can be published immediately
-  generateAndPublishAssistantDeferred(
-    ctx,
-    requestId,
-    sessionId,
-    assistantContext,
-    wsManager
-  );
+  // SSE GUARD: Skip assistant generation if SSE endpoint is enabled
+  // SSE endpoint is single source of truth when FEATURE_SSE_ASSISTANT=true
+  const sseAssistantEnabled = process.env.FEATURE_SSE_ASSISTANT === 'true';
+  
+  if (sseAssistantEnabled) {
+    logger.info(
+      {
+        event: 'assistant_generation_skipped',
+        reason: 'sse_enabled',
+        requestId,
+        traceId: ctx.traceId
+      },
+      '[ROUTE2] Skipping assistant generation (SSE endpoint is source of truth)'
+    );
+  } else {
+    // NON-BLOCKING: Fire assistant generation asynchronously (deferred)
+    // Don't await - results can be published immediately
+    generateAndPublishAssistantDeferred(
+      ctx,
+      requestId,
+      sessionId,
+      assistantContext,
+      wsManager
+    );
+  }
 
   // HTTP response message: empty (WebSocket clients get real assistant message when ready)
   const assistMessage = '';
 
   // Generic query narration (if flagged) - also non-blocking
   if ((ctx as any).isGenericQuery && ctx.userLocation) {
-    logger.info(
-      {
+    if (sseAssistantEnabled) {
+      logger.info(
+        {
+          event: 'assistant_generation_skipped',
+          reason: 'sse_enabled',
+          type: 'GENERIC_QUERY_NARRATION',
+          requestId,
+          traceId: ctx.traceId
+        },
+        '[ROUTE2] Skipping generic query narration (SSE endpoint is source of truth)'
+      );
+    } else {
+      logger.info(
+        {
+          requestId,
+          pipelineVersion: 'route2',
+          event: 'generic_query_narration',
+          resultCount: finalResults.length
+        },
+        '[ROUTE2] Sending generic query narration (used current location)'
+      );
+
+      const narrationContext: AssistantGenericQueryNarrationContext = {
+        type: 'GENERIC_QUERY_NARRATION',
+        query: request.query,
+        language: resolveAssistantLanguage(ctx, request, detectedLanguage),
+        resultCount: finalResults.length,
+        usedCurrentLocation: true
+      };
+
+      // Fire deferred (non-blocking)
+      generateAndPublishAssistantDeferred(
+        ctx,
         requestId,
-        pipelineVersion: 'route2',
-        event: 'generic_query_narration',
-        resultCount: finalResults.length
-      },
-      '[ROUTE2] Sending generic query narration (used current location)'
-    );
-
-    const narrationContext: AssistantGenericQueryNarrationContext = {
-      type: 'GENERIC_QUERY_NARRATION',
-      query: request.query,
-      language: resolveAssistantLanguage(ctx, request, detectedLanguage),
-      resultCount: finalResults.length,
-      usedCurrentLocation: true
-    };
-
-    // Fire deferred (non-blocking)
-    generateAndPublishAssistantDeferred(
-      ctx,
-      requestId,
-      sessionId,
-      narrationContext,
-      wsManager
-    );
+        sessionId,
+        narrationContext,
+        wsManager
+      );
+    }
   }
 
   // Build final response

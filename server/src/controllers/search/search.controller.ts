@@ -85,12 +85,17 @@ router.post('/', async (req: Request, res: Response) => {
       // P0 Fix: Non-fatal Redis write - if job creation fails, return 202 anyway
       // Background execution will still proceed, just without Redis tracking
       try {
-        await searchJobStore.createJob(requestId, {
+        const jobParams: { sessionId: string; query: string; ownerUserId?: string | null; ownerSessionId?: string | null; traceId?: string } = {
           sessionId: ownerSessionId || 'anonymous', // Use JWT session, not client-provided
           query: queryData.query,
           ownerUserId,
           ownerSessionId: ownerSessionId || null // Convert undefined to null for type safety
-        });
+        };
+        // Store traceId for SSE trace consistency (only if present)
+        if (route2Context.traceId) {
+          jobParams.traceId = route2Context.traceId;
+        }
+        await searchJobStore.createJob(requestId, jobParams);
 
         logger.info({
           requestId,

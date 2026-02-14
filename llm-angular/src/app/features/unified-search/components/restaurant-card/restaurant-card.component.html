@@ -77,25 +77,6 @@
 
   <!-- Bottom action bar (not clickable for card details) -->
   <div class="action-bar" (click)="$event.stopPropagation()">
-    <!-- Provider CTAs (Wolt, 10bis, Mishloha) -->
-    @for (cta of providerCtas(); track cta.id) {
-      <button type="button" 
-        [class]="cta.className"
-        [disabled]="cta.disabled"
-        (click)="onProviderAction($event, cta.id)"
-        [title]="cta.title"
-        [attr.aria-label]="cta.ariaLabel">
-        @if (cta.showSpinner) {
-          <span class="action-spinner">⏳</span>
-        } @else {
-          <svg class="action-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
-          </svg>
-        }
-        <span class="action-label">{{ cta.label }}</span>
-      </button>
-    }
-
     <button type="button" class="action-btn" (click)="onAction($event, 'GET_DIRECTIONS')"
       [disabled]="!isActionAvailable('GET_DIRECTIONS')" [title]="getDirectionsTitle()"
       [attr.aria-label]="getDirectionsAriaLabel()">
@@ -117,4 +98,53 @@
       <span class="action-label">{{ getCallLabel() }}</span>
     </button>
   </div>
+
+  <!-- Provider links (Wolt, 10bis, Mishloha) - Tailwind mobile-first spacing -->
+  @if (providerLinks().length > 0) {
+    <div class="provider-links-tailwind" (click)="$event.stopPropagation()">
+      <svg class="provider-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
+        <line x1="3" y1="6" x2="21" y2="6"/>
+        <path d="M16 10a4 4 0 0 1-8 0"/>
+      </svg>
+      <div class="provider-content">
+        <span class="provider-label">Order via:</span>
+        <span class="provider-list">
+          @for (link of providerLinks(); track link.id; let isLast = $last) {
+            <a 
+              class="provider-link-item"
+              [href]="link.url"
+              target="_blank"
+              rel="noopener noreferrer"
+              (click)="onProviderLinkClick($event, link.id)"
+              [attr.aria-label]="'Order via ' + link.label">
+              <!-- Provider-specific logo -->
+              @if (link.id === 'wolt') {
+                <svg class="provider-logo" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <circle cx="12" cy="12" r="10" fill="#009de0"/>
+                  <path d="M12 6v6l4 4" stroke="white" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+              }
+              @if (link.id === 'tenbis') {
+                <svg class="provider-logo" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="3" y="3" width="18" height="18" rx="3" fill="#ff6b35"/>
+                  <text x="12" y="16" text-anchor="middle" font-size="12" font-weight="bold" fill="white">10</text>
+                </svg>
+              }
+              @if (link.id === 'mishloha') {
+                <svg class="provider-logo" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <circle cx="12" cy="12" r="10" fill="#10b981"/>
+                  <path d="M8 12l2 2 6-6" stroke="white" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              }
+              <span class="provider-name">{{ link.label }}</span>
+            </a>
+            @if (!isLast) {
+              <span class="provider-separator-tw" aria-hidden="true">·</span>
+            }
+          }
+        </span>
+      </div>
+    </div>
+  }
 </article>
