@@ -49,6 +49,9 @@ export async function getRedisClient(options: RedisClientOptions): Promise<Redis
       msg: '[Redis] Attempting connection to shared client'
     });
 
+    // AWS ElastiCache TLS support: detect rediss:// and add TLS config
+    const useTls = url.startsWith('rediss://');
+    
     const redis = new Redis(url, {
       maxRetriesPerRequest,
       connectTimeout,
@@ -59,7 +62,14 @@ export async function getRedisClient(options: RedisClientOptions): Promise<Redis
       },
       lazyConnect: true,
       enableOfflineQueue,
-      enableReadyCheck: true
+      enableReadyCheck: true,
+      // AWS ElastiCache with TLS requires rejectUnauthorized: false
+      // because ElastiCache uses self-signed certificates
+      ...(useTls && {
+        tls: {
+          rejectUnauthorized: false
+        }
+      })
     });
 
     // Error handler
@@ -100,9 +110,15 @@ export async function getRedisClient(options: RedisClientOptions): Promise<Redis
       throw new Error('PING test failed');
     }
   } catch (err) {
+    const error = err as Error & { code?: string; errno?: string | number };
     logger.warn({
       event: 'REDIS_CONNECTION_FAILED',
-      error: (err as Error).message,
+      error: error.message,
+      errorCode: error.code,
+      errorErrno: error.errno,
+      errorName: error.name,
+      useTls: url.startsWith('rediss://'),
+      stack: error.stack?.split('\n').slice(0, 3).join('\n'),
       msg: '[Redis] Failed to connect, services will degrade gracefully'
     });
     return null;
