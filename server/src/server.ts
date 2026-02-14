@@ -74,12 +74,25 @@ async function initializeRedis() {
     );
 
     try {
+      logger.info({
+        event: 'CALLING_GET_REDIS_CLIENT',
+        url: config.redisUrl.replace(/:[^:@]+@/, ':****@'),
+        msg: '[BOOT] About to call getRedisClient()'
+      });
+      
       const redis = await getRedisClient({
         url: config.redisUrl,
         maxRetriesPerRequest: 3,
         connectTimeout: 2000,
         commandTimeout: 2000,
         enableOfflineQueue: false
+      });
+
+      logger.info({
+        event: 'GET_REDIS_CLIENT_RETURNED',
+        redisIsNull: redis === null,
+        redisType: typeof redis,
+        msg: '[BOOT] getRedisClient() returned'
       });
 
       redisInitialized = Boolean(redis);

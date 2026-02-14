@@ -24,6 +24,13 @@ export interface RedisClientOptions {
  * @returns Redis client or null if connection fails
  */
 export async function getRedisClient(options: RedisClientOptions): Promise<RedisClient | null> {
+  logger.info({
+    event: 'GET_REDIS_CLIENT_CALLED',
+    hasExistingInstance: !!redisClientInstance,
+    alreadyInitialized: redisInitialized,
+    msg: '[Redis] getRedisClient() function entry'
+  });
+  
   if (redisClientInstance) {
     return redisClientInstance;
   }
@@ -31,8 +38,6 @@ export async function getRedisClient(options: RedisClientOptions): Promise<Redis
   if (redisInitialized) {
     return redisClientInstance; // Already attempted, failed
   }
-
-  redisInitialized = true;
 
   const {
     url,
@@ -43,33 +48,61 @@ export async function getRedisClient(options: RedisClientOptions): Promise<Redis
   } = options;
 
   try {
-    logger.info({
-      event: 'REDIS_INIT_ATTEMPT',
-      redisUrl: url.replace(/:[^:@]+@/, ':****@'),
-      msg: '[Redis] Attempting connection to shared client'
-    });
-
     // AWS ElastiCache TLS support: detect rediss:// and add TLS config
     const useTls = url.startsWith('rediss://');
     
-    const redis = new Redis(url, {
+    logger.info({
+      event: 'REDIS_INIT_ATTEMPT',
+      redisUrl: url.replace(/:[^:@]+@/, ':****@'),
+      useTls,
       maxRetriesPerRequest,
       connectTimeout,
       commandTimeout,
-      retryStrategy: (times: number) => {
-        if (times > maxRetriesPerRequest) return null;
-        return Math.min(times * 100, 500);
-      },
-      lazyConnect: true,
-      enableOfflineQueue,
-      enableReadyCheck: true,
-      // AWS ElastiCache with TLS requires rejectUnauthorized: false
-      // because ElastiCache uses self-signed certificates
-      ...(useTls && {
-        tls: {
-          rejectUnauthorized: false
-        }
-      })
+      msg: '[Redis] Attempting connection to shared client'
+    });
+
+    logger.info({
+      event: 'REDIS_CLIENT_CREATE_START',
+      msg: '[Redis] About to create Redis client instance'
+    });
+    
+    let redis: RedisClient;
+    try {
+      redis = new Redis(url, {
+        maxRetriesPerRequest,
+        connectTimeout,
+        commandTimeout,
+        retryStrategy: (times: number) => {
+          if (times > maxRetriesPerRequest) return null;
+          return Math.min(times * 100, 500);
+        },
+        lazyConnect: true,
+        enableOfflineQueue,
+        enableReadyCheck: true,
+        // AWS ElastiCache with TLS requires rejectUnauthorized: false
+        // because ElastiCache uses self-signed certificates
+        ...(useTls && {
+          tls: {
+            rejectUnauthorized: false
+          }
+        })
+      });
+    } catch (instantiationError) {
+      const err = instantiationError as Error;
+      logger.error({
+        event: 'REDIS_CLIENT_INSTANTIATION_FAILED',
+        error: err.message,
+        errorName: err.name,
+        stack: err.stack,
+        useTls,
+        msg: '[Redis] CRITICAL: Failed to instantiate Redis client'
+      });
+      throw instantiationError;
+    }
+
+    logger.info({
+      event: 'REDIS_CLIENT_CREATED',
+      msg: '[Redis] Redis client instance created successfully'
     });
 
     // Error handler
@@ -105,6 +138,7 @@ export async function getRedisClient(options: RedisClientOptions): Promise<Redis
       });
 
       redisClientInstance = redis;
+      redisInitialized = true; // Only mark as initialized after successful connection
       return redis;
     } else {
       throw new Error('PING test failed');

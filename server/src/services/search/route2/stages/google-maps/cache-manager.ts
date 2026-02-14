@@ -85,8 +85,8 @@ export async function initializeCacheService(): Promise<void> {
     const redis = await getRedisClient({
       url: redisUrl,
       maxRetriesPerRequest: 2,
-      connectTimeout: 2000,
-      commandTimeout: 500, // 500ms command timeout for cache operations
+      connectTimeout: 4000,
+      commandTimeout: 4000, // Increased from 500ms to 2000ms for AWS ElastiCache TLS handshake
       enableOfflineQueue: false
     });
 
