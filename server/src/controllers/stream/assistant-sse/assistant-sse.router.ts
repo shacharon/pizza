@@ -61,6 +61,15 @@ const orchestrator = new AssistantSseOrchestrator(
  * 2b. SEARCH: send narration template (no LLM), poll for results, send SUMMARY, send done
  */
 router.get('/assistant/:requestId', authSessionOrJwt, async (req: Request, res: Response) => {
+  // Set CORS headers for SSE with credentials
+  // Must be specific origin (not *) when using credentials
+  const origin = req.headers.origin;
+  if (origin && config.frontendOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Vary', 'Origin');
+  }
+  
   await orchestrator.handleRequest(req, res);
 });
 
