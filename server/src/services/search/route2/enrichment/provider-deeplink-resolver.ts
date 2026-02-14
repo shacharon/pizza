@@ -2,18 +2,22 @@
  * Provider Deep Link Resolver
  * 
  * Resolves restaurant deep links using 3-layer strategy:
- * - L1: CSE search with city (site:<host> "<name>" "<city>")
- * - L2: CSE search without city (site:<host> "<name>")
+ * - L1: Search API with city (site:<host> "<name>" "<city>")
+ * - L2: Search API without city (site:<host> "<name>")
  * - L3: Internal search fallback (https://<host>/search?q=<name>)
+ * 
+ * Supports both Brave Search (preferred) and Google CSE (legacy fallback)
  */
 
 import { logger } from '../../../../lib/logger/structured-logger.js';
 import { GoogleCSEClient, type CSEResult } from './google-cse-client.js';
+import { BraveSearchClient } from './brave-search-client.js';
+import { BraveSearchAdapter, type ProviderSearchConfig } from './brave-search.adapter.js';
 
 /**
  * Supported providers
  */
-export type Provider = 'wolt' | 'tenbis';
+export type Provider = 'wolt' | 'tenbis' | 'mishloha';
 
 /**
  * Resolution input
@@ -21,7 +25,7 @@ export type Provider = 'wolt' | 'tenbis';
 export interface ResolveInput {
   provider: Provider;
   name: string;
-  cityText?: string | null;
+  cityText?: string | null | undefined;
 }
 
 /**
@@ -47,6 +51,7 @@ export interface ResolveResult {
 interface ProviderConfig {
   allowedHosts: string[];
   internalSearchUrl: string;
+  requiredPathSegments?: string[]; // Path segments for filtering (e.g., ['/restaurant/'] for Wolt)
 }
 
 /**
@@ -56,20 +61,36 @@ const PROVIDER_CONFIGS: Record<Provider, ProviderConfig> = {
   wolt: {
     allowedHosts: ['wolt.com', '*.wolt.com'],
     internalSearchUrl: 'https://wolt.com/search',
+    requiredPathSegments: ['/restaurant/'], // Only match restaurant pages
   },
   tenbis: {
     allowedHosts: ['10bis.co.il', '*.10bis.co.il'],
     internalSearchUrl: 'https://www.10bis.co.il/search',
+    requiredPathSegments: ['/restaurant/'], // Only match restaurant pages
+  },
+  mishloha: {
+    allowedHosts: ['mishloha.co.il', '*.mishloha.co.il'],
+    internalSearchUrl: 'https://www.mishloha.co.il/search',
+    requiredPathSegments: ['/restaurant/'], // Only match restaurant pages
   },
 };
 
 /**
  * Provider Deep Link Resolver
  * 
- * Implements 3-layer resolution strategy with CSE + internal fallback
+ * Implements 3-layer resolution strategy with Brave/CSE + internal fallback
  */
 export class ProviderDeepLinkResolver {
-  constructor(private cseClient: GoogleCSEClient | null) {}
+  private braveAdapter: BraveSearchAdapter | null = null;
+
+  constructor(
+    private cseClient: GoogleCSEClient | null,
+    braveClient: BraveSearchClient | null = null
+  ) {
+    if (braveClient) {
+      this.braveAdapter = new BraveSearchAdapter(braveClient);
+    }
+  }
 
   /**
    * Resolve restaurant deep link using 3-layer strategy
@@ -81,45 +102,58 @@ export class ProviderDeepLinkResolver {
     const { provider, name, cityText } = input;
     const config = PROVIDER_CONFIGS[provider];
 
-    // Log context at resolve start (requested diagnostic)
+    // Log context at resolve start
     logger.debug(
       {
         event: 'provider_resolver_context',
+        hasBraveAdapter: this.braveAdapter !== null,
         hasCseClient: this.cseClient !== null,
         provider,
         hasCityText: cityText !== null && cityText !== undefined,
         restaurantName: name,
       },
-      `[ProviderResolver] Resolve context: CSE=${this.cseClient ? 'YES' : 'NO'}, provider=${provider}, city=${cityText ? 'YES' : 'NO'}`
+      `[ProviderResolver] Resolve context: Brave=${this.braveAdapter ? 'YES' : 'NO'}, CSE=${this.cseClient ? 'YES' : 'NO'}, provider=${provider}, city=${cityText ? 'YES' : 'NO'}`
     );
 
-    // Guard: No CSE client available
-    if (!this.cseClient) {
+    // Prefer Brave Search (with RelaxPolicy)
+    if (this.braveAdapter) {
+      const braveResult = await this.tryBraveSearch(provider, name, cityText, config);
+      if (braveResult) {
+        return braveResult;
+      }
+      
+      // Brave exhausted all attempts, fall back to L3
+      return this.buildL3Fallback(provider, name, config);
+    }
+
+    // Fallback to legacy CSE flow
+    if (this.cseClient) {
+      // L1: Try CSE with city (only if cityText available)
+      if (cityText) {
+        const l1Result = await this.tryLayer1(provider, name, cityText, config);
+        if (l1Result) {
+          return l1Result;
+        }
+      }
+
+      // L2: Try CSE without city
+      const l2Result = await this.tryLayer2(provider, name, config);
+      if (l2Result) {
+        return l2Result;
+      }
+    }
+
+    // Guard: No search client available
+    if (!this.braveAdapter && !this.cseClient) {
       logger.warn(
         {
           event: 'provider_link_resolution_skipped',
           provider,
           name,
-          reason: 'no_cse_client',
+          reason: 'no_search_client',
         },
-        '[ProviderResolver] CSE client not available, using L3 fallback'
+        '[ProviderResolver] No search client available, using L3 fallback'
       );
-      
-      return this.buildL3Fallback(provider, name, config);
-    }
-
-    // L1: Try CSE with city (only if cityText available)
-    if (cityText) {
-      const l1Result = await this.tryLayer1(provider, name, cityText, config);
-      if (l1Result) {
-        return l1Result;
-      }
-    }
-
-    // L2: Try CSE without city
-    const l2Result = await this.tryLayer2(provider, name, config);
-    if (l2Result) {
-      return l2Result;
     }
 
     // L3: Fallback to internal search URL
@@ -127,7 +161,77 @@ export class ProviderDeepLinkResolver {
   }
 
   /**
-   * L1: CSE search with city
+   * Try Brave Search with RelaxPolicy (4 attempts)
+   * Returns result if found, null if exhausted
+   */
+  private async tryBraveSearch(
+    provider: Provider,
+    name: string,
+    cityText: string | null | undefined,
+    config: ProviderConfig
+  ): Promise<ResolveResult | null> {
+    try {
+      const searchConfig: ProviderSearchConfig = {
+        provider,
+        allowedHosts: config.allowedHosts,
+        requiredPathSegments: config.requiredPathSegments || undefined,
+      };
+
+      const url = await this.braveAdapter!.searchWithRelaxPolicy(
+        name,
+        cityText ?? null,
+        searchConfig
+      );
+
+      if (url) {
+        logger.info(
+          {
+            event: 'provider_link_resolved',
+            provider,
+            status: 'FOUND',
+            layerUsed: 1,
+            source: 'brave',
+            urlHost: new URL(url).hostname,
+            urlPath: new URL(url).pathname,
+          },
+          '[ProviderResolver] Brave Search succeeded'
+        );
+
+        return {
+          status: 'FOUND',
+          url,
+          meta: {
+            layerUsed: 1,
+            source: 'cse', // Keep 'cse' for backward compatibility in metrics
+          },
+        };
+      }
+
+      logger.debug(
+        {
+          event: 'provider_link_brave_no_match',
+          provider,
+        },
+        '[ProviderResolver] Brave Search exhausted all attempts'
+      );
+
+      return null;
+    } catch (err) {
+      logger.warn(
+        {
+          event: 'provider_link_brave_error',
+          provider,
+          error: err instanceof Error ? err.message : String(err),
+        },
+        '[ProviderResolver] Brave Search failed with error'
+      );
+
+      return null;
+    }
+  }
+
+  /**
+   * L1: CSE search with city (legacy)
    * Returns result if found, null if not found or error
    */
   private async tryLayer1(
@@ -387,33 +491,39 @@ export class ProviderDeepLinkResolver {
  * Create resolver from environment variables
  */
 export function createResolverFromEnv(): ProviderDeepLinkResolver {
-  const apiKey = process.env.GOOGLE_CSE_API_KEY;
+  const braveApiKey = process.env.BRAVE_SEARCH_API_KEY;
+  const googleApiKey = process.env.GOOGLE_CSE_API_KEY;
   const searchEngineId = process.env.GOOGLE_CSE_ENGINE_ID;
   const nodeEnv = process.env.NODE_ENV || 'development';
 
+  let braveClient: BraveSearchClient | null = null;
   let cseClient: GoogleCSEClient | null = null;
   
-  // BOOT log: CSE client initialization status
-  const cseEnabled = Boolean(apiKey && searchEngineId);
-  const apiKeyPresent = Boolean(apiKey);
-  const engineIdPresent = Boolean(searchEngineId);
+  // BOOT log: Brave Search client initialization
+  if (braveApiKey) {
+    braveClient = new BraveSearchClient({
+      apiKey: braveApiKey,
+      timeoutMs: 5000,
+      maxRetries: 2,
+    });
+    
+    logger.info(
+      {
+        event: 'search_client_created',
+        engine: 'brave',
+        timeoutMs: 5000,
+        maxRetries: 2,
+      },
+      '[BOOT] Brave Search client created successfully'
+    );
+  }
   
-  logger.info(
-    {
-      event: 'cse_client_status',
-      cseEnabled,
-      apiKeyPresent,
-      engineIdPresent,
-      nodeEnv,
-      apiKeyLength: apiKey ? apiKey.length : 0, // Don't log the actual key
-      engineIdLength: searchEngineId ? searchEngineId.length : 0,
-    },
-    `[BOOT] CSE Client Status: ${cseEnabled ? 'ENABLED' : 'DISABLED'} (API Key: ${apiKeyPresent ? 'present' : 'missing'}, Engine ID: ${engineIdPresent ? 'present' : 'missing'})`
-  );
+  // BOOT log: CSE client initialization (fallback)
+  const cseEnabled = Boolean(googleApiKey && searchEngineId);
   
-  if (apiKey && searchEngineId) {
+  if (googleApiKey && searchEngineId) {
     cseClient = new GoogleCSEClient({
-      apiKey,
+      apiKey: googleApiKey,
       searchEngineId,
       timeoutMs: 5000,
       maxRetries: 2,
@@ -421,26 +531,38 @@ export function createResolverFromEnv(): ProviderDeepLinkResolver {
     
     logger.info(
       {
-        event: 'cse_client_created',
+        event: 'search_client_created',
+        engine: 'google_cse',
         timeoutMs: 5000,
         maxRetries: 2,
       },
-      '[BOOT] CSE Client created successfully'
-    );
-  } else {
-    logger.warn(
-      {
-        event: 'provider_resolver_no_cse',
-        cseEnabled: false,
-        reason: !apiKey && !searchEngineId 
-          ? 'both_missing' 
-          : !apiKey 
-            ? 'api_key_missing' 
-            : 'engine_id_missing',
-      },
-      '[BOOT] CSE not configured, resolver will use L3 fallback only'
+      '[BOOT] Google CSE client created successfully (fallback)'
     );
   }
 
-  return new ProviderDeepLinkResolver(cseClient);
+  // Log final search engine status
+  const searchEngine = braveClient ? 'brave' : cseClient ? 'google_cse' : 'none';
+  
+  logger.info(
+    {
+      event: 'provider_resolver_engine',
+      engine: searchEngine,
+      braveEnabled: Boolean(braveClient),
+      cseEnabled: Boolean(cseClient),
+      nodeEnv,
+    },
+    `[BOOT] Provider Resolver Engine: ${searchEngine.toUpperCase()} ${!braveClient && !cseClient ? '(L3 fallback only)' : ''}`
+  );
+
+  if (!braveClient && !cseClient) {
+    logger.warn(
+      {
+        event: 'provider_resolver_no_search',
+        reason: 'no_api_keys',
+      },
+      '[BOOT] No search API configured, resolver will use L3 fallback only'
+    );
+  }
+
+  return new ProviderDeepLinkResolver(cseClient, braveClient);
 }

@@ -35,8 +35,9 @@ import { deriveEarlyRoutingContext, upgradeToFinalFilters } from './orchestrator
 import { shouldDebugStop, resolveSessionId } from './orchestrator.helpers.js';
 
 // Enrichment stages
-import { enrichWithWoltLinks } from './enrichment/wolt/wolt-enrichment.service.js';
-import { enrichWithTenbisLinks } from './enrichment/tenbis/tenbis-enrichment.service.js';
+import { enrichWithWoltLinks } from './enrichment/provider/wolt.js';
+import { enrichWithTenbisLinks } from './enrichment/provider/tenbis.js';
+import { enrichWithMishlohaLinks } from './enrichment/provider/mishloha.js';
 import { getMetricsCollector } from './enrichment/metrics-collector.js';
 
 /**
@@ -357,10 +358,11 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
     const metricsCollector = getMetricsCollector();
     metricsCollector.initRequest(requestId, resultsToEnrich.length);
     
-    // Enrich with both providers in parallel (cache-first, idempotent)
+    // Enrich with all providers in parallel (cache-first, idempotent)
     await Promise.all([
       enrichWithWoltLinks(resultsToEnrich, requestId, cityText, ctx),
       enrichWithTenbisLinks(resultsToEnrich, requestId, cityText, ctx),
+      enrichWithMishlohaLinks(resultsToEnrich, requestId, cityText, ctx),
     ]);
     
     // Finalize metrics after enrichment stage completes

@@ -26,7 +26,14 @@ export interface I18nKeys {
   'card.action.call_restaurant': string;
   'card.action.phone_not_available': string;
 
-  // Restaurant card - Wolt actions
+  // Restaurant card - Provider actions (generic)
+  'card.action.order_on': string;      // "Order on {provider}"
+  'card.action.search_on': string;     // "Search on {provider}"
+  'card.action.order': string;         // "Order"
+  'card.action.on': string;            // "on"
+  'card.action.loading': string;       // "Loading..."
+  
+  // Restaurant card - Wolt actions (legacy - kept for compatibility)
   'card.action.order_wolt': string;
   'card.action.order_wolt_title': string;
   'card.action.checking_wolt': string;
@@ -94,6 +101,11 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.action.location_not_available': 'Location not available',
     'card.action.call_restaurant': 'Call restaurant',
     'card.action.phone_not_available': 'Phone number not available',
+    'card.action.order_on': 'Order on {provider}',
+    'card.action.search_on': 'Search on {provider}',
+    'card.action.order': 'Order',
+    'card.action.on': 'on',
+    'card.action.loading': 'Loading…',
     'card.action.order_wolt': 'Order on Wolt',
     'card.action.order_wolt_title': 'Order delivery from this restaurant via Wolt',
     'card.action.checking_wolt': 'Checking Wolt…',
@@ -137,6 +149,11 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.action.location_not_available': 'מיקום לא זמין',
     'card.action.call_restaurant': 'התקשר למסעדה',
     'card.action.phone_not_available': 'מספר טלפון לא זמין',
+    'card.action.order_on': 'הזמן ב-{provider}',
+    'card.action.search_on': 'חפש ב-{provider}',
+    'card.action.order': 'הזמן',
+    'card.action.on': 'ב-',
+    'card.action.loading': 'טוען…',
     'card.action.order_wolt': 'הזמן ב-Wolt',
     'card.action.order_wolt_title': 'הזמן משלוח מהמסעדה דרך Wolt',
     'card.action.checking_wolt': 'בודק ב-Wolt…',
@@ -180,6 +197,11 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.action.location_not_available': 'Местоположение недоступно',
     'card.action.call_restaurant': 'Позвонить в ресторан',
     'card.action.phone_not_available': 'Номер телефона недоступен',
+    'card.action.order_on': 'Заказать на {provider}',
+    'card.action.search_on': 'Искать на {provider}',
+    'card.action.order': 'Заказать',
+    'card.action.on': 'на',
+    'card.action.loading': 'Загрузка…',
     'card.action.order_wolt': 'Заказать на Wolt',
     'card.action.order_wolt_title': 'Заказать доставку из этого ресторана через Wolt',
     'card.action.checking_wolt': 'Проверка Wolt…',
@@ -223,6 +245,11 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.action.location_not_available': 'الموقع غير متاح',
     'card.action.call_restaurant': 'اتصل بالمطعم',
     'card.action.phone_not_available': 'رقم الهاتف غير متاح',
+    'card.action.order_on': 'اطلب على {provider}',
+    'card.action.search_on': 'ابحث على {provider}',
+    'card.action.order': 'اطلب',
+    'card.action.on': 'على',
+    'card.action.loading': 'جارٍ التحميل…',
     'card.action.order_wolt': 'اطلب على Wolt',
     'card.action.order_wolt_title': 'اطلب توصيل من هذا المطعم عبر Wolt',
     'card.action.checking_wolt': 'جاري التحقق من Wolt…',
@@ -266,6 +293,11 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.action.location_not_available': 'Emplacement non disponible',
     'card.action.call_restaurant': 'Appeler le restaurant',
     'card.action.phone_not_available': 'Numéro de téléphone non disponible',
+    'card.action.order_on': 'Commander sur {provider}',
+    'card.action.search_on': 'Rechercher sur {provider}',
+    'card.action.order': 'Commander',
+    'card.action.on': 'sur',
+    'card.action.loading': 'Chargement…',
     'card.action.order_wolt': 'Commander sur Wolt',
     'card.action.order_wolt_title': 'Commander la livraison de ce restaurant via Wolt',
     'card.action.checking_wolt': 'Vérification Wolt…',
@@ -309,6 +341,11 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.action.location_not_available': 'Ubicación no disponible',
     'card.action.call_restaurant': 'Llamar al restaurante',
     'card.action.phone_not_available': 'Número de teléfono no disponible',
+    'card.action.order_on': 'Pedir en {provider}',
+    'card.action.search_on': 'Buscar en {provider}',
+    'card.action.order': 'Pedir',
+    'card.action.on': 'en',
+    'card.action.loading': 'Cargando…',
     'card.action.order_wolt': 'Pedir en Wolt',
     'card.action.order_wolt_title': 'Pedir entrega de este restaurante a través de Wolt',
     'card.action.checking_wolt': 'Verificando Wolt…',
@@ -352,6 +389,11 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.action.location_not_available': 'Standort nicht verfügbar',
     'card.action.call_restaurant': 'Restaurant anrufen',
     'card.action.phone_not_available': 'Telefonnummer nicht verfügbar',
+    'card.action.order_on': 'Bei {provider} bestellen',
+    'card.action.search_on': 'Bei {provider} suchen',
+    'card.action.order': 'Bestellen',
+    'card.action.on': 'bei',
+    'card.action.loading': 'Lädt…',
     'card.action.order_wolt': 'Bei Wolt bestellen',
     'card.action.order_wolt_title': 'Lieferung von diesem Restaurant über Wolt bestellen',
     'card.action.checking_wolt': 'Wolt wird überprüft…',
@@ -395,6 +437,11 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.action.location_not_available': 'Posizione non disponibile',
     'card.action.call_restaurant': 'Chiama il ristorante',
     'card.action.phone_not_available': 'Numero di telefono non disponibile',
+    'card.action.order_on': 'Ordina su {provider}',
+    'card.action.search_on': 'Cerca su {provider}',
+    'card.action.order': 'Ordina',
+    'card.action.on': 'su',
+    'card.action.loading': 'Caricamento…',
     'card.action.order_wolt': 'Ordina su Wolt',
     'card.action.order_wolt_title': 'Ordina consegna da questo ristorante tramite Wolt',
     'card.action.checking_wolt': 'Controllo Wolt…',

@@ -77,22 +77,22 @@
 
   <!-- Bottom action bar (not clickable for card details) -->
   <div class="action-bar" (click)="$event.stopPropagation()">
-    <!-- Wolt CTA (primary action when available) -->
-    @if (woltCta()) {
+    <!-- Provider CTAs (Wolt, 10bis, Mishloha) -->
+    @for (cta of providerCtas(); track cta.id) {
       <button type="button" 
-        [class]="woltCta()!.className"
-        [disabled]="woltCta()!.disabled"
-        (click)="onWoltAction($event)"
-        [title]="woltCta()!.title"
-        [attr.aria-label]="woltCta()!.ariaLabel">
-        @if (woltCta()!.showSpinner) {
+        [class]="cta.className"
+        [disabled]="cta.disabled"
+        (click)="onProviderAction($event, cta.id)"
+        [title]="cta.title"
+        [attr.aria-label]="cta.ariaLabel">
+        @if (cta.showSpinner) {
           <span class="action-spinner">⏳</span>
         } @else {
           <svg class="action-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
             <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
           </svg>
         }
-        <span class="action-label">{{ woltCta()!.label }}</span>
+        <span class="action-label">{{ cta.label }}</span>
       </button>
     }
 

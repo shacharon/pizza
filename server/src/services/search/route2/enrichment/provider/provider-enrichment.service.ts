@@ -1,14 +1,15 @@
 /**
- * Wolt Enrichment Service
+ * Provider Enrichment Service (Generic)
  * 
- * Cache-first enrichment that attaches Wolt link data to restaurant results.
+ * Cache-first enrichment that attaches provider link data to restaurant results.
+ * Supports multiple providers: wolt, tenbis, mishloha
+ * 
  * - Checks Redis cache for each restaurant (by placeId)
- * - If cache hit: attach providers.wolt.status/url from cache (FOUND | NOT_FOUND)
- * - If cache miss: attach providers.wolt.status='PENDING', trigger background job
+ * - If cache hit: attach providers.{provider}.status/url from cache (FOUND | NOT_FOUND)
+ * - If cache miss: attach providers.{provider}.status='PENDING', trigger background job
  * 
  * Idempotency: Redis locks (SET NX) ensure only one job per placeId across all instances
  * Non-blocking: Always returns immediately with enriched results
- * Backward Compatible: Updates both providers.wolt (new) and wolt (legacy) fields
  */
 
 import type { RestaurantResult } from '../../../types/restaurant.types.js';
@@ -17,34 +18,38 @@ import { logger } from '../../../../../lib/logger/structured-logger.js';
 import { getRedisClient } from '../../../../../lib/redis/redis-client.js';
 import type { Redis as RedisClient } from 'ioredis';
 import {
-  WOLT_REDIS_KEYS,
-  WOLT_CACHE_TTL_SECONDS,
-  type WoltCacheEntry,
-  type WoltEnrichment,
-} from '../../../wolt/wolt-enrichment.contracts.js';
-import { tryAcquireLock, type LockResult } from '../lock-service.js';
+  PROVIDER_REDIS_KEYS,
+  PROVIDER_CACHE_TTL_SECONDS,
+  type ProviderCacheEntry,
+  type ProviderEnrichment,
+  type ProviderId,
+  isProviderEnrichmentEnabled,
+  getProviderDisplayName,
+} from './provider.contracts.js';
+import { tryAcquireLock } from '../lock-service.js';
 
 /**
  * Structured log event types
  */
-type WoltEnrichmentEvent =
-  | 'wolt_cache_hit'
-  | 'wolt_cache_miss'
-  | 'wolt_lock_acquired'
-  | 'wolt_lock_skipped'
-  | 'wolt_enrichment_disabled'
-  | 'wolt_enrichment_error';
+type ProviderEnrichmentEvent =
+  | 'provider_cache_hit'
+  | 'provider_cache_miss'
+  | 'provider_lock_acquired'
+  | 'provider_lock_skipped'
+  | 'provider_enrichment_disabled'
+  | 'provider_enrichment_error';
 
 /**
- * Track if config has been logged (runs once per process)
+ * Track config logging per provider (runs once per process per provider)
  */
-let configLogged = false;
+const configLoggedMap = new Map<ProviderId, boolean>();
 
 /**
  * Log structured event
  */
-function logWoltEvent(
-  event: WoltEnrichmentEvent,
+function logProviderEvent(
+  providerId: ProviderId,
+  event: ProviderEnrichmentEvent,
   data: {
     requestId: string;
     placeId?: string;
@@ -58,17 +63,11 @@ function logWoltEvent(
   logger[level](
     {
       event,
+      providerId,
       ...data,
     },
-    `[WoltEnrichment] ${event}`
+    `[ProviderEnrichment:${providerId}] ${event}`
   );
-}
-
-/**
- * Check if Wolt enrichment is enabled
- */
-function isWoltEnrichmentEnabled(): boolean {
-  return process.env.ENABLE_WOLT_ENRICHMENT === 'true';
 }
 
 /**
@@ -89,23 +88,26 @@ function redactRedisUrl(url: string | undefined): string | null {
 }
 
 /**
- * Log config once per process
+ * Log config once per process per provider
  */
-function logConfigOnce(): void {
-  if (configLogged) {
+function logConfigOnce(providerId: ProviderId): void {
+  if (configLoggedMap.get(providerId)) {
     return;
   }
 
-  configLogged = true;
+  configLoggedMap.set(providerId, true);
+
+  const displayName = getProviderDisplayName(providerId);
 
   logger.info(
     {
-      event: 'wolt_enrichment_config',
-      enabledFlag: process.env.ENABLE_WOLT_ENRICHMENT === 'true',
+      event: 'provider_enrichment_config',
+      providerId,
+      enabledFlag: isProviderEnrichmentEnabled(providerId),
       hasRedisUrl: Boolean(process.env.REDIS_URL),
       redisUrlHost: redactRedisUrl(process.env.REDIS_URL),
     },
-    '[WOLT] Enrichment config'
+    `[${displayName}] Enrichment config`
   );
 }
 
@@ -113,6 +115,7 @@ function logConfigOnce(): void {
  * Log when enqueue is skipped
  */
 function logEnqueueSkipped(
+  providerId: ProviderId,
   requestId: string,
   reason: 'flag_disabled' | 'no_results' | 'redis_down' | 'already_cached' | 'lock_held' | 'lock_error' | 'queue_unavailable',
   placeId?: string,
@@ -121,7 +124,8 @@ function logEnqueueSkipped(
 ): void {
   logger.info(
     {
-      event: 'wolt_enqueue_skipped',
+      event: 'provider_enqueue_skipped',
+      providerId,
       requestId,
       reason,
       ...(placeId && { placeId }),
@@ -134,14 +138,14 @@ function logEnqueueSkipped(
         lockError: errorDetails.error,
       }),
     },
-    `[WoltEnrichment] Enqueue skipped: ${reason}`
+    `[ProviderEnrichment:${providerId}] Enqueue skipped: ${reason}`
   );
 }
 
 /**
- * Get Redis client for Wolt enrichment
+ * Get Redis client for provider enrichment
  */
-async function getWoltRedisClient(): Promise<RedisClient | null> {
+async function getProviderRedisClient(): Promise<RedisClient | null> {
   const redisUrl = process.env.REDIS_URL;
   if (!redisUrl) {
     return null;
@@ -156,22 +160,23 @@ async function getWoltRedisClient(): Promise<RedisClient | null> {
 }
 
 /**
- * Check cache for Wolt enrichment data
+ * Check cache for provider enrichment data
  * Returns cached data or null if not found
  */
-async function checkWoltCache(
+async function checkProviderCache(
   redis: RedisClient,
+  providerId: ProviderId,
   placeId: string
-): Promise<WoltEnrichment | null> {
+): Promise<ProviderEnrichment | null> {
   try {
-    const key = WOLT_REDIS_KEYS.place(placeId);
+    const key = PROVIDER_REDIS_KEYS.place(providerId, placeId);
     const cached = await redis.get(key);
 
     if (!cached) {
       return null;
     }
 
-    const entry: WoltCacheEntry = JSON.parse(cached);
+    const entry: ProviderCacheEntry = JSON.parse(cached);
     return {
       status: entry.status,
       url: entry.url,
@@ -180,72 +185,80 @@ async function checkWoltCache(
     const error = err instanceof Error ? err.message : String(err);
     logger.warn(
       {
-        event: 'wolt_cache_read_error',
+        event: 'provider_cache_read_error',
+        providerId,
         placeId,
         error,
       },
-      '[WoltEnrichment] Cache read error (non-fatal)'
+      `[ProviderEnrichment:${providerId}] Cache read error (non-fatal)`
     );
     return null;
   }
 }
 
-
-// Lazy-initialized job queue
-let jobQueueInstance: any = null;
+/**
+ * Lazy-initialized job queue instances per provider
+ */
+const jobQueueInstances = new Map<ProviderId, any>();
 
 /**
- * Get or create job queue instance (async for ESM dynamic import)
+ * Get or create job queue instance for provider (async for ESM dynamic import)
  */
-async function getJobQueue(): Promise<any> {
-  if (jobQueueInstance) {
-    return jobQueueInstance;
+async function getJobQueue(providerId: ProviderId): Promise<any> {
+  const existing = jobQueueInstances.get(providerId);
+  if (existing) {
+    return existing;
   }
 
-  // Lazy load to avoid circular dependencies (ESM-safe dynamic import)
+  // Lazy load provider-specific queue instance
   try {
-    const { getWoltJobQueue } = await import('./wolt-job-queue.instance.js');
-    jobQueueInstance = getWoltJobQueue();
-    return jobQueueInstance;
+    const { getProviderJobQueue } = await import('./provider-job-queue.instance.js');
+    const queue = getProviderJobQueue(providerId);
+    jobQueueInstances.set(providerId, queue);
+    return queue;
   } catch (err) {
     logger.error(
       {
-        event: 'wolt_job_queue_init_error',
+        event: 'provider_job_queue_init_error',
+        providerId,
         error: err instanceof Error ? err.message : String(err),
         stack: err instanceof Error ? err.stack : undefined,
       },
-      '[WoltEnrichment] Failed to initialize job queue'
+      `[ProviderEnrichment:${providerId}] Failed to initialize job queue`
     );
     return null;
   }
 }
 
 /**
- * Trigger background Wolt matching job
+ * Trigger background provider matching job
  */
 async function triggerMatchJob(
+  providerId: ProviderId,
   requestId: string,
   restaurant: RestaurantResult,
   cityText: string | null,
   ctx: Route2Context
 ): Promise<void> {
-  const queue = await getJobQueue();
+  const queue = await getJobQueue(providerId);
 
   if (!queue) {
     logger.warn(
       {
-        event: 'wolt_job_queue_unavailable',
+        event: 'provider_job_queue_unavailable',
+        providerId,
         requestId,
         placeId: restaurant.placeId,
       },
-      '[WoltEnrichment] Job queue unavailable, skipping background job'
+      `[ProviderEnrichment:${providerId}] Job queue unavailable, skipping background job`
     );
-    logEnqueueSkipped(requestId, 'queue_unavailable', restaurant.placeId);
+    logEnqueueSkipped(providerId, requestId, 'queue_unavailable', restaurant.placeId);
     return;
   }
 
   // Enqueue background job
   queue.enqueue({
+    providerId,
     requestId,
     placeId: restaurant.placeId,
     name: restaurant.name,
@@ -255,7 +268,8 @@ async function triggerMatchJob(
 
   logger.info(
     {
-      event: 'wolt_job_enqueued',
+      event: 'provider_job_enqueued',
+      providerId,
       requestId,
       restaurantId: restaurant.placeId,
       placeId: restaurant.placeId,
@@ -264,21 +278,22 @@ async function triggerMatchJob(
       statusSet: 'PENDING',
       reason: 'cache_miss',
     },
-    '[WoltEnrichment] Job enqueued'
+    `[ProviderEnrichment:${providerId}] Job enqueued`
   );
 }
 
 /**
- * Enrich a single restaurant with Wolt data
+ * Enrich a single restaurant with provider data
  * 
  * Steps:
- * 1. Check cache → populate providers.wolt + wolt (legacy) if found
- * 2. If miss → set PENDING, try acquire lock (idempotent key: ext:wolt:lock:<placeId>)
+ * 1. Check cache → populate providers.{provider} if found
+ * 2. If miss → set PENDING, try acquire lock (idempotent key: provider:{provider}:lock:<placeId>)
  * 3. If lock acquired → enqueue background job (once per place)
  * 4. If lock held → skip (another worker handling it)
  */
 async function enrichSingleRestaurant(
   redis: RedisClient,
+  providerId: ProviderId,
   restaurant: RestaurantResult,
   requestId: string,
   cityText: string | null,
@@ -287,25 +302,21 @@ async function enrichSingleRestaurant(
   const { placeId, name: restaurantName } = restaurant;
 
   // 1. Check cache
-  const cached = await checkWoltCache(redis, placeId);
+  const cached = await checkProviderCache(redis, providerId, placeId);
 
   if (cached) {
-    // Cache HIT: Attach cached data to BOTH new and legacy fields
+    // Cache HIT: Attach cached data to structured providers field
     const providerState = {
       status: cached.status,
       url: cached.url,
     };
     
-    // NEW: Structured providers field
     restaurant.providers = {
       ...restaurant.providers,
-      wolt: providerState,
+      [providerId]: providerState,
     };
     
-    // DEPRECATED: Legacy wolt field (backward compatibility)
-    restaurant.wolt = cached;
-    
-    logWoltEvent('wolt_cache_hit', {
+    logProviderEvent(providerId, 'provider_cache_hit', {
       requestId,
       placeId,
       restaurantName,
@@ -316,17 +327,17 @@ async function enrichSingleRestaurant(
     // Read raw cache entry to get updatedAt for observability
     let cachedAgeMs = 0;
     try {
-      const key = WOLT_REDIS_KEYS.place(placeId);
+      const key = PROVIDER_REDIS_KEYS.place(providerId, placeId);
       const rawCached = await redis.get(key);
       if (rawCached) {
-        const entry: WoltCacheEntry = JSON.parse(rawCached);
+        const entry: ProviderCacheEntry = JSON.parse(rawCached);
         cachedAgeMs = Date.now() - new Date(entry.updatedAt).getTime();
       }
     } catch {
       // Ignore errors reading cache for log metadata
     }
 
-    logEnqueueSkipped(requestId, 'already_cached', placeId, {
+    logEnqueueSkipped(providerId, requestId, 'already_cached', placeId, {
       status: cached.status,
       ageMs: cachedAgeMs,
       hasUrl: Boolean(cached.url),
@@ -334,22 +345,18 @@ async function enrichSingleRestaurant(
     return;
   }
 
-  // Cache MISS: Attach PENDING status to BOTH new and legacy fields
+  // Cache MISS: Attach PENDING status to structured providers field
   const pendingState = {
     status: 'PENDING' as const,
     url: null,
   };
   
-  // NEW: Structured providers field
   restaurant.providers = {
     ...restaurant.providers,
-    wolt: pendingState,
+    [providerId]: pendingState,
   };
-  
-  // DEPRECATED: Legacy wolt field (backward compatibility)
-  restaurant.wolt = pendingState;
 
-  logWoltEvent('wolt_cache_miss', {
+  logProviderEvent(providerId, 'provider_cache_miss', {
     requestId,
     placeId,
     restaurantName,
@@ -357,18 +364,18 @@ async function enrichSingleRestaurant(
   });
 
   // 2. Attempt to acquire lock
-  const lockKey = WOLT_REDIS_KEYS.lock(placeId);
+  const lockKey = PROVIDER_REDIS_KEYS.lock(providerId, placeId);
   const lockResult = await tryAcquireLock(
     redis,
     lockKey,
-    WOLT_CACHE_TTL_SECONDS.LOCK,
-    'wolt',
+    PROVIDER_CACHE_TTL_SECONDS.LOCK,
+    providerId,
     placeId
   );
 
   if (lockResult.acquired) {
     // Lock ACQUIRED: Trigger background job
-    logWoltEvent('wolt_lock_acquired', {
+    logProviderEvent(providerId, 'provider_lock_acquired', {
       requestId,
       placeId,
       restaurantName,
@@ -376,88 +383,91 @@ async function enrichSingleRestaurant(
     });
 
     // Trigger background match job (non-blocking)
-    void triggerMatchJob(requestId, restaurant, cityText, ctx);
+    void triggerMatchJob(providerId, requestId, restaurant, cityText, ctx);
   } else if (lockResult.reason === 'held') {
     // Lock HELD: Another worker is handling this restaurant (expected, idempotent)
-    logWoltEvent('wolt_lock_skipped', {
+    logProviderEvent(providerId, 'provider_lock_skipped', {
       requestId,
       placeId,
       restaurantName,
       cityText,
     });
-    logEnqueueSkipped(requestId, 'lock_held', placeId);
+    logEnqueueSkipped(providerId, requestId, 'lock_held', placeId);
   } else if (lockResult.reason === 'error') {
     // Lock ERROR: Redis error during lock acquisition (unexpected)
     // NOTE: Result stays PENDING - no retry mechanism in current design
     logger.warn(
       {
-        event: 'wolt_lock_failed',
+        event: 'provider_lock_failed',
+        providerId,
         requestId,
         placeId,
         restaurantName,
         lockError: lockResult.error,
       },
-      '[WoltEnrichment] Lock acquisition failed, job not enqueued (result will stay PENDING)'
+      `[ProviderEnrichment:${providerId}] Lock acquisition failed, job not enqueued (result will stay PENDING)`
     );
-    logEnqueueSkipped(requestId, 'lock_error', placeId, undefined, {
+    logEnqueueSkipped(providerId, requestId, 'lock_error', placeId, undefined, {
       error: lockResult.error || 'unknown',
     });
   }
 }
 
 /**
- * Enrich restaurant results with Wolt link data (cache-first, idempotent)
+ * Enrich restaurant results with provider link data (cache-first, idempotent)
  * 
  * For each restaurant:
- * 1. Check Redis cache (ext:wolt:place:<placeId>)
- *    - Hit: attach providers.wolt + wolt (legacy) with cached status/url
- *    - Miss: attach providers.wolt.status='PENDING' + wolt.status='PENDING'
- * 2. On cache miss: attempt lock (ext:wolt:lock:<placeId>) for idempotency
+ * 1. Check Redis cache (provider:{providerId}:{placeId})
+ *    - Hit: attach providers.{provider} with cached status/url
+ *    - Miss: attach providers.{provider}.status='PENDING'
+ * 2. On cache miss: attempt lock (provider:{providerId}:lock:{placeId}) for idempotency
  *    - Lock acquired: enqueue background match job (once per placeId)
  *    - Lock held: skip (another worker handling it, idempotent)
  * 
  * Idempotency Strategy:
- * - Redis lock key: ext:wolt:lock:<placeId> (TTL: 60s)
+ * - Redis lock key: provider:{providerId}:lock:{placeId} (TTL: 60s)
  * - SET NX (only if not exists) ensures single job per placeId
  * - Multiple concurrent requests for same place: only first acquires lock
  * - Job queue has secondary deduplication guard (safety net)
  * 
+ * @param providerId Provider ID (wolt, tenbis, mishloha)
  * @param results Restaurant results to enrich (mutates in-place)
  * @param requestId Request ID for logging and WS events
  * @param cityText Optional city context from intent stage
  * @param ctx Route2 context
  * @returns Enriched results (same array, mutated)
  */
-export async function enrichWithWoltLinks(
+export async function enrichWithProviderLinks(
+  providerId: ProviderId,
   results: RestaurantResult[],
   requestId: string,
   cityText: string | null,
   ctx: Route2Context
 ): Promise<RestaurantResult[]> {
-  // Log config once per process
-  logConfigOnce();
+  // Log config once per process per provider
+  logConfigOnce(providerId);
 
   // Guard: Feature flag
-  if (!isWoltEnrichmentEnabled()) {
-    logWoltEvent('wolt_enrichment_disabled', { requestId });
-    logEnqueueSkipped(requestId, 'flag_disabled');
+  if (!isProviderEnrichmentEnabled(providerId)) {
+    logProviderEvent(providerId, 'provider_enrichment_disabled', { requestId });
+    logEnqueueSkipped(providerId, requestId, 'flag_disabled');
     return results;
   }
 
   // Guard: No results
   if (results.length === 0) {
-    logEnqueueSkipped(requestId, 'no_results');
+    logEnqueueSkipped(providerId, requestId, 'no_results');
     return results;
   }
 
   // Guard: Redis not available
-  const redis = await getWoltRedisClient();
+  const redis = await getProviderRedisClient();
   if (!redis) {
-    logWoltEvent('wolt_enrichment_error', {
+    logProviderEvent(providerId, 'provider_enrichment_error', {
       requestId,
       error: 'Redis not available',
     });
-    logEnqueueSkipped(requestId, 'redis_down');
+    logEnqueueSkipped(providerId, requestId, 'redis_down');
     return results;
   }
 
@@ -465,12 +475,12 @@ export async function enrichWithWoltLinks(
   try {
     await Promise.all(
       results.map((restaurant) =>
-        enrichSingleRestaurant(redis, restaurant, requestId, cityText, ctx)
+        enrichSingleRestaurant(redis, providerId, restaurant, requestId, cityText, ctx)
       )
     );
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
-    logWoltEvent('wolt_enrichment_error', {
+    logProviderEvent(providerId, 'provider_enrichment_error', {
       requestId,
       error,
     });

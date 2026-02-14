@@ -161,17 +161,10 @@ export class PublishManager {
       requestId,
       placeId,
       patch: {
-        // NEW: Structured providers field
+        // Structured providers field
         providers: {
           [provider]: providerState,
         },
-        // DEPRECATED: Legacy field for backward compatibility (only for 'wolt')
-        ...(provider === 'wolt' && {
-          wolt: {
-            status,
-            url,
-          },
-        }),
       },
     };
 

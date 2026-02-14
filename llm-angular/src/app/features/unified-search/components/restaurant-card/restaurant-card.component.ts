@@ -13,8 +13,9 @@ import type { ActionType, ActionLevel } from '../../../../domain/types/action.ty
 import { buildPhotoSrc, getPhotoPlaceholder } from '../../../../utils/photo-src.util';
 import { I18nService } from '../../../../core/services/i18n.service';
 import { calculateDistance, calculateWalkingTime, formatDistance, formatDistanceWithIntent } from '../../../../utils/distance.util';
-import { buildWoltSearchUrl, extractCitySlug, extractCityText } from '../../../../utils/wolt-deeplink.util';
+import { buildWoltSearchUrl, buildTenbisSearchUrl, buildMishlohaSearchUrl } from '../../../../utils/provider-url-builder.util';
 import { formatTimeFromDate, formatTimeFromRaw } from '../../../../shared/utils/time-formatter';
+import type { ProviderState } from '../../../../domain/types/search.types';
 
 // Near you badge threshold (meters)
 export const NEAR_THRESHOLD_METERS = 600;
@@ -699,63 +700,113 @@ export class RestaurantCardComponent {
   }
 
   /**
-   * Wolt CTA configuration
-   * NEW: Uses local deep-link builder instead of CSE enrichment
-   * Always shows "Search on Wolt" button (no CSE dependency)
+   * Generic provider CTA configuration
+   * Handles all providers: wolt, tenbis, mishloha
+   * Returns array of provider CTAs to display
    */
-  readonly woltCta = computed(() => {
+  readonly providerCtas = computed(() => {
     const restaurant = this.restaurant();
     const restaurantName = restaurant.name;
     const address = restaurant.address;
+    const providers = restaurant.providers || {};
 
     // Get current UI language
     const currentLang = this.i18n.currentLang();
     const lang: 'he' | 'en' = currentLang === 'he' ? 'he' : 'en';
 
-    // Extract city slug and text from address
-    const citySlug = extractCitySlug(address);
-    const cityText = extractCityText(address);
+    // Provider configurations
+    const providerConfigs: Array<{
+      id: 'wolt' | 'tenbis' | 'mishloha';
+      label: string;
+      searchLabel: string;
+      buildSearchUrl: (name: string, address: string, lang?: 'he' | 'en') => string;
+    }> = [
+      {
+        id: 'wolt',
+        label: 'Wolt',
+        searchLabel: this.i18n.t('card.action.search_on', { provider: 'Wolt' }),
+        buildSearchUrl: (name, addr, l) => buildWoltSearchUrl(name, addr, l)
+      },
+      {
+        id: 'tenbis',
+        label: '10bis',
+        searchLabel: this.i18n.t('card.action.search_on', { provider: '10bis' }),
+        buildSearchUrl: buildTenbisSearchUrl
+      },
+      {
+        id: 'mishloha',
+        label: 'Mishloha',
+        searchLabel: this.i18n.t('card.action.search_on', { provider: 'Mishloha' }),
+        buildSearchUrl: buildMishlohaSearchUrl
+      }
+    ];
 
-    // Build Wolt search URL (returns null if name is missing)
-    const woltSearchUrl = buildWoltSearchUrl(restaurantName, citySlug, cityText || undefined, lang);
+    return providerConfigs.map(config => {
+      const providerState = providers[config.id];
+      
+      // FOUND: Show "Order on {Provider}" button with direct link
+      if (providerState?.status === 'FOUND' && providerState.url) {
+        return {
+          id: config.id,
+          className: `action-btn action-btn-${config.id}-primary`,
+          label: this.i18n.t('card.action.order_on', { provider: config.label }),
+          disabled: false,
+          showSpinner: false,
+          url: providerState.url,
+          title: this.i18n.t('card.action.order_on', { provider: config.label }),
+          ariaLabel: `${this.i18n.t('card.action.order')} ${restaurantName} ${this.i18n.t('card.action.on')} ${config.label}`,
+        };
+      }
 
-    // If we can't build a URL (missing name), don't show button
-    if (!woltSearchUrl) {
-      return null;
-    }
+      // PENDING: Show disabled button with spinner
+      if (providerState?.status === 'PENDING') {
+        return {
+          id: config.id,
+          className: `action-btn action-btn-${config.id}-pending`,
+          label: config.label,
+          disabled: true,
+          showSpinner: true,
+          url: null,
+          title: this.i18n.t('card.action.loading'),
+          ariaLabel: `${this.i18n.t('card.action.loading')} ${config.label}`,
+        };
+      }
 
-    // Always show "Search on Wolt" CTA with locally built URL
-    return {
-      className: 'action-btn action-btn-wolt-search',
-      label: this.i18n.t('card.action.search_wolt'),
-      disabled: false,
-      showSpinner: false,
-      url: woltSearchUrl,
-      title: this.i18n.t('card.action.search_wolt_title'),
-      ariaLabel: `${this.i18n.t('card.action.search_wolt')} ${restaurantName}`,
-    };
+      // NOT_FOUND or no state: Show "Search on {Provider}" fallback
+      const searchUrl = config.buildSearchUrl(restaurantName, address, lang);
+      return {
+        id: config.id,
+        className: `action-btn action-btn-${config.id}-search`,
+        label: config.searchLabel,
+        disabled: false,
+        showSpinner: false,
+        url: searchUrl,
+        title: config.searchLabel,
+        ariaLabel: `${config.searchLabel} ${restaurantName}`,
+      };
+    });
   });
 
-
   /**
-   * Handle Wolt action click
-   * Opens Wolt search URL in new tab
+   * Handle provider action click
+   * Opens provider URL in new tab
    */
-  onWoltAction(event: Event): void {
+  onProviderAction(event: Event, providerId: 'wolt' | 'tenbis' | 'mishloha'): void {
     event.stopPropagation();
 
-    const cta = this.woltCta();
+    const cta = this.providerCtas().find(c => c.id === providerId);
     if (!cta || cta.disabled || !cta.url) {
       return;
     }
 
-    // Open Wolt URL in new tab
+    // Open provider URL in new tab
     window.open(cta.url, '_blank', 'noopener,noreferrer');
 
-    console.log('[RestaurantCard] Wolt search clicked', {
+    console.log('[RestaurantCard] Provider action clicked', {
       placeId: this.restaurant().placeId,
       name: this.restaurant().name,
-      url: cta.url,
+      providerId,
+      url: cta.url.substring(0, 100),
     });
   }
 

@@ -4,3 +4,4 @@ C:\dev\piza\angular-piza\server\logs\20260205-0208-01-server.log.gz
 C:\dev\piza\angular-piza\server\logs\20260207-0000-01-server.log.gz
 C:\dev\piza\angular-piza\server\logs\20260208-0000-01-server.log.gz
 C:\dev\piza\angular-piza\server\logs\20260213-1705-01-server.log.gz
+C:\dev\piza\angular-piza\server\logs\20260214-0000-01-server.log.gz

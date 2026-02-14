@@ -188,6 +188,7 @@ export function getConfig() {
 
     const openaiApiKey = process.env.OPENAI_API_KEY || '';
     const googleApiKey = process.env.GOOGLE_API_KEY || '';
+    const braveSearchApiKey = process.env.BRAVE_SEARCH_API_KEY || '';
 
     // PROD Hardening: Boot-time validation
     if (enableAiFeatures && !openaiApiKey) {
@@ -209,7 +210,8 @@ export function getConfig() {
     // Log presence/absence (not values)
     console.info('[Config] API Keys:', {
         openai: openaiApiKey ? 'present' : 'absent',
-        google: googleApiKey ? 'present' : 'absent'
+        google: googleApiKey ? 'present' : 'absent',
+        braveSearch: braveSearchApiKey ? 'present' : 'absent'
     });
 
     /**
@@ -303,6 +305,7 @@ export function getConfig() {
             port,
             openaiApiKey,
             googleApiKey,
+            braveSearchApiKey,
             jwtSecret,
             sessionCookieSecret,
             sessionCookieTtlSeconds,

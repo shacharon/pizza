@@ -191,21 +191,18 @@ export interface ProviderState {
 }
 
 /**
- * Result patch event (for async enrichments like Wolt links)
+ * Result patch event (for async enrichments like provider links)
  */
 export interface WSServerResultPatch {
   type: 'RESULT_PATCH';
   requestId: string;
   placeId: string;
   patch: {
-    // NEW: Structured providers field
+    // Structured providers field
     providers?: {
       wolt?: ProviderState;
-    };
-    // DEPRECATED: Legacy wolt field (kept for backward compatibility)
-    wolt?: {
-      status: 'FOUND' | 'NOT_FOUND';
-      url: string | null;
+      tenbis?: ProviderState;
+      mishloha?: ProviderState;
     };
   };
 }

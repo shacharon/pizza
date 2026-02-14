@@ -92,16 +92,11 @@ export interface Restaurant {
   currentOpeningHours?: CurrentOpeningHours;
   regularOpeningHours?: RegularOpeningHours;
 
-  // NEW: Structured provider enrichments (async, non-blocking)
+  // Structured provider enrichments (async, non-blocking)
   providers?: {
     wolt?: ProviderState;
-    // Future: tripadvisor?: ProviderState, etc.
-  };
-
-  // DEPRECATED: Legacy wolt field (kept for backward compatibility)
-  wolt?: {
-    status: 'FOUND' | 'NOT_FOUND' | 'PENDING';
-    url: string | null;
+    tenbis?: ProviderState;
+    mishloha?: ProviderState;
   };
 }
 

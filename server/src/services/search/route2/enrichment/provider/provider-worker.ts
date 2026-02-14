@@ -1,11 +1,11 @@
 /**
- * 10bis Worker - Background Job Processor (Enhanced)
+ * Provider Worker - Background Job Processor (Generic)
  * 
- * Processes 10bis enrichment jobs with timeout/retry:
- * 1. Search for 10bis restaurant page (using search adapter) - with timeout
+ * Processes provider enrichment jobs with timeout/retry for any provider (wolt, tenbis, mishloha)
+ * 1. Search for provider restaurant page (using search adapter) - with timeout
  * 2. Match best result (using matcher)
- * 3. Write to Redis cache provider:tenbis:{placeId} with TTL
- * 4. Publish WebSocket RESULT_PATCH with providers.tenbis + updatedAt
+ * 3. Write to Redis cache provider:{providerId}:{placeId} with TTL
+ * 4. Publish WebSocket RESULT_PATCH with providers.{provider} + updatedAt
  * 
  * Error Handling:
  * - Timeout: Write NOT_FOUND, publish patch, log timeout
@@ -13,8 +13,8 @@
  * - Permanent errors: Write NOT_FOUND, publish patch, no retry
  * 
  * Timeout Strategy:
- * - Overall job timeout: 30s (TENBIS_JOB_CONFIG.JOB_TIMEOUT_MS)
- * - Search timeout: 20s (TENBIS_JOB_CONFIG.SEARCH_TIMEOUT_MS)
+ * - Overall job timeout: 30s (PROVIDER_JOB_CONFIG.JOB_TIMEOUT_MS)
+ * - Search timeout: 20s (PROVIDER_JOB_CONFIG.SEARCH_TIMEOUT_MS)
  * - On timeout: Treated as transient error, eligible for retry
  * 
  * Retry Strategy:
@@ -27,105 +27,36 @@
 import type { Redis as RedisClient } from 'ioredis';
 import { logger } from '../../../../../lib/logger/structured-logger.js';
 import {
-  TENBIS_REDIS_KEYS,
-  TENBIS_CACHE_TTL_SECONDS,
-  TENBIS_JOB_CONFIG,
-  type TenbisCacheEntry,
-} from './tenbis-enrichment.contracts.js';
+  PROVIDER_REDIS_KEYS,
+  PROVIDER_CACHE_TTL_SECONDS,
+  PROVIDER_JOB_CONFIG,
+  type ProviderCacheEntry,
+  type ProviderEnrichmentJob,
+  type JobResult,
+  type ProviderId,
+  getProviderDisplayName,
+} from './provider.contracts.js';
 import { wsManager } from '../../../../../server.js';
 import { withTimeout } from '../../../../../lib/reliability/timeout-guard.js';
 import type { ProviderDeepLinkResolver } from '../provider-deeplink-resolver.js';
 import { getMetricsCollector } from '../metrics-collector.js';
 
 /**
- * 10bis enrichment job
+ * Provider Worker - Processes enrichment jobs for any provider
  */
-export interface TenbisEnrichmentJob {
-  /**
-   * Search request ID (for WS patch event)
-   */
-  requestId: string;
-
-  /**
-   * Google Place ID (cache key)
-   */
-  placeId: string;
-
-  /**
-   * Restaurant name
-   */
-  name: string;
-
-  /**
-   * City name (optional, from intent stage)
-   */
-  cityText?: string | null;
-
-  /**
-   * Address text (optional, for future use)
-   */
-  addressText?: string | null;
-}
-
-/**
- * Job processing result
- */
-export interface JobResult {
-  /**
-   * Job succeeded
-   */
-  success: boolean;
-
-  /**
-   * 10bis URL (if found)
-   */
-  url: string | null;
-
-  /**
-   * Status
-   */
-  status: 'FOUND' | 'NOT_FOUND';
-
-  /**
-   * Timestamp when result was determined
-   */
-  updatedAt: string;
-
-  /**
-   * Resolution metadata
-   */
-  meta?: {
-    layerUsed: 1 | 2 | 3;
-    source: 'cse' | 'internal';
-  };
-
-  /**
-   * Error message (if failed)
-   */
-  error?: string;
-
-  /**
-   * Number of retry attempts made
-   */
-  retries?: number;
-}
-
-/**
- * 10bis Worker - Processes enrichment jobs
- */
-export class TenbisWorker {
+export class ProviderWorker {
   constructor(
     private redis: RedisClient,
     private resolver: ProviderDeepLinkResolver
   ) {}
 
   /**
-   * Process a single 10bis enrichment job (with timeout and retry)
+   * Process a single provider enrichment job (with timeout and retry)
    * 
    * Steps:
-   * 1. Search for 10bis restaurant page (with timeout)
+   * 1. Search for provider restaurant page (with timeout)
    * 2. Match best result
-   * 3. Write to Redis cache provider:tenbis:{placeId}
+   * 3. Write to Redis cache provider:{providerId}:{placeId}
    * 4. Publish WebSocket RESULT_PATCH with updatedAt
    * 
    * Retry Strategy:
@@ -133,31 +64,33 @@ export class TenbisWorker {
    * - No retry on: 4xx errors, invalid data, permanent failures
    * - Exponential backoff: 1s → 2s → 4s
    * 
-   * @param job - 10bis enrichment job
+   * @param job - Provider enrichment job
    * @returns Job result with updatedAt
    */
-  async processJob(job: TenbisEnrichmentJob): Promise<JobResult> {
-    const { requestId, placeId, name, cityText } = job;
+  async processJob(job: ProviderEnrichmentJob): Promise<JobResult> {
+    const { providerId, requestId, placeId, name, cityText } = job;
+    const displayName = getProviderDisplayName(providerId);
 
     logger.info(
       {
-        event: 'tenbis_job_started',
+        event: 'provider_job_started',
+        providerId,
         requestId,
         placeId,
         restaurantName: name,
         cityText,
-        timeout: TENBIS_JOB_CONFIG.JOB_TIMEOUT_MS,
-        maxRetries: TENBIS_JOB_CONFIG.MAX_RETRIES,
+        timeout: PROVIDER_JOB_CONFIG.JOB_TIMEOUT_MS,
+        maxRetries: PROVIDER_JOB_CONFIG.MAX_RETRIES,
       },
-      '[TenbisWorker] Processing job'
+      `[ProviderWorker:${providerId}] Processing job`
     );
 
     // Wrap entire job with timeout guard
     try {
       const result = await withTimeout(
         this.processJobInternal(job, 0),
-        TENBIS_JOB_CONFIG.JOB_TIMEOUT_MS,
-        `10bis job timeout for ${placeId}`
+        PROVIDER_JOB_CONFIG.JOB_TIMEOUT_MS,
+        `${displayName} job timeout for ${placeId}`
       );
 
       return result;
@@ -168,30 +101,32 @@ export class TenbisWorker {
 
       logger.error(
         {
-          event: 'tenbis_job_failed',
+          event: 'provider_job_failed',
+          providerId,
           requestId,
           placeId,
           error,
           isTimeout,
         },
-        '[TenbisWorker] Job failed (final)'
+        `[ProviderWorker:${providerId}] Job failed (final)`
       );
 
       // Write NOT_FOUND and publish patch (no meta on error)
       const updatedAt = new Date().toISOString();
       try {
-        await this.writeCacheEntry(placeId, null, 'NOT_FOUND', undefined);
-        await this.publishPatchEvent(requestId, placeId, 'NOT_FOUND', null, updatedAt, undefined);
-        await this.cleanupLock(placeId);
+        await this.writeCacheEntry(providerId, placeId, null, 'NOT_FOUND', undefined);
+        await this.publishPatchEvent(providerId, requestId, placeId, 'NOT_FOUND', null, updatedAt, undefined);
+        await this.cleanupLock(providerId, placeId);
       } catch (cleanupErr) {
         logger.warn(
           {
-            event: 'tenbis_error_cleanup_failed',
+            event: 'provider_error_cleanup_failed',
+            providerId,
             requestId,
             placeId,
             error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
           },
-          '[TenbisWorker] Failed to write NOT_FOUND on error (non-fatal)'
+          `[ProviderWorker:${providerId}] Failed to write NOT_FOUND on error (non-fatal)`
         );
       }
 
@@ -208,38 +143,39 @@ export class TenbisWorker {
   /**
    * Internal job processing with retry logic
    * 
-   * @param job - 10bis enrichment job
+   * @param job - Provider enrichment job
    * @param attemptNumber - Current attempt (0-indexed)
    * @returns Job result
    */
   private async processJobInternal(
-    job: TenbisEnrichmentJob,
+    job: ProviderEnrichmentJob,
     attemptNumber: number
   ): Promise<JobResult> {
-    const { requestId, placeId, name, cityText } = job;
+    const { providerId, requestId, placeId, name, cityText } = job;
 
     try {
-      // Step 1: Resolve 10bis deep link using 3-layer strategy
+      // Step 1: Resolve provider deep link using 3-layer strategy
       logger.debug(
         {
-          event: 'tenbis_resolution_started',
+          event: 'provider_resolution_started',
+          providerId,
           requestId,
           placeId,
           name,
           cityText,
           attempt: attemptNumber + 1,
         },
-        '[TenbisWorker] Starting resolution'
+        `[ProviderWorker:${providerId}] Starting resolution`
       );
 
       const resolveResult = await withTimeout(
         this.resolver.resolve({
-          provider: 'tenbis',
+          provider: providerId,
           name,
           cityText: cityText ?? null,
         }),
-        TENBIS_JOB_CONFIG.SEARCH_TIMEOUT_MS,
-        `10bis resolution timeout for ${placeId}`
+        PROVIDER_JOB_CONFIG.SEARCH_TIMEOUT_MS,
+        `${getProviderDisplayName(providerId)} resolution timeout for ${placeId}`
       );
 
       const { status, url, meta } = resolveResult;
@@ -252,18 +188,20 @@ export class TenbisWorker {
         
         logger.debug(
           {
-            event: 'tenbis_cse_call_tracked',
+            event: 'provider_cse_call_tracked',
+            providerId,
             requestId,
             placeId,
             layerUsed: meta.layerUsed,
           },
-          '[TenbisWorker] CSE call tracked in metrics'
+          `[ProviderWorker:${providerId}] CSE call tracked in metrics`
         );
       }
 
       logger.info(
         {
-          event: 'tenbis_resolution_completed',
+          event: 'provider_resolution_completed',
+          providerId,
           requestId,
           placeId,
           status,
@@ -272,27 +210,28 @@ export class TenbisWorker {
           source: meta.source,
           attempt: attemptNumber + 1,
         },
-        '[TenbisWorker] Resolution completed'
+        `[ProviderWorker:${providerId}] Resolution completed`
       );
 
       // Step 2: Write to Redis cache (with meta)
-      await this.writeCacheEntry(placeId, url, status, meta);
+      await this.writeCacheEntry(providerId, placeId, url, status, meta);
 
       // Step 3: Publish WebSocket RESULT_PATCH event with meta
-      await this.publishPatchEvent(requestId, placeId, status, url, updatedAt, meta);
+      await this.publishPatchEvent(providerId, requestId, placeId, status, url, updatedAt, meta);
 
       // Step 4: Clean up lock (optional, TTL already exists)
-      await this.cleanupLock(placeId);
+      await this.cleanupLock(providerId, placeId);
 
       logger.info(
         {
-          event: 'tenbis_job_completed',
+          event: 'provider_job_completed',
+          providerId,
           requestId,
           placeId,
           status,
           attempts: attemptNumber + 1,
         },
-        '[TenbisWorker] Job completed successfully'
+        `[ProviderWorker:${providerId}] Job completed successfully`
       );
 
       return {
@@ -310,32 +249,34 @@ export class TenbisWorker {
 
       logger.warn(
         {
-          event: 'tenbis_job_attempt_failed',
+          event: 'provider_job_attempt_failed',
+          providerId,
           requestId,
           placeId,
           error,
           attempt: attemptNumber + 1,
-          maxRetries: TENBIS_JOB_CONFIG.MAX_RETRIES,
+          maxRetries: PROVIDER_JOB_CONFIG.MAX_RETRIES,
           isTimeout,
           isTransient,
         },
-        '[TenbisWorker] Job attempt failed'
+        `[ProviderWorker:${providerId}] Job attempt failed`
       );
 
       // Retry logic
-      if (isTransient && attemptNumber < TENBIS_JOB_CONFIG.MAX_RETRIES) {
-        const retryDelay = TENBIS_JOB_CONFIG.RETRY_DELAY_MS * Math.pow(2, attemptNumber);
+      if (isTransient && attemptNumber < PROVIDER_JOB_CONFIG.MAX_RETRIES) {
+        const retryDelay = PROVIDER_JOB_CONFIG.RETRY_DELAY_MS * Math.pow(2, attemptNumber);
         
         logger.info(
           {
-            event: 'tenbis_job_retrying',
+            event: 'provider_job_retrying',
+            providerId,
             requestId,
             placeId,
             attempt: attemptNumber + 1,
             nextAttempt: attemptNumber + 2,
             retryDelayMs: retryDelay,
           },
-          '[TenbisWorker] Retrying job after delay'
+          `[ProviderWorker:${providerId}] Retrying job after delay`
         );
 
         // Wait before retry (exponential backoff)
@@ -398,18 +339,20 @@ export class TenbisWorker {
   /**
    * Write cache entry to Redis
    * 
+   * @param providerId - Provider ID
    * @param placeId - Google Place ID
-   * @param url - 10bis URL (or null)
+   * @param url - Provider URL (or null)
    * @param status - Match status
    * @param meta - Resolution metadata
    */
   private async writeCacheEntry(
+    providerId: ProviderId,
     placeId: string,
     url: string | null,
     status: 'FOUND' | 'NOT_FOUND',
     meta?: { layerUsed: 1 | 2 | 3; source: 'cse' | 'internal' }
   ): Promise<void> {
-    const cacheEntry: TenbisCacheEntry & { meta?: any } = {
+    const cacheEntry: ProviderCacheEntry = {
       url,
       status,
       updatedAt: new Date().toISOString(),
@@ -418,22 +361,23 @@ export class TenbisWorker {
 
     const ttl =
       status === 'FOUND'
-        ? TENBIS_CACHE_TTL_SECONDS.FOUND
-        : TENBIS_CACHE_TTL_SECONDS.NOT_FOUND;
+        ? PROVIDER_CACHE_TTL_SECONDS.FOUND
+        : PROVIDER_CACHE_TTL_SECONDS.NOT_FOUND;
 
-    const key = TENBIS_REDIS_KEYS.place(placeId);
+    const key = PROVIDER_REDIS_KEYS.place(providerId, placeId);
 
     await this.redis.setex(key, ttl, JSON.stringify(cacheEntry));
 
     logger.debug(
       {
-        event: 'tenbis_cache_written',
+        event: 'provider_cache_written',
+        providerId,
         placeId,
         status,
         ttl,
         meta,
       },
-      '[TenbisWorker] Cache entry written'
+      `[ProviderWorker:${providerId}] Cache entry written`
     );
   }
 
@@ -442,14 +386,16 @@ export class TenbisWorker {
    * 
    * Uses unified wsManager.publishProviderPatch() method.
    * 
+   * @param providerId - Provider ID
    * @param requestId - Search request ID
    * @param placeId - Google Place ID
    * @param status - Match status
-   * @param url - 10bis URL (or null)
+   * @param url - Provider URL (or null)
    * @param updatedAt - ISO timestamp of enrichment completion
    * @param meta - Resolution metadata
    */
   private async publishPatchEvent(
+    providerId: ProviderId,
     requestId: string,
     placeId: string,
     status: 'FOUND' | 'NOT_FOUND',
@@ -458,35 +404,38 @@ export class TenbisWorker {
     meta?: { layerUsed: 1 | 2 | 3; source: 'cse' | 'internal' }
   ): Promise<void> {
     // Use unified provider patch method (includes structured logging)
-    wsManager.publishProviderPatch('tenbis', placeId, requestId, status, url, updatedAt, meta);
+    wsManager.publishProviderPatch(providerId, placeId, requestId, status, url, updatedAt, meta);
   }
 
   /**
    * Clean up lock key (optional, TTL auto-expires)
    * 
+   * @param providerId - Provider ID
    * @param placeId - Google Place ID
    */
-  private async cleanupLock(placeId: string): Promise<void> {
+  private async cleanupLock(providerId: ProviderId, placeId: string): Promise<void> {
     try {
-      const lockKey = TENBIS_REDIS_KEYS.lock(placeId);
+      const lockKey = PROVIDER_REDIS_KEYS.lock(providerId, placeId);
       await this.redis.del(lockKey);
 
       logger.debug(
         {
-          event: 'tenbis_lock_cleaned',
+          event: 'provider_lock_cleaned',
+          providerId,
           placeId,
         },
-        '[TenbisWorker] Lock key cleaned up'
+        `[ProviderWorker:${providerId}] Lock key cleaned up`
       );
     } catch (err) {
       // Non-fatal: Lock will expire via TTL anyway
       logger.warn(
         {
-          event: 'tenbis_lock_cleanup_failed',
+          event: 'provider_lock_cleanup_failed',
+          providerId,
           placeId,
           error: err instanceof Error ? err.message : String(err),
         },
-        '[TenbisWorker] Lock cleanup failed (non-fatal)'
+        `[ProviderWorker:${providerId}] Lock cleanup failed (non-fatal)`
       );
     }
   }

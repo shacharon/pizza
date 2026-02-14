@@ -17,16 +17,9 @@ export const ProviderStateSchema = z.object({
  * Providers schema - Container for all provider enrichments
  */
 export const ProvidersSchema = z.object({
-  wolt: ProviderStateSchema.optional()
-  // Future: tripadvisor, etc.
-});
-
-/**
- * Legacy Wolt schema (for backward compatibility)
- */
-export const LegacyWoltSchema = z.object({
-  status: z.enum(['PENDING', 'FOUND', 'NOT_FOUND']),
-  url: z.string().nullable()
+  wolt: ProviderStateSchema.optional(),
+  tenbis: ProviderStateSchema.optional(),
+  mishloha: ProviderStateSchema.optional()
 });
 
 /**
@@ -34,8 +27,7 @@ export const LegacyWoltSchema = z.object({
  * Full restaurant validation should include all required fields
  */
 export const RestaurantProviderFieldsSchema = z.object({
-  providers: ProvidersSchema.optional(),
-  wolt: LegacyWoltSchema.optional() // DEPRECATED but still validated
+  providers: ProvidersSchema.optional()
 });
 
 /**
@@ -46,11 +38,7 @@ export const WSServerResultPatchSchema = z.object({
   requestId: z.string().min(1),
   placeId: z.string().min(1),
   patch: z.object({
-    providers: ProvidersSchema.optional(),
-    wolt: z.object({
-      status: z.enum(['FOUND', 'NOT_FOUND']), // Never PENDING in patches
-      url: z.string().nullable()
-    }).optional() // DEPRECATED but still validated
+    providers: ProvidersSchema.optional()
   })
 });
 

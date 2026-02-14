@@ -458,15 +458,14 @@ export class SearchFacade {
   }
 
   /**
-   * Handle RESULT_PATCH WebSocket event (Wolt enrichment)
-   * Patches both new providers.wolt and legacy wolt fields
+   * Handle RESULT_PATCH WebSocket event (provider enrichment)
+   * Patches providers map (wolt, tenbis, mishloha)
    */
   private handleResultPatch(msg: import('../core/models/ws-protocol.types').WSServerResultPatch): void {
     console.log('[SearchFacade] RESULT_PATCH received', {
       requestId: msg.requestId,
       placeId: msg.placeId,
-      providers: msg.patch.providers,
-      legacyWolt: msg.patch.wolt
+      providers: msg.patch.providers
     });
 
     // Verify this patch is for the current search
@@ -478,21 +477,16 @@ export class SearchFacade {
       return;
     }
 
-    // Build patch object with both new and legacy fields
+    // Build patch object with providers field
     const patch: Partial<Restaurant> = {};
 
-    // NEW: Patch providers.wolt field (primary)
+    // Patch providers map
     if (msg.patch.providers) {
       patch.providers = msg.patch.providers;
     }
 
-    // DEPRECATED: Patch legacy wolt field (backward compatibility)
-    if (msg.patch.wolt) {
-      patch.wolt = msg.patch.wolt;
-    }
-
-    // Apply patch if we have any data
-    if (patch.providers || patch.wolt) {
+    // Apply patch if we have data
+    if (patch.providers) {
       this.searchStore.patchRestaurant(msg.placeId, patch);
     }
   }

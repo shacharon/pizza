@@ -1,17 +1,20 @@
 /**
- * Wolt Job Queue - In-Process Queue (MVP)
+ * Provider Job Queue - In-Process Queue (Generic)
  * 
- * Simple in-memory job queue for background Wolt enrichment.
+ * Simple in-memory job queue for background provider enrichment.
+ * Supports multiple providers: wolt, tenbis, mishloha
+ * 
  * For production, consider external queue (Bull, BullMQ, etc.)
  */
 
 import { logger } from '../../../../../lib/logger/structured-logger.js';
 import { getRedisClient } from '../../../../../lib/redis/redis-client.js';
 import type { ProviderDeepLinkResolver } from '../provider-deeplink-resolver.js';
-import { WoltWorker, type WoltEnrichmentJob } from './wolt-worker.js';
+import { ProviderWorker } from './provider-worker.js';
+import type { ProviderEnrichmentJob, ProviderId } from './provider.contracts.js';
 
 /**
- * In-process job queue for Wolt enrichment
+ * In-process job queue for provider enrichment
  * 
  * MVP implementation:
  * - Jobs are processed immediately in background (via setImmediate)
@@ -24,17 +27,23 @@ import { WoltWorker, type WoltEnrichmentJob } from './wolt-worker.js';
  * - Add retry logic with exponential backoff
  * - Add rate limiting to avoid overloading search API
  */
-export class WoltJobQueue {
-  private worker: WoltWorker | null = null;
+export class ProviderJobQueue {
+  private worker: ProviderWorker | null = null;
   private processing = false;
-  private queue: WoltEnrichmentJob[] = [];
+  private queue: ProviderEnrichmentJob[] = [];
+  private providerId: ProviderId;
 
-  constructor(private resolver: ProviderDeepLinkResolver) {}
+  constructor(
+    providerId: ProviderId,
+    private resolver: ProviderDeepLinkResolver
+  ) {
+    this.providerId = providerId;
+  }
 
   /**
    * Initialize worker (lazy initialization)
    */
-  private async initWorker(): Promise<WoltWorker | null> {
+  private async initWorker(): Promise<ProviderWorker | null> {
     if (this.worker) {
       return this.worker;
     }
@@ -49,60 +58,64 @@ export class WoltJobQueue {
     if (!redis) {
       logger.warn(
         {
-          event: 'wolt_worker_init_failed',
+          event: 'provider_worker_init_failed',
+          providerId: this.providerId,
           reason: 'redis_unavailable',
         },
-        '[WoltJobQueue] Worker initialization failed: Redis unavailable'
+        `[ProviderJobQueue:${this.providerId}] Worker initialization failed: Redis unavailable`
       );
       return null;
     }
 
-    this.worker = new WoltWorker(redis, this.resolver);
+    this.worker = new ProviderWorker(redis, this.resolver);
 
     logger.info(
       {
-        event: 'wolt_worker_initialized',
+        event: 'provider_worker_initialized',
+        providerId: this.providerId,
       },
-      '[WoltJobQueue] Worker initialized'
+      `[ProviderJobQueue:${this.providerId}] Worker initialized`
     );
 
     return this.worker;
   }
 
   /**
-   * Enqueue a Wolt enrichment job
+   * Enqueue a provider enrichment job
    * 
    * Idempotency guard: Prevents duplicate jobs for same placeId in queue
    * (Primary deduplication is via Redis lock before enqueue, this is safety net)
    * 
-   * @param job - Wolt enrichment job
+   * @param job - Provider enrichment job
    */
-  enqueue(job: WoltEnrichmentJob): void {
+  enqueue(job: ProviderEnrichmentJob): void {
     // Guard: Check if job for same placeId already in queue
     const existingJob = this.queue.find((j) => j.placeId === job.placeId);
     if (existingJob) {
       logger.info(
         {
-          event: 'wolt_job_deduplicated',
+          event: 'provider_job_deduplicated',
+          providerId: this.providerId,
           requestId: job.requestId,
           placeId: job.placeId,
           existingRequestId: existingJob.requestId,
           queuePosition: this.queue.indexOf(existingJob),
         },
-        '[WoltJobQueue] Job already in queue, skipped (idempotency guard)'
+        `[ProviderJobQueue:${this.providerId}] Job already in queue, skipped (idempotency guard)`
       );
       return;
     }
 
     logger.debug(
       {
-        event: 'wolt_job_enqueued',
+        event: 'provider_job_enqueued',
+        providerId: this.providerId,
         requestId: job.requestId,
         placeId: job.placeId,
         restaurantName: job.name,
         queueSize: this.queue.length + 1,
       },
-      '[WoltJobQueue] Job enqueued'
+      `[ProviderJobQueue:${this.providerId}] Job enqueued`
     );
 
     this.queue.push(job);
@@ -152,18 +165,18 @@ export class WoltJobQueue {
     }
 
     try {
-
       // Initialize worker (lazy)
       const worker = await this.initWorker();
       if (!worker) {
         logger.warn(
           {
-            event: 'wolt_job_skipped',
+            event: 'provider_job_skipped',
+            providerId: this.providerId,
             requestId: job.requestId,
             placeId: job.placeId,
             reason: 'worker_unavailable',
           },
-          '[WoltJobQueue] Job skipped: Worker unavailable'
+          `[ProviderJobQueue:${this.providerId}] Job skipped: Worker unavailable`
         );
         
         // SAFETY GUARD: Publish NOT_FOUND patch even without worker
@@ -171,20 +184,21 @@ export class WoltJobQueue {
         try {
           logger.info(
             {
-              event: 'wolt_patch_publish_attempt',
+              event: 'provider_patch_publish_attempt',
+              providerId: this.providerId,
               requestId: job.requestId,
               placeId: job.placeId,
               status: 'NOT_FOUND',
               reason: 'worker_unavailable',
             },
-            '[WoltJobQueue] Attempting to publish fallback RESULT_PATCH'
+            `[ProviderJobQueue:${this.providerId}] Attempting to publish fallback RESULT_PATCH`
           );
 
           const { wsManager } = await import('../../../../../server.js');
           
           // Use unified provider patch method (includes structured logging)
           wsManager.publishProviderPatch(
-            'wolt',
+            this.providerId,
             job.placeId,
             job.requestId,
             'NOT_FOUND',
@@ -194,22 +208,24 @@ export class WoltJobQueue {
           
           logger.info(
             {
-              event: 'wolt_fallback_patch_published',
+              event: 'provider_fallback_patch_published',
+              providerId: this.providerId,
               requestId: job.requestId,
               placeId: job.placeId,
               reason: 'worker_unavailable',
             },
-            '[WoltJobQueue] Fallback RESULT_PATCH published successfully'
+            `[ProviderJobQueue:${this.providerId}] Fallback RESULT_PATCH published successfully`
           );
         } catch (patchErr) {
           logger.warn(
             {
-              event: 'wolt_patch_fallback_failed',
+              event: 'provider_patch_fallback_failed',
+              providerId: this.providerId,
               requestId: job.requestId,
               placeId: job.placeId,
               error: patchErr instanceof Error ? patchErr.message : String(patchErr),
             },
-            '[WoltJobQueue] Failed to publish fallback patch (non-fatal)'
+            `[ProviderJobQueue:${this.providerId}] Failed to publish fallback patch (non-fatal)`
           );
         }
         
@@ -222,10 +238,11 @@ export class WoltJobQueue {
       const error = err instanceof Error ? err.message : String(err);
       logger.error(
         {
-          event: 'wolt_job_processing_error',
+          event: 'provider_job_processing_error',
+          providerId: this.providerId,
           error,
         },
-        '[WoltJobQueue] Job processing error'
+        `[ProviderJobQueue:${this.providerId}] Job processing error`
       );
       
       // SAFETY GUARD 2: Publish NOT_FOUND patch if job processing failed
@@ -234,20 +251,21 @@ export class WoltJobQueue {
         try {
           logger.info(
             {
-              event: 'wolt_patch_publish_attempt',
+              event: 'provider_patch_publish_attempt',
+              providerId: this.providerId,
               requestId: job.requestId,
               placeId: job.placeId,
               status: 'NOT_FOUND',
               reason: 'job_processing_error',
             },
-            '[WoltJobQueue] Attempting to publish emergency RESULT_PATCH'
+            `[ProviderJobQueue:${this.providerId}] Attempting to publish emergency RESULT_PATCH`
           );
 
           const { wsManager } = await import('../../../../../server.js');
           
           // Use unified provider patch method (includes structured logging)
           wsManager.publishProviderPatch(
-            'wolt',
+            this.providerId,
             job.placeId,
             job.requestId,
             'NOT_FOUND',
@@ -257,22 +275,24 @@ export class WoltJobQueue {
           
           logger.info(
             {
-              event: 'wolt_emergency_patch_published',
+              event: 'provider_emergency_patch_published',
+              providerId: this.providerId,
               requestId: job.requestId,
               placeId: job.placeId,
               reason: 'job_processing_error',
             },
-            '[WoltJobQueue] Emergency RESULT_PATCH published successfully'
+            `[ProviderJobQueue:${this.providerId}] Emergency RESULT_PATCH published successfully`
           );
         } catch (patchErr) {
           logger.warn(
             {
-              event: 'wolt_patch_emergency_failed',
+              event: 'provider_patch_emergency_failed',
+              providerId: this.providerId,
               requestId: job?.requestId,
               placeId: job?.placeId,
               error: patchErr instanceof Error ? patchErr.message : String(patchErr),
             },
-            '[WoltJobQueue] Failed to publish emergency patch (non-fatal)'
+            `[ProviderJobQueue:${this.providerId}] Failed to publish emergency patch (non-fatal)`
           );
         }
       }

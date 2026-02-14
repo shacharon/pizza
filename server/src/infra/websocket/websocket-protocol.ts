@@ -178,22 +178,18 @@ export interface ProviderState {
 
 /**
  * WebSocket event for patching individual search results
- * Used for async enrichments (Wolt links, etc.)
+ * Used for async enrichments (provider links, etc.)
  */
 export interface WSServerResultPatch {
   type: 'RESULT_PATCH';
   requestId: string;
   placeId: string;
   patch: {
-    // NEW: Structured providers field
+    // Structured providers field
     providers?: {
       wolt?: ProviderState;
       tenbis?: ProviderState;
-    };
-    // DEPRECATED: Legacy wolt field (kept for backward compatibility)
-    wolt?: {
-      status: 'FOUND' | 'NOT_FOUND';
-      url: string | null;
+      mishloha?: ProviderState;
     };
   };
 }

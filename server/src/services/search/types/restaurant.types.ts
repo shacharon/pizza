@@ -90,17 +90,11 @@ export interface RestaurantResult {
   tags?: string[];  // ['pizza', 'romantic', 'fast-food']
   matchReasons?: string[];  // Why this matches the query (REQUIRED after ranking)
 
-  // External enrichments (async, non-blocking) - NEW structured format
+  // External enrichments (async, non-blocking)
   providers?: {
     wolt?: ProviderState;
     tenbis?: ProviderState;
-    // Future: tripadvisor?: ProviderState, etc.
-  };
-
-  // DEPRECATED: Legacy wolt field (kept for backward compatibility)
-  wolt?: {
-    status: 'FOUND' | 'NOT_FOUND' | 'PENDING';
-    url: string | null;
+    mishloha?: ProviderState;
   };
 
   // Scoring (added by RankingService)

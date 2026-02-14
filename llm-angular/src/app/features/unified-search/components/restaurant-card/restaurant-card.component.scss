@@ -424,6 +424,96 @@
         color: #009de0;
       }
     }
+
+    // TenBis primary button (FOUND status)
+    &.action-btn-tenbis-primary {
+      background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%);
+      color: #fff;
+      font-weight: 600;
+
+      &:hover:not(:disabled) {
+        background: linear-gradient(135deg, #f7931e 0%, #f58220 100%);
+        transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(255, 107, 53, 0.3);
+      }
+
+      &:active:not(:disabled) {
+        transform: translateY(0);
+      }
+
+      .action-icon {
+        color: #fff;
+      }
+    }
+
+    // TenBis pending button (PENDING status)
+    &.action-btn-tenbis-pending {
+      background: #f3f4f6;
+      color: #6b7280;
+      cursor: wait;
+
+      .action-spinner {
+        animation: spin 1s linear infinite;
+      }
+    }
+
+    // TenBis search button (NOT_FOUND status)
+    &.action-btn-tenbis-search {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      color: #374151;
+
+      &:hover:not(:disabled) {
+        background: #f9fafb;
+        border-color: #ff6b35;
+        color: #ff6b35;
+      }
+    }
+
+    // Mishloha primary button (FOUND status)
+    &.action-btn-mishloha-primary {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: #fff;
+      font-weight: 600;
+
+      &:hover:not(:disabled) {
+        background: linear-gradient(135deg, #059669 0%, #047857 100%);
+        transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+      }
+
+      &:active:not(:disabled) {
+        transform: translateY(0);
+      }
+
+      .action-icon {
+        color: #fff;
+      }
+    }
+
+    // Mishloha pending button (PENDING status)
+    &.action-btn-mishloha-pending {
+      background: #f3f4f6;
+      color: #6b7280;
+      cursor: wait;
+
+      .action-spinner {
+        animation: spin 1s linear infinite;
+      }
+    }
+
+    // Mishloha search button (NOT_FOUND status)
+    &.action-btn-mishloha-search {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      color: #374151;
+
+      &:hover:not(:disabled) {
+        background: #f9fafb;
+        border-color: #10b981;
+        color: #10b981;
+      }
+    }
   }
 }
 
