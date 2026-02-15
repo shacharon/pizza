@@ -7,10 +7,15 @@
  * - NOT dialogue "conversation state" (backend manages that separately)
  * - Format: sess_<uuid>
  * - Stored in localStorage for browser stability
+ * 
+ * Auth Mode:
+ * - 'dual': Attach x-session-id + withCredentials (default)
+ * - 'cookie_only': Only withCredentials (no x-session-id header)
  */
 
 import { HttpInterceptorFn } from '@angular/common/http';
 import { isApiRequest } from '../api/api.config';
+import { environment } from '../../../environments/environment';
 
 const SESSION_STORAGE_KEY = 'api-session-id';
 
@@ -49,6 +54,8 @@ function getSessionId(): string {
  * Rules:
  * - Only apply to API requests (isApiRequest check)
  * - DO NOT overwrite explicit x-session-id header (manual override)
+ * - ALWAYS include withCredentials: true (enables HttpOnly cookie auth)
+ * - If authMode = 'cookie_only': Skip x-session-id header (cookies only)
  */
 export const apiSessionInterceptor: HttpInterceptorFn = (req, next) => {
   // Only intercept API requests
@@ -58,15 +65,27 @@ export const apiSessionInterceptor: HttpInterceptorFn = (req, next) => {
   
   // Skip if session header already present (explicit override)
   if (req.headers.has('x-session-id')) {
-    return next(req);
+    // Still ensure withCredentials is set
+    const withCreds = req.clone({ withCredentials: true });
+    return next(withCreds);
   }
   
-  // Attach session ID
+  // COOKIE_ONLY MODE: Only set withCredentials, no x-session-id header
+  if (environment.authMode === 'cookie_only') {
+    console.debug('[Session] AUTH_MODE=cookie_only - skipping x-session-id header');
+    const cloned = req.clone({
+      withCredentials: true // Still send cookies
+    });
+    return next(cloned);
+  }
+  
+  // DUAL MODE: Attach session ID + enable credentials
   const sessionId = getSessionId();
   const cloned = req.clone({
     setHeaders: {
       'x-session-id': sessionId
-    }
+    },
+    withCredentials: true // CRITICAL: enables HttpOnly session cookies
   });
   
   return next(cloned);

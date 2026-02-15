@@ -7,12 +7,14 @@
  * - /session -> session.controller.ts (POST /api/v1/auth/session)
  * - /whoami -> session.controller.ts (GET /api/v1/auth/whoami)
  * - /ws-ticket -> ws-ticket.controller.ts (POST /api/v1/auth/ws-ticket)
+ * - /bootstrap -> bootstrap.controller.ts (POST /api/v1/auth/bootstrap) - NEW: Redis-backed sessions
  */
 
 import { Router } from 'express';
 import tokenController from './token.controller.js';
 import sessionController from './session.controller.js';
 import wsTicketController from './ws-ticket.controller.js';
+import bootstrapController from './bootstrap.controller.js';
 
 const router = Router();
 
@@ -20,5 +22,6 @@ const router = Router();
 router.use('/', tokenController);
 router.use('/', sessionController);
 router.use('/', wsTicketController);
+router.use('/', bootstrapController); // NEW: Redis session bootstrap
 
 export default router;

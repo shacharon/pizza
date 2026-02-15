@@ -24,6 +24,7 @@ import { Router, type Request, type Response } from 'express';
 import { logger } from '../../../lib/logger/structured-logger.js';
 import { getConfig } from '../../../config/env.js';
 import { authSessionOrJwt } from '../../../middleware/auth-session-or-jwt.middleware.js';
+import { authenticateSession } from '../../../middleware/auth-session.middleware.js'; // NEW: Cookie-only auth
 import { searchJobStore } from '../../../services/search/job-store/index.js';
 import { createLLMProvider } from '../../../llm/factory.js';
 import { AssistantSseOrchestrator } from './assistant-sse.orchestrator.js';
@@ -52,7 +53,7 @@ const orchestrator = new AssistantSseOrchestrator(
  * GET /api/v1/stream/assistant/:requestId
  * SSE endpoint for assistant streaming
  * 
- * Authentication: Session cookie (preferred) or Bearer JWT
+ * Authentication: Redis-backed session cookie ONLY (no JWT fallback)
  * Ownership: Best-effort validation via JobStore
  * 
  * Flow:
@@ -60,7 +61,7 @@ const orchestrator = new AssistantSseOrchestrator(
  * 2a. CLARIFY/STOPPED: generate message with LLM, send done
  * 2b. SEARCH: send narration template (no LLM), poll for results, send SUMMARY, send done
  */
-router.get('/assistant/:requestId', authSessionOrJwt, async (req: Request, res: Response) => {
+router.get('/assistant/:requestId', authenticateSession, async (req: Request, res: Response) => {
   // Set CORS headers for SSE with credentials
   // Must be specific origin (not *) when using credentials
   const origin = req.headers.origin;

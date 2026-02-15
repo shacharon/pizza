@@ -97,17 +97,18 @@ async function initializeRedis() {
 
       redisInitialized = Boolean(redis);
 
+      // Explicit boot log as requested (Task #1)
       logger.info(
         {
           event: 'redis_boot_status',
-          pid: process.pid,
-          redisUrlHost: config.redisUrl.replace(/:[^:@]+@/, ':****@').split('@')[1] || config.redisUrl.replace(/:[^:@]+@/, ':****@'),
-          redisEnabled: redisInitialized,
+          ok: redisInitialized,
+          redisUrl: config.redisUrl.replace(/:[^:@]+@/, ':****@'),
+          status: redis?.status || 'null',
           clientCreated: Boolean(redis),
           clientConnected: redisInitialized,
           wsRequiresAuth,
         },
-        `[BOOT] Redis status: ${redisInitialized ? 'CONNECTED' : 'FAILED'}`
+        `[BOOT] Redis boot status: ${redisInitialized ? '✓ CONNECTED' : '✗ FAILED'}`
       );
 
       // Fail-fast if WS requires auth but Redis is down
@@ -138,6 +139,18 @@ async function initializeRedis() {
         }
       }
     } catch (error) {
+      // Explicit boot log for failure case (Task #1)
+      logger.error(
+        {
+          event: 'redis_boot_status',
+          ok: false,
+          redisUrl: config.redisUrl.replace(/:[^:@]+@/, ':****@'),
+          error: error instanceof Error ? error.message : String(error),
+          wsRequiresAuth,
+        },
+        '[BOOT] Redis boot status: ✗ FAILED'
+      );
+      
       logger.error(
         {
           event: 'redis_boot_failed',
@@ -154,24 +167,51 @@ async function initializeRedis() {
       }
     }
   } else {
+    // Explicit boot log when Redis not configured (Task #1)
     logger.info(
       {
         event: 'redis_boot_status',
-        pid: process.pid,
-        redisUrlHost: null,
-        redisEnabled: false,
-        clientCreated: false,
-        clientConnected: false,
-        wsRequiresAuth,
+        ok: false,
+        redisUrl: config.redisUrl || null,
         reason: !config.redisUrl ? 'no_redis_url' : 'not_required',
+        wsRequiresAuth,
       },
-      '[BOOT] Redis not initialized (not required or not configured)'
+      '[BOOT] Redis boot status: - NOT CONFIGURED'
     );
   }
 }
 
 // Initialize Redis before starting server
 await initializeRedis();
+
+// Phase 2.6: Initialize Redis session store (NEW: server-authoritative sessions)
+// MUST be called after Redis initialization
+import { initializeSessionStore } from './lib/session/redis-session.store.js';
+
+const redisClient = getExistingRedisClient();
+if (redisClient) {
+  logger.info({
+    event: 'session_store_init_start',
+    pid: process.pid
+  }, '[BOOT] Initializing Redis session store');
+  
+  initializeSessionStore({
+    ttlSeconds: 7 * 24 * 60 * 60, // 7 days sliding TTL
+    keyPrefix: 'session:'
+  });
+  
+  logger.info({
+    event: 'session_store_initialized',
+    pid: process.pid,
+    ttlDays: 7
+  }, '[BOOT] ✓ Redis session store ready');
+} else {
+  logger.warn({
+    event: 'session_store_skipped',
+    reason: 'redis_unavailable',
+    pid: process.pid
+  }, '[BOOT] Session store not initialized - Redis unavailable');
+}
 
 
 function maskKey(k?: string) {

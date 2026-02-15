@@ -25,6 +25,8 @@ import assistantSSERouter from '../../controllers/stream/assistant-sse/assistant
 import { authenticateJWT } from '../../middleware/auth.middleware.js';
 import { createRateLimiter } from '../../middleware/rate-limit.middleware.js';
 import { getConfig } from '../../config/env.js';
+import { getExistingRedisClient } from '../../lib/redis/redis-client.js';
+import { logger } from '../../lib/logger/structured-logger.js';
 
 export function createV1Router(): Router {
   const router = Router();
@@ -85,6 +87,64 @@ export function createV1Router(): Router {
       redisEnabled: config.enableRedisJobStore || config.enableRedisCache,
       redisActuallyEnabled: (config as any).redisActuallyEnabled
     });
+  });
+
+  // Redis health check endpoint (Task #5)
+  // Used for local debugging - can be disabled in production via env var
+  router.get('/debug/redis', async (req: Request, res: Response) => {
+    const config = getConfig();
+    
+    // Optional: disable in production
+    if (config.env === 'production' && process.env.ENABLE_DEBUG_REDIS !== 'true') {
+      return res.status(404).json({ error: 'Not found' });
+    }
+
+    const redis = getExistingRedisClient();
+    
+    if (!redis) {
+      logger.warn({ event: 'debug_redis_check', ok: false, reason: 'no_client' }, '[Debug] Redis client not initialized');
+      return res.status(503).json({
+        ok: false,
+        error: 'Redis client not initialized',
+        status: null,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    try {
+      // Try PING command
+      const pingResult = await redis.ping();
+      const isOk = pingResult === 'PONG';
+      
+      logger.info({
+        event: 'debug_redis_check',
+        ok: isOk,
+        status: redis.status,
+        pingResult
+      }, '[Debug] Redis health check');
+
+      return res.status(isOk ? 200 : 503).json({
+        ok: isOk,
+        status: redis.status,
+        pingResult,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      const err = error as Error;
+      logger.error({
+        event: 'debug_redis_check',
+        ok: false,
+        status: redis.status,
+        error: err.message
+      }, '[Debug] Redis health check failed');
+
+      return res.status(503).json({
+        ok: false,
+        error: err.message,
+        status: redis.status,
+        timestamp: new Date().toISOString()
+      });
+    }
   });
 
   return router;

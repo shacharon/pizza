@@ -18,6 +18,7 @@ import { Injectable, signal } from '@angular/core';
 import { HttpClient, HttpErrorResponse, HttpHeaders } from '@angular/common/http';
 import { ENDPOINTS } from '../../shared/api/api.config';
 import { firstValueFrom } from 'rxjs';
+import { environment } from '../../../environments/environment';
 
 const TOKEN_STORAGE_KEY = 'g2e_jwt';
 const SESSION_STORAGE_KEY = 'api-session-id';
@@ -40,10 +41,16 @@ export class AuthService {
     const stored = this.loadTokenFromStorage();
     if (stored) {
       this.tokenCache.set(stored);
-      // Request session cookie for SSE (async, non-blocking)
-      this.requestSessionCookie(stored).catch((error: unknown) => {
-        console.warn('[Auth] Failed to obtain session cookie on startup:', error);
-      });
+      
+      // DUAL MODE ONLY: Request session cookie for SSE
+      // In cookie_only mode, bootstrap service handles session creation
+      if (environment.authMode === 'dual') {
+        this.requestSessionCookie(stored).catch((error: unknown) => {
+          console.warn('[Auth] Failed to obtain session cookie on startup:', error);
+        });
+      } else {
+        console.debug('[Auth] AUTH_MODE=cookie_only - skipping requestSessionCookie on startup');
+      }
     }
   }
 
