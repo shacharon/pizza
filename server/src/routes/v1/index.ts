@@ -23,6 +23,7 @@ import photosRouter from '../../controllers/photos/photos.controller.js';
 import authRouter from '../../controllers/auth/auth.controller.js';
 import assistantSSERouter from '../../controllers/stream/assistant-sse/assistant-sse.router.js';
 import { authenticateJWT } from '../../middleware/auth.middleware.js';
+import { authSessionOrJwt } from '../../middleware/auth-session-or-jwt.middleware.js';
 import { createRateLimiter } from '../../middleware/rate-limit.middleware.js';
 import { getConfig } from '../../config/env.js';
 
@@ -41,16 +42,16 @@ export function createV1Router(): Router {
   router.use('/auth', authRouter);
 
   // P0 Security: Protected search endpoint
-  // Requires JWT authentication
-  router.use('/search', authenticateJWT, searchRateLimiter, searchRouter);
+  // Accepts session cookie OR JWT Bearer token
+  router.use('/search', authSessionOrJwt, searchRateLimiter, searchRouter);
 
   // SSE streaming endpoint for assistant (cookie-first auth)
   // No rate limiting for SSE (long-lived connections)
   router.use('/stream', assistantSSERouter);
 
   // P0 Security: Protected analytics endpoint
-  // Requires JWT authentication
-  router.use('/analytics', authenticateJWT, analyticsRouter);
+  // Accepts session cookie OR JWT Bearer token
+  router.use('/analytics', authSessionOrJwt, analyticsRouter);
 
   // Photos proxy endpoint (P0 Security: hides Google API keys)
   // Public endpoint (already has rate limiting)

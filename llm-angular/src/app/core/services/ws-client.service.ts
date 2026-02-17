@@ -63,6 +63,10 @@ export class WsClientService {
         return await firstValueFrom(this.authApi.requestWSTicket());
       },
       ensureAuth: async (): Promise<void> => {
+        // Cookie-only mode: skip JWT token fetch (session cookie handles auth)
+        if ((environment as { authMode?: string }).authMode === 'cookie_only') {
+          return;
+        }
         await this.authService.getToken();
       }
     };

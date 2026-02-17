@@ -85,11 +85,12 @@ export class SearchWsHandler {
       return;
     }
 
-    // STEP 2: Get JWT sessionId from localStorage (same as HTTP requests)
-    const jwtSessionId = this.authService.getSessionId();
+    // STEP 2: Get sessionId (JWT mode: from localStorage; cookie_only: '' - backend uses cookie)
+    const sessionId = this.authService.getSessionId();
+    const cookieOnly = (environment as { authMode?: string }).authMode === 'cookie_only';
 
-    // Guard: Prevent subscribing with empty/anonymous session
-    if (!jwtSessionId) {
+    // Guard: Prevent subscribing with empty session (JWT mode only; cookie_only uses HttpOnly cookie)
+    if (!cookieOnly && !sessionId) {
       console.error('[SearchWsHandler] CRITICAL: Cannot subscribe without JWT sessionId', {
         requestId,
         hint: 'Ensure AuthService.getToken() is called before subscribing'
@@ -98,18 +99,17 @@ export class SearchWsHandler {
     }
 
     // Log for debugging session_mismatch issues
-    console.log('[SearchWsHandler] Subscribing with JWT sessionId', {
+    console.log('[SearchWsHandler] Subscribing', {
       requestId: requestId.substring(0, 20) + '...',
-      sessionId: jwtSessionId.substring(0, 20) + '...'
+      sessionId: sessionId ? sessionId.substring(0, 20) + '...' : '(cookie_only)'
     });
 
     // STEP 3: Subscribe to channels (now guaranteed to have auth)
     // Subscribe to 'search' channel for progress/status/ready
-    this.wsClient.subscribe(requestId, 'search', jwtSessionId);
+    this.wsClient.subscribe(requestId, 'search', sessionId || undefined);
 
     // FEATURE FLAG: Use SSE for assistant if enabled
     const useSseAssistant = environment.features?.useSseAssistant ?? false;
-
     if (useSseAssistant && assistantHandler) {
       console.log('[SearchWsHandler] Using SSE for assistant (WS assistant disabled)', { requestId: requestId.substring(0, 20) + '...' });
 
@@ -127,18 +127,20 @@ export class SearchWsHandler {
               preview: payload.message.substring(0, 50) + '...'
             });
 
-            // Route to assistant handler (same as WS assistant messages)
-            assistantHandler.routeMessage(
-              payload.type,
-              payload.message,
-              requestId,
-              {
-                question: payload.question,
-                blocksSearch: payload.blocksSearch,
-                language: payload.language as any,
-                ts: Date.now()
-              }
-            );
+            // Route to assistant handler ONLY if provided
+            if (assistantHandler) {
+              assistantHandler.routeMessage(
+                payload.type,
+                payload.message,
+                requestId,
+                {
+                  question: payload.question,
+                  blocksSearch: payload.blocksSearch,
+                  language: payload.language as any,
+                  ts: Date.now()
+                }
+              );
+            }
           } else if (event.type === 'error') {
             console.error('[SearchWsHandler] SSE error', event.data);
           } else if (event.type === 'done') {
@@ -155,8 +157,9 @@ export class SearchWsHandler {
     } else {
       // Fallback: Use WebSocket for assistant (legacy)
       console.log('[SearchWsHandler] Using WS for assistant (legacy)', { requestId: requestId.substring(0, 20) + '...' });
-      this.wsClient.subscribe(requestId, 'assistant', jwtSessionId);
+      this.wsClient.subscribe(requestId, 'assistant', sessionId || undefined);
     }
+
   }
 
   /**

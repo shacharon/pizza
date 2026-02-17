@@ -28,13 +28,13 @@ function generateSessionId(): string {
 function getSessionId(): string {
   try {
     let sessionId = localStorage.getItem(SESSION_STORAGE_KEY);
-    
+
     if (!sessionId) {
       sessionId = generateSessionId();
       localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
       console.log('[Session] Generated new session ID:', sessionId.substring(0, 20) + '...');
     }
-    
+
     return sessionId;
   } catch (error) {
     // Fallback if localStorage is unavailable (e.g., private browsing)
@@ -51,23 +51,25 @@ function getSessionId(): string {
  * - DO NOT overwrite explicit x-session-id header (manual override)
  */
 export const apiSessionInterceptor: HttpInterceptorFn = (req, next) => {
-  // Only intercept API requests
-  if (!isApiRequest(req.url)) {
-    return next(req);
+  // רק API
+  if (!isApiRequest(req.url)) return next(req);
+
+  // 🔥 אל תוסיף X-Session-Id לאנדפוינטים של auth
+  if (req.url.includes('/api/v1/auth/')) {
+    const cleaned = req.clone({
+      headers: req.headers.delete('X-Session-Id')
+    });
+    return next(cleaned);
   }
-  
-  // Skip if session header already present (explicit override)
-  if (req.headers.has('x-session-id')) {
-    return next(req);
-  }
-  
-  // Attach session ID
-  const sessionId = getSessionId();
-  const cloned = req.clone({
-    setHeaders: {
-      'x-session-id': sessionId
-    }
-  });
-  
-  return next(cloned);
+
+  // רגיל
+  const sessionId = (() => {
+    try { return localStorage.getItem(SESSION_STORAGE_KEY) || ''; } catch { return ''; }
+  })();
+
+  if (!sessionId) return next(req);
+
+  return next(req.clone({
+    setHeaders: { 'X-Session-Id': sessionId }
+  }));
 };

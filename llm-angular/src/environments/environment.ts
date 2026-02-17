@@ -9,6 +9,7 @@ export const environment = {
   apiBasePath: '/api/v1',
   wsBaseUrl: 'ws://localhost:4200',  // WS also goes through proxy
   environmentName: 'local',
+  authMode: 'cookie_only' as const,  // Local dev: session cookie only, no JWT
   features: {
     useSseAssistant: true  // Use SSE for assistant instead of WebSocket
   }
