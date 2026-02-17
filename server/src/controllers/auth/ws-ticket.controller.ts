@@ -11,7 +11,7 @@ import { randomUUID } from 'node:crypto';
 import crypto from 'crypto';
 
 import { logger } from '../../lib/logger/structured-logger.js';
-import { authenticateJWT, type AuthenticatedRequest } from '../../middleware/auth.middleware.js';
+import { authSessionOrJwt, type AuthenticatedRequest } from '../../middleware/auth-session-or-jwt.middleware.js';
 import { getExistingRedisClient } from '../../lib/redis/redis-client.js';
 
 const router = Router();
@@ -33,13 +33,13 @@ function generateTicket(): string {
  * Generate one-time WebSocket ticket
  * 
  * Security:
- * - Protected endpoint (requires JWT via authenticateJWT middleware)
- * - Ticket stored in Redis with userId and sessionId from JWT
+ * - Protected endpoint (requires session cookie OR JWT via authSessionOrJwt middleware)
+ * - Ticket stored in Redis with userId and sessionId
  * - Ticket is deleted on first use (one-time)
  * - Short TTL (60s) prevents abuse
  * 
  * Headers:
- * - Authorization: Bearer <JWT> (required)
+ * - Cookie: session=<sessionId> (preferred) OR Authorization: Bearer <JWT>
  * 
  * Response:
  * - ticket: string - one-time ticket for WebSocket connection
@@ -47,10 +47,10 @@ function generateTicket(): string {
  * - traceId: string - request trace ID
  * 
  * Error codes:
- * - MISSING_SESSION (401): JWT missing sessionId
+ * - MISSING_SESSION (401): Missing sessionId
  * - WS_TICKET_REDIS_NOT_READY (503): Redis not available (client should retry with backoff)
  */
-router.post('/ws-ticket', authenticateJWT, async (req: Request, res: Response) => {
+router.post('/ws-ticket', authSessionOrJwt, async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
   const traceId = (req as any).traceId || 'unknown';
 
