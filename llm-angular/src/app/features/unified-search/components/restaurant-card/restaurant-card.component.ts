@@ -220,9 +220,12 @@ export class RestaurantCardComponent {
   }
 
   /**
-   * Get label for open status (i18n)
+   * Get label for open status (i18n). Uses openClose for TEMP_CLOSED when present.
    */
   getOpenStatusLabel(): string {
+    if (this.restaurant().openClose === 'TEMP_CLOSED') {
+      return this.i18n.t('card.status.temporarily_closed');
+    }
     const status = this.getOpenStatus();
     switch (status) {
       case 'open': return this.i18n.t('card.status.open');

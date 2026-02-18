@@ -12,12 +12,17 @@ import { environment } from '../../../environments/environment';
 
 /**
  * SSE Event Types
+ * Streaming: meta → narration → delta (0..n) → done
+ * Legacy: meta → message → done
  */
 export type AssistantSseEvent =
   | { type: 'meta'; data: { requestId: string; language: string; startedAt: string } }
+  | { type: 'narration'; data: { text: string } }
+  | { type: 'delta'; data: { text: string } }
   | { type: 'message'; data: AssistantMessagePayload }
   | { type: 'done' }
-  | { type: 'error'; data: { code: string; message: string } };
+  | { type: 'error'; data: { code: string; message: string } }
+  | { type: 'ping'; data?: { ts?: number } };
 
 /**
  * Assistant message payload (matches backend AssistantOutput)
@@ -98,15 +103,41 @@ export class AssistantSseService {
         }
       });
 
-      // Listen for 'message' event (assistant narration/summary)
+      // Listen for 'narration' event (streaming: initial text, e.g. "Searching...")
+      eventSource.addEventListener('narration', (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(e.data) as { text: string };
+          console.log('[AssistantSSE] narration event', { preview: data.text?.substring(0, 40) + '...' });
+          observer.next({ type: 'narration', data });
+        } catch (error) {
+          console.error('[AssistantSSE] Failed to parse narration event', error);
+        }
+      });
+
+      // Listen for 'delta' event (streaming: chunk to append)
+      eventSource.addEventListener('delta', (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(e.data) as { text: string };
+          observer.next({ type: 'delta', data });
+        } catch (error) {
+          console.error('[AssistantSSE] Failed to parse delta event', error);
+        }
+      });
+
+      // Listen for 'ping' (heartbeat, ignore for UI)
+      eventSource.addEventListener('ping', () => {
+        // No-op; keeps connection alive
+      });
+
+      // Listen for 'message' event (legacy: single full assistant message)
       eventSource.addEventListener('message', (e: MessageEvent) => {
         try {
           const data = JSON.parse(e.data) as AssistantMessagePayload;
           messageCount++;
-          console.log('[AssistantSSE] message event', {
+          console.log('[AssistantSSE] message event (legacy)', {
             type: data.type,
             messageNum: messageCount,
-            preview: data.message.substring(0, 50) + '...'
+            preview: data.message?.substring(0, 50) + '...'
           });
           observer.next({ type: 'message', data });
         } catch (error) {

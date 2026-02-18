@@ -16,6 +16,7 @@ export interface I18nKeys {
   // Restaurant card - Status
   'card.status.open': string;
   'card.status.closed': string;
+  'card.status.temporarily_closed': string;
   'card.status.hours_unverified': string;
 
   // Restaurant card - Actions
@@ -94,6 +95,7 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
   en: {
     'card.status.open': 'Open now',
     'card.status.closed': 'Closed',
+    'card.status.temporarily_closed': 'Temporarily closed',
     'card.status.hours_unverified': 'Hours unverified',
     'card.action.navigate': 'Navigate',
     'card.action.call': 'Call',
@@ -142,6 +144,7 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
   he: {
     'card.status.open': 'פתוח עכשיו',
     'card.status.closed': 'סגור',
+    'card.status.temporarily_closed': 'סגור זמנית',
     'card.status.hours_unverified': 'שעות לא מאומתות',
     'card.action.navigate': 'נווט',
     'card.action.call': 'התקשר',
@@ -190,6 +193,7 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
   ru: {
     'card.status.open': 'Открыто сейчас',
     'card.status.closed': 'Закрыто',
+    'card.status.temporarily_closed': 'Временно закрыто',
     'card.status.hours_unverified': 'Часы не подтверждены',
     'card.action.navigate': 'Навигация',
     'card.action.call': 'Позвонить',
@@ -238,6 +242,7 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
   ar: {
     'card.status.open': 'مفتوح الآن',
     'card.status.closed': 'مغلق',
+    'card.status.temporarily_closed': 'مغلق مؤقتاً',
     'card.status.hours_unverified': 'الساعات غير مؤكدة',
     'card.action.navigate': 'التنقل',
     'card.action.call': 'اتصل',
@@ -286,6 +291,7 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
   fr: {
     'card.status.open': 'Ouvert maintenant',
     'card.status.closed': 'Fermé',
+    'card.status.temporarily_closed': 'Fermé temporairement',
     'card.status.hours_unverified': 'Horaires non vérifiés',
     'card.action.navigate': 'Naviguer',
     'card.action.call': 'Appeler',
@@ -334,6 +340,7 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
   es: {
     'card.status.open': 'Abierto ahora',
     'card.status.closed': 'Cerrado',
+    'card.status.temporarily_closed': 'Cerrado temporalmente',
     'card.status.hours_unverified': 'Horario no verificado',
     'card.action.navigate': 'Navegar',
     'card.action.call': 'Llamar',
@@ -382,6 +389,7 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
   de: {
     'card.status.open': 'Jetzt geöffnet',
     'card.status.closed': 'Geschlossen',
+    'card.status.temporarily_closed': 'Vorübergehend geschlossen',
     'card.status.hours_unverified': 'Öffnungszeiten unbestätigt',
     'card.action.navigate': 'Navigieren',
     'card.action.call': 'Anrufen',
@@ -430,6 +438,7 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
   it: {
     'card.status.open': 'Aperto ora',
     'card.status.closed': 'Chiuso',
+    'card.status.temporarily_closed': 'Chiuso temporaneamente',
     'card.status.hours_unverified': 'Orari non verificati',
     'card.action.navigate': 'Naviga',
     'card.action.call': 'Chiama',

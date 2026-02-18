@@ -64,6 +64,8 @@ export interface Restaurant {
   userRatingsTotal?: number;
   priceLevel?: number;
   openNow?: VerifiableBoolean;  // Tri-state: true | false | 'UNKNOWN'
+  /** Set when business is temporarily closed (backend: openClose = TEMP_CLOSED) */
+  openClose?: 'TEMP_CLOSED';
 
   // P0 Security: New photo fields (backend proxy)
   photoReference?: string;        // Photo reference (no API key): places/ChIJ.../photos/...

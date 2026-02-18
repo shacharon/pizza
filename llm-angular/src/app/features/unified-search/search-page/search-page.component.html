@@ -29,7 +29,20 @@
 
   <!-- SearchDock (sticky on scroll) -->
   <div class="search-dock">
-    <!-- CANONICAL ROUTING: Contextual Assistant (compact in dock) -->
+    <!-- Assistant Line (always shown - includes WS status) -->
+    @if (facade.assistantLineMessages().length > 0) {
+    <div class="assistant-line-container compact">
+      <app-assistant-line />
+    </div>
+    }
+
+    <!-- Reply Box Input (above assistant) -->
+    <div class="search-input-wrapper">
+      <app-search-bar [value]="facade.query()" [loading]="facade.loading()" (search)="onSearch($event)"
+        (inputChange)="onInputChange($event)" (clear)="onClear()" />
+    </div>
+
+    <!-- CANONICAL ROUTING: Contextual Assistant (under input) -->
     @if (showContextualAssistant()) {
     <div class="assistant-message-container compact">
       <app-assistant-summary [cardMessages]="contextualCardMessages()" [messages]="contextualMessages()"
@@ -38,20 +51,7 @@
     </div>
     }
 
-    <!-- Assistant Line (always shown - includes WS status) -->
-    @if (facade.assistantLineMessages().length > 0) {
-    <div class="assistant-line-container compact">
-      <app-assistant-line />
-    </div>
-    }
-
-    <!-- Reply Box Input -->
-    <div class="search-input-wrapper">
-      <app-search-bar [value]="facade.query()" [loading]="facade.loading()" (search)="onSearch($event)"
-        (inputChange)="onInputChange($event)" (clear)="onClear()" />
-    </div>
-
-    <!-- CANONICAL ROUTING: Global/System Assistant -->
+    <!-- CANONICAL ROUTING: Global/System Assistant (under input) -->
     @if (showGlobalAssistant()) {
     <div class="assistant-message-container compact">
       <app-assistant-summary [cardMessages]="globalCardMessages()" [messages]="globalMessages()"

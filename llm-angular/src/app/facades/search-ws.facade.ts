@@ -3,11 +3,11 @@
  * Manages WebSocket connection, subscriptions, and message routing
  */
 
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, NgZone } from '@angular/core';
 import { WsClientService } from '../core/services/ws-client.service';
 import { AuthService } from '../core/auth/auth.service';
 import { AssistantSseService } from '../core/services/assistant-sse.service';
-import type { WSServerMessage } from '../core/models/ws-protocol.types';
+import type { WSServerMessage, AssistantStatus } from '../core/models/ws-protocol.types';
 import type { SearchResponse } from '../domain/types/search.types';
 import { environment } from '../../environments/environment';
 import type { Subscription } from 'rxjs';
@@ -23,6 +23,7 @@ export class SearchWsHandler {
   private readonly wsClient = inject(WsClientService);
   private readonly authService = inject(AuthService);
   private readonly assistantSse = inject(AssistantSseService);
+  private readonly ngZone = inject(NgZone);
 
   // Track SSE subscription for cleanup
   private sseSubscription: Subscription | null = null;
@@ -58,12 +59,16 @@ export class SearchWsHandler {
    * Ensures WS is connected and authenticated before subscribing
    * @param requestId - The search request ID to subscribe to
    * @param _legacySessionId - DEPRECATED, not used (kept for backward compatibility)
-   * @param assistantHandler - Optional handler for assistant messages (for SSE routing)
+   * @param assistantHandler - Optional handler for assistant messages (for SSE routing and streaming)
    */
   async subscribeToRequest(
     requestId: string,
     _legacySessionId?: string,
-    assistantHandler?: { routeMessage: (type: any, message: string, requestId: string, payload: any) => void }
+    assistantHandler?: {
+      routeMessage: (type: any, message: string, requestId: string, payload: any) => void;
+      setMessage: (message: string, requestId?: string, blocksSearch?: boolean, resetAnimation?: boolean) => void;
+      setStatus: (status: AssistantStatus) => void;
+    }
   ): Promise<void> {
     // STEP 1: Ensure WS is connected and authenticated (blocks until ready)
     try {
@@ -116,34 +121,75 @@ export class SearchWsHandler {
       // Clean up previous SSE subscription
       this.cleanupSse();
 
-      // Subscribe to SSE for assistant messages
+      // Accumulated text for streaming
+      let streamedText = '';
+      let isFirstDelta = true; // Track if this is the first delta (to replace narration)
+
+      // Subscribe to SSE for assistant messages (streaming: narration → delta* → done)
+      // Run updates inside NgZone so each chunk triggers change detection (avoids "one chunk" feel)
       this.sseSubscription = this.assistantSse.connect(requestId).subscribe({
         next: (event) => {
-          if (event.type === 'message') {
-            const payload = event.data;
-            console.log('[SearchWsHandler] SSE assistant message', {
-              type: payload.type,
-              requestId: requestId.substring(0, 20) + '...',
-              preview: payload.message.substring(0, 50) + '...'
-            });
-
-            // Route to assistant handler (same as WS assistant messages)
-            assistantHandler.routeMessage(
-              payload.type,
-              payload.message,
-              requestId,
-              {
-                question: payload.question,
-                blocksSearch: payload.blocksSearch,
-                language: payload.language as any,
-                ts: Date.now()
+          this.ngZone.run(() => {
+            if (event.type === 'narration') {
+              streamedText = event.data.text ?? '';
+              isFirstDelta = true; // Reset for new stream
+              assistantHandler.setMessage(streamedText, requestId);
+              assistantHandler.setStatus('streaming');
+              console.log('[SearchWsHandler] SSE narration', { requestId: requestId.substring(0, 20) + '...', preview: streamedText.substring(0, 40) + '...' });
+            } else if (event.type === 'delta') {
+              const chunk = event.data.text ?? '';
+              
+              // First delta replaces narration (summary starts)
+              const isFirstChunk = isFirstDelta;
+              if (isFirstDelta) {
+                streamedText = chunk;
+                isFirstDelta = false;
+              } else {
+                streamedText += chunk;
               }
-            );
-          } else if (event.type === 'error') {
-            console.error('[SearchWsHandler] SSE error', event.data);
-          } else if (event.type === 'done') {
-            console.log('[SearchWsHandler] SSE complete', { requestId: requestId.substring(0, 20) + '...' });
-          }
+              
+              // Reset animation on first delta to clear narration smoothly
+              assistantHandler.setMessage(streamedText, requestId, undefined, isFirstChunk);
+              assistantHandler.setStatus('streaming');
+              console.log('[SearchWsHandler] SSE delta', { 
+                requestId: requestId.substring(0, 20) + '...', 
+                chunkLength: chunk.length,
+                totalLength: streamedText.length,
+                isFirst: !isFirstDelta,
+                preview: streamedText.substring(Math.max(0, streamedText.length - 50))
+              });
+            } else if (event.type === 'message') {
+              // Legacy: single full message
+              const payload = event.data;
+              console.log('[SearchWsHandler] SSE assistant message (legacy)', {
+                type: payload.type,
+                requestId: requestId.substring(0, 20) + '...',
+                preview: payload.message?.substring(0, 50) + '...'
+              });
+              assistantHandler.routeMessage(
+                payload.type,
+                payload.message,
+                requestId,
+                {
+                  question: payload.question,
+                  blocksSearch: payload.blocksSearch,
+                  language: payload.language as any,
+                  ts: Date.now()
+                }
+              );
+            } else if (event.type === 'done') {
+              // Keep showing streamed text in legacy slot; do NOT add a card so we avoid
+              // switching to multi-message mode and re-animating (which made text disappear then animate again).
+              if (streamedText.length > 0) {
+                assistantHandler.setMessage(streamedText, requestId);
+              }
+              assistantHandler.setStatus('completed');
+              streamedText = '';
+              console.log('[SearchWsHandler] SSE complete', { requestId: requestId.substring(0, 20) + '...' });
+            } else if (event.type === 'error') {
+              console.error('[SearchWsHandler] SSE error', event.data);
+            }
+          });
         },
         error: (err) => {
           console.error('[SearchWsHandler] SSE connection error', err);

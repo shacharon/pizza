@@ -53,6 +53,11 @@ export class SearchAssistantHandler {
   // Legacy: Single message state (for backward compatibility)
   private readonly assistantText = signal<string>('');
   private readonly assistantStatus = signal<AssistantStatus>('idle');
+  
+  // Streaming animation state for legacy text
+  private streamingAnimationTimer: any = null;
+  private bufferedText = '';
+  private currentlyVisibleText = '';
   private readonly wsRecommendations = signal<ActionDefinition[]>([]);
   private readonly wsError = signal<string | undefined>(undefined);
 
@@ -304,22 +309,102 @@ export class SearchAssistantHandler {
    * PLACEMENT FIX: Also accepts optional requestId to track message context
    * BLOCKS SEARCH: Also accepts optional blocksSearch flag
    * LEGACY: For backward compatibility
+   * 
+   * When status is 'streaming', this buffers text and animates word-by-word.
+   * When status is 'completed', this shows text immediately.
    */
-  setMessage(message: string, requestId?: string, blocksSearch?: boolean): void {
-    this.assistantText.set(message);
+  setMessage(message: string, requestId?: string, blocksSearch?: boolean, resetAnimation = false): void {
     if (requestId) {
       this.messageRequestId.set(requestId);
     }
     if (blocksSearch !== undefined) {
       this._blocksSearch.set(blocksSearch);
     }
+
+    // If streaming, buffer and animate word-by-word
+    if (this.assistantStatus() === 'streaming') {
+      // If resetting (e.g., switching from narration to summary), clear current animation
+      if (resetAnimation) {
+        this.stopStreamingAnimation();
+      }
+      
+      this.bufferedText = message;
+      this.startStreamingAnimation();
+    } else {
+      // Otherwise show immediately
+      this.assistantText.set(message);
+      this.stopStreamingAnimation();
+    }
+  }
+
+  /**
+   * Start word-by-word animation for buffered text
+   * Animates from currentlyVisibleText to bufferedText
+   */
+  private startStreamingAnimation(): void {
+    // If already animating, let it continue (it will catch up to new bufferedText)
+    if (this.streamingAnimationTimer) {
+      return;
+    }
+
+    const msPerWord = 50; // Fast typing (50ms per word for smooth feel during backend streaming)
+    
+    const animate = () => {
+      // If we've caught up to buffered text, pause until next chunk
+      if (this.currentlyVisibleText === this.bufferedText) {
+        this.streamingAnimationTimer = null;
+        return;
+      }
+
+      // Find next word boundary
+      const remaining = this.bufferedText.substring(this.currentlyVisibleText.length);
+      const nextWordMatch = remaining.match(/^\S+\s*/);
+      
+      if (nextWordMatch) {
+        this.currentlyVisibleText += nextWordMatch[0];
+        this.assistantText.set(this.currentlyVisibleText);
+        this.streamingAnimationTimer = setTimeout(animate, msPerWord);
+      } else {
+        // No more words, show remaining text
+        this.currentlyVisibleText = this.bufferedText;
+        this.assistantText.set(this.currentlyVisibleText);
+        this.streamingAnimationTimer = null;
+      }
+    };
+
+    animate();
+  }
+
+  /**
+   * Stop streaming animation and clear buffers
+   */
+  private stopStreamingAnimation(): void {
+    if (this.streamingAnimationTimer) {
+      clearTimeout(this.streamingAnimationTimer);
+      this.streamingAnimationTimer = null;
+    }
+    this.bufferedText = '';
+    this.currentlyVisibleText = '';
   }
 
   /**
    * Set assistant status
+   * When transitioning to 'completed', show full buffered text immediately
    */
   setStatus(status: AssistantStatus): void {
     this.assistantStatus.set(status);
+    
+    // When completing, show all buffered text immediately
+    if (status === 'completed' && this.bufferedText) {
+      this.assistantText.set(this.bufferedText);
+      this.stopStreamingAnimation();
+    }
+    
+    // When starting fresh, clear buffers
+    if (status === 'pending' || status === 'idle') {
+      this.stopStreamingAnimation();
+      this.assistantText.set('');
+    }
   }
 
   /**
