@@ -22,14 +22,7 @@ export const environment = {
   apiBasePath: '/api/v1',
   wsBaseUrl,
   environmentName: 'prod',
-  
-  /**
-   * Authentication Mode
-   * - 'dual': Send both JWT (Authorization header) + session cookies (default)
-   * - 'cookie_only': Send only session cookies (no JWT, no x-session-id)
-   */
-  authMode: 'dual' as 'dual' | 'cookie_only',
-  
+  authMode: 'cookie_only' as const,  // Prod: session cookie only, no JWT
   features: {
     useSseAssistant: true  // Use SSE for assistant instead of WebSocket
   }

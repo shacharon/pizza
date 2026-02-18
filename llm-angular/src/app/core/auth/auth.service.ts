@@ -1,240 +1,86 @@
 /**
- * Authentication Service
- * Manages JWT tokens for API authentication
- * 
- * Responsibilities:
- * - Fetch JWT token from backend on first request
- * - Store token in localStorage
- * - Provide token to HTTP interceptor
- * - Handle token refresh on 401 errors
- * 
- * Token Format:
- * - JWT (HS256) signed by backend
- * - Payload: { sessionId: string }
- * - Expiry: 30 days
+ * Cookie-Only Authentication Service
+ * - No JWT
+ * - No localStorage
+ * - Ensures HttpOnly session cookie exists via POST /api/v1/auth/bootstrap
  */
 
 import { Injectable, signal } from '@angular/core';
-import { HttpClient, HttpErrorResponse, HttpHeaders } from '@angular/common/http';
-import { ENDPOINTS } from '../../shared/api/api.config';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../environments/environment';
 
-const TOKEN_STORAGE_KEY = 'g2e_jwt';
-const SESSION_STORAGE_KEY = 'api-session-id';
-
-interface TokenResponse {
-  token: string;
-  sessionId: string;
+interface BootstrapResponse {
+  ok: boolean;
+  sessionId?: string; // optional debug
   traceId?: string;
 }
 
-@Injectable({
-  providedIn: 'root'
-})
+const BOOTSTRAP_ENDPOINT_FALLBACK = '/api/v1/auth/bootstrap';
+
+@Injectable({ providedIn: 'root' })
 export class AuthService {
-  private tokenCache = signal<string | null>(null);
-  private fetchPromise: Promise<string> | null = null;
+  private bootstrapped = signal(false);
+  private bootstrapPromise: Promise<void> | null = null;
+  /** Session ID from bootstrap response; used for WS subscribe (matches HttpOnly cookie session). */
+  private sessionIdFromBootstrap = signal<string>('');
 
-  constructor(private http: HttpClient) {
-    // Load token from localStorage on startup
-    const stored = this.loadTokenFromStorage();
-    if (stored) {
-      this.tokenCache.set(stored);
-      
-      // DUAL MODE ONLY: Request session cookie for SSE
-      // In cookie_only mode, bootstrap service handles session creation
-      if (environment.authMode === 'dual') {
-        this.requestSessionCookie(stored).catch((error: unknown) => {
-          console.warn('[Auth] Failed to obtain session cookie on startup:', error);
-        });
-      } else {
-        console.debug('[Auth] AUTH_MODE=cookie_only - skipping requestSessionCookie on startup');
-      }
-    }
-  }
+  constructor(private http: HttpClient) { }
 
-  /**
-   * Get current JWT token (async)
-   * Fetches from backend if not available
-   * 
-   * @returns Promise<string> - JWT token
-   */
-  async getToken(): Promise<string> {
-    // Return cached token if available
-    const cached = this.tokenCache();
-    if (cached) {
-      return cached;
+  /** Cookie-only: ensure session cookie exists (idempotent). */
+  async ensureSession(): Promise<void> {
+    // If you still keep env.authMode for transition, respect it:
+    if ((environment as { authMode?: string }).authMode && (environment as { authMode?: string }).authMode !== 'cookie_only') {
+      return; // non-cookie-only mode handled elsewhere
     }
 
-    // If already fetching, return existing promise
-    if (this.fetchPromise) {
-      return this.fetchPromise;
-    }
+    if (this.bootstrapped()) return;
+    if (this.bootstrapPromise) return this.bootstrapPromise;
 
-    // Fetch new token
-    this.fetchPromise = this.fetchTokenFromBackend();
-
-    try {
-      const token = await this.fetchPromise;
-      return token;
-    } finally {
-      this.fetchPromise = null;
-    }
-  }
-
-  /**
-   * Clear token and refetch (used on 401 INVALID_TOKEN)
-   */
-  async refreshToken(): Promise<string> {
-    console.log('[Auth] Refreshing token due to 401');
-    this.clearToken();
-    return this.getToken();
-  }
-
-  /**
-   * Clear token from memory and storage
-   */
-  clearToken(): void {
-    this.tokenCache.set(null);
-    this.fetchPromise = null;
-    try {
-      localStorage.removeItem(TOKEN_STORAGE_KEY);
-    } catch (error) {
-      console.warn('[Auth] Failed to clear token from localStorage', error);
-    }
-  }
-
-  /**
-   * Load token from localStorage
-   */
-  private loadTokenFromStorage(): string | null {
-    try {
-      return localStorage.getItem(TOKEN_STORAGE_KEY);
-    } catch (error) {
-      console.warn('[Auth] Failed to load token from localStorage', error);
-      return null;
-    }
-  }
-
-  /**
-   * Save token to localStorage
-   */
-  private saveTokenToStorage(token: string): void {
-    try {
-      localStorage.setItem(TOKEN_STORAGE_KEY, token);
-    } catch (error) {
-      console.warn('[Auth] Failed to save token to localStorage', error);
-    }
-  }
-
-  /**
-   * Get current sessionId from localStorage (PUBLIC API)
-   * This is the same sessionId used by HTTP requests and should be used for WS subscriptions
-   * @returns sessionId or empty string if not available
-   */
-  getSessionId(): string {
-    return this.getExistingSessionId() || '';
-  }
-
-  /**
-   * Get existing sessionId from localStorage
-   * This is the same sessionId used by api-session.interceptor
-   */
-  private getExistingSessionId(): string | null {
-    try {
-      return localStorage.getItem(SESSION_STORAGE_KEY);
-    } catch (error) {
-      return null;
-    }
-  }
-
-  /**
-   * Request session cookie from backend
-   * Called after JWT token is obtained to enable SSE authentication
-   */
-  private async requestSessionCookie(token: string): Promise<void> {
-    try {
-      const headers = new HttpHeaders({
-        'Authorization': `Bearer ${token}`
-      });
-
-      await firstValueFrom(
-        this.http.post<{ ok: boolean; sessionId: string }>(
-          ENDPOINTS.AUTH_TOKEN.replace('/token', '/session'),
-          {},
-          { headers, withCredentials: true }  // CRITICAL: withCredentials to store cookie
-        )
-      );
-
-      console.log('[Auth] ✅ Session cookie obtained');
-    } catch (error) {
-      console.error('[Auth] Failed to obtain session cookie:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Fetch JWT token from backend
-   * Sends existing sessionId if available
-   */
-  private async fetchTokenFromBackend(): Promise<string> {
-    try {
-      console.log('[Auth] Fetching JWT token from backend...');
-
-      // Include existing sessionId if available (for continuity)
-      const existingSessionId = this.getExistingSessionId();
-      const body = existingSessionId ? { sessionId: existingSessionId } : {};
-
-      // Use proper auth token endpoint
-      let response: TokenResponse;
+    this.bootstrapPromise = (async () => {
       try {
-        response = await firstValueFrom(
-          this.http.post<TokenResponse>(ENDPOINTS.AUTH_TOKEN, body)
+        const url =
+          // If you have ENDPOINTS.AUTH_BOOTSTRAP, prefer it; otherwise fallback
+          (globalThis as any)?.ENDPOINTS?.AUTH_BOOTSTRAP ??
+          (environment as any)?.endpoints?.authBootstrap ??
+          BOOTSTRAP_ENDPOINT_FALLBACK;
+
+        const res = await firstValueFrom(
+          this.http.post<BootstrapResponse>(url, {}, { withCredentials: true })
         );
-      } catch (error: any) {
-        // Handle EmptyError as retryable
-        if (error?.name === 'EmptyError' || error?.message?.includes('no elements in sequence')) {
-          console.warn('[Auth] EmptyError fetching token - treating as transient failure');
-          throw new Error('Failed to fetch token: no response from server');
+
+        if (!res?.ok) throw new Error('Bootstrap failed: ok=false');
+        if (res.sessionId) this.sessionIdFromBootstrap.set(res.sessionId);
+        this.bootstrapped.set(true);
+      } catch (e) {
+        this.bootstrapped.set(false);
+        if (e instanceof HttpErrorResponse) {
+          throw new Error(`Auth bootstrap failed: ${e.status} ${e.statusText}`);
         }
-        throw error; // Re-throw other errors
+        throw e;
+      } finally {
+        this.bootstrapPromise = null;
       }
+    })();
 
-      const { token, sessionId } = response;
+    return this.bootstrapPromise;
+  }
 
-      // Update cache and storage
-      this.tokenCache.set(token);
-      this.saveTokenToStorage(token);
+  /** Compatibility: in cookie-only there is no token. */
+  async getToken(): Promise<string> {
+    return '';
+  }
 
-      // Update sessionId in localStorage if backend provided a new one
-      if (sessionId && sessionId !== existingSessionId) {
-        try {
-          localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
-          console.log('[Auth] Updated sessionId:', sessionId.substring(0, 20) + '...');
-        } catch (error) {
-          console.warn('[Auth] Failed to save sessionId', error);
-        }
-      }
+  /** Compatibility no-op. */
+  async refreshToken(): Promise<string> {
+    return '';
+  }
 
-      console.log('[Auth] ✅ JWT token acquired');
+  /** Compatibility no-op. */
+  clearToken(): void { }
 
-      // Request session cookie for SSE authentication
-      // This is done in background - don't block token return
-      this.requestSessionCookie(token).catch((error: unknown) => {
-        console.warn('[Auth] Failed to obtain session cookie (SSE auth may fail):', error);
-      });
-
-      return token;
-
-    } catch (error) {
-      console.error('[Auth] Failed to fetch token from backend', error);
-
-      // Re-throw with better context
-      if (error instanceof HttpErrorResponse) {
-        throw new Error(`Failed to authenticate: ${error.status} ${error.statusText}`);
-      }
-      throw error;
-    }
+  /** Cookie-only: return sessionId from bootstrap response (for WS subscribe); matches HttpOnly cookie. */
+  getSessionId(): string {
+    return this.sessionIdFromBootstrap() ?? '';
   }
 }
