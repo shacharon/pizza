@@ -42,13 +42,17 @@ router.post('/', async (req: Request, res: Response) => {
       ttlSeconds: config.sessionCookieTtlSeconds
     });
     
-    // Set HttpOnly session cookie
-    res.cookie('session', signedCookie, {
+    // Set HttpOnly session cookie (use config for cross-subdomain: COOKIE_DOMAIN, COOKIE_SAMESITE)
+    const cookieOpts: Record<string, unknown> = {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      sameSite: config.cookieSameSite,
       maxAge: config.sessionCookieTtlSeconds * 1000
-    });
+    };
+    if (config.cookieDomain) {
+      cookieOpts.domain = config.cookieDomain;
+    }
+    res.cookie('session', signedCookie, cookieOpts);
 
     logger.info({
       traceId,
