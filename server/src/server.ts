@@ -43,7 +43,7 @@ import { getConfig } from './config/env.js';
 import { logger } from './lib/logger/structured-logger.js';
 import { InMemoryRequestStore } from './infra/state/in-memory-request-store.js';
 import { WebSocketManager } from './infra/websocket/websocket-manager.js';
-import { getRedisClient, getExistingRedisClient } from './lib/redis/redis-client.js';
+import { getRedisClient, getExistingRedisClient, getLastRedisConnectionError } from './lib/redis/redis-client.js';
 
 // Phase 2: Initialize state store singleton
 export const requestStateStore = new InMemoryRequestStore(300, 60_000);
@@ -54,6 +54,10 @@ const config = getConfig();
 // Phase 2.5: EAGER Redis initialization (before HTTP server starts)
 // CRITICAL: Redis must be initialized BEFORE /ws-ticket route is registered
 // because ws-ticket endpoint depends on Redis for ticket storage
+const REDIS_BOOT_RETRIES = Number(process.env.REDIS_BOOT_RETRIES) || 3;
+const REDIS_BOOT_CONNECT_TIMEOUT_MS = Number(process.env.REDIS_CONNECT_TIMEOUT_MS) || (config.env === 'production' || config.env === 'staging' ? 8000 : 2000);
+const REDIS_BOOT_DELAY_MS = Number(process.env.REDIS_BOOT_DELAY_MS) || 2000;
+
 async function initializeRedis() {
   const wsRequiresAuth = process.env.WS_REQUIRE_AUTH !== 'false';
   const redisRequired = config.enableRedisJobStore || config.enableRedisCache || wsRequiresAuth;
@@ -69,31 +73,42 @@ async function initializeRedis() {
         enableRedisJobStore: config.enableRedisJobStore,
         enableRedisCache: config.enableRedisCache,
         wsRequiresAuth,
+        retries: REDIS_BOOT_RETRIES,
+        connectTimeoutMs: REDIS_BOOT_CONNECT_TIMEOUT_MS,
       },
       '[BOOT] Initializing Redis client (required for WS tickets)'
     );
 
     try {
-      logger.info({
-        event: 'CALLING_GET_REDIS_CLIENT',
-        url: config.redisUrl.replace(/:[^:@]+@/, ':****@'),
-        msg: '[BOOT] About to call getRedisClient()'
-      });
-      
-      const redis = await getRedisClient({
-        url: config.redisUrl,
-        maxRetriesPerRequest: 3,
-        connectTimeout: 2000,
-        commandTimeout: 2000,
-        enableOfflineQueue: false
-      });
+      let redis: Awaited<ReturnType<typeof getRedisClient>> = null;
+      for (let attempt = 1; attempt <= REDIS_BOOT_RETRIES; attempt++) {
+        logger.info({
+          event: 'redis_boot_attempt',
+          attempt,
+          maxAttempts: REDIS_BOOT_RETRIES,
+          msg: `[BOOT] Redis connection attempt ${attempt}/${REDIS_BOOT_RETRIES}`
+        });
 
-      logger.info({
-        event: 'GET_REDIS_CLIENT_RETURNED',
-        redisIsNull: redis === null,
-        redisType: typeof redis,
-        msg: '[BOOT] getRedisClient() returned'
-      });
+        redis = await getRedisClient({
+          url: config.redisUrl,
+          maxRetriesPerRequest: 3,
+          connectTimeout: REDIS_BOOT_CONNECT_TIMEOUT_MS,
+          commandTimeout: Math.max(2000, REDIS_BOOT_CONNECT_TIMEOUT_MS),
+          enableOfflineQueue: false
+        });
+
+        if (redis) break;
+        if (attempt < REDIS_BOOT_RETRIES) {
+          logger.warn({
+            event: 'redis_boot_retry',
+            attempt,
+            delayMs: REDIS_BOOT_DELAY_MS,
+            lastError: getLastRedisConnectionError(),
+            msg: `[BOOT] Redis attempt ${attempt} failed, retrying in ${REDIS_BOOT_DELAY_MS}ms`
+          });
+          await new Promise(r => setTimeout(r, REDIS_BOOT_DELAY_MS));
+        }
+      }
 
       redisInitialized = Boolean(redis);
 
@@ -114,16 +129,22 @@ async function initializeRedis() {
       // Fail-fast if WS requires auth but Redis is down
       if (!redisInitialized && wsRequiresAuth) {
         if (config.env === 'production' || config.env === 'staging') {
+          const lastErr = getLastRedisConnectionError();
           logger.error(
             {
               event: 'redis_required_but_unavailable',
               wsRequiresAuth: true,
               redisConnected: false,
               env: config.env,
+              lastConnectionError: lastErr,
+              hint: 'Check ECS→ElastiCache security groups (port 6379), VPC, REDIS_URL (rediss:// for TLS). See server/docs/aws-deployment.md',
             },
             '[BOOT] FATAL: Redis required for WS authentication but connection failed'
           );
-          throw new Error('Redis connection required for WS_REQUIRE_AUTH=true');
+          const errMsg = lastErr
+            ? `Redis connection required for WS_REQUIRE_AUTH=true. Last error: ${lastErr}`
+            : 'Redis connection required for WS_REQUIRE_AUTH=true';
+          throw new Error(errMsg);
         } else {
           logger.warn(
             {
@@ -150,7 +171,7 @@ async function initializeRedis() {
         },
         '[BOOT] Redis boot status: ✗ FAILED'
       );
-      
+
       logger.error(
         {
           event: 'redis_boot_failed',

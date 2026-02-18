@@ -16,7 +16,7 @@ import tokenController from './token.controller.js';
 import bootstrapController from './bootstrap.controller.js';
 import sessionController from './session.controller.js';
 import wsTicketController from './ws-ticket.controller.js';
-import bootstrapController from './bootstrap.controller.js';
+
 
 const router = Router();
 

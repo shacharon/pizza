@@ -9,6 +9,12 @@ import { logger } from '../logger/structured-logger.js';
 
 let redisClientInstance: RedisClient | null = null;
 let redisInitialized = false;
+/** Last connection error (for boot logging when connection fails) */
+let lastConnectionError: string | null = null;
+
+export function getLastRedisConnectionError(): string | null {
+  return lastConnectionError;
+}
 
 export interface RedisClientOptions {
   url: string;
@@ -48,13 +54,28 @@ export async function getRedisClient(options: RedisClientOptions): Promise<Redis
   } = options;
 
   try {
-    // AWS ElastiCache TLS support: detect rediss:// and add TLS config
+    // Local: redis://localhost (no TLS). Prod: rediss://...cache.amazonaws.com (TLS in VPC).
     const useTls = url.startsWith('rediss://');
-    
+    let tlsOpts: { rejectUnauthorized: boolean; servername?: string } | undefined;
+    if (useTls) {
+      try {
+        const parsed = new URL(url);
+        const hostname = parsed.hostname;
+        // ElastiCache TLS needs SNI = hostname; otherwise handshake can fail (works locally without TLS).
+        tlsOpts = {
+          rejectUnauthorized: false,
+          ...(hostname ? { servername: hostname } : {})
+        };
+      } catch {
+        tlsOpts = { rejectUnauthorized: false };
+      }
+    }
+
     logger.info({
       event: 'REDIS_INIT_ATTEMPT',
       redisUrl: url.replace(/:[^:@]+@/, ':****@'),
       useTls,
+      tlsServername: tlsOpts?.servername ?? null,
       maxRetriesPerRequest,
       connectTimeout,
       commandTimeout,
@@ -65,7 +86,7 @@ export async function getRedisClient(options: RedisClientOptions): Promise<Redis
       event: 'REDIS_CLIENT_CREATE_START',
       msg: '[Redis] About to create Redis client instance'
     });
-    
+
     let redis: RedisClient;
     try {
       redis = new Redis(url, {
@@ -79,13 +100,7 @@ export async function getRedisClient(options: RedisClientOptions): Promise<Redis
         lazyConnect: true,
         enableOfflineQueue,
         enableReadyCheck: true,
-        // AWS ElastiCache with TLS requires rejectUnauthorized: false
-        // because ElastiCache uses self-signed certificates
-        ...(useTls && {
-          tls: {
-            rejectUnauthorized: false
-          }
-        })
+        ...(tlsOpts && { tls: tlsOpts })
       });
     } catch (instantiationError) {
       const err = instantiationError as Error;
@@ -131,6 +146,7 @@ export async function getRedisClient(options: RedisClientOptions): Promise<Redis
     const connected = pingResult === 'PONG';
 
     if (connected) {
+      lastConnectionError = null;
       logger.info({
         event: 'REDIS_CONNECTED',
         redisUrl: url.replace(/:[^:@]+@/, ':****@'),
@@ -145,6 +161,7 @@ export async function getRedisClient(options: RedisClientOptions): Promise<Redis
     }
   } catch (err) {
     const error = err as Error & { code?: string; errno?: string | number };
+    lastConnectionError = `${error.name}: ${error.message}${error.code ? ` (${error.code})` : ''}`;
     logger.warn({
       event: 'REDIS_CONNECTION_FAILED',
       error: error.message,

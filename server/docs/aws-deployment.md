@@ -87,9 +87,60 @@ COOKIE_SAMESITE=None
 OPENAI_API_KEY=<your-key>
 GOOGLE_API_KEY=<your-key>
 BRAVE_SEARCH_API_KEY=<your-key>
-REDIS_URL=redis://your-elasticache-endpoint:6379
+REDIS_URL=rediss://your-elasticache-endpoint:6379
 ENABLE_REDIS_JOBSTORE=true
 ENABLE_REDIS_CACHE=true
 ```
 
 Replace placeholders and add any optional vars (rate limits, debug, etc.) as needed.
+
+---
+
+## Redis (ElastiCache) – "Redis connection required for WS_REQUIRE_AUTH=true"
+
+The server **exits on boot** if `WS_REQUIRE_AUTH=true` (default) and it cannot connect to Redis. Your logs show `redis_boot_status: FAILED` and `redisEnabled: false` – so the connection to `REDIS_URL` is failing.
+
+### Why it works locally but not on AWS
+
+| | **Local** | **Prod (AWS)** |
+|---|-----------|----------------|
+| **REDIS_URL** | `redis://localhost:6379` | `rediss://master.food-redis-cluster.xxx.cache.amazonaws.com:6379` |
+| **TLS** | No (`redis://`) | Yes (`rediss://`) – ElastiCache in-transit encryption |
+| **Network** | Same machine | ECS task → ElastiCache over VPC (different host) |
+| **DNS** | localhost | AWS internal hostname – **resolves only inside the VPC** |
+
+So locally: no TLS, same box → connection succeeds. On AWS: TLS + another host in the VPC → connection can fail if:
+
+1. **TLS/SNI** – ElastiCache expects the client to send the hostname in the TLS handshake (SNI). The code now sets `tls.servername` to the URL hostname for `rediss://` so SNI is correct.
+2. **Security groups** – ElastiCache must allow **inbound TCP 6379** from your ECS task security group (not 0.0.0.0/0).
+3. **VPC** – ECS and ElastiCache must be in the same VPC (or have routing); the task must use VPC DNS so the cache hostname resolves.
+4. **Timeout** – First connection can be slow; boot uses 8s timeout and 3 retries in prod.
+
+### What to check
+
+1. **Security groups**
+   - ECS task (or EC2) **outbound**: allow TCP to the ElastiCache security group (or CIDR of the cache subnet) on port **6379**.
+   - ElastiCache **inbound**: allow TCP **6379** from the ECS task security group (or the ALB/task CIDR). No 0.0.0.0/0.
+
+2. **VPC and subnets**
+   - ECS tasks and ElastiCache must be able to reach each other (same VPC, or peered; routing so that the task’s subnet can reach the cache subnet).
+
+3. **REDIS_URL format**
+   - **TLS (in-transit encryption):** use `rediss://` (double s). Example:  
+     `rediss://master.food-redis-cluster.xxxx.eun1.cache.amazonaws.com:6379`
+   - **No TLS:** `redis://...:6379`
+   - **With AUTH (Redis 6):**  
+     `rediss://:YOUR_AUTH_TOKEN@master.xxxx.cache.amazonaws.com:6379`
+
+4. **Timeouts and retries**
+   - Boot uses **3 attempts** by default and a longer connect timeout in production (8s). If ElastiCache is slow to respond or DNS is slow, set:
+   - `REDIS_CONNECT_TIMEOUT_MS=10000` (10s)
+   - `REDIS_BOOT_RETRIES=5`
+   - `REDIS_BOOT_DELAY_MS=3000` (delay between retries)
+
+5. **Logs**
+   - After the next deploy, if it still fails, the process will log **lastConnectionError** (e.g. `ECONNREFUSED`, `ETIMEDOUT`) and a short hint. Search logs for `redis_required_but_unavailable` and `lastConnectionError`.
+
+### Optional: run without Redis (not for production)
+
+Only for temporary/dev: set `WS_REQUIRE_AUTH=false`. WebSocket auth will be disabled. Do **not** use in production.

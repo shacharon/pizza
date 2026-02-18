@@ -16,7 +16,14 @@ interface BootstrapResponse {
   traceId?: string;
 }
 
-const BOOTSTRAP_ENDPOINT_FALLBACK = '/api/v1/auth/bootstrap';
+const BOOTSTRAP_PATH = '/auth/bootstrap';
+/** Relative path for same-origin (e.g. dev proxy). Use apiUrl + apiBasePath + path when apiUrl is set (prod). */
+function getBootstrapUrl(): string {
+  const base = (environment as { apiUrl?: string }).apiUrl;
+  const apiBasePath = (environment as { apiBasePath?: string }).apiBasePath ?? '/api/v1';
+  if (base) return `${base.replace(/\/$/, '')}${apiBasePath}${BOOTSTRAP_PATH}`;
+  return `${apiBasePath}${BOOTSTRAP_PATH}`;
+}
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -40,10 +47,9 @@ export class AuthService {
     this.bootstrapPromise = (async () => {
       try {
         const url =
-          // If you have ENDPOINTS.AUTH_BOOTSTRAP, prefer it; otherwise fallback
           (globalThis as any)?.ENDPOINTS?.AUTH_BOOTSTRAP ??
           (environment as any)?.endpoints?.authBootstrap ??
-          BOOTSTRAP_ENDPOINT_FALLBACK;
+          getBootstrapUrl();
 
         const res = await firstValueFrom(
           this.http.post<BootstrapResponse>(url, {}, { withCredentials: true })
