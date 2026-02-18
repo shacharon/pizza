@@ -9,7 +9,14 @@ export const environment = {
   apiBasePath: '/api/v1',
   wsBaseUrl: 'wss://api.going2eat.food',
   environmentName: 'dev',
-  authMode: 'cookie_only' as const,  // Dev: session cookie only, no JWT
+  
+  /**
+   * Authentication Mode
+   * - 'dual': Send both JWT (Authorization header) + session cookies (default)
+   * - 'cookie_only': Send only session cookies (no JWT, no x-session-id)
+   */
+  authMode: 'dual' as 'dual' | 'cookie_only',
+  
   features: {
     useSseAssistant: true  // Use SSE for assistant instead of WebSocket
   }

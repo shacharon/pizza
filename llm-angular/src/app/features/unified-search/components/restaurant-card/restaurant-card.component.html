@@ -8,30 +8,29 @@
   <!-- Main content area (clickable for details) -->
   <div class="card-content" (click)="onCardClick()">
     <div class="card-header">
-      <!-- P0 Security: Secure photo loading via backend proxy -->
-      @if (photoSrc() && !photoError()) {
-      <img class="restaurant-photo" [src]="getCurrentPhotoSrc()" [alt]="restaurant().name + ' restaurant photo'"
-        loading="lazy" (error)="onPhotoError()" [attr.aria-label]="'Photo of ' + restaurant().name" />
-      } @else {
-      <div class="restaurant-photo-placeholder" role="img"
-        [attr.aria-label]="'Placeholder image for ' + restaurant().name">
-        🍽️
+      <!-- P0 Security: Secure photo loading via backend proxy. Photo wrapper for open/closed badge overlay. -->
+      <div class="photo-wrapper">
+        @if (photoSrc() && !photoError()) {
+        <img class="restaurant-photo" [src]="getCurrentPhotoSrc()" [alt]="restaurant().name + ' restaurant photo'"
+          loading="lazy" (error)="onPhotoError()" [attr.aria-label]="'Photo of ' + restaurant().name" />
+        } @else {
+        <div class="restaurant-photo-placeholder" role="img"
+          [attr.aria-label]="'Placeholder image for ' + restaurant().name">
+          🍽️
+        </div>
+        }
+        @if (getOpenStatus() !== null) {
+        <span class="open-status-badge" [class.open]="getOpenStatus() === 'open'"
+          [class.closed]="getOpenStatus() === 'closed'" [class.unknown]="getOpenStatus() === 'unknown'"
+          [attr.aria-label]="getOpenStatusLabel()">
+          {{ getOpenStatusLabel() }}
+        </span>
+        }
       </div>
-      }
 
       <div class="restaurant-info">
         <div class="restaurant-name-row">
           <h3 class="restaurant-name">{{ restaurant().name }}</h3>
-
-          @if (statusLine().text) {
-          <span class="status-line" [class.open]="statusLine().tone === 'open'"
-            [class.closed]="statusLine().tone === 'closed'" 
-            [class.closing-soon]="statusLine().tone === 'closing-soon'"
-            [class.neutral]="statusLine().tone === 'neutral'"
-            [attr.aria-label]="statusLine().text">
-            {{ statusLine().text }}
-          </span>
-          }
 
           @if (glutenFreeBadge()) {
           <span class="dietary-badge gluten-free" [class.high]="glutenFreeBadge()!.level === 'high'"

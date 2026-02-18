@@ -33,13 +33,13 @@ function generateSessionId(): string {
 function getSessionId(): string {
   try {
     let sessionId = localStorage.getItem(SESSION_STORAGE_KEY);
-
+    
     if (!sessionId) {
       sessionId = generateSessionId();
       localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
       console.log('[Session] Generated new session ID:', sessionId.substring(0, 20) + '...');
     }
-
+    
     return sessionId;
   } catch (error) {
     // Fallback if localStorage is unavailable (e.g., private browsing)
@@ -58,25 +58,35 @@ function getSessionId(): string {
  * - If authMode = 'cookie_only': Skip x-session-id header (cookies only)
  */
 export const apiSessionInterceptor: HttpInterceptorFn = (req, next) => {
-  // רק API
-  if (!isApiRequest(req.url)) return next(req);
-
-  // 🔥 אל תוסיף X-Session-Id לאנדפוינטים של auth
-  if (req.url.includes('/api/v1/auth/')) {
-    const cleaned = req.clone({
-      headers: req.headers.delete('X-Session-Id')
-    });
-    return next(cleaned);
+  // Only intercept API requests
+  if (!isApiRequest(req.url)) {
+    return next(req);
   }
+  
+  // Skip if session header already present (explicit override)
   if (req.headers.has('x-session-id')) {
-    return next(req.clone({ withCredentials: true }));
+    // Still ensure withCredentials is set
+    const withCreds = req.clone({ withCredentials: true });
+    return next(withCreds);
   }
-  if ((environment as { authMode?: string }).authMode === 'cookie_only') {
-    return next(req.clone({ withCredentials: true }));
+  
+  // COOKIE_ONLY MODE: Only set withCredentials, no x-session-id header
+  if (environment.authMode === 'cookie_only') {
+    console.debug('[Session] AUTH_MODE=cookie_only - skipping x-session-id header');
+    const cloned = req.clone({
+      withCredentials: true // Still send cookies
+    });
+    return next(cloned);
   }
+  
+  // DUAL MODE: Attach session ID + enable credentials
   const sessionId = getSessionId();
-  return next(req.clone({
-    setHeaders: { 'x-session-id': sessionId },
-    withCredentials: true
-  }));
+  const cloned = req.clone({
+    setHeaders: {
+      'x-session-id': sessionId
+    },
+    withCredentials: true // CRITICAL: enables HttpOnly session cookies
+  });
+  
+  return next(cloned);
 };

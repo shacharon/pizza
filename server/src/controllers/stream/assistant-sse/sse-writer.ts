@@ -68,6 +68,13 @@ export class SseWriter {
   }
 
   /**
+   * Send SSE comment (keeps connection alive for gateways/ALB; no client-side event)
+   */
+  sendComment(comment: string = 'k'): void {
+    this.res.write(`: ${comment}\n\n`);
+  }
+
+  /**
    * End the response stream
    */
   end(): void {

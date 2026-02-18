@@ -166,6 +166,17 @@ export class AssistantSseOrchestrator {
     writer.setHeaders();
     writer.flushHeaders();
 
+    // Keepalive so ALB/gateways (e.g. 60s idle timeout) don't close the stream
+    const KEEPALIVE_MS = 15_000;
+    const keepaliveId = setInterval(() => {
+      if (clientDisconnected || res.writableEnded) return;
+      try {
+        writer.sendComment('k');
+      } catch {
+        // ignore if stream already closed
+      }
+    }, KEEPALIVE_MS);
+
     // Abort controller for cleanup
     const abortController = new AbortController();
     let clientDisconnected = false;
@@ -358,6 +369,8 @@ export class AssistantSseOrchestrator {
         writer,
         this.logger
       );
+    } finally {
+      clearInterval(keepaliveId);
     }
   }
 

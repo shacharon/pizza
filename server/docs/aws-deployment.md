@@ -144,3 +144,14 @@ So locally: no TLS, same box → connection succeeds. On AWS: TLS + another host
 ### Optional: run without Redis (not for production)
 
 Only for temporary/dev: set `WS_REQUIRE_AUTH=false`. WebSocket auth will be disabled. Do **not** use in production.
+
+---
+
+## SSE assistant stream: 504 and CORS in prod
+
+If the **EventSource** request to `/api/v1/stream/assistant/:requestId` returns **504 Gateway Timeout** or a **CORS error**:
+
+1. **504** – Usually the load balancer (ALB) or API Gateway closed the connection because no data was received within its **idle timeout** (often 60s). The server now sends an SSE **keepalive comment** every 15s and uses a longer response timeout (2 min) for this route so the stream is not closed by the app or gateway.
+2. **CORS** – If the response is a 504 from the **gateway** (not from Node), the gateway does not add CORS headers, so the browser may report "CORS error". Fixing the 504 (keepalive + timeout) usually fixes this. Ensure **FRONTEND_ORIGINS** includes the exact origin (e.g. `https://app.going2eat.food`) with no extra spaces.
+
+**AWS:** If you use **ALB**, consider increasing the **idle timeout** (e.g. to 120s or more) for the target group or listener that serves the API. If you use **API Gateway**, note its integration timeout limit (e.g. 29s for REST APIs) and consider using HTTP API or a longer timeout if supported.
