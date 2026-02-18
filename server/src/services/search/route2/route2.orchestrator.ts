@@ -276,6 +276,9 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
     if (!allowed) {
       const r = await handleTextSearchMissingLocationGuard(request, gateResult, intentDecision, mapping, ctx, wsManager);
       if (r) return r;
+      // Fallback: early guard (user-friendly "enable location" message) so client never sees a tech error
+      const early = await handleEarlyTextSearchLocationGuard(request, gateResult, intentDecision, ctx, wsManager);
+      if (early) return early;
       throw new Error('TEXTSEARCH blocked: missing location anchor');
     }
 

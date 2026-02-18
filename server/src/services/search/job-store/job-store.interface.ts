@@ -24,13 +24,15 @@ export interface SearchJob {
   ownerSessionId?: string | null;
   // Trace consistency: Single traceId across Route2 and SSE
   traceId?: string;
+  // Language detection: Detected query language for SSE assistant
+  queryDetectedLanguage?: string;
 }
 
 export interface ISearchJobStore {
   /**
    * Create a new job
    */
-  createJob(requestId: string, params: { sessionId: string; query: string; ownerUserId?: string | null; ownerSessionId?: string | null; traceId?: string }): Promise<void> | void;
+  createJob(requestId: string, params: { sessionId: string; query: string; ownerUserId?: string | null; ownerSessionId?: string | null; traceId?: string; queryDetectedLanguage?: string }): Promise<void> | void;
 
   /**
    * Set job status and progress

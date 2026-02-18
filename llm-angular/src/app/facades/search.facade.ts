@@ -207,7 +207,10 @@ export class SearchFacade {
         // Note: sessionId is now fetched from JWT localStorage, not conversationId
         // This call blocks until WS is connected and authenticated
         // Pass assistantHandler for SSE routing (feature flag controlled)
-        await this.wsHandler.subscribeToRequest(requestId, undefined, this.assistantHandler);
+        // Pass callback so SSE terminal messages (CLARIFY/GATE_FAIL/SUMMARY) get same side effects as WS path
+        await this.wsHandler.subscribeToRequest(requestId, undefined, this.assistantHandler, (payload) =>
+          this.applyTerminalAssistantSideEffects(payload)
+        );
 
         // Defer polling start (if WS delivers first, polling never starts)
         this.apiHandler.startPolling(
@@ -366,40 +369,13 @@ export class SearchFacade {
             );
           }
 
-          // CARD STATE: Map assistant message type to card state
-          if (narrator.type === 'CLARIFY' && narrator.blocksSearch === true) {
-            safeLog('SearchFacade', 'DONE_CLARIFY - stopping search, waiting for user input');
-
-            // Stop loading immediately
-            this.searchStore.setLoading(false);
-
-            // CARD STATE: Set to CLARIFY (non-terminal, card stays active)
-            this._cardState.set('CLARIFY');
-
-            // Cancel any pending polling
-            this.apiHandler.cancelPolling();
-
-            // Set status for CLARIFY
-            this.assistantHandler.setStatus('completed');
-          } else if (narrator.type === 'GATE_FAIL') {
-            // CARD STATE: GATE_FAIL is terminal (STOP)
-            safeLog('SearchFacade', 'GATE_FAIL - terminal state');
-            this._cardState.set('STOP');
-            this.searchStore.setLoading(false);
-            this.apiHandler.cancelPolling();
-            this.assistantHandler.setStatus('completed');
-          } else {
-            // CARD STATE: SUMMARY, DIETARY_HINT, or other non-blocking types
-            // Do NOT change card state - search continues normally
-            this.assistantHandler.setStatus('completed');
-
-            // DEDUPE FIX: Clear any legacy error/status messages when SUMMARY arrives
-            // SUMMARY from WS is the only result announcement - no duplicate banners
-            if (narrator.type === 'SUMMARY') {
-              this.searchStore.setError(null);
-              safeLog('SearchFacade', 'SUMMARY received - cleared legacy status messages');
-            }
-          }
+          // CARD STATE: Same side effects as SSE path (loading, card state, polling, status)
+          this.applyTerminalAssistantSideEffects({
+            type: narrator.type,
+            message: narrator.message,
+            question: narrator.question ?? null,
+            blocksSearch: narrator.blocksSearch
+          });
         },
         onSearchEvent: (event) => this.handleSearchEvent(event),
         onLegacyMessage: (msg) => this.assistantHandler.handleLegacyMessage(msg)
@@ -494,6 +470,37 @@ export class SearchFacade {
   /**
    * Handle search contract events (progress, ready, error)
    */
+  /**
+   * Apply loading/card state/status when a terminal assistant message is received.
+   * Used by both WS assistant path (onAssistantMessage) and SSE path (onTerminalAssistantMessage callback).
+   */
+  private applyTerminalAssistantSideEffects(payload: {
+    type: string;
+    message?: string;
+    question?: string | null;
+    blocksSearch?: boolean;
+  }): void {
+    if (payload.type === 'CLARIFY' && payload.blocksSearch === true) {
+      safeLog('SearchFacade', 'DONE_CLARIFY - stopping search, waiting for user input');
+      this.searchStore.setLoading(false);
+      this._cardState.set('CLARIFY');
+      this.apiHandler.cancelPolling();
+      this.assistantHandler.setStatus('completed');
+    } else if (payload.type === 'GATE_FAIL') {
+      safeLog('SearchFacade', 'GATE_FAIL - terminal state');
+      this._cardState.set('STOP');
+      this.searchStore.setLoading(false);
+      this.apiHandler.cancelPolling();
+      this.assistantHandler.setStatus('completed');
+    } else {
+      this.assistantHandler.setStatus('completed');
+      if (payload.type === 'SUMMARY') {
+        this.searchStore.setError(null);
+        safeLog('SearchFacade', 'SUMMARY received - cleared legacy status messages');
+      }
+    }
+  }
+
   private handleSearchEvent(event: import('../contracts/search.contracts').WsSearchEvent): void {
     // CARD STATE: Ignore search events if in CLARIFY state (non-terminal)
     if (this.cardState() === 'CLARIFY') {

@@ -150,7 +150,7 @@ export async function executeLandmarkPlan(
           permanentlyClosedCount: out.permanentlyClosedCount,
           tempClosedCount: out.tempClosedCount,
           missingStatusCount: out.missingStatusCount,
-          placeIdsFiltered: out.permanentlyClosedPlaceIds.length ? out.permanentlyClosedPlaceIds : undefined,
+          ...(out.permanentlyClosedPlaceIds.length && { placeIdsFiltered: out.permanentlyClosedPlaceIds }),
           logger
         });
         return out.filtered.map((r: any) => mapGooglePlaceToResult(r));
@@ -182,7 +182,7 @@ export async function executeLandmarkPlan(
           permanentlyClosedCount: out.permanentlyClosedCount,
           tempClosedCount: out.tempClosedCount,
           missingStatusCount: out.missingStatusCount,
-          placeIdsFiltered: out.permanentlyClosedPlaceIds.length ? out.permanentlyClosedPlaceIds : undefined,
+          ...(out.permanentlyClosedPlaceIds.length && { placeIdsFiltered: out.permanentlyClosedPlaceIds }),
           logger
         });
         return out.filtered.map((r: any) => mapGooglePlaceToResult(r));

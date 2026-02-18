@@ -186,6 +186,33 @@ export async function executeTextSearchMapper(
     // Propagate cityText from intent if present
     if (intent.cityText) {
       mapping.cityText = intent.cityText;
+      
+      // CITY ENFORCEMENT: Append cityText to textQuery to ensure results are city-specific
+      // This prevents Google from returning results outside the specified city
+      const baseTextQuery = mapping.textQuery || '';
+      
+      // Check if cityText is already in the query (avoid duplicates)
+      const cityInQuery = baseTextQuery.toLowerCase().includes(intent.cityText.toLowerCase());
+      
+      if (!cityInQuery) {
+        mapping.textQuery = `${baseTextQuery} ${intent.cityText}`.trim();
+        
+        logger.info({
+          requestId,
+          event: 'textsearch_city_enforced_in_query',
+          baseTextQuery,
+          cityText: intent.cityText,
+          finalTextQuery: mapping.textQuery
+        }, '[TEXTSEARCH] City appended to textQuery for enforcement');
+      } else {
+        // City already in query, no need to append
+        logger.debug({
+          requestId,
+          event: 'textsearch_city_already_in_query',
+          textQuery: baseTextQuery,
+          cityText: intent.cityText
+        }, '[TEXTSEARCH] City already in textQuery, skipping append');
+      }
     }
 
     // Apply your existing location bias logic based on user metadata/intent
@@ -216,9 +243,40 @@ function buildDeterministicMapping(
   }
   cleanedQuery = cleanedQuery.trim().replace(/\s+/g, ' ');
 
+  // CITY ENFORCEMENT: Append cityText to textQuery if present (avoid duplicates)
+  let finalTextQuery = cleanedQuery;
+  if (intent.cityText) {
+    // Check if cityText is already in the query (case-insensitive)
+    const cityInQuery = cleanedQuery.toLowerCase().includes(intent.cityText.toLowerCase());
+    
+    if (!cityInQuery) {
+      finalTextQuery = `${cleanedQuery} ${intent.cityText}`.trim();
+      
+      if (requestId) {
+        logger.info({
+          requestId,
+          event: 'textsearch_city_enforced_in_query_fallback',
+          baseTextQuery: cleanedQuery,
+          cityText: intent.cityText,
+          finalTextQuery
+        }, '[TEXTSEARCH] City appended to textQuery (fallback path)');
+      }
+    } else {
+      // City already in query, no need to append
+      if (requestId) {
+        logger.debug({
+          requestId,
+          event: 'textsearch_city_already_in_query_fallback',
+          textQuery: cleanedQuery,
+          cityText: intent.cityText
+        }, '[TEXTSEARCH] City already in textQuery, skipping append (fallback path)');
+      }
+    }
+  }
+
   const mapping: TextSearchMapping = {
     providerMethod: 'textSearch',
-    textQuery: cleanedQuery,
+    textQuery: finalTextQuery,
     region: finalFilters.regionCode,
     language: finalFilters.providerLanguage,
     bias: undefined,

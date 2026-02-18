@@ -265,11 +265,11 @@ export class AssistantSseOrchestrator {
       const result = await this.jobStore.getResult(requestId);
       
       // LANGUAGE RESOLUTION: Priority-based cascade
-      // Priority: assistantLanguage > intent.language > queryDetectedLanguage > result.query.language > 'en'
+      // Priority: assistantLanguage > intent.language > job.queryDetectedLanguage > result.query.language > uiLanguage > 'en'
       const candidates = {
         assistantLanguage: (job as any)?.assistantLanguage as AssistantLanguage | undefined,
         intentLanguage: (job as any)?.intent?.language as AssistantLanguage | undefined,
-        queryDetectedLanguage: (job as any)?.queryDetectedLanguage as AssistantLanguage | undefined,
+        jobQueryDetectedLanguage: job?.queryDetectedLanguage as AssistantLanguage | undefined,
         resultQueryLanguage: ((result as any)?.query?.language as AssistantLanguage | undefined),
         uiLanguage: ((result as any)?.query?.languageContext?.uiLanguage as AssistantLanguage | undefined)
       };
@@ -277,7 +277,7 @@ export class AssistantSseOrchestrator {
       const chosenLanguage: AssistantLanguage =
         candidates.assistantLanguage ??
         candidates.intentLanguage ??
-        candidates.queryDetectedLanguage ??
+        candidates.jobQueryDetectedLanguage ??
         candidates.resultQueryLanguage ??
         candidates.uiLanguage ??
         'en';
@@ -286,7 +286,7 @@ export class AssistantSseOrchestrator {
       const languageSource = 
         candidates.assistantLanguage ? 'job.assistantLanguage' :
         candidates.intentLanguage ? 'job.intent.language' :
-        candidates.queryDetectedLanguage ? 'job.queryDetectedLanguage' :
+        candidates.jobQueryDetectedLanguage ? 'job.queryDetectedLanguage' :
         candidates.resultQueryLanguage ? 'result.query.language' :
         candidates.uiLanguage ? 'result.query.languageContext.uiLanguage' :
         'fallback';
@@ -512,7 +512,7 @@ export class AssistantSseOrchestrator {
       return;
     }
 
-    // Step 3: Generate SUMMARY if results ready, else timeout message
+    // Step 3: Generate SUMMARY, or send stored assist (gate stop/clarify), or timeout message
     if (pollResult.resultsReady) {
       // Transition: WAITING → SUMMARY_SENT
       stateMachine.transition(SseState.SUMMARY_SENT);
@@ -527,6 +527,24 @@ export class AssistantSseOrchestrator {
         abortSignal,
         isClientDisconnected
       );
+    } else if (pollResult.latestStatus === 'DONE_STOPPED' || pollResult.latestStatus === 'DONE_CLARIFY') {
+      // Gate stop or clarify: pipeline already stored result with assist; send it via SSE so frontend gets it
+      const storedResult = await this.jobStore.getResult(requestId);
+      const assist = (storedResult as any)?.assist;
+      if (assist?.message) {
+        const sseType = assist.type === 'guide' ? 'GATE_FAIL' : (assist.type === 'clarify' ? 'CLARIFY' : assist.type);
+        writer.sendMessage({
+          type: sseType,
+          message: assist.message,
+          question: assist.question ?? null,
+          blocksSearch: true,
+          language: assistantLanguage
+        });
+        this.logger.info(
+          { requestId, traceId, sseType, latestStatus: pollResult.latestStatus, event: 'assistant_sse_stopped_clarify_sent' },
+          '[AssistantSSE] Sent stored assist (gate stop/clarify) via SSE'
+        );
+      }
     } else {
       // Transition: WAITING → DONE (timeout case, no summary)
       this.sendTimeoutMessage(

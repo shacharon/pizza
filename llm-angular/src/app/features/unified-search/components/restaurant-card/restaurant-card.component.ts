@@ -279,30 +279,63 @@ export class RestaurantCardComponent {
       (key, params) => this.i18n.t(key as keyof import('../../../../core/services/i18n.service').I18nKeys, params)
     );
 
-    // TEMP DEBUG: Log once per card (remove after debugging)
-    const cardId = this.restaurant().placeId;
-    if (!RestaurantCardComponent.debuggedCards.has(cardId)) {
-      RestaurantCardComponent.debuggedCards.add(cardId);
-      console.log('[RestaurantCard DEBUG]', {
-        name: this.restaurant().name,
-        distanceMeters,
-        distanceKm: (distanceMeters / 1000).toFixed(2),
-        formattedText: formatted.text,
-        mode: formatted.mode,
-        openNow: this.restaurant().openNow,
-        hasCurrentOpeningHours: !!this.restaurant().currentOpeningHours,
-        currentNextCloseTime: this.restaurant().currentOpeningHours?.nextCloseTime,
-        hasRegularHours: !!this.restaurant().regularOpeningHours,
-        regularPeriodsCount: this.restaurant().regularOpeningHours?.periods?.length,
-        derivedClosingTime: this.closingTimeToday()
-      });
-    }
-
     return {
       distanceMeters,
       text: formatted.text,
       mode: formatted.mode
     };
+  });
+
+  /**
+   * Format distance with numeric display + optional drive time:
+   * <1km → show meters (e.g., "850 m")
+   * 1-7km → show rounded km (e.g., "3 km")
+   * >7km → show rounded km only (e.g., "11 km")
+   * 
+   * Rounding: 10.8 → 11 km, 2.3 → 2 km
+   */
+  readonly formattedDistance = computed(() => {
+    const info = this.distanceInfo();
+    if (!info) return '';
+
+    const meters = info.distanceMeters;
+    const km = meters / 1000;
+    
+    // <1km → show meters
+    if (km < 1) {
+      return `${Math.round(meters)} m`;
+    }
+    
+    // 1-7km → show rounded km
+    if (km <= 7) {
+      return `${Math.round(km)} km`;
+    }
+    
+    // >7km → show rounded km only
+    return `${Math.round(km)} km`;
+  });
+
+  /**
+   * Optional drive time estimate for distances >3km
+   * Returns formatted string like "· 8 min drive" or empty string
+   */
+  readonly driveTimeEstimate = computed(() => {
+    const info = this.distanceInfo();
+    if (!info) return '';
+
+    const meters = info.distanceMeters;
+    const km = meters / 1000;
+    
+    // Only show for distances >3km
+    if (km <= 3) {
+      return '';
+    }
+    
+    // Estimate: ~30 km/h average city driving speed
+    // 3km → 6 min, 5km → 10 min, 10km → 20 min
+    const minutes = Math.round((km / 30) * 60);
+    
+    return ` · ${minutes} min drive`;
   });
 
   /**

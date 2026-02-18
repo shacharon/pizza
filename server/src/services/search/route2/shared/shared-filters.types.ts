@@ -52,6 +52,16 @@ export const OpenBetweenSchema = z.union([z.null(), OpenBetweenObjectSchema]);
 export type OpenBetween = z.infer<typeof OpenBetweenSchema>;
 
 /**
+ * Price Intent (extracted from query text)
+ * - CHEAP: "זול", "cheap", "inexpensive", "budget"
+ * - MID: implied middle range
+ * - EXPENSIVE: "יקר", "יקרה", "expensive", "fancy", "upscale"
+ * - null: no price intent mentioned
+ */
+export const PriceIntentSchema = z.enum(['CHEAP', 'MID', 'EXPENSIVE']).nullable();
+export type PriceIntent = z.infer<typeof PriceIntentSchema>;
+
+/**
  * Pre-Google Base Filters
  *
  * Applied before calling Google Places API
@@ -66,16 +76,30 @@ export type OpenBetween = z.infer<typeof OpenBetweenSchema>;
  * Other fields:
  * - regionHint is optional but must be in schema as nullable
  * - openState: null unless explicitly requested
+ * - priceIntent: extracted from query text (e.g., "זול", "יקר")
+ * - priceLevels: Google price level mapping (1-4 scale)
  */
 export const PreGoogleBaseFiltersSchema = z.object({
     language: z.enum(['he', 'en', 'auto']), // DEPRECATED: Use intent.language for decisions
     openState: OpenStateSchema,
     openAt: OpenAtSchema,
     openBetween: OpenBetweenSchema,
-    regionHint: z.string().length(2).toUpperCase().nullable()
+    regionHint: z.string().length(2).toUpperCase().nullable(),
+    priceIntent: PriceIntentSchema,
+    priceLevels: z.array(z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)])).nullable()
 });
 
 export type PreGoogleBaseFilters = z.infer<typeof PreGoogleBaseFiltersSchema>;
+
+/**
+ * Price level range (for filtering)
+ */
+export const PriceLevelRangeSchema = z.object({
+    min: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
+    max: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)])
+}).optional();
+
+export type PriceLevelRange = z.infer<typeof PriceLevelRangeSchema>;
 
 /**
  * Final Shared Filters
@@ -84,6 +108,10 @@ export type PreGoogleBaseFilters = z.infer<typeof PreGoogleBaseFiltersSchema>;
  * - uiLanguage: resolved UI language (he|en only)
  * - providerLanguage: language for API provider calls (preserves intent languages like fr, es, ar, ru)
  * - openState: null unless explicitly requested
+ * - priceIntent: extracted from base_filters (CHEAP/MID/EXPENSIVE)
+ * - priceLevels: Google price levels array (1-4)
+ * - priceLevel: optional price constraint (1-4) - from post-constraints
+ * - priceLevelRange: optional price range constraint (min-max) - from post-constraints
  * - regionCode is required and uppercase ISO-3166-1 alpha-2
  * - disclaimers always present
  */
@@ -93,6 +121,10 @@ export const FinalSharedFiltersSchema = z.object({
     openState: OpenStateSchema,
     openAt: OpenAtSchema,
     openBetween: OpenBetweenSchema,
+    priceIntent: PriceIntentSchema,
+    priceLevels: z.array(z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)])).nullable(),
+    priceLevel: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).optional(),
+    priceLevelRange: PriceLevelRangeSchema,
     regionCode: z.string().length(2).toUpperCase(),
     disclaimers: z.object({
         hours: z.literal(true),

@@ -28,7 +28,7 @@ export class RedisSearchJobStore implements ISearchJobStore {
     return `${KEY_PREFIX}${requestId}`;
   }
 
-  async createJob(requestId: string, params: { sessionId: string; query: string; ownerUserId?: string | null; ownerSessionId?: string | null; traceId?: string }): Promise<void> {
+  async createJob(requestId: string, params: { sessionId: string; query: string; ownerUserId?: string | null; ownerSessionId?: string | null; traceId?: string; queryDetectedLanguage?: string }): Promise<void> {
     const now = Date.now();
     const job: SearchJob = {
       requestId,
@@ -39,7 +39,8 @@ export class RedisSearchJobStore implements ISearchJobStore {
       updatedAt: now,
       ownerUserId: params.ownerUserId ?? null,
       ownerSessionId: params.ownerSessionId ?? null,
-      ...(params.traceId && { traceId: params.traceId })
+      ...(params.traceId && { traceId: params.traceId }),
+      ...(params.queryDetectedLanguage && { queryDetectedLanguage: params.queryDetectedLanguage })
     };
 
     const key = this.getKey(requestId);

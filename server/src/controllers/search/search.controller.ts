@@ -15,6 +15,7 @@ import { CONTRACTS_VERSION } from '../../contracts/search.contracts.js';
 import { searchJobStore } from '../../services/search/job-store/index.js';
 import { hashSessionId, sanitizePhotoUrls } from '../../utils/security.utils.js';
 import { wsManager } from '../../server.js';
+import { detectQueryLanguage } from '../../services/search/route2/utils/query-language-detector.js';
 
 // Extracted modules
 import { executeBackgroundSearch } from './search.async-execution.js';
@@ -85,11 +86,15 @@ router.post('/', async (req: Request, res: Response) => {
       // P0 Fix: Non-fatal Redis write - if job creation fails, return 202 anyway
       // Background execution will still proceed, just without Redis tracking
       try {
-        const jobParams: { sessionId: string; query: string; ownerUserId?: string | null; ownerSessionId?: string | null; traceId?: string } = {
+        // Detect query language early for SSE assistant
+        const queryDetectedLanguage = detectQueryLanguage(queryData.query);
+        
+        const jobParams: { sessionId: string; query: string; ownerUserId?: string | null; ownerSessionId?: string | null; traceId?: string; queryDetectedLanguage?: string } = {
           sessionId: ownerSessionId || 'anonymous', // Use JWT session, not client-provided
           query: queryData.query,
           ownerUserId,
-          ownerSessionId: ownerSessionId || null // Convert undefined to null for type safety
+          ownerSessionId: ownerSessionId || null, // Convert undefined to null for type safety
+          queryDetectedLanguage
         };
         // Store traceId for SSE trace consistency (only if present)
         if (route2Context.traceId) {

@@ -267,4 +267,36 @@ describe('AssistantSseOrchestrator E2E', () => {
       expect(mockResponse.end).toHaveBeenCalled();
     });
   });
+
+  describe('Language resolution from job.queryDetectedLanguage', () => {
+    it('should use Hebrew from job.queryDetectedLanguage when intent not yet available', async () => {
+      const mockRequest = {
+        params: { requestId: 'req-hebrew-222' },
+        traceId: 'trace-222',
+        sessionId: 'sess-222',
+        on: vi.fn()
+      } as any;
+
+      mockJobStore.getJob.mockResolvedValue({
+        status: 'RUNNING',
+        ownerSessionId: 'sess-222',
+        queryDetectedLanguage: 'he'
+      });
+
+      mockJobStore.getResult.mockResolvedValue({
+        query: {},
+        results: []
+      });
+
+      await orchestrator.handleRequest(mockRequest, mockResponse as Response);
+
+      const logCalls = mockLogger.info.mock.calls;
+      const languageLog = logCalls.find((call: any[]) => call[0]?.event === 'assistant_sse_language_resolved');
+      
+      expect(languageLog).toBeDefined();
+      expect(languageLog[0].chosen).toBe('he');
+      expect(languageLog[0].source).toBe('job.queryDetectedLanguage');
+      expect(languageLog[0].candidates.jobQueryDetectedLanguage).toBe('he');
+    });
+  });
 });

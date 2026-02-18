@@ -5,10 +5,30 @@
   <app-reason-label [restaurant]="restaurant()" />
   }
 
+  <!-- Top-right corner info: Open/Close status + time + distance -->
+  <div class="card-corner-info">
+    @if (getOpenStatus() === 'open' && closingTimeToday()) {
+    <div class="corner-status open">
+      {{ i18n.t('card.status.open') }} {{ i18n.t('card.hours.until') }} {{ closingTimeToday() }}
+    </div>
+    }
+    @if (getOpenStatus() === 'closed') {
+    <div class="corner-status closed">
+      {{ i18n.t('card.status.closed') }}
+    </div>
+    }
+    
+    @if (distanceInfo()) {
+    <div class="corner-distance">
+      📍 {{ formattedDistance() }}{{ driveTimeEstimate() }}
+    </div>
+    }
+  </div>
+
   <!-- Main content area (clickable for details) -->
   <div class="card-content" (click)="onCardClick()">
     <div class="card-header">
-      <!-- P0 Security: Secure photo loading via backend proxy. Open/closed badge overlay on image (outer corner: LTR top-left, RTL top-right). -->
+      <!-- P0 Security: Secure photo loading via backend proxy -->
       <div class="photo-wrapper">
         @if (photoSrc() && !photoError()) {
         <img class="restaurant-photo" [src]="getCurrentPhotoSrc()" [alt]="restaurant().name + ' restaurant photo'"
@@ -18,15 +38,6 @@
           [attr.aria-label]="'Placeholder image for ' + restaurant().name">
           🍽️
         </div>
-        }
-        @if (getOpenStatus() !== null || restaurant().openClose === 'TEMP_CLOSED') {
-        <span class="open-status-badge"
-          [class.open]="getOpenStatus() === 'open'"
-          [class.closed]="getOpenStatus() === 'closed' || restaurant().openClose === 'TEMP_CLOSED'"
-          [class.unknown]="getOpenStatus() === 'unknown'"
-          [attr.aria-label]="getOpenStatusLabel()">
-          {{ getOpenStatusLabel() }}
-        </span>
         }
       </div>
 
@@ -58,16 +69,6 @@
             </span>
             }
           </div>
-
-          @if (distanceInfo()) {
-          <span class="distance-text" 
-                [class.mode-walking]="distanceInfo()!.mode === 'walking'"
-                [class.mode-short-drive]="distanceInfo()!.mode === 'short-drive'"
-                [class.mode-far]="distanceInfo()!.mode === 'far'"
-                [attr.aria-label]="'Distance: ' + distanceInfo()!.text">
-            {{ distanceInfo()!.text }}
-          </span>
-          }
         </div>
 
         <p class="restaurant-address">{{ restaurant().address }}</p>

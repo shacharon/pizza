@@ -46,7 +46,113 @@ export function applyPostFilters(input: PostFilterInput): PostFilterOutput {
     sharedFilters.openAt,
     sharedFilters.openBetween
   );
-  const filteredResults = filtered;
+  let filteredResults = filtered;
+
+  // Apply price level range filter if requested
+  const requestedPriceLevelRange = (sharedFilters as any).priceLevelRange;
+  if (requestedPriceLevelRange?.min && requestedPriceLevelRange?.max) {
+    const beforePriceFilter = filteredResults.length;
+    let unknownPriceCount = 0;
+    let filteredByPriceCount = 0;
+
+    filteredResults = filteredResults.filter(result => {
+      const resultPriceLevel = result.priceLevel;
+
+      // Keep if no priceLevel data (unknown)
+      if (resultPriceLevel === null || resultPriceLevel === undefined) {
+        unknownPriceCount++;
+        return true;
+      }
+
+      // Keep if priceLevel in range
+      const inRange = resultPriceLevel >= requestedPriceLevelRange.min && 
+                      resultPriceLevel <= requestedPriceLevelRange.max;
+      
+      if (!inRange) {
+        filteredByPriceCount++;
+      }
+
+      return inRange;
+    });
+
+    logger.info(
+      {
+        requestId,
+        event: 'post_filter_price_range_applied',
+        priceLevelRange: requestedPriceLevelRange,
+        beforeCount: beforePriceFilter,
+        afterCount: filteredResults.length,
+        filtered_by_price: filteredByPriceCount,
+        unknown_price_count: unknownPriceCount
+      },
+      `[PostFilter] Price range filter applied: ${requestedPriceLevelRange.min}-${requestedPriceLevelRange.max} (filtered ${filteredByPriceCount}, unknown ${unknownPriceCount})`
+    );
+  }
+
+  // Apply price intent sorting/prioritization if requested
+  const priceIntent = sharedFilters.priceIntent;
+  const priceLevels = sharedFilters.priceLevels;
+  
+  if (priceIntent && priceLevels && priceLevels.length > 0) {
+    const beforePriceIntent = filteredResults.length;
+    
+    // Calculate distribution before sorting
+    const distribution = {
+      preferred: 0,      // Matches preferred priceLevels
+      missing: 0,        // No priceLevel data
+      other: 0          // Has priceLevel but not preferred
+    };
+
+    // Add price score to each result (for sorting)
+    const scoredResults = filteredResults.map(result => {
+      const resultPriceLevel = result.priceLevel;
+      
+      // Missing priceLevel: keep but demote
+      if (resultPriceLevel === null || resultPriceLevel === undefined) {
+        distribution.missing++;
+        return {
+          ...result,
+          _priceScore: -1  // Demoted
+        };
+      }
+      
+      // Check if matches preferred levels
+      const isPreferred = priceLevels.includes(resultPriceLevel);
+      
+      if (isPreferred) {
+        distribution.preferred++;
+        return {
+          ...result,
+          _priceScore: 10  // Preferred
+        };
+      } else {
+        distribution.other++;
+        return {
+          ...result,
+          _priceScore: 0  // Not preferred but has data
+        };
+      }
+    });
+
+    // Sort by price score (descending: preferred first, then others, then missing)
+    scoredResults.sort((a, b) => (b._priceScore ?? 0) - (a._priceScore ?? 0));
+    
+    // Remove temporary _priceScore field
+    filteredResults = scoredResults.map(({ _priceScore, ...result }) => result);
+
+    logger.debug(
+      {
+        requestId,
+        event: 'price_intent_applied',
+        intent: priceIntent,
+        priceLevels,
+        kept: filteredResults.length,
+        demotedMissing: distribution.missing,
+        distribution
+      },
+      `[PostFilter] Price intent applied: ${priceIntent} (preferred: ${distribution.preferred}, missing: ${distribution.missing}, other: ${distribution.other})`
+    );
+  }
 
   // Attach dietary hints (SOFT hints - no removal)
   const isGlutenFree = (sharedFilters as any).isGlutenFree ?? null;

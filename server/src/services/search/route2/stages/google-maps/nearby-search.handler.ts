@@ -106,7 +106,7 @@ export async function executeNearbySearch(
       permanentlyClosedCount: totalPermClosed,
       tempClosedCount: totalTempClosed,
       missingStatusCount: totalMissingStatus,
-      placeIdsFiltered: totalPermPlaceIds.length ? totalPermPlaceIds : undefined,
+      ...(totalPermPlaceIds.length && { placeIdsFiltered: totalPermPlaceIds }),
       logger
     });
 

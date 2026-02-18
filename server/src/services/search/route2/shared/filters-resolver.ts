@@ -65,10 +65,12 @@ export async function resolveFilters(params: ResolveFiltersParams): Promise<Fina
         }
     }
 
-    // 6. Pass through openState + time filters (NO MODIFICATION)
+    // 6. Pass through openState + time filters + price filters (NO MODIFICATION)
     const openState = base.openState;
     const openAt = base.openAt;
     const openBetween = base.openBetween;
+    const priceIntent = base.priceIntent;
+    const priceLevels = base.priceLevels;
 
     const finalFilters: FinalSharedFilters = {
         uiLanguage,
@@ -76,6 +78,8 @@ export async function resolveFilters(params: ResolveFiltersParams): Promise<Fina
         openState,
         openAt,
         openBetween,
+        priceIntent,
+        priceLevels,
         regionCode: sanitizedRegionCode || 'IL', // Fallback to IL if null
         disclaimers: {
             hours: true,
@@ -92,7 +96,9 @@ export async function resolveFilters(params: ResolveFiltersParams): Promise<Fina
             openState: base.openState,
             openAt: base.openAt,
             openBetween: base.openBetween,
-            regionHint: base.regionHint
+            regionHint: base.regionHint,
+            priceIntent: base.priceIntent,
+            priceLevels: base.priceLevels
         },
         final: {
             uiLanguage: finalFilters.uiLanguage,
@@ -100,6 +106,8 @@ export async function resolveFilters(params: ResolveFiltersParams): Promise<Fina
             openState: finalFilters.openState,
             openAt: finalFilters.openAt,
             openBetween: finalFilters.openBetween,
+            priceIntent: finalFilters.priceIntent,
+            priceLevels: finalFilters.priceLevels,
             regionCode: finalFilters.regionCode
         },
         sanitized: sanitizedRegionCode !== rawRegionCode

@@ -60,6 +60,7 @@ export class SearchWsHandler {
    * @param requestId - The search request ID to subscribe to
    * @param _legacySessionId - DEPRECATED, not used (kept for backward compatibility)
    * @param assistantHandler - Optional handler for assistant messages (for SSE routing and streaming)
+   * @param onTerminalAssistantMessage - Optional callback when SSE delivers CLARIFY/GATE_FAIL/SUMMARY (same side effects as WS assistant path)
    */
   async subscribeToRequest(
     requestId: string,
@@ -68,7 +69,8 @@ export class SearchWsHandler {
       routeMessage: (type: any, message: string, requestId: string, payload: any) => void;
       setMessage: (message: string, requestId?: string, blocksSearch?: boolean, resetAnimation?: boolean) => void;
       setStatus: (status: AssistantStatus) => void;
-    }
+    },
+    onTerminalAssistantMessage?: (payload: { type: string; message?: string; question?: string | null; blocksSearch?: boolean }) => void
   ): Promise<void> {
     // STEP 1: Ensure WS is connected and authenticated (blocks until ready)
     try {
@@ -159,7 +161,7 @@ export class SearchWsHandler {
                 preview: streamedText.substring(Math.max(0, streamedText.length - 50))
               });
             } else if (event.type === 'message') {
-              // Legacy: single full message
+              // Legacy: single full message (CLARIFY / GATE_FAIL / SUMMARY from SSE)
               const payload = event.data;
               console.log('[SearchWsHandler] SSE assistant message (legacy)', {
                 type: payload.type,
@@ -177,6 +179,15 @@ export class SearchWsHandler {
                   ts: Date.now()
                 }
               );
+              // Same side effects as WS assistant path: clear loading, card state, cancel polling
+              if (onTerminalAssistantMessage) {
+                onTerminalAssistantMessage({
+                  type: payload.type,
+                  message: payload.message,
+                  question: payload.question ?? null,
+                  blocksSearch: payload.blocksSearch
+                });
+              }
             } else if (event.type === 'done') {
               // Keep showing streamed text in legacy slot; do NOT add a card so we avoid
               // switching to multi-message mode and re-animating (which made text disappear then animate again).

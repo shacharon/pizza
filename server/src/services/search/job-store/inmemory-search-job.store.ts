@@ -19,7 +19,7 @@ export class InMemorySearchJobStore implements ISearchJobStore {
   /**
    * Create a new search job with explicit requestId
    */
-  createJob(requestId: string, params: { sessionId: string; query: string; ownerUserId?: string | null; ownerSessionId?: string | null; traceId?: string }): void {
+  createJob(requestId: string, params: { sessionId: string; query: string; ownerUserId?: string | null; ownerSessionId?: string | null; traceId?: string; queryDetectedLanguage?: string }): void {
     const now = Date.now();
 
     this.jobs.set(requestId, {
@@ -31,7 +31,8 @@ export class InMemorySearchJobStore implements ISearchJobStore {
       updatedAt: now,
       ownerUserId: params.ownerUserId ?? null,
       ownerSessionId: params.ownerSessionId ?? null,
-      ...(params.traceId && { traceId: params.traceId })
+      ...(params.traceId && { traceId: params.traceId }),
+      ...(params.queryDetectedLanguage && { queryDetectedLanguage: params.queryDetectedLanguage })
     });
 
     logger.info({

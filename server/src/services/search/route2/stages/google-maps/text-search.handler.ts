@@ -101,7 +101,7 @@ export async function executeTextSearch(
         permanentlyClosedCount: metrics.permanentlyClosedCount,
         tempClosedCount: metrics.tempClosedCount,
         missingStatusCount: metrics.missingStatusCount,
-        placeIdsFiltered: metrics.permanentlyClosedPlaceIds.length ? metrics.permanentlyClosedPlaceIds : undefined,
+        ...(metrics.permanentlyClosedPlaceIds.length && { placeIdsFiltered: metrics.permanentlyClosedPlaceIds }),
         logger
       });
 
@@ -365,7 +365,72 @@ async function executeTextSearchAttempt(
     }
   }
 
+  // CITY RADIUS ENFORCEMENT: Filter results by distance from city centroid
+  if (enrichedMapping.cityText && enrichedMapping.bias?.center) {
+    const beforeCityFilter = results.length;
+    const cityCenter = enrichedMapping.bias.center;
+    
+    // Progressive radius relaxation
+    const MIN_RESULTS = 5;
+    const RADIUS_TIERS = [12000, 20000, 30000]; // 12km, 20km, 30km in meters
+    
+    let filteredResults = results;
+    let radiusUsed = RADIUS_TIERS[0];
+    let tierIndex = 0;
+    
+    // Try each radius tier until we have enough results
+    while (filteredResults.length < MIN_RESULTS && tierIndex < RADIUS_TIERS.length) {
+      radiusUsed = RADIUS_TIERS[tierIndex];
+      
+      filteredResults = results.filter(result => {
+        if (!result.location) return true; // Keep if no location data
+        
+        const distance = calculateDistanceMeters(
+          cityCenter.lat,
+          cityCenter.lng,
+          result.location.lat,
+          result.location.lng
+        );
+        
+        return distance <= radiusUsed;
+      });
+      
+      tierIndex++;
+    }
+    
+    const droppedCount = beforeCityFilter - filteredResults.length;
+    
+    logger.info({
+      requestId,
+      event: 'textsearch_city_radius_enforced',
+      cityText: enrichedMapping.cityText,
+      cityCenter,
+      radiusKmUsed: radiusUsed / 1000,
+      beforeCount: beforeCityFilter,
+      keptCount: filteredResults.length,
+      droppedCount,
+      relaxed: radiusUsed > RADIUS_TIERS[0]
+    }, `[TEXTSEARCH] City radius filter applied: ${enrichedMapping.cityText} (kept ${filteredResults.length}/${beforeCityFilter}, radius ${radiusUsed / 1000}km)`);
+    
+    return { results: filteredResults, metrics };
+  }
+
   return { results, metrics };
+}
+
+/**
+ * Calculate distance between two coordinates in meters
+ * Haversine formula
+ */
+function calculateDistanceMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000; // Earth radius in meters
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
 }
 
 /**

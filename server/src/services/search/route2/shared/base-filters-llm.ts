@@ -19,13 +19,15 @@ const BASE_FILTERS_PROMPT = `You are a filter extractor for restaurant search qu
 IMPORTANT: The 'language' field is INFORMATIONAL ONLY. It does NOT override intent.language.
 Intent stage already detected language - this is for filter extraction context ONLY.
 
-Output ONLY JSON with ALL 5 fields (NEVER omit any field):
+Output ONLY JSON with ALL 7 fields (NEVER omit any field):
 {
   "language": "he|en|auto",
   "openState": "OPEN_NOW"|"CLOSED_NOW"|"OPEN_AT"|"OPEN_BETWEEN"|null,
   "openAt": {"day": number|null, "timeHHmm": "HH:mm"|null, "timezone": string|null} or null,
   "openBetween": {"day": number|null, "startHHmm": "HH:mm"|null, "endHHmm": "HH:mm"|null, "timezone": string|null} or null,
-  "regionHint": "XX"|null
+  "regionHint": "XX"|null,
+  "priceIntent": "CHEAP"|"MID"|"EXPENSIVE"|null,
+  "priceLevels": [1,2,3,4]|null
 }
 
 CRITICAL: When openAt or openBetween is an object, ALL 3-4 keys MUST be present (use null for missing values).
@@ -61,11 +63,43 @@ RULES:
 
 - regionHint: 2 uppercase letters OR null (country only, not cities)
 
+- priceIntent (default: null):
+  * CRITICAL: Extract price intent from BOTH Hebrew AND English keywords
+  * "CHEAP" if query contains:
+    - Hebrew: "זול", "זולה", "זולות", "זולים", "לא יקר", "לא יקרה", "במחיר נמוך", "בזול"
+    - English: "cheap", "inexpensive", "budget", "affordable", "low price", "economical"
+  * "MID" if query contains:
+    - Hebrew: "בינוני", "בינונית", "סביר", "סבירה", "מחיר סביר", "ממוצע"
+    - English: "moderate", "mid-range", "reasonable", "average price", "medium"
+  * "EXPENSIVE" if query contains:
+    - Hebrew: "יקר", "יקרה", "יקרות", "יקרים", "יוקרתי", "יוקרתית", "מפואר", "יוקרה"
+    - English: "expensive", "fancy", "upscale", "fine dining", "luxury", "high-end", "premium"
+  * null if NO price keywords found
+  * HIGH PRECISION: Only extract if explicitly mentioned - do NOT infer from cuisine type
+
+- priceLevels (default: null):
+  * DETERMINISTIC mapping from priceIntent:
+    - priceIntent="CHEAP" → [1, 2]
+    - priceIntent="MID" → [2, 3]
+    - priceIntent="EXPENSIVE" → [3, 4]
+    - priceIntent=null → null
+  * NEVER invent custom arrays - use exact mappings above
+
+MULTI-INTENT EXTRACTION:
+- If query contains BOTH openState keywords AND priceIntent keywords, extract BOTH
+- Example: "מסעדות זולות פתוחות עכשיו" → openState="OPEN_NOW" AND priceIntent="CHEAP"
+- Example: "cheap sushi open now" → openState="OPEN_NOW" AND priceIntent="CHEAP"
+- Do NOT prioritize one over the other - extract all present intents
+
 Examples:
-- "מסעדות פתוחות עכשיו" → {"language":"he","openState":"OPEN_NOW","openAt":null,"openBetween":null,"regionHint":null}
-- "מסעדות סגורות לידי" → {"language":"he","openState":"CLOSED_NOW","openAt":null,"openBetween":null,"regionHint":null}
-- "פתוח ב-21:30 בגדרה" → {"language":"he","openState":"OPEN_AT","openAt":{"day":null,"timeHHmm":"21:30","timezone":null},"openBetween":null,"regionHint":null}
-- "פיצה בתל אביב" → {"language":"he","openState":null,"openAt":null,"openBetween":null,"regionHint":null}
+- "מסעדות פתוחות עכשיו" → {"language":"he","openState":"OPEN_NOW","openAt":null,"openBetween":null,"regionHint":null,"priceIntent":null,"priceLevels":null}
+- "סושי זול בגדרה" → {"language":"he","openState":null,"openAt":null,"openBetween":null,"regionHint":null,"priceIntent":"CHEAP","priceLevels":[1,2]}
+- "מסעדה יקרה בתל אביב" → {"language":"he","openState":null,"openAt":null,"openBetween":null,"regionHint":null,"priceIntent":"EXPENSIVE","priceLevels":[3,4]}
+- "מסעדות זולות פתוחות עכשיו" → {"language":"he","openState":"OPEN_NOW","openAt":null,"openBetween":null,"regionHint":null,"priceIntent":"CHEAP","priceLevels":[1,2]}
+- "מסעדה יוקרתית בירושלים" → {"language":"he","openState":null,"openAt":null,"openBetween":null,"regionHint":null,"priceIntent":"EXPENSIVE","priceLevels":[3,4]}
+- "פיצה בתל אביב" → {"language":"he","openState":null,"openAt":null,"openBetween":null,"regionHint":null,"priceIntent":null,"priceLevels":null}
+- "cheap pizza near me" → {"language":"en","openState":null,"openAt":null,"openBetween":null,"regionHint":null,"priceIntent":"CHEAP","priceLevels":[1,2]}
+- "affordable sushi open now" → {"language":"en","openState":"OPEN_NOW","openAt":null,"openBetween":null,"regionHint":null,"priceIntent":"CHEAP","priceLevels":[1,2]}
 `;
 
 const BASE_FILTERS_PROMPT_HASH = createHash('sha256')
@@ -123,9 +157,26 @@ const BASE_FILTERS_JSON_SCHEMA_MANUAL = {
                 { type: 'null' },
                 { type: 'string', minLength: 2, maxLength: 2 }
             ]
+        },
+        priceIntent: {
+            anyOf: [
+                { type: 'null' },
+                { type: 'string', enum: ['CHEAP', 'MID', 'EXPENSIVE'] }
+            ]
+        },
+        priceLevels: {
+            anyOf: [
+                { type: 'null' },
+                {
+                    type: 'array',
+                    items: { type: 'integer', enum: [1, 2, 3, 4] },
+                    minItems: 1,
+                    maxItems: 4
+                }
+            ]
         }
     },
-    required: ['language', 'openState', 'openAt', 'openBetween', 'regionHint'],
+    required: ['language', 'openState', 'openAt', 'openBetween', 'regionHint', 'priceIntent', 'priceLevels'],
     additionalProperties: false
 };
 
@@ -143,7 +194,9 @@ function createFallbackFilters(): PreGoogleBaseFilters {
         openState: null,
         openAt: null,
         openBetween: null,
-        regionHint: null
+        regionHint: null,
+        priceIntent: null,
+        priceLevels: null
     };
 }
 
@@ -237,7 +290,9 @@ export async function resolveBaseFiltersLLM(params: {
             openState: result.openState,
             openAt: result.openAt,
             openBetween: result.openBetween,
-            regionHint: validatedRegionHint
+            regionHint: validatedRegionHint,
+            priceIntent: result.priceIntent,
+            priceLevels: result.priceLevels
         };
 
         const durationMs = Date.now() - startTime;
@@ -253,6 +308,8 @@ export async function resolveBaseFiltersLLM(params: {
                 openAt: validatedResult.openAt,
                 openBetween: validatedResult.openBetween,
                 regionHint: validatedResult.regionHint ?? null,
+                priceIntent: validatedResult.priceIntent,
+                priceLevels: validatedResult.priceLevels,
                 ...(result.regionHint !== validatedResult.regionHint && {
                     regionHintSanitized: true,
                     rawRegionHint: result.regionHint
