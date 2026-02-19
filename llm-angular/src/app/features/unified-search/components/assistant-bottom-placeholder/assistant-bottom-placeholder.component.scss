@@ -10,9 +10,9 @@
   left: 0;
   right: 0;
 
-  // Consistent height (prevents layout shifts)
+  // Height: min for empty state; allow growth for 3–6 line assistant messages
   min-height: 44px;
-  max-height: 88px;
+  max-height: 160px;
 
   // Subtle styling (light, near-white - NOT dark cinema bar)
   background: rgba(249, 250, 251, 0.98); // Very light gray, near-white
@@ -100,12 +100,9 @@
   margin: 0;
   padding: 0;
 
-  // Compact: 1-2 lines max
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  // Allow full assistant message (3–6 lines); preserve newlines from backend
+  white-space: pre-line;
+  overflow-wrap: break-word;
 
   // Smooth text rendering
   -webkit-font-smoothing: antialiased;

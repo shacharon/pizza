@@ -1,0 +1,37 @@
+<div class="grouped-results">
+  @if (loading) {
+  <div class="loading-state">
+    <div class="spinner"></div>
+    <p>Searching...</p>
+  </div>
+  } @else if (hasAnyResults) {
+  <!-- Iterate through groups -->
+  @for (group of groups; track trackByKind($index, group)) {
+  @if (group.results.length > 0) {
+  <section class="result-group" [ngClass]="getGroupClass(group.kind)" [attr.data-kind]="group.kind">
+    <header class="group-header">
+      <div class="header-content">
+        <h3 class="group-label">{{ group.label }}</h3>
+        @if (group.distanceLabel) {
+        <span class="distance-label">{{ group.distanceLabel }}</span>
+        }
+      </div>
+      <span class="count-badge">{{ group.results.length }}</span>
+    </header>
+
+    <div class="results-list">
+      @for (result of group.results; track trackById($index, result)) {
+      <app-restaurant-card [restaurant]="result" [userLocation]="userLocation" (click)="onRestaurantClick(result)" />
+      }
+    </div>
+  </section>
+  }
+  }
+  } @else {
+  <div class="empty-state">
+    <div class="empty-icon">🔍</div>
+    <h3>No results found</h3>
+    <p>Try adjusting your search or filters</p>
+  </div>
+  }
+</div>

@@ -1,0 +1,194 @@
+.assistant-summary {
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  border-radius: 8px;
+  background: var(--color-surface-light, #f5f5f5);
+  transition: background-color 0.2s ease;
+  font-size: 0.9rem;
+  line-height: 1.5;
+
+  &.streaming {
+    background: var(--color-accent-light, #e3f2fd);
+  }
+
+  &.completed {
+    background: var(--color-surface-light, #f5f5f5);
+  }
+
+  &.failed {
+    background: var(--color-error-light, #ffebee);
+  }
+}
+
+.status-pending {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--color-text-secondary, #666);
+}
+
+.spinner {
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid rgba(0, 0, 0, 0.1);
+  border-top-color: var(--color-primary, #1976d2);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.streaming-text,
+.completed-text {
+  color: var(--color-text-primary, #333);
+}
+
+.cursor-blink {
+  animation: blink 1s infinite;
+  color: var(--color-primary, #1976d2);
+}
+
+@keyframes blink {
+  0%, 50% {
+    opacity: 1;
+  }
+  51%, 100% {
+    opacity: 0;
+  }
+}
+
+.error-text {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--color-error, #d32f2f);
+  
+  .icon {
+    font-size: 1.1rem;
+  }
+}
+
+// RTL support: V1 - Disabled (English/LTR only)
+// .assistant-summary.rtl {
+//   .error-text {
+//     flex-direction: row-reverse;
+//   }
+// }
+
+// MULTI-MESSAGE: Stack messages vertically with visual separation
+.assistant-summary.multi-message {
+  .messages-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .assistant-message {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.625rem;
+    padding: 0;
+    background: transparent;
+    border-radius: 0;
+    transition: none;
+
+    &:hover {
+      background: transparent;
+    }
+
+    // Clickable streaming messages
+    &.clickable {
+      cursor: pointer;
+      
+      &:hover .message-content {
+        opacity: 0.8;
+      }
+    }
+
+    // Streaming state
+    &.streaming .message-text {
+      .cursor-blink {
+        animation: blink 1s infinite;
+        color: var(--color-primary, #1976d2);
+        margin-left: 2px;
+      }
+    }
+
+    .message-icon {
+      font-size: 1rem;
+      flex-shrink: 0;
+      line-height: 1;
+      
+      // AI/Sparkle icon styling - WHITE background with SOFT YELLOW sparkle
+      &.ai-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        background: #ffffff; // White background
+        border-radius: 6px;
+        border: none; // No border
+        color: #FCD34D; // Soft, subtle yellow sparkle
+        font-size: 0; // Remove emoji fallback size
+        
+        .ai-sparkle-svg {
+          width: 20px;
+          height: 20px;
+        }
+      }
+    }
+
+    .message-content {
+      flex: 1;
+      min-width: 0;
+
+      .message-text {
+        margin-bottom: 0;
+        color: #6b7280;
+        font-size: 0.9375rem;
+        line-height: 1.5;
+        font-weight: 400;
+      }
+
+      .message-question {
+        font-style: italic;
+        color: #9ca3af;
+        font-size: 0.875rem;
+      }
+    }
+
+      // Type-specific styling - removed colored borders for clean look
+      &.message-type-clarify,
+      &.message-type-summary,
+      &.message-type-gate_fail {
+        border: none;
+        background: transparent;
+      }
+  }
+  
+  // RTL support: V1 - Disabled (English/LTR only)
+  // &.rtl .assistant-message {
+  //   flex-direction: row-reverse;
+  //   
+  //   // Move colored border to right side for RTL
+  //   &.message-type-clarify {
+  //     border-left: none;
+  //     border-right: 3px solid #ffc107;
+  //   }
+  //
+  //   &.message-type-summary {
+  //     border-left: none;
+  //     border-right: 3px solid #28a745;
+  //   }
+  //
+  //   &.message-type-gate_fail {
+  //     border-left: none;
+  //     border-right: 3px solid #dc3545;
+  //   }
+  // }
+}

@@ -1,8 +1,1 @@
-C:\dev\piza\angular-piza\server\logs\20260203-0246-01-server.log.gz
-C:\dev\piza\angular-piza\server\logs\20260204-0000-01-server.log.gz
-C:\dev\piza\angular-piza\server\logs\20260205-0208-01-server.log.gz
-C:\dev\piza\angular-piza\server\logs\20260207-0000-01-server.log.gz
-C:\dev\piza\angular-piza\server\logs\20260208-0000-01-server.log.gz
-C:\dev\piza\angular-piza\server\logs\20260213-1705-01-server.log.gz
-C:\dev\piza\angular-piza\server\logs\20260214-0000-01-server.log.gz
-C:\dev\piza\angular-piza\server\logs\20260215-0000-02-server.log.gz
+C:\dev\piza\angular-piza\server\logs\20260219-0000-01-server.log.gz

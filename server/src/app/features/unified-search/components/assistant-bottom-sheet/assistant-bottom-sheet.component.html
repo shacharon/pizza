@@ -1,0 +1,14 @@
+@if (visible) {
+<div class="bottom-sheet-overlay" (click)="onBackdropClick()">
+  <div class="bottom-sheet" (click)="$event.stopPropagation()">
+    <div class="sheet-handle"></div>
+    <h3 class="sheet-title">{{ title }}</h3>
+    <div class="sheet-content">
+      @for (result of highlightedResults.slice(0, 3); track trackById($index, result)) {
+      <app-restaurant-card [restaurant]="result" [compact]="true" [userLocation]="userLocation"
+        (click)="onRestaurantClick(result)" />
+      }
+    </div>
+  </div>
+</div>
+}

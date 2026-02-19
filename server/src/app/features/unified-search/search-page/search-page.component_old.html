@@ -1,0 +1,214 @@
+<div class="search-page">
+  <header class="search-header">
+    <div class="hero-section">
+      <h1 class="page-title">Search food the way you think</h1>
+      <p class="page-subtitle">Search for food naturally, in any language.
+        Just say what you’re in the mood for.</p>
+
+      <!-- PWA Install Prompt (V1: English only) -->
+      <!--  @if (pwaInstall.canInstall() && !pwaInstall.isInstalled()) {-->
+      <div class="pwa-install-prompt">
+        <button class="pwa-install-button" (click)="onInstallPwa()" type="button">
+          <span class="pwa-install-text">Put us on your plate 🍽️</span>
+        </button>
+      </div>
+    <!-- } -->
+
+      <!-- Location Status (automatic, inline) -->
+      <div class="location-status">
+        @if (locationState() === 'ON') {
+        <span class="location-text">📍 Using your location</span>
+        } @else if (locationState() === 'REQUESTING') {
+        <span class="location-text">⏳ Getting location...</span>
+        } @else if (locationState() === 'DENIED') {
+        <span class="location-text location-error">🚫 Location access denied</span>
+        } @else if (locationState() === 'ERROR') {
+        <span class="location-text location-error">⚠️ Location unavailable</span>
+        } @else {
+        <button class="location-link" (click)="onLocationToggle()">Enable location for better results</button>
+        }
+      </div>
+    </div>
+
+    <!-- Search Card: Assistant Messages ABOVE Input -->
+    <div class="search-card">
+      <!-- CANONICAL ROUTING: Contextual Assistant (inside search-card when bound to requestId) -->
+      <!-- Shows ONLY card messages: SUMMARY, CLARIFY, GATE_FAIL -->
+      @if (showContextualAssistant()) {
+      <div class="assistant-message-container">
+        <app-assistant-summary [cardMessages]="contextualCardMessages()" [messages]="contextualMessages()"
+          [text]="asyncAssistantMessage()" [status]="facade.assistantState()" [error]="facade.assistantError()"
+          [locale]="'en'" />
+      </div>
+      }
+
+      <!-- Assistant Line (always shown - includes WS status) -->
+      @if (facade.assistantLineMessages().length > 0) {
+      <div class="assistant-line-container">
+        <app-assistant-line />
+      </div>
+      }
+
+      <!-- Reply Box Input (user's answer to assistant) -->
+      <app-search-bar [value]="facade.query()" [loading]="facade.loading()"
+        (search)="onSearch($event)" (inputChange)="onInputChange($event)" (clear)="onClear()" />
+    </div>
+
+    <!-- CANONICAL ROUTING: Global/System Assistant (outside search-card, no requestId) -->
+    <!-- Shows ONLY card messages: SUMMARY, CLARIFY, GATE_FAIL -->
+    @if (showGlobalAssistant()) {
+    <app-assistant-summary [cardMessages]="globalCardMessages()" [messages]="globalMessages()"
+      [text]="asyncAssistantMessage()" [status]="facade.assistantState()" [error]="facade.assistantError()"
+      [locale]="'en'" />
+    }
+  </header>
+
+  <main class="search-content">
+    <!-- Recent Searches (shown when input is empty) -->
+    @if (facade.showRecentSearches() && facade.hasRecentSearches()) {
+    <section class="recent-searches">
+      <div class="section-header">
+        <h2>Recent Searches</h2>
+        <button class="clear-link" (click)="onClearRecentSearches()">
+          Clear all
+        </button>
+      </div>
+      <ul class="recent-list">
+        @for (query of facade.recentSearchesList(); track query) {
+        <li class="recent-item" (click)="onRecentSearchClick(query)">
+          <span class="recent-icon">🕐</span>
+          <span class="recent-query">{{ query }}</span>
+        </li>
+        }
+      </ul>
+    </section>
+    }
+
+    <!-- Cuisine chips removed - discovery via free-text search + assistant only -->
+
+    <!-- Loading State -->
+    @if (facade.loading()) {
+    <div class="loading-state">
+      <div class="loading-spinner">🔍</div>
+      <p>Searching for restaurants...</p>
+    </div>
+    }
+
+    <!-- Error State -->
+    @if (facade.error() && !facade.loading()) {
+    <div class="error-state">
+      <div class="error-icon">⚠️</div>
+      <h2>Oops! Something went wrong</h2>
+      <p>{{ facade.error() }}</p>
+      <button class="retry-button" (click)="retry()">
+        Try Again
+      </button>
+    </div>
+    }
+
+    <!-- NEW: Clarification Block (Answer-First UX) -->
+    @if (facade.requiresClarification() && facade.clarification() && !facade.loading()) {
+    <app-clarification-block [clarification]="facade.clarification()!"
+      (choiceSelected)="onClarificationChoice($event)" />
+    }
+
+    <!-- Phase 5: Mode Indicators (subtle, non-intrusive) -->
+    @if (isRecoveryMode() && !facade.loading()) {
+    <div class="mode-indicator recovery">
+      <span class="mode-icon">🔄</span>
+      <span class="mode-text">Recovery mode - refining search</span>
+    </div>
+    }
+
+    @if (isClarifyMode() && !facade.loading()) {
+    <div class="mode-indicator clarify">
+      <span class="mode-icon">❓</span>
+      <span class="mode-text">Need more info</span>
+    </div>
+    }
+
+    <!-- GATE_FAIL UX: Hide results section if GATE_FAIL with no results -->
+    <!-- Fallback: Flat Results Grid (backward compatibility) -->
+    @if (shouldShowResults() && !facade.hasGroups() && !facade.loading()) {
+    <section class="results-section">
+      <!-- DEDUPE FIX: Removed "Found X restaurants" header -->
+      <!-- Assistant SUMMARY message (from WS) is the only result announcement -->
+
+      <div class="results-header">
+        <!-- Applied Filters Chips (V1: English only) -->
+        <div class="applied-filters">
+          @if (closedFilterActive() === 'open') {
+          <span class="filter-chip open-now" title="Only restaurants currently open">
+            Open Now
+          </span>
+          }
+          @if (glutenFreeFilterActive()) {
+          <span class="filter-chip gluten-free" title="Gluten-free options available">
+            Gluten-Free
+          </span>
+          }
+        </div>
+      </div>
+
+      <!-- Results Container: extends to viewport bottom with persistent gutter -->
+      <div class="results-container">
+        <div class="results-grid">
+          @for (restaurant of filteredResults(); track trackByRestaurant($index, restaurant)) {
+          <app-restaurant-card [restaurant]="restaurant" [selected]="facade.selectedRestaurant()?.id === restaurant.id"
+            [userLocation]="locationCoords()" (cardClick)="onCardClick($event)"
+            (actionClick)="onActionClick($event, restaurant)" />
+          }
+        </div>
+
+        <!-- Load More Button (above gutter) -->
+        @if (hasMoreResults()) {
+        <div class="load-more-container">
+          <button class="load-more-btn" (click)="loadMore()">
+            Load {{ remainingResults() }} more
+          </button>
+        </div>
+        }
+
+        <!-- Bottom Gutter: persistent spacer to prevent spill-under -->
+        <div class="results-bottom-gutter"></div>
+      </div>
+    </section>
+    }
+
+    <!-- Mobile: Bottom Sheet (Conditional - only when contextual assistant shown) -->
+    @if (showContextualAssistant()) {
+    <app-assistant-bottom-sheet [visible]="bottomSheetVisible()" [highlightedResults]="highlightedResults()"
+      [userLocation]="locationCoords()" (close)="closeBottomSheet()"
+      (restaurantClick)="onCardClick($event); closeBottomSheet()" />
+    }
+
+    <!-- Pending Actions Panel -->
+    @if (facade.pendingActions().length > 0) {
+    <aside class="pending-actions-panel">
+      <h3>Pending Approvals</h3>
+      @for (action of facade.pendingActions(); track trackByAction($index, action)) {
+      <div class="pending-action">
+        <div class="action-info">
+          <p class="action-restaurant">{{ action.restaurant.name }}</p>
+          <p class="action-type">{{ action.type }}</p>
+        </div>
+        <div class="action-buttons">
+          <button class="approve-button" (click)="onApproveAction(action.id)">
+            ✓ Approve
+          </button>
+          <button class="reject-button" (click)="onRejectAction(action.id)">
+            ✗ Reject
+          </button>
+        </div>
+      </div>
+      }
+    </aside>
+    }
+  </main>
+
+  <!-- Bottom Placeholder: TEMPORARILY DISABLED to restore baseline UX -->
+  <!-- FIXME: Re-enable after resolving duplication with assistant-summary -->
+  <!-- <app-assistant-bottom-placeholder 
+    [cardMessages]="allCardMessages()"
+    [locale]="facade.locale()" /> -->
+</div>

@@ -1,0 +1,37 @@
+<div class="assistant-strip" [class.recovery]="assist().mode === 'RECOVERY'">
+  <div class="assistant-content">
+    <div class="assistant-message">
+      <span class="assistant-icon">🤖</span>
+      <p class="message-text">{{ assist().message }}</p>
+    </div>
+    
+    <div class="assistant-actions">
+      <!-- Primary action (highlighted) -->
+      @if (primaryChip) {
+        <button 
+          type="button"
+          class="chip primary" 
+          (click)="onChipClick(primaryChip!.id)"
+          [attr.aria-label]="'Primary action: ' + primaryChip!.label"
+        >
+          <span class="chip-emoji">{{ primaryChip!.emoji }}</span>
+          <span class="chip-label">{{ primaryChip!.label }}</span>
+        </button>
+      }
+      
+      <!-- Secondary actions -->
+      @for (chip of secondaryChips; track trackByChipId($index, chip)) {
+        <button 
+          type="button"
+          class="chip secondary" 
+          (click)="onChipClick(chip.id)"
+          [attr.aria-label]="'Action: ' + chip.label"
+        >
+          <span class="chip-emoji">{{ chip.emoji }}</span>
+          <span class="chip-label">{{ chip.label }}</span>
+        </button>
+      }
+    </div>
+  </div>
+</div>
+
