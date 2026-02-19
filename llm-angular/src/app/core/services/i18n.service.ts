@@ -47,11 +47,17 @@ export interface I18nKeys {
   'card.dietary.gluten_free_maybe': string;
   'card.dietary.gluten_free_disclaimer': string;
 
+  // Restaurant card - Feature chips (line 4)
+  'card.chip.gf': string;
+  'card.chip.kosher': string;
+  'card.chip.vegetarian': string;
+
   // Restaurant card - Near you badge
   'card.badge.near_you': string;
 
   // Restaurant card - Reviews label (e.g. "749 reviews")
   'card.reviews': string;
+  'card.reviews_label': string;  // Standalone word e.g. "reviews" for "(749 reviews)"
 
   // Restaurant card - Open until
   'card.hours.open_until': string;
@@ -125,8 +131,12 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.dietary.gluten_free': 'GF',
     'card.dietary.gluten_free_maybe': 'Maybe GF',
     'card.dietary.gluten_free_disclaimer': 'Based on text signals — not guaranteed',
+    'card.chip.gf': 'GF',
+    'card.chip.kosher': 'Kosher',
+    'card.chip.vegetarian': 'Vegetarian',
     'card.badge.near_you': 'Near you',
     'card.reviews': '{count} reviews',
+    'card.reviews_label': 'reviews',
     'card.hours.open_until': 'Open until {time}',
     'card.hours.until': 'until',
     'card.hours.closes': 'closes',
@@ -180,8 +190,12 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.dietary.gluten_free': 'ללא גלוטן',
     'card.dietary.gluten_free_maybe': 'אולי ללא גלוטן',
     'card.dietary.gluten_free_disclaimer': 'מבוסס על רמזים בטקסט — לא מובטח',
+    'card.chip.gf': 'ללא גלוטן',
+    'card.chip.kosher': 'כשר',
+    'card.chip.vegetarian': 'צמחוני',
     'card.badge.near_you': 'קרוב אליך',
     'card.reviews': '{count} ביקורות',
+    'card.reviews_label': 'ביקורות',
     'card.hours.open_until': 'פתוח עד {time}',
     'card.hours.until': 'עד',
     'card.hours.closes': 'נסגר',
@@ -235,8 +249,12 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.dietary.gluten_free': 'БГ',
     'card.dietary.gluten_free_maybe': 'Возможно БГ',
     'card.dietary.gluten_free_disclaimer': 'На основе текстовых сигналов — не гарантируется',
+    'card.chip.gf': 'БГ',
+    'card.chip.kosher': 'Кошер',
+    'card.chip.vegetarian': 'Вегетарианское',
     'card.badge.near_you': 'Рядом',
     'card.reviews': '{count} отзывов',
+    'card.reviews_label': 'отзывов',
     'card.hours.open_until': 'Открыто до {time}',
     'card.hours.until': 'до',
     'card.hours.closes': 'закрывается',
@@ -290,8 +308,12 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.dietary.gluten_free': 'خالٍ من الغلوتين',
     'card.dietary.gluten_free_maybe': 'ربما خالٍ من الغلوتين',
     'card.dietary.gluten_free_disclaimer': 'بناءً على إشارات نصية — غير مضمون',
+    'card.chip.gf': 'خالٍ من الغلوتين',
+    'card.chip.kosher': 'كوشير',
+    'card.chip.vegetarian': 'نباتي',
     'card.badge.near_you': 'بالقرب منك',
     'card.reviews': '{count} تقييمات',
+    'card.reviews_label': 'تقييمات',
     'card.hours.open_until': 'مفتوح حتى {time}',
     'card.hours.until': 'حتى',
     'card.hours.closes': 'يغلق',
@@ -345,8 +367,12 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.dietary.gluten_free': 'SG',
     'card.dietary.gluten_free_maybe': 'Peut-être SG',
     'card.dietary.gluten_free_disclaimer': 'Basé sur des signaux textuels — non garanti',
+    'card.chip.gf': 'SG',
+    'card.chip.kosher': 'Casher',
+    'card.chip.vegetarian': 'Végétarien',
     'card.badge.near_you': 'Tout près',
     'card.reviews': '{count} avis',
+    'card.reviews_label': 'avis',
     'card.hours.open_until': 'Ouvert jusqu\'à {time}',
     'card.hours.until': 'jusqu\'à',
     'card.hours.closes': 'ferme',
@@ -400,8 +426,12 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.dietary.gluten_free': 'SG',
     'card.dietary.gluten_free_maybe': 'Tal vez SG',
     'card.dietary.gluten_free_disclaimer': 'Basado en señales de texto — no garantizado',
+    'card.chip.gf': 'SG',
+    'card.chip.kosher': 'Kosher',
+    'card.chip.vegetarian': 'Vegetariano',
     'card.badge.near_you': 'Cerca de ti',
     'card.reviews': '{count} reseñas',
+    'card.reviews_label': 'reseñas',
     'card.hours.open_until': 'Abierto hasta {time}',
     'card.hours.until': 'hasta',
     'card.hours.closes': 'cierra',
@@ -455,8 +485,12 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.dietary.gluten_free': 'GF',
     'card.dietary.gluten_free_maybe': 'Vielleicht GF',
     'card.dietary.gluten_free_disclaimer': 'Basierend auf Textsignalen — nicht garantiert',
+    'card.chip.gf': 'GF',
+    'card.chip.kosher': 'Koscher',
+    'card.chip.vegetarian': 'Vegetarisch',
     'card.badge.near_you': 'In der Nähe',
     'card.reviews': '{count} Bewertungen',
+    'card.reviews_label': 'Bewertungen',
     'card.hours.open_until': 'Geöffnet bis {time}',
     'card.hours.until': 'bis',
     'card.hours.closes': 'schließt',
@@ -510,8 +544,12 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.dietary.gluten_free': 'SG',
     'card.dietary.gluten_free_maybe': 'Forse SG',
     'card.dietary.gluten_free_disclaimer': 'Basato su segnali testuali — non garantito',
+    'card.chip.gf': 'SG',
+    'card.chip.kosher': 'Kosher',
+    'card.chip.vegetarian': 'Vegetariano',
     'card.badge.near_you': 'Vicino a te',
     'card.reviews': '{count} recensioni',
+    'card.reviews_label': 'recensioni',
     'card.hours.open_until': 'Aperto fino alle {time}',
     'card.hours.until': 'fino alle',
     'card.hours.closes': 'chiude',
@@ -565,8 +603,12 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.dietary.gluten_free': 'ግሉተን ነፃ',
     'card.dietary.gluten_free_maybe': 'ግሉተን ነፃ ሊሆን ይችላል',
     'card.dietary.gluten_free_disclaimer': 'በጽሑፍ ምልክቶች ላይ የተመሰረተ — አልተረጋገጠም',
+    'card.chip.gf': 'ግሉተን ነፃ',
+    'card.chip.kosher': 'ኮሸር',
+    'card.chip.vegetarian': 'እህል በሚበላ',
     'card.badge.near_you': 'ከእርስዎ አጠገብ',
     'card.reviews': '{count} ግምገማዎች',
+    'card.reviews_label': 'ግምገማዎች',
     'card.hours.open_until': 'እስከ {time} ክፈት',
     'card.hours.until': 'እስከ',
     'card.hours.closes': 'ይዘጋ',

@@ -65,21 +65,11 @@
     @extend .content-column;
   }
   
-  // Compact assistant in dock - shared horizontal constraint
+  // Compact assistant in dock - shared horizontal constraint; auto height (no truncation)
   .assistant-message-container.compact,
   .assistant-line-container.compact {
     @extend .content-column;
     margin-bottom: 0.75rem;
-    
-    ::ng-deep .assistant-summary .message-text,
-    ::ng-deep .assistant-summary .streaming-text,
-    ::ng-deep .assistant-summary .completed-text {
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
   }
 }
 
@@ -257,7 +247,7 @@
     }
   }
   
-  // Compact mode in SearchDock
+  // Compact mode in SearchDock - auto height for full message (Option B)
   &.compact {
     padding: 0.5rem 1rem;
     margin-bottom: 0.5rem;
@@ -267,11 +257,6 @@
       .streaming-text,
       .completed-text {
         font-size: 0.875rem;
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
-        text-overflow: ellipsis;
       }
       
       .message-icon.ai-icon {

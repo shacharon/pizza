@@ -5,15 +5,7 @@
   <app-reason-label [restaurant]="restaurant()" />
   }
 
-  <!-- Gluten Free badge (top-right corner of card) -->
-  @if (glutenFreeBadge()) {
-  <div class="card-corner-badge gluten-free" [class.high]="glutenFreeBadge()!.level === 'high'"
-    [class.low]="glutenFreeBadge()!.level === 'low'" [title]="getGlutenFreeTooltip()">
-    🌾 {{ glutenFreeBadge()!.text }}
-  </div>
-  }
-
-  <!-- Main content area (clickable for details) -->
+  <!-- Main content area (clickable for details) - Bottega 4-line layout, LTR -->
   <div class="card-content" (click)="onCardClick()">
     <div class="card-header">
       <!-- P0 Security: Secure photo loading via backend proxy -->
@@ -27,93 +19,83 @@
           🍽️
         </div>
         }
-        
-        <!-- Open/Closed badge on image -->
-        @if (getOpenStatus() === 'open') {
-        <div class="image-status-badge open">
-          {{ i18n.t('card.status.open') }}
-        </div>
-        }
-        @if (getOpenStatus() === 'closed') {
-        <div class="image-status-badge closed">
-          {{ i18n.t('card.status.closed') }}
-        </div>
-        }
       </div>
 
       <div class="restaurant-info">
-        <div class="restaurant-name-row">
-          <h3 class="restaurant-name">
-            {{ restaurant().name }}
-            @if (getOpenStatus() === 'open' && closingTimeToday()) {
-            <span class="closing-time">
-              ({{ i18n.t('card.hours.closes') }} {{ closingTimeToday() }})
-            </span>
+        <!-- Line 1: Name + price + open/close (right-aligned) -->
+        <div class="line-1">
+          <h3 class="restaurant-name">{{ restaurant().name }}</h3>
+          @if (restaurant().priceLevel || statusLine().text) {
+          <span class="line-1-meta">
+            @if (restaurant().priceLevel) {
+              <span class="price-level">{{ getPriceLevelShekel(restaurant().priceLevel) }}</span>
             }
-          </h3>
+            @if (restaurant().priceLevel && statusLine().text) {
+              <span class="separator">·</span>
+            }
+            @if (statusLine().text) {
+              <span class="status-text" [class.open]="statusLine().tone === 'open'" [class.closed]="statusLine().tone === 'closed'" [class.closing-soon]="statusLine().tone === 'closing-soon'">{{ statusLine().text }}</span>
+            }
+          </span>
+          }
         </div>
 
-        @if (restaurant().rating != null || (restaurant().userRatingsTotal ?? 0) > 0 || restaurant().priceLevel != null) {
-        <div class="trust-block" aria-label="Rating and details">
+        <!-- Line 2: ★ rating (reviews) -->
+        @if (restaurant().rating != null || (restaurant().userRatingsTotal ?? 0) > 0) {
+        <div class="line-2">
           @if (restaurant().rating != null) {
-          <div class="trust-row trust-row-1">
-            <span class="trust-stars" aria-hidden="true">
-              @for (fill of ratingStarsArray(); track $index) {
-                @if (fill === 1) {
-                <svg class="star star-full" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-                } @else if (fill === 0.5) {
-                <svg class="star star-half" width="14" height="14" viewBox="0 0 24 24"><defs><linearGradient [id]="starHalfGradientId()" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="50%" stop-color="currentColor"/><stop offset="50%" stop-color="transparent"/></linearGradient></defs><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" [attr.fill]="'url(#' + starHalfGradientId() + ')'"/></svg>
-                } @else {
-                <svg class="star star-empty" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-                }
-              }
-            </span>
-            <span class="trust-rating-value">{{ restaurant().rating }}</span>
-          </div>
+          <span class="star-icon" aria-hidden="true">★</span>
+          <span class="rating-value">{{ restaurant().rating }}</span>
           }
-          @if ((restaurant().userRatingsTotal ?? 0) > 0 || restaurant().priceLevel) {
-          <div class="trust-row trust-row-2">
-            @if ((restaurant().userRatingsTotal ?? 0) > 0) {
-            <span class="trust-reviews">{{ i18n.t('card.reviews', { count: formattedReviewCount(restaurant().userRatingsTotal ?? 0) }) }}</span>
-            }
-            @if ((restaurant().userRatingsTotal ?? 0) > 0 && restaurant().priceLevel) {
-            <span class="trust-sep" aria-hidden="true">·</span>
-            }
-            @if (restaurant().priceLevel) {
-            <span class="trust-price" [attr.aria-label]="'Price level: ' + restaurant().priceLevel">{{ getPriceLevel(restaurant().priceLevel) }}</span>
-            }
-          </div>
+          @if ((restaurant().userRatingsTotal ?? 0) > 0) {
+          <span class="reviews-text">({{ formattedReviewCount(restaurant().userRatingsTotal ?? 0) }} {{ i18n.t('card.reviews_label') }})</span>
           }
         </div>
         }
 
-        <p class="restaurant-address">
+        <!-- Line 3: 📍 address only -->
+        <div class="line-3">
           <span class="address-icon">📍</span>
           <span class="address-text">{{ restaurant().address }}</span>
-        </p>
+        </div>
+
+        <!-- Line 4: Feature chips (GF, כשר, צמחוני) max 3, neutral -->
+        @if (featureChips().length > 0) {
+        <div class="line-4-chips">
+          @for (chip of featureChips(); track chip.key) {
+          <span class="feature-chip">{{ i18n.t(chip.key) }}</span>
+          }
+        </div>
+        }
       </div>
     </div>
   </div>
 
-  <!-- Bottom action bar (not clickable for card details) -->
+  <!-- Two-column action row: Navigate (icon on top; "Navigate" + distance on same line below), Call (icon + label) -->
   <div class="action-bar" (click)="$event.stopPropagation()">
-    <button type="button" class="action-btn" (click)="onAction($event, 'GET_DIRECTIONS')"
+    <button type="button" class="action-btn action-btn-navigate" (click)="onAction($event, 'GET_DIRECTIONS')"
       [disabled]="!isActionAvailable('GET_DIRECTIONS')" [title]="getDirectionsTitle()"
       [attr.aria-label]="getDirectionsAriaLabel()">
-      <svg class="action-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-        stroke-width="2">
+      <svg class="action-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
         <circle cx="12" cy="10" r="3" />
       </svg>
-      <span class="action-label">{{ getNavigateLabel() }}@if (distanceInfo()) {<span class="action-distance"> · {{ formattedDistance() }}{{ walkingTimeEstimate() }}</span>}</span>
+      <span class="action-label-row">
+        <span class="action-label">{{ getNavigateLabel() }}</span>
+        @if (distanceInfo()) {
+        <span class="action-distance" [class.mode-walking]="distanceInfo()!.mode === 'walking'"
+          [class.mode-short-drive]="distanceInfo()!.mode === 'short-drive'"
+          [class.mode-far]="distanceInfo()!.mode === 'far'"
+          [attr.aria-label]="'Distance: ' + distanceInfo()!.text">{{ distanceInfo()!.text }}{{ walkingTimeEstimate() }}</span>
+        }
+      </span>
     </button>
-
-    <button type="button" class="action-btn" (click)="onAction($event, 'CALL_RESTAURANT')"
+    <div class="action-bar-divider" aria-hidden="true"></div>
+    <button type="button" class="action-btn action-btn-call" (click)="onAction($event, 'CALL_RESTAURANT')"
       [disabled]="!isActionAvailable('CALL_RESTAURANT')" [title]="getCallTitle()"
       [attr.aria-label]="getCallAriaLabel()">
-      <svg class="action-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-        <path
-          d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56a.977.977 0 0 0-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z" />
+      <svg class="action-icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56a.977.977 0 0 0-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z" />
       </svg>
       <span class="action-label">{{ getCallLabel() }}</span>
     </button>

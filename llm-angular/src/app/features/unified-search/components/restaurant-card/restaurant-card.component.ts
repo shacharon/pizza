@@ -235,6 +235,31 @@ export class RestaurantCardComponent {
     return '$'.repeat(level);
   }
 
+  /** Price level as shekel symbols for Bottega layout: 1→₪, 2→₪₪, 3→₪₪₪ */
+  getPriceLevelShekel(level?: number): string {
+    if (!level || level < 1) return '';
+    return '₪'.repeat(Math.min(level, 4));
+  }
+
+  /** Feature chips for line 4: GF, kosher, vegetarian. Max 3. From dietaryHints + tags. */
+  readonly featureChips = computed((): Array<{ key: 'card.chip.gf' | 'card.chip.kosher' | 'card.chip.vegetarian' }> => {
+    const r = this.restaurant();
+    const chips: Array<{ key: 'card.chip.gf' | 'card.chip.kosher' | 'card.chip.vegetarian' }> = [];
+    const tags = (r.tags ?? []).map(t => t.toLowerCase());
+    const hasTag = (... patterns: string[]) => patterns.some(p => tags.some(t => t.includes(p.toLowerCase())));
+
+    if (r.dietaryHints?.glutenFree && r.dietaryHints.glutenFree.confidence !== 'NONE') {
+      chips.push({ key: 'card.chip.gf' });
+    }
+    if (chips.length < 3 && (hasTag('כשר', 'kosher') || (r as unknown as { kosher?: boolean }).kosher)) {
+      chips.push({ key: 'card.chip.kosher' });
+    }
+    if (chips.length < 3 && (hasTag('צמחוני', 'vegetarian', 'vegan') || (r as unknown as { vegetarian?: boolean }).vegetarian)) {
+      chips.push({ key: 'card.chip.vegetarian' });
+    }
+    return chips.slice(0, 3);
+  });
+
   /**
    * Get open/closed status with UNKNOWN handling
    */
