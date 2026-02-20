@@ -699,7 +699,21 @@ export class RestaurantCardComponent {
   });
 
   /**
-   * Structured state for metadata row: label (פתוח/סגור/סגור זמנית) + optional rest (time).
+   * Badge on restaurant photo: Open / Closed / Temporarily closed (i18n).
+   * Only when status is known (not unknown). Used for overlay on image.
+   */
+  readonly photoOpenClosedBadge = computed(() => {
+    const status = this.getOpenStatus();
+    if (status === null || status === 'unknown') return null;
+    if (this.restaurant().openClose === 'TEMP_CLOSED') {
+      return { label: this.i18n.t('card.status.temporarily_closed'), tone: 'closed' as const };
+    }
+    if (status === 'open') return { label: this.i18n.t('card.status.open'), tone: 'open' as const };
+    return { label: this.i18n.t('card.status.closed'), tone: 'closed' as const };
+  });
+
+  /**
+   * Structured state for metadata row: only "until HH:mm" (open) or "Closed" (closed) – no "Open" in row.
    * TEMP_CLOSED takes first priority so we show "Temporarily closed" not generic "Closed".
    */
   readonly metadataStateDisplay = computed(() => {
@@ -713,9 +727,9 @@ export class RestaurantCardComponent {
     const status = this.getOpenStatus();
     if (status === 'open') {
       const time = this.closingTimeToday();
-      // When we have closing time: show only "עד HH:mm" (no "פתוח"); otherwise show open label
-      const label = time ? `${this.i18n.t('card.hours.until')} ${time}` : this.i18n.t('card.status.open');
-      return { label, rest: null, tone: 'open' as const };
+      // Meta row: only "until HH:mm" in light green (no Open/Closed word in row)
+      if (!time) return null; // open but no time → badge on photo only
+      return { label: `${this.i18n.t('card.hours.until')} ${time}`, rest: null, tone: 'open' as const };
     }
     if (status === 'closed') {
       const time = this.getNextOpenTime();

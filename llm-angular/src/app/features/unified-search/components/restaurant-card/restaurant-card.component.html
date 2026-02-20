@@ -19,6 +19,10 @@
           🍽️
         </div>
         }
+        @if (photoOpenClosedBadge(); as badge) {
+        <span class="photo-open-closed-badge" [class.badge-open]="badge.tone === 'open'"
+          [class.badge-closed]="badge.tone === 'closed'" [attr.aria-label]="badge.label">{{ badge.label }}</span>
+        }
       </div>
 
       <div class="restaurant-info flex-1 min-w-0">
@@ -42,8 +46,7 @@
             <span class="rating-value">{{ restaurant().rating }}</span>
             }
             @if ((restaurant().userRatingsTotal ?? 0) > 0) {
-            <span class="reviews-text">({{ formattedReviewCount(restaurant().userRatingsTotal ?? 0) }} {{
-              i18n.t('card.reviews_label') }})</span>
+            <span class="reviews-text">({{ formattedReviewCount(restaurant().userRatingsTotal ?? 0) }})</span>
             }
           </span>
           }
