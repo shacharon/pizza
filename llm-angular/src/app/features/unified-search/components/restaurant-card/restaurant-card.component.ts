@@ -120,6 +120,17 @@ export class RestaurantCardComponent {
   readonly photoSrc = computed(() => buildPhotoSrc(this.restaurant()));
   readonly photoPlaceholder = getPhotoPlaceholder();
 
+  /** Category label + icon for display near title (restaurant/cafe/bakery); null when no category */
+  readonly categoryLabel = computed(() => {
+    const c = this.restaurant().category;
+    if (!c) return null;
+    const label = c === 'restaurant' ? this.i18n.t('card.category.restaurant')
+      : c === 'cafe' ? this.i18n.t('card.category.cafe')
+      : this.i18n.t('card.category.bakery');
+    const icon = c === 'restaurant' ? '🍽️' : c === 'cafe' ? '☕' : '🥐';
+    return { icon, label };
+  });
+
   // Photo error state (for broken images)
   readonly photoError = signal(false);
 

@@ -144,7 +144,12 @@ export async function generateAssistantMessage(
     if (state === 'RUNNING' || state === 'DONE') {
       logger.info({ event: 'summary_skipped_duplicate', requestId, state });
       const fallback = getDeterministicFallback(context, requestedLanguage);
-      return { type: context.type, ...fallback };
+      return {
+        type: context.type,
+        ...fallback,
+        _summaryEmitSource: 'fallback' as const,
+        _summaryEmitReason: 'duplicate_request'
+      } as AssistantOutput;
     }
     summaryGenStateByRequestId.set(requestId, 'RUNNING');
   }
@@ -310,8 +315,12 @@ export async function generateAssistantMessage(
       message: fallback.message,
       question: fallback.question,
       suggestedAction: fallback.suggestedAction,
-      blocksSearch: fallback.blocksSearch
-    };
+      blocksSearch: fallback.blocksSearch,
+      ...(context.type === 'SUMMARY' && {
+        _summaryEmitSource: 'fallback' as const,
+        _summaryEmitReason: 'assistant_llm_failed'
+      })
+    } as AssistantOutput;
   }
 }
 

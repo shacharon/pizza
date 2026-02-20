@@ -515,11 +515,9 @@ export class AssistantSseOrchestrator {
     }
 
     // Step 3: Generate SUMMARY, or send stored assist (gate stop/clarify), or timeout message
+    // For flow=search: emit SUMMARY only after assistant_llm resolves; exactly one SUMMARY per requestId
     if (pollResult.resultsReady) {
-      // Transition: WAITING → SUMMARY_SENT
-      stateMachine.transition(SseState.SUMMARY_SENT);
-      
-      await this.sendSummaryMessage(
+      const summarySent = await this.sendSummaryMessage(
         requestId,
         traceId,
         authReq,
@@ -529,6 +527,9 @@ export class AssistantSseOrchestrator {
         abortSignal,
         isClientDisconnected
       );
+      if (summarySent) {
+        stateMachine.transition(SseState.SUMMARY_SENT);
+      }
     } else if (pollResult.latestStatus === 'DONE_STOPPED' || pollResult.latestStatus === 'DONE_CLARIFY') {
       // Gate stop or clarify: pipeline already stored result with assist; send it via SSE so frontend gets it
       const storedResult = await this.jobStore.getResult(requestId);
@@ -575,7 +576,9 @@ export class AssistantSseOrchestrator {
   }
 
   /**
-   * Send SUMMARY message
+   * Send SUMMARY message.
+   * For flow=search: never emit SUMMARY until assistant_llm resolves; only one SUMMARY per requestId.
+   * @returns true if a message was sent, false otherwise (e.g. lock not acquired, client disconnected)
    */
   private async sendSummaryMessage(
     requestId: string,
@@ -586,22 +589,39 @@ export class AssistantSseOrchestrator {
     writer: SseWriter,
     abortSignal: AbortSignal,
     isClientDisconnected: () => boolean
-  ): Promise<void> {
+  ): Promise<boolean> {
+    const freshResult = await this.jobStore.getResult(requestId);
+    const resultPayload = freshResult as { assist?: { type: string; message?: string; question?: string | null; blocksSearch?: boolean } } | null;
+
+    // Persisted SUMMARY: use stored assist for this requestId if present (e.g. from a previous run)
+    if (resultPayload?.assist?.type === 'SUMMARY' && resultPayload.assist?.message) {
+      if (isClientDisconnected() || abortSignal.aborted) return false;
+      writer.sendMessage({
+        type: 'SUMMARY',
+        message: resultPayload.assist.message,
+        question: resultPayload.assist.question ?? null,
+        blocksSearch: resultPayload.assist.blocksSearch ?? false,
+        language: assistantLanguage
+      });
+      this.logger.info(
+        { requestId, traceId, event: 'summary_emit_decision', source: 'persisted', reason: 'stored_summary_for_request' },
+        '[AssistantSSE] SUMMARY sent (persisted)'
+      );
+      return true;
+    }
+
     // IDEMPOTENCY: Acquire lock before LLM call
     const lockAcquired = await this.acquireAssistantLock(requestId);
-    
+
     if (!lockAcquired) {
-      // Another SSE connection is already generating, skip LLM call
       this.logger.info(
-        { requestId, traceId, event: 'assistant_sse_deduped_summary' },
-        '[AssistantSSE] Duplicate SUMMARY request detected, skipping LLM generation'
+        { requestId, traceId, event: 'summary_emit_blocked', reason: 'llm_in_flight' },
+        '[AssistantSSE] SUMMARY not sent: assistant_llm already in progress'
       );
-      // Don't send message, just return (stream continues without summary)
-      return;
+      return false;
     }
 
     try {
-      const freshResult = await this.jobStore.getResult(requestId);
       const summaryContext = await this.contextBuilder.buildContext(requestId, job, freshResult);
 
       const llmProvider = this.createLLMProvider();
@@ -612,11 +632,10 @@ export class AssistantSseOrchestrator {
       if (isClientDisconnected() || abortSignal.aborted) {
         this.logger.debug({ requestId }, '[AssistantSSE] Client disconnected before SUMMARY');
         writer.end();
-        return;
+        return false;
       }
 
-      // Use completeJSON (generateAssistantMessage) for SUMMARY so we get 4–6 sentences.
-      // Streaming (completeStream) was hitting a short output limit and only returned ~2 sentences.
+      // Never emit SUMMARY until assistant_llm promise resolves (no early/fallback JSON path)
       const assistant = await generateAssistantMessage(summaryContext, llmProvider, requestId, {
         traceId,
         ...(authReq.sessionId && { sessionId: authReq.sessionId })
@@ -625,10 +644,13 @@ export class AssistantSseOrchestrator {
       if (isClientDisconnected() || abortSignal.aborted) {
         this.logger.debug({ requestId }, '[AssistantSSE] Client disconnected after SUMMARY');
         writer.end();
-        return;
+        return false;
       }
 
       const fullMessage = assistant.message ?? '';
+      const emitSource = (assistant as { _summaryEmitSource?: 'fallback'; _summaryEmitReason?: string })._summaryEmitSource ?? 'llm';
+      const emitReason = (assistant as { _summaryEmitReason?: string })._summaryEmitReason ?? 'assistant_llm_resolved';
+
       writer.sendMessage({
         type: assistant.type,
         message: fullMessage,
@@ -638,11 +660,19 @@ export class AssistantSseOrchestrator {
       });
 
       this.logger.info(
-        { requestId, traceId, language: assistantLanguage, messageLength: fullMessage.length, event: 'assistant_sse_summary_sent' },
-        '[AssistantSSE] SUMMARY sent (JSON path)'
+        {
+          requestId,
+          traceId,
+          event: 'summary_emit_decision',
+          source: emitSource,
+          reason: emitReason,
+          language: assistantLanguage,
+          messageLength: fullMessage.length
+        },
+        '[AssistantSSE] SUMMARY sent'
       );
+      return true;
     } finally {
-      // Release lock (best-effort, TTL handles cleanup)
       await this.releaseAssistantLock(requestId);
     }
   }

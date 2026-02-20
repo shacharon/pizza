@@ -3,6 +3,32 @@
  * Maps Google Place API responses to internal format
  */
 
+/** Category derived from primaryType or types[] for restaurant DTO */
+export type PlaceCategory = 'restaurant' | 'cafe' | 'bakery';
+
+/**
+ * Deterministic category: prefer primaryType if present, else use types[].
+ * Rules: cafe/coffee_shop => "cafe"; bakery => "bakery"; else => "restaurant".
+ */
+export function mapPlaceCategory(place: { primaryType?: string; types?: string[] }): PlaceCategory {
+  const primary = place.primaryType?.trim().toLowerCase();
+  const types = (place.types ?? []).map((t: string) => String(t).trim().toLowerCase());
+
+  const hasCafe = (arr: string[]) =>
+    arr.some((t) => t === 'cafe' || t === 'coffee_shop');
+  const hasBakery = (arr: string[]) => arr.some((t) => t === 'bakery');
+
+  if (primary) {
+    if (primary === 'cafe' || primary === 'coffee_shop') return 'cafe';
+    if (primary === 'bakery') return 'bakery';
+    return 'restaurant';
+  }
+
+  if (hasCafe(types)) return 'cafe';
+  if (hasBakery(types)) return 'bakery';
+  return 'restaurant';
+}
+
 /**
  * Map Google Place result (New API) to internal RestaurantResult shape
  * P0 Security Fix: Returns photo references only (no API keys)
@@ -66,6 +92,7 @@ export function mapGooglePlaceToResult(place: any): any {
     ) || [],
     googleMapsUrl: place.googleMapsUri || `https://www.google.com/maps/place/?q=place_id:${placeId}`,
     tags: place.types || [],
+    category: mapPlaceCategory(place),
     // NEW: Structured provider enrichments
     // Initialize all providers as PENDING (will be enriched asynchronously)
     providers: {

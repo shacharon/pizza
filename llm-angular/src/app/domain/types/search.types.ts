@@ -67,6 +67,9 @@ export interface Restaurant {
   /** Set when business is temporarily closed (backend: openClose = TEMP_CLOSED) */
   openClose?: 'TEMP_CLOSED';
 
+  /** Place category from backend: restaurant | cafe | bakery */
+  category?: 'restaurant' | 'cafe' | 'bakery';
+
   // P0 Security: New photo fields (backend proxy)
   photoReference?: string;        // Photo reference (no API key): places/ChIJ.../photos/...
   photoReferences?: string[];     // Array of photo references

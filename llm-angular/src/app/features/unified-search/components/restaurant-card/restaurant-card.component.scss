@@ -162,6 +162,31 @@
   flex: 0 1 auto; // do NOT grow: name only as wide as text, meta sits right after name
 }
 
+// Category label near title (icon + text; compact = icon only, text in title/tooltip)
+.category-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #6b7280;
+}
+
+.category-icon {
+  font-size: 0.875rem;
+  line-height: 1;
+}
+
+.category-text {
+  white-space: nowrap;
+}
+
+// When no space (compact card), show only icon; text remains in title for tooltip
+.restaurant-card.compact .category-text {
+  display: none;
+}
+
 // Line 2: ★ rating (reviews)
 .line-2 {
   display: flex;
@@ -205,12 +230,16 @@
   font-size: 0.75rem;
 }
 
+// Wrap + max 2 lines, no scroll (Tailwind classes in HTML; SCSS for line-clamp)
 .address-text {
   flex: 1;
   min-width: 0;
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 
 // Metadata row: [Rating] · [Price] · [State] – flex, no wrap, no space-between, no auto margins

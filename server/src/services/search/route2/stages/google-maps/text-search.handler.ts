@@ -10,6 +10,7 @@ import { generateTextSearchCacheKey } from '../../../../../lib/cache/googleCache
 import { getCacheService, raceWithCleanup } from './cache-manager.js';
 import { mapGooglePlaceToResult } from './result-mapper.js';
 import { filterPlacesByBusinessStatus, filterResultsByBusinessStatus, logBusinessStatusMetrics } from './business-status.js';
+import { buildCoverageReport } from './field-coverage.js';
 import type { RouteLLMMapping, Route2Context } from '../../types.js';
 import { retryWithBackoff } from '../../../../../lib/reliability/retry-handler.js';
 import { geocodeCity } from './textsearch/geocoding-service.js';
@@ -24,7 +25,7 @@ export async function executeTextSearch(
   mapping: Extract<RouteLLMMapping, { providerMethod: 'textSearch' }>,
   ctx: Route2Context
 ): Promise<{ results: any[], servedFrom: 'cache' | 'google_api' }> {
-  const { requestId } = ctx;
+  const { requestId, traceId } = ctx;
   const startTime = Date.now();
 
   // hasBiasPlanned = will attempt to apply bias (either from LLM or city geocode)
@@ -54,9 +55,12 @@ export async function executeTextSearch(
   const cache = getCacheService();
   const fetchFn = async (): Promise<any[]> => {
     try {
-      let attempt = await executeTextSearchAttempt(mapping, apiKey, requestId);
+      let attempt = await executeTextSearchAttempt(mapping, apiKey, requestId, traceId);
       let results = attempt.results;
       let metrics = attempt.metrics;
+      if (attempt.coverage) {
+        logger.info({ event: 'places_field_coverage', ...attempt.coverage }, '[GOOGLE] Places field coverage');
+      }
 
       // Retry logic for low results (Fix #4) - must materially change request
       if (results.length <= 1 && mapping.bias) {
@@ -77,7 +81,7 @@ export async function executeTextSearch(
           bias: undefined
         };
 
-        const retryAttempt = await executeTextSearchAttempt(retryMapping, apiKey, requestId);
+        const retryAttempt = await executeTextSearchAttempt(retryMapping, apiKey, requestId, traceId);
 
         logger.info({
           requestId,
@@ -246,14 +250,17 @@ interface TextSearchAttemptMetrics {
 
 /**
  * Execute a single Text Search attempt (helper for retry logic)
- * Filters CLOSED_PERMANENTLY before mapping; returns results + metrics for logging.
+ * Filters CLOSED_PERMANENTLY before mapping; returns results + metrics + optional coverage for logging.
  */
 async function executeTextSearchAttempt(
   mapping: Extract<RouteLLMMapping, { providerMethod: 'textSearch' }>,
   apiKey: string,
-  requestId: string
-): Promise<{ results: any[]; metrics: TextSearchAttemptMetrics }> {
+  requestId: string,
+  traceId?: string
+): Promise<{ results: any[]; metrics: TextSearchAttemptMetrics; coverage?: ReturnType<typeof buildCoverageReport> }> {
   const results: any[] = [];
+  const allRawPlaces: any[] = [];
+  const samplePairs: Array<{ raw: any; mapped: any }> = [];
   let nextPageToken: string | undefined;
   const maxResults = 20; // Limit total results across pages
   const metrics: TextSearchAttemptMetrics = {
@@ -269,7 +276,12 @@ async function executeTextSearchAttempt(
     metrics.tempClosedCount += out.tempClosedCount;
     metrics.missingStatusCount += out.missingStatusCount;
     metrics.permanentlyClosedPlaceIds.push(...out.permanentlyClosedPlaceIds);
-    results.push(...out.filtered.map((r: any) => mapGooglePlaceToResult(r)));
+    for (const raw of out.filtered) {
+      allRawPlaces.push(raw);
+      const mapped = mapGooglePlaceToResult(raw);
+      if (samplePairs.length < 3) samplePairs.push({ raw, mapped });
+      results.push(mapped);
+    }
   };
 
   // If cityText exists and no bias is set, geocode the city to create location bias
@@ -365,6 +377,16 @@ async function executeTextSearchAttempt(
     }
   }
 
+  const coverage = allRawPlaces.length > 0
+    ? buildCoverageReport({
+        requestId,
+        traceId,
+        allRawPlaces,
+        allMappedResults: results,
+        samplePairs
+      })
+    : undefined;
+
   // CITY RADIUS ENFORCEMENT: Filter results by distance from city centroid
   if (enrichedMapping.cityText && enrichedMapping.bias?.center) {
     const beforeCityFilter = results.length;
@@ -415,10 +437,10 @@ async function executeTextSearchAttempt(
       relaxed: radiusUsed > RADIUS_TIERS[0]!
     }, `[TEXTSEARCH] City radius filter applied: ${enrichedMapping.cityText} (kept ${filteredResults.length}/${beforeCityFilter}, radius ${radiusUsed / 1000}km)`);
     
-    return { results: filteredResults, metrics };
+    return { results: filteredResults, metrics, coverage };
   }
 
-  return { results, metrics };
+  return { results, metrics, coverage };
 }
 
 /**

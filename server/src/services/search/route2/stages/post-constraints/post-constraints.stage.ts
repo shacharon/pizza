@@ -2,6 +2,7 @@
  * Post-Constraints Stage - Route2 Pipeline
  *
  * Add optional AbortSignal support for parallel orchestration.
+ * Compact prompt: query, uiLanguage, regionCode, top3 candidates only.
  */
 
 import type { SearchRequest } from '../../../types/search-request.dto.js';
@@ -23,6 +24,35 @@ import {
     POST_CONSTRAINTS_PROMPT_VERSION
 } from '../../prompts/post-constraints.prompt.js';
 
+/** Timeout for post_constraints LLM call only (ms). */
+const POST_CONSTRAINTS_TIMEOUT_MS = 4500;
+
+export type PostConstraintsUserPayload = {
+    query: string;
+    uiLanguage: string;
+    regionCode: string;
+    top: Array<{ name: string; rating?: number; distanceMeters?: number; priceLevel?: number; openNow?: boolean }>;
+};
+
+/**
+ * Build compact user payload for post_constraints (query, uiLanguage, regionCode, top3).
+ * top is empty when stage runs in parallel with Google.
+ */
+export function buildPostConstraintsUserPayload(
+    request: SearchRequest,
+    context: Route2Context
+): PostConstraintsUserPayload {
+    const uiLanguage = context.queryLanguage === 'he' ? 'he' : 'en';
+    const regionCode = context.userRegionCode ?? 'IL';
+    const top: PostConstraintsUserPayload['top'] = [];
+    return {
+        query: request.query,
+        uiLanguage,
+        regionCode,
+        top
+    };
+}
+
 export async function executePostConstraintsStage(
     request: SearchRequest,
     context: Route2Context,
@@ -33,22 +63,40 @@ export async function executePostConstraintsStage(
 
     const startTime = startStage(context, 'post_constraints', { queryLen, queryHash });
 
-    try {
-        const messages: Message[] = [
-            { role: 'system', content: POST_CONSTRAINTS_SYSTEM_PROMPT },
-            { role: 'user', content: request.query }
-        ];
+    const userPayload = buildPostConstraintsUserPayload(request, context);
+    const userContent = JSON.stringify(userPayload);
+    const messages: Message[] = [
+        { role: 'system', content: POST_CONSTRAINTS_SYSTEM_PROMPT },
+        { role: 'user', content: userContent }
+    ];
 
+    const promptChars = POST_CONSTRAINTS_SYSTEM_PROMPT.length + userContent.length;
+    const estTokens = Math.ceil(promptChars / 4);
+    const topSentCount = userPayload.top.length;
+    logger.info(
+        {
+            requestId,
+            pipelineVersion: 'route2',
+            stage: 'post_constraints',
+            event: 'post_constraints_prompt_stats',
+            promptChars,
+            estTokens,
+            topSentCount
+        },
+        '[ROUTE2] Post-constraints prompt stats'
+    );
+
+    try {
         const response = await llmProvider.completeJSON(
             messages,
             PostConstraintsSchema,
             {
                 temperature: 0,
-                timeout: 3500,
+                timeout: POST_CONSTRAINTS_TIMEOUT_MS,
                 requestId,
                 ...(traceId && { traceId }),
                 ...(sessionId && { sessionId }),
-                ...(signal && { signal }), // provider may ignore if unsupported
+                ...(signal && { signal }),
                 promptVersion: POST_CONSTRAINTS_PROMPT_VERSION,
                 promptHash: POST_CONSTRAINTS_PROMPT_HASH,
                 schemaHash: POST_CONSTRAINTS_SCHEMA_HASH,
@@ -75,10 +123,15 @@ export async function executePostConstraintsStage(
         endStage(context, 'post_constraints', startTime);
 
         return parsed.data;
-    } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : String(error);
+    } catch (error: unknown) {
+        const err = error as { message?: string; errorType?: string };
+        const errorMsg = err?.message ?? (typeof error === 'string' ? error : String(error));
+        const errorType = err?.errorType ?? '';
         const isAborted = signal?.aborted === true;
-        const isTimeout = errorMsg.includes('timeout') || errorMsg.includes('AbortError');
+        const isTimeout =
+            errorType === 'abort_timeout' ||
+            errorMsg.toLowerCase().includes('timeout') ||
+            errorMsg.toLowerCase().includes('abort');
 
         logger.warn(
             {
@@ -87,6 +140,7 @@ export async function executePostConstraintsStage(
                 stage: 'post_constraints',
                 event: 'stage_failed',
                 error: errorMsg,
+                errorType: errorType || undefined,
                 isTimeout,
                 isAborted,
                 fallback: 'default_constraints'

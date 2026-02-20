@@ -55,6 +55,11 @@ export interface I18nKeys {
   // Restaurant card - Near you badge
   'card.badge.near_you': string;
 
+  // Restaurant card - Category label (near title)
+  'card.category.restaurant': string;
+  'card.category.cafe': string;
+  'card.category.bakery': string;
+
   // Restaurant card - Reviews label (e.g. "749 reviews")
   'card.reviews': string;
   'card.reviews_label': string;  // Standalone word e.g. "reviews" for "(749 reviews)"
@@ -136,6 +141,9 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.chip.kosher': 'Kosher',
     'card.chip.vegetarian': 'Vegetarian',
     'card.badge.near_you': 'Near you',
+    'card.category.restaurant': 'Restaurant',
+    'card.category.cafe': 'Cafe',
+    'card.category.bakery': 'Bakery',
     'card.reviews': '{count} reviews',
     'card.reviews_label': 'reviews',
     'card.hours.open_until': 'Open until {time}',
@@ -196,6 +204,9 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.chip.kosher': 'כשר',
     'card.chip.vegetarian': 'צמחוני',
     'card.badge.near_you': 'קרוב אליך',
+    'card.category.restaurant': 'מסעדה',
+    'card.category.cafe': 'קפה',
+    'card.category.bakery': 'מאפייה',
     'card.reviews': '{count} ביקורות',
     'card.reviews_label': 'ביקורות',
     'card.hours.open_until': 'פתוח עד {time}',
@@ -256,6 +267,9 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.chip.kosher': 'Кошер',
     'card.chip.vegetarian': 'Вегетарианское',
     'card.badge.near_you': 'Рядом',
+    'card.category.restaurant': 'Ресторан',
+    'card.category.cafe': 'Кафе',
+    'card.category.bakery': 'Пекарня',
     'card.reviews': '{count} отзывов',
     'card.reviews_label': 'отзывов',
     'card.hours.open_until': 'Открыто до {time}',
@@ -316,6 +330,9 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.chip.kosher': 'كوشير',
     'card.chip.vegetarian': 'نباتي',
     'card.badge.near_you': 'بالقرب منك',
+    'card.category.restaurant': 'مطعم',
+    'card.category.cafe': 'مقهى',
+    'card.category.bakery': 'مخبز',
     'card.reviews': '{count} تقييمات',
     'card.reviews_label': 'تقييمات',
     'card.hours.open_until': 'مفتوح حتى {time}',
@@ -376,6 +393,9 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.chip.kosher': 'Casher',
     'card.chip.vegetarian': 'Végétarien',
     'card.badge.near_you': 'Tout près',
+    'card.category.restaurant': 'Restaurant',
+    'card.category.cafe': 'Café',
+    'card.category.bakery': 'Boulangerie',
     'card.reviews': '{count} avis',
     'card.reviews_label': 'avis',
     'card.hours.open_until': 'Ouvert jusqu\'à {time}',
@@ -436,6 +456,9 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.chip.kosher': 'Kosher',
     'card.chip.vegetarian': 'Vegetariano',
     'card.badge.near_you': 'Cerca de ti',
+    'card.category.restaurant': 'Restaurante',
+    'card.category.cafe': 'Café',
+    'card.category.bakery': 'Panadería',
     'card.reviews': '{count} reseñas',
     'card.reviews_label': 'reseñas',
     'card.hours.open_until': 'Abierto hasta {time}',
@@ -496,6 +519,9 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.chip.kosher': 'Koscher',
     'card.chip.vegetarian': 'Vegetarisch',
     'card.badge.near_you': 'In der Nähe',
+    'card.category.restaurant': 'Restaurant',
+    'card.category.cafe': 'Café',
+    'card.category.bakery': 'Bäckerei',
     'card.reviews': '{count} Bewertungen',
     'card.reviews_label': 'Bewertungen',
     'card.hours.open_until': 'Geöffnet bis {time}',
@@ -556,6 +582,9 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.chip.kosher': 'Kosher',
     'card.chip.vegetarian': 'Vegetariano',
     'card.badge.near_you': 'Vicino a te',
+    'card.category.restaurant': 'Ristorante',
+    'card.category.cafe': 'Caffè',
+    'card.category.bakery': 'Panetteria',
     'card.reviews': '{count} recensioni',
     'card.reviews_label': 'recensioni',
     'card.hours.open_until': 'Aperto fino alle {time}',
@@ -616,6 +645,9 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.chip.kosher': 'ኮሸር',
     'card.chip.vegetarian': 'እህል በሚበላ',
     'card.badge.near_you': 'ከእርስዎ አጠገብ',
+    'card.category.restaurant': 'ርስቶራንት',
+    'card.category.cafe': 'ቡና ቤት',
+    'card.category.bakery': 'ዳቦ ቤት',
     'card.reviews': '{count} ግምገማዎች',
     'card.reviews_label': 'ግምገማዎች',
     'card.hours.open_until': 'እስከ {time} ክፈት',

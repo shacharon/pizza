@@ -9,7 +9,7 @@
   <div class="card-content" (click)="onCardClick()">
     <div class="card-header">
       <!-- P0 Security: Secure photo loading via backend proxy -->
-      <div class="photo-wrapper">
+      <div class="photo-wrapper shrink-0">
         @if (photoSrc() && !photoError()) {
         <img class="restaurant-photo" [src]="getCurrentPhotoSrc()" [alt]="restaurant().name + ' restaurant photo'"
           loading="lazy" (error)="onPhotoError()" [attr.aria-label]="'Photo of ' + restaurant().name" />
@@ -21,48 +21,55 @@
         }
       </div>
 
-      <div class="restaurant-info">
-        <!-- Line 1: Name only -->
+      <div class="restaurant-info flex-1 min-w-0">
+        <!-- Line 1: Name + optional category label (icon + text; compact = icon only with tooltip) -->
         <div class="line-1">
           <h3 class="restaurant-name">{{ restaurant().name }}</h3>
+          @if (categoryLabel(); as cat) {
+          <span class="category-label" [attr.title]="cat.label" [attr.aria-label]="cat.label">
+            <span class="category-icon" aria-hidden="true">{{ cat.icon }}</span>
+
+          </span>
+          }
         </div>
 
         <!-- Line 2: Metadata row [Rating] · [Price] · [State] – single line, flex + gap, no wrap -->
         <div class="metadata-row">
           @if (restaurant().rating != null || (restaurant().userRatingsTotal ?? 0) > 0) {
-            <span class="meta-rating">
-              <span class="star-icon" aria-hidden="true">★</span>
-              @if (restaurant().rating != null) {
-                <span class="rating-value">{{ restaurant().rating }}</span>
-              }
-              @if ((restaurant().userRatingsTotal ?? 0) > 0) {
-                <span class="reviews-text">({{ formattedReviewCount(restaurant().userRatingsTotal ?? 0) }} {{ i18n.t('card.reviews_label') }})</span>
-              }
-            </span>
+          <span class="meta-rating">
+            <span class="star-icon" aria-hidden="true">★</span>
+            @if (restaurant().rating != null) {
+            <span class="rating-value">{{ restaurant().rating }}</span>
+            }
+            @if ((restaurant().userRatingsTotal ?? 0) > 0) {
+            <span class="reviews-text">({{ formattedReviewCount(restaurant().userRatingsTotal ?? 0) }} {{
+              i18n.t('card.reviews_label') }})</span>
+            }
+          </span>
           }
           @if (restaurant().priceLevel) {
-            <span class="separator" aria-hidden="true">·</span>
-            <span class="price-level">{{ getPriceLevelShekel(restaurant().priceLevel) }}</span>
+          <span class="separator" aria-hidden="true">·</span>
+          <span class="price-level">{{ getPriceLevelShekel(restaurant().priceLevel) }}</span>
           }
           @if (metadataStateDisplay(); as state) {
-            <span class="separator" aria-hidden="true">·</span>
-            <span class="meta-state">
-              @if (state.tone === 'open') {
-                <span class="state-label state-open">{{ state.label }}</span>
-              } @else {
-                <span class="state-label state-closed">{{ state.label }}</span>
-              }
-              @if (state.rest) {
-                <span class="state-rest"> {{ state.rest }}</span>
-              }
-            </span>
+          <span class="separator" aria-hidden="true">·</span>
+          <span class="meta-state">
+            @if (state.tone === 'open') {
+            <span class="state-label state-open">{{ state.label }}</span>
+            } @else {
+            <span class="state-label state-closed">{{ state.label }}</span>
+            }
+            @if (state.rest) {
+            <span class="state-rest"> {{ state.rest }}</span>
+            }
+          </span>
           }
         </div>
 
-        <!-- Line 3: Address 📍 (truncates) -->
+        <!-- Line 3: Address 📍 (wrap, max 2 lines, no scroll) -->
         <div class="address-line">
           <span class="address-icon" aria-hidden="true">📍</span>
-          <span class="address-text" dir="auto">{{ restaurant().address }}</span>
+          <span class="address-text min-w-0 overflow-hidden break-words" dir="auto">{{ restaurant().address }}</span>
         </div>
 
         <!-- Line 4: Feature chips (GF, כשר, צמחוני) max 3, neutral -->
@@ -82,7 +89,8 @@
     <button type="button" class="action-btn action-btn-navigate" (click)="onAction($event, 'GET_DIRECTIONS')"
       [disabled]="!isActionAvailable('GET_DIRECTIONS')" [title]="getDirectionsTitle()"
       [attr.aria-label]="getDirectionsAriaLabel()">
-      <svg class="action-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <svg class="action-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        stroke-width="2">
         <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
         <circle cx="12" cy="10" r="3" />
       </svg>
@@ -91,8 +99,8 @@
         @if (distanceInfo()) {
         <span class="action-distance" [class.mode-walking]="distanceInfo()!.mode === 'walking'"
           [class.mode-short-drive]="distanceInfo()!.mode === 'short-drive'"
-          [class.mode-far]="distanceInfo()!.mode === 'far'"
-          [attr.aria-label]="'Distance: ' + distanceInfo()!.text">{{ distanceInfo()!.text }}{{ walkingTimeEstimate() }}</span>
+          [class.mode-far]="distanceInfo()!.mode === 'far'" [attr.aria-label]="'Distance: ' + distanceInfo()!.text">{{
+          distanceInfo()!.text }}{{ walkingTimeEstimate() }}</span>
         }
       </span>
     </button>
@@ -101,7 +109,8 @@
       [disabled]="!isActionAvailable('CALL_RESTAURANT')" [title]="getCallTitle()"
       [attr.aria-label]="getCallAriaLabel()">
       <svg class="action-icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56a.977.977 0 0 0-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z" />
+        <path
+          d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56a.977.977 0 0 0-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z" />
       </svg>
       <span class="action-label">{{ getCallLabel() }}</span>
     </button>
@@ -109,58 +118,55 @@
 
   <!-- Provider links (Wolt, 10bis, Mishloha) - Tailwind mobile-first spacing -->
   @if (providerLinks().length > 0) {
-    <div class="provider-links-tailwind" (click)="$event.stopPropagation()">
-      <svg class="provider-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
-        <line x1="3" y1="6" x2="21" y2="6"/>
-        <path d="M16 10a4 4 0 0 1-8 0"/>
-      </svg>
-      <div class="provider-content">
-        <span class="provider-label">Order via:</span>
-        <span class="provider-list">
-          @for (link of providerLinks(); track link.id; let isLast = $last) {
-            @if (link.id === 'wolt' || link.id === 'mishloha') {
-              <!-- Wolt & Mishloha: button only — open in click handler to avoid prefetch/auto-open; no href -->
-              <button type="button" class="provider-link-item"
-                (click)="onProviderLinkClick($event, link.id)"
-                [attr.aria-label]="'Order via ' + link.label">
-                @if (link.id === 'wolt') {
-                  <svg class="provider-logo" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                    <circle cx="12" cy="12" r="10" fill="#009de0"/>
-                    <path d="M12 6v6l4 4" stroke="white" stroke-width="2" stroke-linecap="round"/>
-                  </svg>
-                }
-                @if (link.id === 'mishloha') {
-                  <svg class="provider-logo" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                    <circle cx="12" cy="12" r="10" fill="#10b981"/>
-                    <path d="M8 12l2 2 6-6" stroke="white" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-                  </svg>
-                }
-                <span class="provider-name">{{ link.label }}</span>
-              </button>
-            } @else {
-              <!-- 10bis: regular link (no prefetch concerns) -->
-              <a class="provider-link-item"
-                [href]="link.url"
-                target="_blank"
-                rel="noopener noreferrer"
-                (click)="onProviderLinkClick($event, link.id)"
-                [attr.aria-label]="'Order via ' + link.label">
-                @if (link.id === 'tenbis') {
-                  <svg class="provider-logo" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                    <rect x="3" y="3" width="18" height="18" rx="3" fill="#ff6b35"/>
-                    <text x="12" y="16" text-anchor="middle" font-size="12" font-weight="bold" fill="white">10</text>
-                  </svg>
-                }
-                <span class="provider-name">{{ link.label }}</span>
-              </a>
-            }
-            @if (!isLast) {
-              <span class="provider-separator-tw" aria-hidden="true">·</span>
-            }
+  <div class="provider-links-tailwind" (click)="$event.stopPropagation()">
+    <svg class="provider-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2">
+      <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
+      <line x1="3" y1="6" x2="21" y2="6" />
+      <path d="M16 10a4 4 0 0 1-8 0" />
+    </svg>
+    <div class="provider-content">
+      <span class="provider-label">Order via:</span>
+      <span class="provider-list">
+        @for (link of providerLinks(); track link.id; let isLast = $last) {
+        @if (link.id === 'wolt' || link.id === 'mishloha') {
+        <!-- Wolt & Mishloha: button only — open in click handler to avoid prefetch/auto-open; no href -->
+        <button type="button" class="provider-link-item" (click)="onProviderLinkClick($event, link.id)"
+          [attr.aria-label]="'Order via ' + link.label">
+          @if (link.id === 'wolt') {
+          <svg class="provider-logo" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="12" cy="12" r="10" fill="#009de0" />
+            <path d="M12 6v6l4 4" stroke="white" stroke-width="2" stroke-linecap="round" />
+          </svg>
           }
-        </span>
-      </div>
+          @if (link.id === 'mishloha') {
+          <svg class="provider-logo" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="12" cy="12" r="10" fill="#10b981" />
+            <path d="M8 12l2 2 6-6" stroke="white" stroke-width="2" fill="none" stroke-linecap="round"
+              stroke-linejoin="round" />
+          </svg>
+          }
+          <span class="provider-name">{{ link.label }}</span>
+        </button>
+        } @else {
+        <!-- 10bis: regular link (no prefetch concerns) -->
+        <a class="provider-link-item" [href]="link.url" target="_blank" rel="noopener noreferrer"
+          (click)="onProviderLinkClick($event, link.id)" [attr.aria-label]="'Order via ' + link.label">
+          @if (link.id === 'tenbis') {
+          <svg class="provider-logo" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <rect x="3" y="3" width="18" height="18" rx="3" fill="#ff6b35" />
+            <text x="12" y="16" text-anchor="middle" font-size="12" font-weight="bold" fill="white">10</text>
+          </svg>
+          }
+          <span class="provider-name">{{ link.label }}</span>
+        </a>
+        }
+        @if (!isLast) {
+        <span class="provider-separator-tw" aria-hidden="true">·</span>
+        }
+        }
+      </span>
     </div>
+  </div>
   }
 </article>

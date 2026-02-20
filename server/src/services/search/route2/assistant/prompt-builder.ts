@@ -220,7 +220,7 @@ resultCount: ${context.resultCount}
 top: ${topJson}${dietaryNote}
 
 CRITICAL: ${languageEmphasis}. "message" and "question" in ${languageInstruction}. question=null.
-Follow MODE RULES for analysisMode=${context.analysisMode}. Output 4–6 lines; use only fields in top[].`;
+Follow MODE RULES for analysisMode=${context.analysisMode}. message MUST be 4–6 lines (each line one sentence; Line 1: headline, 2–4: evidence from top[], Line 5: next step). Use only fields present in top[].`;
 }
 
 /**

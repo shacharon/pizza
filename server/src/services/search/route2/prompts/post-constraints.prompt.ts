@@ -10,10 +10,11 @@ export const POST_CONSTRAINTS_PROMPT_VERSION = 'post_constraints_v1';
 
 /**
  * System Prompt for Post-Constraints Extraction
+ * Compact: JSON shape + minimal rules only (no long examples).
  */
-export const POST_CONSTRAINTS_SYSTEM_PROMPT = `You extract search constraints from restaurant queries.
+export const POST_CONSTRAINTS_SYSTEM_PROMPT = `You extract search constraints from the user payload (query, uiLanguage, regionCode, optional top candidates).
 
-Output ONLY JSON with ALL fields (never omit any field):
+Output ONLY valid JSON with ALL fields (never omit any field):
 {
   "openState": "OPEN_NOW"|"CLOSED_NOW"|"OPEN_AT"|"OPEN_BETWEEN"|null,
   "openAt": {"day": number|null, "timeHHmm": "HH:mm"|null} | null,
@@ -24,129 +25,12 @@ Output ONLY JSON with ALL fields (never omit any field):
   "requirements": {"accessible": true|false|null, "parking": true|false|null}
 }
 
-CRITICAL RULES:
-1. When openAt or openBetween is an object, ALL keys MUST be present (use null for missing values)
-2. NEVER output location, language, region, or confidence fields
-3. Output ONLY the constraint fields above
-
-──────────────────────────────────────────────────────────────────
-FIELD DEFINITIONS:
-──────────────────────────────────────────────────────────────────
-
-openState (default: null):
-• "OPEN_NOW": "פתוח עכשיו", "פתוחות עכשיו", "open now", "currently open"
-• "CLOSED_NOW": "סגור עכשיו", "סגורות עכשיו", "closed now", "closed"
-• "OPEN_AT": specific time → "פתוח ב-21:30", "open at 9pm"
-• "OPEN_BETWEEN": time range → "פתוח בין 18:00-22:00", "open 6-10pm"
-• null: no time constraint mentioned
-
-openAt (null UNLESS openState="OPEN_AT"):
-When openState="OPEN_AT", return object with ALL keys:
-  {"day": 0-6|null, "timeHHmm": "HH:mm"|null}
-• day: 0=Sunday, 1=Monday, ..., 6=Saturday (null if not specified)
-• timeHHmm: "HH:mm" 24-hour format (e.g., "21:30", "09:00")
-Examples:
-  - "פתוח ב-21:30" → {"day": null, "timeHHmm": "21:30"}
-  - "open tomorrow at 8pm" → {"day": <tomorrow>, "timeHHmm": "20:00"}
-  - "פתוח ביום שישי ב-19:00" → {"day": 5, "timeHHmm": "19:00"}
-
-openBetween (null UNLESS openState="OPEN_BETWEEN"):
-When openState="OPEN_BETWEEN", return object with ALL keys:
-  {"day": 0-6|null, "startHHmm": "HH:mm"|null, "endHHmm": "HH:mm"|null}
-Examples:
-  - "פתוח בין 18:00-22:00" → {"day": null, "startHHmm": "18:00", "endHHmm": "22:00"}
-  - "open Friday 6-10pm" → {"day": 5, "startHHmm": "18:00", "endHHmm": "22:00"}
-
-priceLevel (default: null):
-• 1: "$", "cheap", "זול", "budget"
-• 2: "$$", "moderate", "בינוני", "mid-range"
-• 3: "$$$", "expensive", "יקר"
-• 4: "$$$$", "very expensive", "יקר מאוד", "fine dining"
-• null: no price mentioned
-
-isKosher (default: null):
-• true: "כשר", "kosher", "כשרות"
-• false: "לא כשר", "not kosher", "non-kosher" (rare, usually just omitted)
-• null: not mentioned
-
-isGlutenFree (default: null):
-• true: "ללא גלוטן", "gluten-free", "gluten free", "sin gluten", "sans gluten", "celiac-friendly"
-• NEVER set false
-• null: not mentioned
-
-requirements.accessible (default: null):
-• true: "נגיש", "accessible", "wheelchair", "כיסא גלגלים"
-• false: never set false
-• null: not mentioned
-
-requirements.parking (default: null):
-• true: "חניה", "parking", "יש חניה", "with parking"
-• false: never set false
-• null: not mentioned
-
-──────────────────────────────────────────────────────────────────
-EXAMPLES:
-──────────────────────────────────────────────────────────────────
-
-Query: "מסעדות איטלקיות פתוחות עכשיו"
-Output:
-{
-  "openState": "OPEN_NOW",
-  "openAt": null,
-  "openBetween": null,
-  "priceLevel": null,
-  "isKosher": null,
-  "isGlutenFree": null,
-  "requirements": {"accessible": null, "parking": null}
-}
-
-Query: "cheap kosher pizza near me"
-Output:
-{
-  "openState": null,
-  "openAt": null,
-  "openBetween": null,
-  "priceLevel": 1,
-  "isKosher": true,
-  "isGlutenFree": null,
-  "requirements": {"accessible": null, "parking": null}
-}
-
-Query: "מסעדה נגישה עם חניה פתוחה ב-20:00"
-Output:
-{
-  "openState": "OPEN_AT",
-  "openAt": {"day": null, "timeHHmm": "20:00"},
-  "openBetween": null,
-  "priceLevel": null,
-  "isKosher": null,
-  "isGlutenFree": null,
-  "requirements": {"accessible": true, "parking": true}
-}
-
-Query: "expensive restaurant open between 7-9pm Friday"
-Output:
-{
-  "openState": "OPEN_BETWEEN",
-  "openAt": null,
-  "openBetween": {"day": 5, "startHHmm": "19:00", "endHHmm": "21:00"},
-  "priceLevel": 3,
-  "isKosher": null,
-  "isGlutenFree": null,
-  "requirements": {"accessible": null, "parking": null}
-}
-
-Query: "sushi in tel aviv"
-Output:
-{
-  "openState": null,
-  "openAt": null,
-  "openBetween": null,
-  "priceLevel": null,
-  "isKosher": null,
-  "isGlutenFree": null,
-  "requirements": {"accessible": null, "parking": null}
-}
+RULES:
+- openState: OPEN_NOW / CLOSED_NOW / OPEN_AT / OPEN_BETWEEN or null. OPEN_AT → set openAt with day (0-6), timeHHmm (24h). OPEN_BETWEEN → set openBetween with day, startHHmm, endHHmm.
+- priceLevel: 1=cheap, 2=$$, 3=$$$, 4=$$$$ or null.
+- isKosher, isGlutenFree: true only if mentioned; never set false; else null.
+- requirements.accessible, requirements.parking: true only if mentioned; never set false; else null.
+- When openAt or openBetween is an object, include all keys (use null for missing). Do not output location, language, region, or confidence.
 `;
 
 /**

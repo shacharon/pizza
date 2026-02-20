@@ -9,6 +9,7 @@ import { generateSearchCacheKey, type CacheKeyParams } from '../../../../../lib/
 import { getCacheService, raceWithCleanup } from './cache-manager.js';
 import { mapGooglePlaceToResult } from './result-mapper.js';
 import { filterPlacesByBusinessStatus, filterResultsByBusinessStatus, logBusinessStatusMetrics } from './business-status.js';
+import { buildCoverageReport } from './field-coverage.js';
 import type { RouteLLMMapping, Route2Context } from '../../types.js';
 
 // Field mask for Google Places API (New) - includes opening hours + businessStatus (filter permanently closed)
@@ -22,7 +23,7 @@ export async function executeNearbySearch(
   mapping: Extract<RouteLLMMapping, { providerMethod: 'nearbySearch' }>,
   ctx: Route2Context
 ): Promise<{ results: any[], servedFrom: 'cache' | 'google_api' }> {
-  const { requestId } = ctx;
+  const { requestId, traceId } = ctx;
   const startTime = Date.now();
 
   logger.info({
@@ -61,6 +62,8 @@ export async function executeNearbySearch(
   const cache = getCacheService();
   const fetchFn = async (): Promise<any[]> => {
     const results: any[] = [];
+    const allRawPlaces: any[] = [];
+    const samplePairs: Array<{ raw: any; mapped: any }> = [];
     let nextPageToken: string | undefined;
     const maxResults = 20;
     let totalPermClosed = 0;
@@ -76,7 +79,12 @@ export async function executeNearbySearch(
       totalTempClosed += out.tempClosedCount;
       totalMissingStatus += out.missingStatusCount;
       totalPermPlaceIds.push(...out.permanentlyClosedPlaceIds);
-      results.push(...out.filtered.map((r: any) => mapGooglePlaceToResult(r)));
+      for (const raw of out.filtered) {
+        allRawPlaces.push(raw);
+        const mapped = mapGooglePlaceToResult(raw);
+        if (samplePairs.length < 3) samplePairs.push({ raw, mapped });
+        results.push(mapped);
+      }
     };
 
     // Fetch first page
@@ -99,6 +107,17 @@ export async function executeNearbySearch(
       } else {
         break;
       }
+    }
+
+    if (allRawPlaces.length > 0) {
+      const coverage = buildCoverageReport({
+        requestId,
+        traceId,
+        allRawPlaces,
+        allMappedResults: results,
+        samplePairs
+      });
+      logger.info({ event: 'places_field_coverage', ...coverage }, '[GOOGLE] Places field coverage');
     }
 
     logBusinessStatusMetrics({
