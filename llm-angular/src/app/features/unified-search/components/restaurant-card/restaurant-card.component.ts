@@ -404,6 +404,17 @@ export class RestaurantCardComponent {
   });
 
   /**
+   * Address for card: street + number only (no city).
+   * Takes the segment before the first comma; if no comma, returns full address.
+   */
+  readonly addressStreetOnly = computed(() => {
+    const raw = this.restaurant().address?.trim() ?? '';
+    if (!raw) return '';
+    const firstComma = raw.indexOf(',');
+    return firstComma === -1 ? raw : raw.slice(0, firstComma).trim();
+  });
+
+  /**
    * Get closing time for today if available
    * Returns formatted time string or null
    * 
@@ -702,8 +713,9 @@ export class RestaurantCardComponent {
     const status = this.getOpenStatus();
     if (status === 'open') {
       const time = this.closingTimeToday();
-      const rest = time ? `${this.i18n.t('card.hours.until')} ${time}` : null;
-      return { label: this.i18n.t('card.status.open'), rest, tone: 'open' as const };
+      // When we have closing time: show only "עד HH:mm" (no "פתוח"); otherwise show open label
+      const label = time ? `${this.i18n.t('card.hours.until')} ${time}` : this.i18n.t('card.status.open');
+      return { label, rest: null, tone: 'open' as const };
     }
     if (status === 'closed') {
       const time = this.getNextOpenTime();

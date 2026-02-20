@@ -41,6 +41,17 @@ SUMMARY OUTPUT STRUCTURE (4–6 lines, each <= 80 chars):
 - Line 5: ONE next step: either one refinement question OR one action suggestion.
 - Line 6: optional dietary soft hint ONLY if dietaryNote.shouldInclude=true.
 
+SATURATED:
+- Pick ONE anchor: top[0].
+- Give 1–2 evidence lines from available fields.
+- DO NOT ask a refinement question by default.
+- Ask a refinement question ONLY if user explicitly asked to refine OR if top[0] lacks key fields (e.g., no openNow and no rating and no distance).
+- suggestedAction="NONE" by default; use "REFINE" only when you actually ask a refinement question.
+
+BANNED PHRASES:
+- Never say "Consider trying", "Would you like", "You might", "Maybe".
+Use direct imperative wording instead (e.g., "לך על X עכשיו.").
+
 SUMMARY MODE RULES:
 A) analysisMode=SCARCITY:
 - Do NOT list restaurants.
@@ -60,10 +71,10 @@ B) analysisMode=COMPARISON:
 
 C) analysisMode=SATURATED:
 - NEVER mention any quantity/count (no digits, no "many/several/a few").
-- Pick ONE anchor: top[0].
-- Give one reason from available fields (e.g. rating or distance or openNow).
-- Ask ONE refinement question (price OR distance OR dietary OR kosher).
-- suggestedAction="REFINE".
+- Pick ONE anchor: top[0]. Give 1–2 evidence lines from available fields.
+- DO NOT ask a refinement question by default.
+- Ask a refinement question ONLY if the user explicitly asked to refine OR if top[0] lacks key fields (e.g. no openNow and no rating and no distance).
+- suggestedAction="NONE" by default; use "REFINE" only when you actually ask a refinement question.
 
 SUMMARY GUARDRAILS:
 - No "You asked / We found / Here are / Top choices".

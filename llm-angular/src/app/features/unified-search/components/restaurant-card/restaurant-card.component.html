@@ -66,10 +66,10 @@
           }
         </div>
 
-        <!-- Line 3: Address 📍 (wrap, max 2 lines, no scroll) -->
+        <!-- Line 3: Address 📍 (street + number only, single line, ellipsis) -->
         <div class="address-line">
           <span class="address-icon" aria-hidden="true">📍</span>
-          <span class="address-text min-w-0 overflow-hidden break-words" dir="auto">{{ restaurant().address }}</span>
+          <span class="address-text" dir="auto">{{ addressStreetOnly() }}</span>
         </div>
 
         <!-- Line 4: Feature chips (GF, כשר, צמחוני) max 3, neutral -->

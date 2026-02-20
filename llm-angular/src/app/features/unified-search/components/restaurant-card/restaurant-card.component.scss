@@ -230,29 +230,28 @@
   font-size: 0.75rem;
 }
 
-// Wrap + max 2 lines, no scroll (Tailwind classes in HTML; SCSS for line-clamp)
+// Street + number only; single line, ellipsis on overflow
 .address-text {
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  word-break: break-word;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
-// Metadata row: [Rating] · [Price] · [State] – flex, no wrap, no space-between, no auto margins
+// Metadata row: [Rating] · [Price] · [State] – single line, no wrap, stable gap (6–8px)
 .metadata-row {
   display: flex;
   flex-wrap: nowrap;
+  flex-direction: row;
   justify-content: flex-start;
   align-items: center;
-  gap: 8px;
+  gap: 0.4375rem; // 7px
   font-size: 0.8125rem;
   color: #4b5563;
   min-width: 0;
   overflow: hidden;
+  white-space: nowrap;
 
   & > * {
     margin-left: 0;
@@ -302,15 +301,21 @@
   white-space: nowrap;
   font-weight: 500;
   color: #4b5563; // rest neutral
+  background: none;
 }
 
-// Only the open/closed word is colored; rest stays neutral (no bright neon)
+// Open: "עד HH:mm" only — green, semibold, no background, no icon
 .state-label.state-open {
-  color: #15803d; // dark green
+  color: #16a34a;
+  font-weight: 600;
+  background: none;
 }
 
+// Closed: "סגור" — red
 .state-label.state-closed {
-  color: #b91c1c; // dark red
+  color: #dc2626;
+  font-weight: 600;
+  background: none;
 }
 
 .state-rest {
