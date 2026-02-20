@@ -51,7 +51,7 @@ C) If analysisMode="SATURATED":
 - suggestedAction MUST be "REFINE" (ANY other value is INVALID)
 - message MUST analyze tradeoffs between the top options.
 - MUST recommend ONE starting point explicitly.
-- May briefly mention 1–2 alternatives for contrast.
+- May briefly mention 3–4 alternatives for contrast.
 - MUST convert data into reasoning (rating → quality, openNow → convenience, etc.)
 - MUST end with one concrete refinement suggestion.
 - message MUST end with ONE concrete refine suggestion based on nextStepHint.
@@ -176,7 +176,7 @@ Generate the best single refinement question.`;
   }
 
   // SUMMARY: minimal payload – analysisMode, resultCount, top (max 2 COMPARISON, 1 SATURATED, 0 SCARCITY); per candidate name + up to 3 numeric fields
-  const maxTop = context.analysisMode === 'SCARCITY' ? 0 : context.analysisMode === 'SATURATED' ? 1 : 2;
+  const maxTop = context.analysisMode === 'SCARCITY' ? 0 : context.analysisMode === 'SATURATED' ? 3 : 2;
   const topSlice = context.top.slice(0, maxTop);
 
   const numericKeys = ['rating', 'distanceMeters', 'etaMinutes', 'priceLevel', 'openNow'] as const;

@@ -26,6 +26,13 @@ const ASSISTANT_SHADOW_MODE = process.env.ASSISTANT_REFACTOR_SHADOW === 'true';
 /** In-memory guard: prevent duplicate SUMMARY LLM calls per requestId. */
 const summaryGenStateByRequestId = new Map<string, 'RUNNING' | 'DONE'>();
 
+function preview(s: string | undefined | null, n = 80): string {
+  return (s ?? '').slice(0, n);
+}
+function keys(o: unknown): string[] {
+  return o && typeof o === 'object' ? Object.keys(o).sort() : [];
+}
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -218,6 +225,22 @@ export async function generateAssistantMessage(
     if (context.type === 'SUMMARY') {
       const tMs = Date.now();
       logger.info({ event: 'summary_llm_start', requestId, analysisMode: context.analysisMode, tMs });
+      const sumCtx = context as AssistantSummaryContext;
+      const top = sumCtx.top ?? [];
+      logger.info({
+        event: 'assistant_llm_input_snapshot',
+        requestId,
+        type: 'SUMMARY',
+        requestedLanguage,
+        queryLen: sumCtx.query?.length ?? 0,
+        queryPreview: preview(sumCtx.query, 80),
+        analysisMode: sumCtx.analysisMode,
+        nextStepHint: 'completeJSON',
+        topNamesCount: top.length,
+        topNamesPreview: top.slice(0, 4).map((t) => t?.name ?? ''),
+        topMetaCount: top.length,
+        topMetaKeys: top.slice(0, 4).map((t) => keys(t))
+      });
     }
     const summaryLlmStart = Date.now();
 

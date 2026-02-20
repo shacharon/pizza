@@ -135,7 +135,8 @@ export function getFieldCoverage(
   const dtoPresent = DTO_KEYS.filter((k) => hasDtoKey(mappedResult, k));
   const uiUsed = [...uiUsedKeys];
   const missingInDto = (DTO_KEYS as unknown as string[]).filter((k) => !dtoPresent.includes(k));
-  const missingInUi = dtoPresent.filter((k) => !uiUsedKeys.includes(k));
+  const uiSet = new Set<string>(uiUsedKeys);
+  const missingInUi = dtoPresent.filter((k) => !uiSet.has(k));
   return {
     googlePresent,
     dtoPresent,
