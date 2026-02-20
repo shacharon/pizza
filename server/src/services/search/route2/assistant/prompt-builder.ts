@@ -41,12 +41,9 @@ SUMMARY OUTPUT STRUCTURE (4–6 lines, each <= 80 chars):
 - Line 5: ONE next step: either one refinement question OR one action suggestion.
 - Line 6: optional dietary soft hint ONLY if dietaryNote.shouldInclude=true.
 
-SATURATED:
-- Pick ONE anchor: top[0].
-- Give 1–2 evidence lines from available fields.
-- DO NOT ask a refinement question by default.
-- Ask a refinement question ONLY if user explicitly asked to refine OR if top[0] lacks key fields (e.g., no openNow and no rating and no distance).
-- suggestedAction="NONE" by default; use "REFINE" only when you actually ask a refinement question.
+analysisMode=SATURATED:
+- suggestedAction MUST be "REFINE".
+- If any other value is returned, the response is invalid.
 
 BANNED PHRASES:
 - Never say "Consider trying", "Would you like", "You might", "Maybe".

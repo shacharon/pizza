@@ -404,14 +404,16 @@ export class RestaurantCardComponent {
   });
 
   /**
-   * Address for card: street + number only (no city).
-   * Takes the segment before the first comma; if no comma, returns full address.
+   * Address for card: street + number; if city present, "street, city".
+   * Format: {street}, {city} (e.g. דוד רזיאל 28, תל אביב). If no city, street only.
    */
   readonly addressStreetOnly = computed(() => {
     const raw = this.restaurant().address?.trim() ?? '';
     if (!raw) return '';
-    const firstComma = raw.indexOf(',');
-    return firstComma === -1 ? raw : raw.slice(0, firstComma).trim();
+    const parts = raw.split(',').map(p => p.trim()).filter(Boolean);
+    const street = parts[0] ?? '';
+    const city = parts[1] ?? '';
+    return city ? `${street}, ${city}` : street;
   });
 
   /**

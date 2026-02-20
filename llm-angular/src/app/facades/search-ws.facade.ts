@@ -126,6 +126,7 @@ export class SearchWsHandler {
       // Accumulated text for streaming
       let streamedText = '';
       let isFirstDelta = true; // Track if this is the first delta (to replace narration)
+      let receivedTerminalMessage = false; // SUMMARY/CLARIFY/GATE_FAIL already received
 
       // Subscribe to SSE for assistant messages (streaming: narration → delta* → done)
       // Run updates inside NgZone so each chunk triggers change detection (avoids "one chunk" feel)
@@ -162,6 +163,7 @@ export class SearchWsHandler {
               });
             } else if (event.type === 'message') {
               // Legacy: single full message (CLARIFY / GATE_FAIL / SUMMARY from SSE)
+              receivedTerminalMessage = true;
               const payload = event.data;
               console.log('[SearchWsHandler] SSE assistant message (legacy)', {
                 type: payload.type,
@@ -189,9 +191,9 @@ export class SearchWsHandler {
                 });
               }
             } else if (event.type === 'done') {
-              // Keep showing streamed text in legacy slot; do NOT add a card so we avoid
-              // switching to multi-message mode and re-animating (which made text disappear then animate again).
-              if (streamedText.length > 0) {
+              // Only set legacy message from streamed text when we did NOT get a terminal message
+              // (SUMMARY/CLARIFY/GATE_FAIL). Otherwise we would overwrite the summary with narration.
+              if (streamedText.length > 0 && !receivedTerminalMessage) {
                 assistantHandler.setMessage(streamedText, requestId);
               }
               assistantHandler.setStatus('completed');
