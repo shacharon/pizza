@@ -14,6 +14,7 @@ import { buildPhotoSrc, getPhotoPlaceholder } from '../../../../utils/photo-src.
 import { I18nService } from '../../../../core/services/i18n.service';
 import { calculateDistance, calculateWalkingTime, formatDistance, formatDistanceWithIntent } from '../../../../utils/distance.util';
 import { buildWoltSearchUrl, buildTenbisSearchUrl, buildMishlohaSearchUrl } from '../../../../utils/provider-url-builder.util';
+import { appendWoltTrackingParams, appendTenbisTrackingParams, appendMishlohaTrackingParams, isValid10bisUrl, isValidMishlohaUrl } from '../../../../utils/wolt-deeplink.util';
 import { formatTimeFromDate, formatTimeFromRaw } from '../../../../shared/utils/time-formatter';
 import type { ProviderState } from '../../../../domain/types/search.types';
 
@@ -819,23 +820,60 @@ export class RestaurantCardComponent {
           return null;
         }
 
-        // URL validation (optional safety check)
+        // URL validation (domain-specific)
         const url = providerState.url;
-        if (!url.startsWith(config.urlPrefix)) {
-          // Log validation failure in development mode only
-          if (typeof ngDevMode !== 'undefined' && ngDevMode) {
-            console.warn(`[RestaurantCard] Invalid ${config.label} URL for ${restaurantName}:`, {
-              url,
-              expectedPrefix: config.urlPrefix
-            });
+        
+        // 10bis: strict validation (domain + path requirements)
+        if (config.id === 'tenbis') {
+          if (!isValid10bisUrl(url)) {
+            // Invalid 10bis URL - do NOT render Order button, do NOT auto-correct
+            if (typeof ngDevMode !== 'undefined' && ngDevMode) {
+              console.warn(`[RestaurantCard] Invalid 10bis URL rejected for ${restaurantName}:`, {
+                url,
+                reason: 'Must be 10bis.co.il domain with path /restaurant or /next/r'
+              });
+            }
+            return null;
           }
-          return null;
+        } else if (config.id === 'mishloha') {
+          // Mishloha: validate domain
+          if (!isValidMishlohaUrl(url)) {
+            // Invalid Mishloha URL - do NOT render Order button, do NOT auto-correct
+            if (typeof ngDevMode !== 'undefined' && ngDevMode) {
+              console.warn(`[RestaurantCard] Invalid Mishloha URL rejected for ${restaurantName}:`, {
+                url,
+                reason: 'Must be mishloha.co.il domain'
+              });
+            }
+            return null;
+          }
+        } else {
+          // Other providers: basic prefix check
+          if (!url.startsWith(config.urlPrefix)) {
+            if (typeof ngDevMode !== 'undefined' && ngDevMode) {
+              console.warn(`[RestaurantCard] Invalid ${config.label} URL for ${restaurantName}:`, {
+                url,
+                expectedPrefix: config.urlPrefix
+              });
+            }
+            return null;
+          }
         }
 
+        // Apply tracking params for all providers
+        let finalUrl = url;
+        if (config.id === 'wolt') {
+          finalUrl = appendWoltTrackingParams(url);
+        } else if (config.id === 'tenbis') {
+          finalUrl = appendTenbisTrackingParams(url);
+        } else if (config.id === 'mishloha') {
+          finalUrl = appendMishlohaTrackingParams(url);
+        }
+        
         return {
           id: config.id,
           label: config.label,
-          url: url,
+          url: finalUrl,
         };
       })
       .filter((link): link is NonNullable<typeof link> => link !== null);
@@ -844,8 +882,10 @@ export class RestaurantCardComponent {
   });
 
   /**
-   * Handle provider link click
-   * Opens provider URL in new tab
+   * Handle provider link click.
+   * Opens URL only on explicit user click (no prefetch/auto-open).
+   * Wolt: opened here only (button has no href). Others: preventDefault then open.
+   * Uses target="_blank" and rel="noopener noreferrer" via window.open.
    */
   onProviderLinkClick(event: Event, providerId: 'wolt' | 'tenbis' | 'mishloha'): void {
     event.stopPropagation();
@@ -856,7 +896,6 @@ export class RestaurantCardComponent {
       return;
     }
 
-    // Open provider URL in new tab
     window.open(link.url, '_blank', 'noopener,noreferrer');
 
     console.log('[RestaurantCard] Provider link clicked', {

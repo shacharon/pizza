@@ -5,6 +5,8 @@
  * when no direct deep link is available (NOT_FOUND status).
  */
 
+import { appendWoltTrackingParams, appendTenbisTrackingParams, appendMishlohaTrackingParams } from './wolt-deeplink.util';
+
 /**
  * Extract city slug from address
  * Supports Hebrew and English city names
@@ -69,32 +71,35 @@ function extractCitySlug(address: string): string {
 
 /**
  * Build Wolt search URL
- * Format: https://wolt.com/he/isr/{city}/search?q={query}
+ * Format: https://wolt.com/he/isr/{city}/search?q={query} with UTM + ref params
  */
 export function buildWoltSearchUrl(restaurantName: string, address: string, lang: 'he' | 'en' = 'he'): string {
   const citySlug = extractCitySlug(address);
   const query = encodeURIComponent(restaurantName);
-  return `https://wolt.com/${lang}/isr/${citySlug}/search?q=${query}`;
+  const baseUrl = `https://wolt.com/${lang}/isr/${citySlug}/search?q=${query}`;
+  return appendWoltTrackingParams(baseUrl);
 }
 
 /**
- * Build 10bis search URL
+ * Build 10bis search URL with tracking params
  * Format: https://www.10bis.co.il/next/restaurants/search/SearchRestaurantsBy?query={query}&area={city}
  */
 export function buildTenbisSearchUrl(restaurantName: string, address: string): string {
   const query = encodeURIComponent(restaurantName);
   const city = extractCityName(address);
   const area = city ? `&area=${encodeURIComponent(city)}` : '';
-  return `https://www.10bis.co.il/next/restaurants/search/SearchRestaurantsBy?query=${query}${area}`;
+  const baseUrl = `https://www.10bis.co.il/next/restaurants/search/SearchRestaurantsBy?query=${query}${area}`;
+  return appendTenbisTrackingParams(baseUrl);
 }
 
 /**
- * Build Mishloha search URL
+ * Build Mishloha search URL with tracking params
  * Format: https://www.mishloha.co.il/search?q={query}
  */
 export function buildMishlohaSearchUrl(restaurantName: string, address: string): string {
   const query = encodeURIComponent(restaurantName);
-  return `https://www.mishloha.co.il/search?q=${query}`;
+  const baseUrl = `https://www.mishloha.co.il/search?q=${query}`;
+  return appendMishlohaTrackingParams(baseUrl);
 }
 
 /**

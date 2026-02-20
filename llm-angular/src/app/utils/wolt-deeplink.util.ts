@@ -6,6 +6,205 @@
  * Uses Wolt's search URL format: https://wolt.com/{lang}/isr/{city}/search?query={encoded}
  */
 
+/** UTM + ref params for provider deep links (going2eat referral) */
+const TRACKING_PARAMS: Readonly<[string, string][]> = [
+  ['utm_source', 'going2eat'],
+  ['utm_medium', 'referral'],
+  ['utm_campaign', 'provider_link'],
+  ['ref', 'going2eat'],
+];
+
+/** @deprecated Use TRACKING_PARAMS instead */
+const WOLT_TRACKING_PARAMS = TRACKING_PARAMS;
+
+/**
+ * Append UTM and ref tracking params to Wolt URLs only.
+ * Pure, reusable. Does not break existing query params; uses & when query exists.
+ * Does not duplicate params if already present.
+ *
+ * @param url - Any URL (only wolt.com URLs are modified)
+ * @returns Modified URL with tracking params, or original URL unchanged
+ */
+export function appendWoltTrackingParams(url: string): string {
+  if (!url || typeof url !== 'string' || !url.includes('wolt.com')) {
+    return url;
+  }
+  try {
+    const u = new URL(url);
+    const params = new URLSearchParams(u.search);
+    for (const [key, value] of WOLT_TRACKING_PARAMS) {
+      if (!params.has(key)) {
+        params.set(key, value);
+      }
+    }
+    u.search = params.toString();
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * Build Wolt URL with tracking params appended.
+ * Preserves existing query string; does not modify non-Wolt domains.
+ *
+ * @param baseUrl - Wolt or any URL (only wolt.com URLs are modified)
+ * @returns URL with utm_source, utm_medium, utm_campaign, ref appended when missing
+ */
+export function buildWoltUrl(baseUrl: string): string {
+  return appendWoltTrackingParams(baseUrl);
+}
+
+/**
+ * Append UTM and ref tracking params to 10bis URLs only.
+ * Pure, reusable. Preserves existing query params; uses & when query exists.
+ * Avoids duplicate params if already present.
+ *
+ * @param url - Any URL (only 10bis.co.il URLs are modified)
+ * @returns Modified URL with tracking params, or original URL unchanged
+ */
+export function appendTenbisTrackingParams(url: string): string {
+  if (!url || typeof url !== 'string' || !url.includes('10bis.co.il')) {
+    return url;
+  }
+  try {
+    const u = new URL(url);
+    const params = new URLSearchParams(u.search);
+    for (const [key, value] of TRACKING_PARAMS) {
+      if (!params.has(key)) {
+        params.set(key, value);
+      }
+    }
+    u.search = params.toString();
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * Build 10bis URL with tracking params appended.
+ * Preserves existing query string; does not modify non-10bis domains.
+ *
+ * @param baseUrl - 10bis or any URL (only 10bis.co.il URLs are modified)
+ * @returns URL with utm_source, utm_medium, utm_campaign, ref appended when missing
+ */
+export function buildTenbisUrl(baseUrl: string): string {
+  return appendTenbisTrackingParams(baseUrl);
+}
+
+/**
+ * Append UTM and ref tracking params to Mishloha URLs only.
+ * Pure, reusable. Preserves existing query params; uses & when query exists.
+ * Avoids duplicate params if already present.
+ *
+ * @param url - Any URL (only mishloha.co.il URLs are modified)
+ * @returns Modified URL with tracking params, or original URL unchanged
+ */
+export function appendMishlohaTrackingParams(url: string): string {
+  if (!url || typeof url !== 'string' || !url.includes('mishloha.co.il')) {
+    return url;
+  }
+  try {
+    const u = new URL(url);
+    const params = new URLSearchParams(u.search);
+    for (const [key, value] of TRACKING_PARAMS) {
+      if (!params.has(key)) {
+        params.set(key, value);
+      }
+    }
+    u.search = params.toString();
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * Build Mishloha URL with tracking params appended.
+ * Preserves existing query string; does not modify non-Mishloha domains.
+ *
+ * @param baseUrl - Mishloha or any URL (only mishloha.co.il URLs are modified)
+ * @returns URL with utm_source, utm_medium, utm_campaign, ref appended when missing
+ */
+export function buildMishlohaUrl(baseUrl: string): string {
+  return appendMishlohaTrackingParams(baseUrl);
+}
+
+/**
+ * Validate 10bis URL structure
+ * 
+ * Requirements:
+ * - Domain must be 10bis.co.il
+ * - Path must start with /restaurant or /next/r
+ * 
+ * @param url - URL to validate
+ * @returns true if valid 10bis URL, false otherwise
+ */
+export function isValid10bisUrl(url: string): boolean {
+  if (!url || typeof url !== 'string') {
+    return false;
+  }
+
+  // Must contain 10bis.co.il domain
+  if (!url.includes('10bis.co.il')) {
+    return false;
+  }
+
+  try {
+    const u = new URL(url);
+    
+    // Verify domain exactly
+    if (!u.hostname.endsWith('10bis.co.il')) {
+      return false;
+    }
+
+    // Path must start with /restaurant or /next/r
+    const validPaths = ['/restaurant', '/next/r'];
+    const hasValidPath = validPaths.some(prefix => u.pathname.startsWith(prefix));
+    
+    return hasValidPath;
+  } catch {
+    // Invalid URL format
+    return false;
+  }
+}
+
+/**
+ * Validate Mishloha URL structure
+ * 
+ * Requirements:
+ * - Domain must be mishloha.co.il
+ * - Must be valid URL format
+ * 
+ * @param url - URL to validate
+ * @returns true if valid Mishloha URL, false otherwise
+ */
+export function isValidMishlohaUrl(url: string): boolean {
+  if (!url || typeof url !== 'string') {
+    return false;
+  }
+
+  // Must contain mishloha.co.il domain
+  if (!url.includes('mishloha.co.il')) {
+    return false;
+  }
+
+  try {
+    const u = new URL(url);
+    
+    // Verify domain exactly
+    if (!u.hostname.endsWith('mishloha.co.il')) {
+      return false;
+    }
+
+    return true;
+  } catch {
+    // Invalid URL format
+    return false;
+  }
+}
+
 /**
  * City slug mapping for common Israeli cities
  * Fallback to 'tel-aviv' if city is not found
@@ -149,6 +348,7 @@ export function buildWoltSearchUrl(
   // Encode search query for URL
   const encoded = encodeURIComponent(searchQuery);
 
-  // Build final URL
-  return `https://wolt.com/${lang}/isr/${slug}/search?query=${encoded}`;
+  // Build final URL and append tracking params (utm_source, utm_medium, utm_campaign, ref)
+  const baseUrl = `https://wolt.com/${lang}/isr/${slug}/search?query=${encoded}`;
+  return appendWoltTrackingParams(baseUrl);
 }

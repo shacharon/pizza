@@ -7,6 +7,7 @@ import { httpTimeoutRetryInterceptor } from './core/interceptors/http-timeout-re
 import { httpErrorInterceptor } from './core/interceptors/http-error.interceptor';
 import { apiSessionInterceptor } from './shared/http/api-session.interceptor';
 import { FlagsStore } from './state/flags.store';
+import { AuthService } from './core/auth/auth.service';
 import { provideServiceWorker } from '@angular/service-worker';
 
 /**
@@ -21,6 +22,28 @@ function initializeFeatureFlags(flagsStore: FlagsStore) {
   };
 }
 
+/**
+ * Initialize session on app startup
+ * Ensures valid sessionId exists BEFORE any WebSocket connections
+ * 
+ * CRITICAL: Prevents "WS subscribe requires valid sessionId" errors
+ * - Fetches JWT token (which creates session if needed)
+ * - Session ID is saved to localStorage
+ * - WebSocket subscriptions can then use this sessionId
+ */
+function initializeSession(authService: AuthService) {
+  return async () => {
+    try {
+      console.log('[AppInit] Initializing session...');
+      await authService.getToken();
+      console.log('[AppInit] ✅ Session initialized');
+    } catch (error) {
+      console.error('[AppInit] Failed to initialize session', error);
+      // Don't block app startup on session failure
+    }
+  };
+}
+
 export const appConfig: ApplicationConfig = {
   providers: [
     provideZoneChangeDetection({ eventCoalescing: true }),
@@ -31,6 +54,13 @@ export const appConfig: ApplicationConfig = {
       httpErrorInterceptor             // 4th: error normalization (after retries exhausted)
     ])),
     provideRouter(routes),
+    // Initialize session BEFORE any WebSocket connections (prevents anonymous subscribe)
+    {
+      provide: APP_INITIALIZER,
+      useFactory: initializeSession,
+      deps: [AuthService],
+      multi: true
+    },
     // Initialize feature flags on startup
     {
       provide: APP_INITIALIZER,

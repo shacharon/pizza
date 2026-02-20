@@ -196,7 +196,7 @@ export class WsClientService {
 
   /**
    * Handle connection open event
-   * Auto-resubscribe to last requestId if present
+   * Auto-resubscribe to last requestId if present (with sessionId)
    */
   private handleConnectionOpen(): void {
     this.isAuthenticated = true;
@@ -204,7 +204,19 @@ export class WsClientService {
     
     const lastRequestId = this.subscriptionManager.getLastRequestId();
     if (lastRequestId) {
-      this.subscribe(lastRequestId);
+      // CRITICAL: Get sessionId before auto-resubscribe (prevent anonymous subscribe)
+      const sessionId = this.authService.getSessionId();
+      if (sessionId) {
+        console.log('[WsClient] Auto-resubscribing with sessionId', {
+          requestId: lastRequestId.substring(0, 20) + '...',
+          sessionIdPreview: sessionId.substring(0, 8) + '...'
+        });
+        this.subscribe(lastRequestId, 'search', sessionId);
+      } else {
+        console.warn('[WsClient] Cannot auto-resubscribe: no valid sessionId', {
+          requestId: lastRequestId.substring(0, 20) + '...'
+        });
+      }
     }
   }
 
