@@ -4,6 +4,7 @@
  * Never skipped when SSE is enabled (search channel is still used).
  */
 
+import type { WSServerMessage } from '../../../infra/websocket/websocket-protocol.js';
 import type { WebSocketManager } from '../../../infra/websocket/websocket-manager.js';
 import { logger } from '../../../lib/logger/structured-logger.js';
 
@@ -29,10 +30,10 @@ function publishAndLog(
   requestId: string,
   sessionId: string | undefined,
   type: 'SUCCESS' | 'CLARIFY' | 'GATE_STOP' | 'SEARCH_FAILED',
-  payload: Record<string, unknown>
+  payload: TerminalClarifyPayload | TerminalFailedPayload | { type: 'GATE_STOP'; message: string }
 ): void {
   try {
-    wsManager.publishToChannel('search', requestId, sessionId, payload);
+    wsManager.publishToChannel('search', requestId, sessionId, payload as unknown as WSServerMessage);
     logger.info(
       { event: 'ws_terminal_published', type, requestId },
       '[ROUTE2] Search channel terminal published'

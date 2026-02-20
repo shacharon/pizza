@@ -745,12 +745,12 @@ export class AssistantSseOrchestrator {
     if (!headers || typeof headers !== 'object') return undefined;
     const xUi = headers['x-ui-language'];
     if (xUi && typeof xUi === 'string') {
-      const v = xUi.toLowerCase().split(/[-,]/)[0].trim();
+      const v = xUi.toLowerCase().split(/[-,]/)[0]?.trim();
       if (v === 'he' || v === 'en') return v;
     }
     const accept = headers['accept-language'];
     if (accept && typeof accept === 'string') {
-      const first = accept.split(',')[0]?.toLowerCase().split('-')[0].trim();
+      const first = accept.split(',')[0]?.toLowerCase().split('-')[0]?.trim();
       if (first === 'he' || first === 'en') return first;
     }
     return undefined;
