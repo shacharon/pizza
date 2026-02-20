@@ -129,7 +129,7 @@ function hasDtoKey(dto: any, key: string): boolean {
 export function getFieldCoverage(
   rawPlace: any,
   mappedResult: any,
-  uiUsedKeys: readonly string[] = UI_USED_KEYS
+  uiUsedKeys: readonly string[] = UI_USED_KEYS as readonly string[]
 ): FieldCoverageItem {
   const googlePresent = GOOGLE_KEYS.filter((k) => hasGoogleKey(rawPlace, k));
   const dtoPresent = DTO_KEYS.filter((k) => hasDtoKey(mappedResult, k));
@@ -214,7 +214,7 @@ export function buildCoverageReport(params: {
   });
   return {
     requestId,
-    traceId,
+    ...(traceId !== undefined && { traceId }),
     totals,
     sample
   };

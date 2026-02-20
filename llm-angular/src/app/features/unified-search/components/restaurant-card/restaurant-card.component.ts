@@ -404,16 +404,23 @@ export class RestaurantCardComponent {
   });
 
   /**
-   * Address for card: street + number; if city present, "street, city".
-   * Format: {street}, {city} (e.g. דוד רזיאל 28, תל אביב). If no city, street only.
+   * Address for card: street + number only (first segment).
    */
-  readonly addressStreetOnly = computed(() => {
+  readonly addressStreet = computed(() => {
     const raw = this.restaurant().address?.trim() ?? '';
     if (!raw) return '';
     const parts = raw.split(',').map(p => p.trim()).filter(Boolean);
-    const street = parts[0] ?? '';
+    return parts[0] ?? raw;
+  });
+
+  /**
+   * City only (second segment), or null if missing.
+   */
+  readonly addressCity = computed(() => {
+    const raw = this.restaurant().address?.trim() ?? '';
+    const parts = raw.split(',').map(p => p.trim()).filter(Boolean);
     const city = parts[1] ?? '';
-    return city ? `${street}, ${city}` : street;
+    return city || null;
   });
 
   /**

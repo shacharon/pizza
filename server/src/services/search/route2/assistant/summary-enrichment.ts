@@ -3,7 +3,19 @@
  * NO new sorting – callers pass results in final order.
  */
 
-import type { TopCandidate, SummaryAnalysisMode } from './assistant.types.js';
+// Local types aligned with assistant.types (avoids module resolution in strict builds)
+export interface TopCandidate {
+  name: string;
+  addressShort?: string;
+  rating?: number;
+  userRatingsTotal?: number;
+  priceLevel?: 1 | 2 | 3 | 4;
+  distanceMeters?: number;
+  etaMinutes?: number;
+  openNow?: boolean;
+  closingTimeText?: string;
+}
+export type SummaryAnalysisMode = 'SCARCITY' | 'COMPARISON' | 'SATURATED';
 
 export interface SummaryEnrichmentInput {
   name?: string | null;

@@ -69,11 +69,16 @@
           }
         </div>
 
-        <!-- Line 3: Address 📍 (street + number only, single line, ellipsis) -->
+        <!-- Line 3: Address 📍 street (single line, ellipsis) -->
         <div class="address-line">
           <span class="address-icon" aria-hidden="true">📍</span>
-          <span class="address-text" dir="auto">{{ addressStreetOnly() }}</span>
+          <span class="address-text" dir="auto">{{ addressStreet() }}</span>
         </div>
+        @if (addressCity(); as city) {
+        <div class="address-city-row">
+          <span class="address-city-text" dir="auto">{{ city }}</span>
+        </div>
+        }
 
         <!-- Line 4: Feature chips (GF, כשר, צמחוני) max 3, neutral -->
         @if (featureChips().length > 0) {

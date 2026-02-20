@@ -262,6 +262,21 @@
   text-overflow: ellipsis;
 }
 
+// City on new row, 1–2px smaller font
+.address-city-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  margin-top: 0.125rem;
+}
+.address-city-text {
+  font-size: 0.6875rem; // ~11px, 2px smaller than address line (0.8125rem)
+  color: #4b5563;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 // Metadata row: [Rating] · [Price] · [State] – single line, no wrap, stable gap (6–8px)
 .metadata-row {
   display: flex;

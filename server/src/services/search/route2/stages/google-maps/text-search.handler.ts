@@ -380,7 +380,7 @@ async function executeTextSearchAttempt(
   const coverage = allRawPlaces.length > 0
     ? buildCoverageReport({
         requestId,
-        traceId,
+        ...(traceId !== undefined && { traceId }),
         allRawPlaces,
         allMappedResults: results,
         samplePairs
@@ -437,10 +437,10 @@ async function executeTextSearchAttempt(
       relaxed: radiusUsed > RADIUS_TIERS[0]!
     }, `[TEXTSEARCH] City radius filter applied: ${enrichedMapping.cityText} (kept ${filteredResults.length}/${beforeCityFilter}, radius ${radiusUsed / 1000}km)`);
     
-    return { results: filteredResults, metrics, coverage };
+    return { results: filteredResults, metrics, ...(coverage !== undefined && { coverage }) };
   }
 
-  return { results, metrics, coverage };
+  return { results, metrics, ...(coverage !== undefined && { coverage }) };
 }
 
 /**

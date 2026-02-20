@@ -112,7 +112,7 @@ export async function executeNearbySearch(
     if (allRawPlaces.length > 0) {
       const coverage = buildCoverageReport({
         requestId,
-        traceId,
+        ...(traceId !== undefined && { traceId }),
         allRawPlaces,
         allMappedResults: results,
         samplePairs
