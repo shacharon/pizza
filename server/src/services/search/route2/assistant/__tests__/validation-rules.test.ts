@@ -141,7 +141,7 @@ describe('validation-rules', () => {
           query: 'pizza',
           language: 'en',
           resultCount: 10,
-          top3Names: ['A', 'B', 'C']
+          top: [{ name: 'A' }, { name: 'B' }, { name: 'C' }], analysisMode: 'COMPARISON'
         };
 
         const result = enforceInvariants(output, context, mockRequestId);
@@ -163,7 +163,7 @@ describe('validation-rules', () => {
           query: 'pizza',
           language: 'en',
           resultCount: 10,
-          top3Names: ['A', 'B', 'C']
+          top: [{ name: 'A' }, { name: 'B' }, { name: 'C' }], analysisMode: 'COMPARISON'
         };
 
         const result = enforceInvariants(output, context, mockRequestId);
@@ -276,7 +276,7 @@ describe('validation-rules', () => {
         query: 'pizza',
         language: 'en',
         resultCount: 10,
-        top3Names: ['A', 'B', 'C']
+        top: [{ name: 'A' }, { name: 'B' }, { name: 'C' }], analysisMode: 'COMPARISON'
       };
 
       const result = enforceInvariants(output, context, mockRequestId);
@@ -346,7 +346,7 @@ describe('validation-rules', () => {
         query: 'pizza',
         language: 'en',
         resultCount: 10,
-        top3Names: ['A', 'B', 'C']
+        top: [{ name: 'A' }, { name: 'B' }, { name: 'C' }], analysisMode: 'COMPARISON'
       };
 
       const result = validateAndEnforceCorrectness(output, 'en', context, mockRequestId);
@@ -369,7 +369,7 @@ describe('validation-rules', () => {
         query: 'pizza',
         language: 'en',
         resultCount: 10,
-        top3Names: ['A', 'B', 'C']
+        top: [{ name: 'A' }, { name: 'B' }, { name: 'C' }], analysisMode: 'COMPARISON'
       };
 
       const result = validateAndEnforceCorrectness(output, 'en', context, mockRequestId);

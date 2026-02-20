@@ -11,6 +11,7 @@ import { logger } from '../../../lib/logger/structured-logger.js';
 import { startStage, endStage } from '../../../lib/telemetry/stage-timer.js';
 import { generateAndPublishAssistant, generateAndPublishAssistantDeferred } from './assistant/assistant-integration.js';
 import type { AssistantSummaryContext, AssistantGenericQueryNarrationContext } from './assistant/assistant-llm.service.js';
+import { buildSummaryEnrichment } from './assistant/summary-enrichment.js';
 import { resolveAssistantLanguage, resolveSessionId } from './orchestrator.helpers.js';
 import { toRequestLanguage } from './orchestrator.early-context.js';
 import type { WebSocketManager } from '../../../infra/websocket/websocket-manager.js';
@@ -33,6 +34,10 @@ export async function buildFinalResponse(
   const { requestId, startTime } = ctx;
   const sessionId = resolveSessionId(request, ctx);
 
+  if (process.env.NODE_ENV !== 'production') {
+    logger.info({ event: 'results_ready', requestId, tMs: Date.now() });
+  }
+
   // Start response build stage
   const responseBuildStart = startStage(ctx, 'response_build', { resultCount: finalResults.length });
   const totalDurationMs = Date.now() - startTime;
@@ -44,17 +49,20 @@ export async function buildFinalResponse(
   const uiLanguage = detectedLanguage;
   const googleLanguage: 'he' | 'en' = detectedLanguage === 'he' ? 'he' : 'en';
 
-  // Prepare assistant summary context
-  const top3Names = finalResults.slice(0, 3).map((r: any) => r.name || 'Unknown');
+  // Prepare assistant summary context via enrichment helper (top + analysisMode)
+  const resultCount = finalResults.length;
+  const { top, analysisMode } = buildSummaryEnrichment(finalResults, resultCount);
+
+  if (process.env.NODE_ENV !== 'production') {
+    logger.info({ event: 'summary_enrichment', resultCount, analysisMode, topCount: top.length, topNames: top.map((t) => t.name) });
+  }
 
   // DIETARY NOTE: Check if gluten-free soft hint should be included
   const isGlutenFree = (filtersForPostFilter as any).isGlutenFree;
-  const resultsCount = finalResults.length;
-  const shouldIncludeDietaryNote = isGlutenFree === true && resultsCount > 0;
+  const shouldIncludeDietaryNote = isGlutenFree === true && resultCount > 0;
 
   // INSIGHT METADATA: Calculate metadata for intelligent narration
   const openNowCount = finalResults.filter((r: any) => r.openNow === true).length;
-  const closedCount = finalResults.filter((r: any) => r.openNow === false).length;
   const openNowUnknownCount = finalResults.filter((r: any) =>
     r.openNow === 'UNKNOWN' || r.openNow === null || r.openNow === undefined
   ).length;
@@ -66,8 +74,9 @@ export async function buildFinalResponse(
     type: 'SUMMARY',
     query: request.query,
     language: resolveAssistantLanguage(ctx, request, detectedLanguage),
-    resultCount: finalResults.length,
-    top3Names,
+    resultCount,
+    top,
+    analysisMode,
     // INSIGHT METADATA: Provide data for intelligent narration
     // IMPORTANT: Only include openNow data if ALL results have known status (no unknowns)
     metadata: {

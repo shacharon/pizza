@@ -22,7 +22,7 @@ describe('SUMMARY blocksSearch Invariant', () => {
       query: 'pizza',
       language: 'he' as const,
       resultCount: 5,
-      top3Names: ['Pizza 1', 'Pizza 2', 'Pizza 3']
+      top: [{ name: 'Pizza 1' }, { name: 'Pizza 2' }, { name: 'Pizza 3' }], analysisMode: 'COMPARISON'
     };
 
     // Simulate enforceInvariants logic
@@ -54,7 +54,7 @@ describe('SUMMARY blocksSearch Invariant', () => {
       query: 'pizza',
       language: 'he' as const,
       resultCount: 5,
-      top3Names: ['Pizza 1', 'Pizza 2', 'Pizza 3']
+      top: [{ name: 'Pizza 1' }, { name: 'Pizza 2' }, { name: 'Pizza 3' }], analysisMode: 'COMPARISON'
     };
 
     const normalized = { ...llmOutput };

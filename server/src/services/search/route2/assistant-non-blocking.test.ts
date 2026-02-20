@@ -329,7 +329,7 @@ describe('Assistant Non-Blocking Behavior', () => {
         query: 'מסעדות בתל אביב',
         language: 'he' as const,
         resultCount: 10,
-        top3Names: ['Restaurant A', 'Restaurant B', 'Restaurant C'],
+        top: [{ name: 'Restaurant A' }, { name: 'Restaurant B' }, { name: 'Restaurant C' }], analysisMode: 'COMPARISON',
         metadata: {}
       };
 

@@ -9,7 +9,7 @@ import type { AssistantOutput } from './assistant-llm.service.js';
 export type AssistantContext =
   | { type: 'GATE_FAIL'; reason: 'NO_FOOD' | 'UNCERTAIN_FOOD'; query: string; language: AssistantLanguage }
   | { type: 'CLARIFY'; reason: 'MISSING_LOCATION' | 'MISSING_FOOD'; query: string; language: AssistantLanguage }
-  | { type: 'SUMMARY'; query: string; language: AssistantLanguage; resultCount: number; top3Names: string[]; metadata?: any; dietaryNote?: any }
+  | { type: 'SUMMARY'; query: string; language: AssistantLanguage; resultCount: number; top: Array<{ name: string }>; analysisMode: 'SCARCITY' | 'COMPARISON' | 'SATURATED'; metadata?: any; dietaryNote?: any }
   | { type: 'SEARCH_FAILED'; reason: 'GOOGLE_TIMEOUT' | 'PROVIDER_ERROR' | 'NETWORK_ERROR'; query: string; language: AssistantLanguage }
   | { type: 'GENERIC_QUERY_NARRATION'; query: string; language: AssistantLanguage; resultCount: number; usedCurrentLocation: boolean };
 

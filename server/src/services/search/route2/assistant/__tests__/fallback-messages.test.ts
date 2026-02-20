@@ -113,7 +113,7 @@ describe('fallback-messages', () => {
           query: 'pizza Tel Aviv',
           language: lang,
           resultCount: 15,
-          top3Names: ['Restaurant A', 'Restaurant B', 'Restaurant C'],
+          top: [{ name: 'Restaurant A' }, { name: 'Restaurant B' }, { name: 'Restaurant C' }], analysisMode: 'COMPARISON',
           metadata: {
             openNowCount: 10,
             currentHour: 14,
@@ -135,7 +135,7 @@ describe('fallback-messages', () => {
           query: 'pizza Tel Aviv',
           language: lang,
           resultCount: 0,
-          top3Names: []
+          top: [], analysisMode: 'SCARCITY'
         };
 
         const result = getDeterministicFallback(context, lang);
@@ -152,7 +152,7 @@ describe('fallback-messages', () => {
           query: 'pizza Tel Aviv',
           language: lang,
           resultCount: 20,
-          top3Names: ['Restaurant A', 'Restaurant B', 'Restaurant C'],
+          top: [{ name: 'Restaurant A' }, { name: 'Restaurant B' }, { name: 'Restaurant C' }], analysisMode: 'COMPARISON',
           metadata: {
             openNowCount: 5 // Less than half
           }

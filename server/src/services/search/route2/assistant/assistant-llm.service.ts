@@ -18,9 +18,13 @@ import { SYSTEM_PROMPT, SYSTEM_PROMPT_MESSAGE_ONLY, buildUserPromptJson, buildUs
 import { enforceInvariants, validateAndEnforceCorrectness } from './validation-rules.js';
 import { getDeterministicFallback } from './fallback-messages.js';
 import { compareShadowOutputs } from './shadow-compare.js';
+import type { TopCandidate, SummaryAnalysisMode } from './assistant.types.js';
 
 const ASSISTANT_LANG_DEBUG = process.env.ASSISTANT_LANG_DEBUG === '1';
 const ASSISTANT_SHADOW_MODE = process.env.ASSISTANT_REFACTOR_SHADOW === 'true';
+
+/** In-memory guard: prevent duplicate SUMMARY LLM calls per requestId. */
+const summaryGenStateByRequestId = new Map<string, 'RUNNING' | 'DONE'>();
 
 // ============================================================================
 // Types
@@ -47,7 +51,9 @@ export interface AssistantSummaryContext {
   query: string;
   language: AssistantLanguage;
   resultCount: number;
-  top3Names: string[];
+  /** Top candidates for narration (max 4). */
+  top: TopCandidate[];
+  analysisMode: SummaryAnalysisMode;
   metadata?: {
     openNowCount?: number;
     currentHour?: number;
@@ -132,6 +138,17 @@ export async function generateAssistantMessage(
   const startTime = Date.now();
   const requestedLanguage = normalizeRequestedLanguage(context.language);
 
+  // A) Prevent duplicate SUMMARY LLM calls per requestId
+  if (context.type === 'SUMMARY') {
+    const state = summaryGenStateByRequestId.get(requestId);
+    if (state === 'RUNNING' || state === 'DONE') {
+      logger.info({ event: 'summary_skipped_duplicate', requestId, state });
+      const fallback = getDeterministicFallback(context, requestedLanguage);
+      return { type: context.type, ...fallback };
+    }
+    summaryGenStateByRequestId.set(requestId, 'RUNNING');
+  }
+
   // Shadow mode logging
   if (ASSISTANT_SHADOW_MODE) {
     logger.info({
@@ -143,10 +160,27 @@ export async function generateAssistantMessage(
 
   try {
     // Use JSON prompt builder for WebSocket flow
+    const userPrompt = buildUserPromptJson(context);
     const messages = [
       { role: 'system' as const, content: SYSTEM_PROMPT },
-      { role: 'user' as const, content: buildUserPromptJson(context) }
+      { role: 'user' as const, content: userPrompt }
     ];
+
+    if (context.type === 'SUMMARY') {
+      const promptChars = SYSTEM_PROMPT.length + userPrompt.length;
+      const estimatedTokens = Math.ceil(promptChars / 4);
+      const topSentCount = context.analysisMode === 'SCARCITY' ? 0
+        : context.analysisMode === 'SATURATED' ? Math.min(1, context.top.length)
+        : Math.min(2, context.top.length);
+      logger.info({
+        event: 'summary_prompt_stats',
+        requestId,
+        analysisMode: context.analysisMode,
+        promptChars,
+        estimatedTokens,
+        topSentCount
+      });
+    }
 
     logger.info({
       requestId,
@@ -176,12 +210,23 @@ export async function generateAssistantMessage(
     (llmOpts as any).promptVersion = ASSISTANT_PROMPT_VERSION;
     (llmOpts as any).schemaHash = ASSISTANT_SCHEMA_HASH;
 
+    if (context.type === 'SUMMARY') {
+      const tMs = Date.now();
+      logger.info({ event: 'summary_llm_start', requestId, analysisMode: context.analysisMode, tMs });
+    }
+    const summaryLlmStart = Date.now();
+
     const result = await llmProvider.completeJSON(
       messages,
       AssistantOutputSchema,
       llmOpts,
       ASSISTANT_JSON_SCHEMA
     );
+
+    if (context.type === 'SUMMARY') {
+      const tMs = Date.now();
+      logger.info({ event: 'summary_llm_done', requestId, dtMs: tMs - summaryLlmStart, tMs });
+    }
 
     const durationMs = Date.now() - startTime;
 
@@ -219,6 +264,10 @@ export async function generateAssistantMessage(
       ? '[ASSISTANT] LLM parsed JSON successfully (validation failed, used fallback)' 
       : '[ASSISTANT] LLM generated and validated message');
 
+    if (context.type === 'SUMMARY') {
+      summaryGenStateByRequestId.set(requestId, 'DONE');
+    }
+
     return validated;
   } catch (error) {
     const durationMs = Date.now() - startTime;
@@ -235,6 +284,11 @@ export async function generateAssistantMessage(
       isTimeout,
       durationMs
     }, '[ASSISTANT] LLM call failed - using deterministic fallback');
+
+    if (context.type === 'SUMMARY') {
+      summaryGenStateByRequestId.set(requestId, 'DONE');
+      logger.info({ event: 'summary_gen_done_on_failure', requestId }, '[ASSISTANT] SUMMARY state set to DONE after failure to avoid retry storms');
+    }
 
     const fallback = getDeterministicFallback(context, requestedLanguage);
 
@@ -316,7 +370,8 @@ export async function streamAssistantMessage(
       resultCount: (context as any).resultCount,
       openNowCount: (context as any).metadata?.openNowCount,
       radiusKm: (context as any).metadata?.radiusKm,
-      top3Names: (context as any).top3Names,
+      top: (context as any).top?.length,
+      analysisMode: (context as any).analysisMode,
     });
   }
   // ============================================================================

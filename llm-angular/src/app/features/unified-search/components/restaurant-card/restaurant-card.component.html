@@ -22,41 +22,47 @@
       </div>
 
       <div class="restaurant-info">
-        <!-- Line 1: Name + price + open/close (right-aligned) -->
+        <!-- Line 1: Name only -->
         <div class="line-1">
           <h3 class="restaurant-name">{{ restaurant().name }}</h3>
-          @if (restaurant().priceLevel || statusLine().text) {
-          <span class="line-1-meta">
-            @if (restaurant().priceLevel) {
-              <span class="price-level">{{ getPriceLevelShekel(restaurant().priceLevel) }}</span>
-            }
-            @if (restaurant().priceLevel && statusLine().text) {
-              <span class="separator">·</span>
-            }
-            @if (statusLine().text) {
-              <span class="status-text" [class.open]="statusLine().tone === 'open'" [class.closed]="statusLine().tone === 'closed'" [class.closing-soon]="statusLine().tone === 'closing-soon'">{{ statusLine().text }}</span>
-            }
-          </span>
+        </div>
+
+        <!-- Line 2: Metadata row [Rating] · [Price] · [State] – single line, flex + gap, no wrap -->
+        <div class="metadata-row">
+          @if (restaurant().rating != null || (restaurant().userRatingsTotal ?? 0) > 0) {
+            <span class="meta-rating">
+              <span class="star-icon" aria-hidden="true">★</span>
+              @if (restaurant().rating != null) {
+                <span class="rating-value">{{ restaurant().rating }}</span>
+              }
+              @if ((restaurant().userRatingsTotal ?? 0) > 0) {
+                <span class="reviews-text">({{ formattedReviewCount(restaurant().userRatingsTotal ?? 0) }} {{ i18n.t('card.reviews_label') }})</span>
+              }
+            </span>
+          }
+          @if (restaurant().priceLevel) {
+            <span class="separator" aria-hidden="true">·</span>
+            <span class="price-level">{{ getPriceLevelShekel(restaurant().priceLevel) }}</span>
+          }
+          @if (metadataStateDisplay(); as state) {
+            <span class="separator" aria-hidden="true">·</span>
+            <span class="meta-state">
+              @if (state.tone === 'open') {
+                <span class="state-label state-open">{{ state.label }}</span>
+              } @else {
+                <span class="state-label state-closed">{{ state.label }}</span>
+              }
+              @if (state.rest) {
+                <span class="state-rest"> {{ state.rest }}</span>
+              }
+            </span>
           }
         </div>
 
-        <!-- Line 2: ★ rating (reviews) -->
-        @if (restaurant().rating != null || (restaurant().userRatingsTotal ?? 0) > 0) {
-        <div class="line-2">
-          @if (restaurant().rating != null) {
-          <span class="star-icon" aria-hidden="true">★</span>
-          <span class="rating-value">{{ restaurant().rating }}</span>
-          }
-          @if ((restaurant().userRatingsTotal ?? 0) > 0) {
-          <span class="reviews-text">({{ formattedReviewCount(restaurant().userRatingsTotal ?? 0) }} {{ i18n.t('card.reviews_label') }})</span>
-          }
-        </div>
-        }
-
-        <!-- Line 3: 📍 address only -->
-        <div class="line-3">
-          <span class="address-icon">📍</span>
-          <span class="address-text">{{ restaurant().address }}</span>
+        <!-- Line 3: Address 📍 (truncates) -->
+        <div class="address-line">
+          <span class="address-icon" aria-hidden="true">📍</span>
+          <span class="address-text" dir="auto">{{ restaurant().address }}</span>
         </div>
 
         <!-- Line 4: Feature chips (GF, כשר, צמחוני) max 3, neutral -->

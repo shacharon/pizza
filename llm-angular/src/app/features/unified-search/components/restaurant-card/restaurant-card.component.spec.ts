@@ -370,6 +370,39 @@ describe('RestaurantCardComponent', () => {
     });
   });
 
+  describe('Open/close label (TEMP_CLOSED vs generic closed)', () => {
+    it('should show temporarily closed label when openClose is TEMP_CLOSED and openNow is false', () => {
+      const tempClosedRestaurant: Restaurant = {
+        ...mockRestaurant,
+        openClose: 'TEMP_CLOSED',
+        openNow: false
+      };
+      fixture.componentRef.setInput('restaurant', tempClosedRestaurant);
+      fixture.detectChanges();
+
+      const state = component.metadataStateDisplay();
+      const expectedLabel = component.i18n.t('card.status.temporarily_closed');
+      expect(state).not.toBeNull();
+      expect(state!.label).toBe(expectedLabel);
+      expect(state!.tone).toBe('closed');
+    });
+
+    it('should show generic closed label when openClose is undefined and openNow is false', () => {
+      const closedRestaurant: Restaurant = {
+        ...mockRestaurant,
+        openNow: false
+      };
+      fixture.componentRef.setInput('restaurant', closedRestaurant);
+      fixture.detectChanges();
+
+      const state = component.metadataStateDisplay();
+      const expectedLabel = component.i18n.t('card.status.closed');
+      expect(state).not.toBeNull();
+      expect(state!.label).toBe(expectedLabel);
+      expect(state!.tone).toBe('closed');
+    });
+  });
+
   describe('I18n Integration', () => {
     it('should use i18n service for near you badge text', () => {
       const i18nService = TestBed.inject(I18nService);

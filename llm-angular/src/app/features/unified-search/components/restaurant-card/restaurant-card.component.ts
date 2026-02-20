@@ -659,6 +659,50 @@ export class RestaurantCardComponent {
   }
 
   /**
+   * Metadata row opening time only (no "Open"/"Closed" words).
+   * OPEN → "עד HH:mm", CLOSED → "נפתח ב־HH:mm" (i18n), unknown → null.
+   */
+  readonly metadataTimeInfo = computed(() => {
+    this.restaurant(); // track dependency
+    const status = this.getOpenStatus();
+    if (status === 'open') {
+      const time = this.closingTimeToday();
+      return time ? `${this.i18n.t('card.hours.until')} ${time}` : null;
+    }
+    if (status === 'closed') {
+      const time = this.getNextOpenTime();
+      return time ? this.i18n.t('card.hours.opens_at' as keyof import('../../../../core/services/i18n.service').I18nKeys, { time }) : null;
+    }
+    return null;
+  });
+
+  /**
+   * Structured state for metadata row: label (פתוח/סגור/סגור זמנית) + optional rest (time).
+   * TEMP_CLOSED takes first priority so we show "Temporarily closed" not generic "Closed".
+   */
+  readonly metadataStateDisplay = computed(() => {
+    this.restaurant(); // track dependency
+    // First priority: backend says temporarily closed (openNow is forced false for these)
+    if (this.restaurant().openClose === 'TEMP_CLOSED') {
+      const time = this.getNextOpenTime();
+      const rest = time ? this.i18n.t('card.hours.opens_at' as keyof import('../../../../core/services/i18n.service').I18nKeys, { time }) : null;
+      return { label: this.i18n.t('card.status.temporarily_closed'), rest, tone: 'closed' as const };
+    }
+    const status = this.getOpenStatus();
+    if (status === 'open') {
+      const time = this.closingTimeToday();
+      const rest = time ? `${this.i18n.t('card.hours.until')} ${time}` : null;
+      return { label: this.i18n.t('card.status.open'), rest, tone: 'open' as const };
+    }
+    if (status === 'closed') {
+      const time = this.getNextOpenTime();
+      const rest = time ? this.i18n.t('card.hours.opens_at' as keyof import('../../../../core/services/i18n.service').I18nKeys, { time }) : null;
+      return { label: this.i18n.t('card.status.closed'), rest, tone: 'closed' as const };
+    }
+    return null;
+  });
+
+  /**
    * Single-line status + hours display
    * Computed signal that uses the pure helper function
    */

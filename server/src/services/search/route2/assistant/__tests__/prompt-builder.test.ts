@@ -180,7 +180,7 @@ describe('prompt-builder', () => {
           query: 'pizza Tel Aviv',
           language: 'en',
           resultCount: 15,
-          top3Names: ['Restaurant A', 'Restaurant B', 'Restaurant C']
+          top: [{ name: 'Restaurant A' }, { name: 'Restaurant B' }, { name: 'Restaurant C' }], analysisMode: 'COMPARISON'
         };
 
         const prompt = buildUserPrompt(context);
@@ -200,7 +200,7 @@ describe('prompt-builder', () => {
           query: 'sushi',
           language: 'he',
           resultCount: 20,
-          top3Names: ['Place 1', 'Place 2', 'Place 3'],
+          top: [{ name: 'Place 1' }, { name: 'Place 2' }, { name: 'Place 3' }], analysisMode: 'COMPARISON',
           metadata: {
             openNowCount: 12,
             currentHour: 18
@@ -219,7 +219,7 @@ describe('prompt-builder', () => {
           query: 'burgers',
           language: 'en',
           resultCount: 8,
-          top3Names: ['A', 'B', 'C'],
+          top: [{ name: 'A' }, { name: 'B' }, { name: 'C' }], analysisMode: 'COMPARISON',
           metadata: {
             radiusKm: 5
           }
@@ -236,7 +236,7 @@ describe('prompt-builder', () => {
           query: 'vegan',
           language: 'en',
           resultCount: 5,
-          top3Names: ['X', 'Y', 'Z'],
+          top: [{ name: 'X' }, { name: 'Y' }, { name: 'Z' }], analysisMode: 'COMPARISON',
           metadata: {
             filtersApplied: ['vegan', 'open_now']
           }
@@ -253,7 +253,7 @@ describe('prompt-builder', () => {
           query: 'gluten free pizza',
           language: 'en',
           resultCount: 10,
-          top3Names: ['A', 'B', 'C'],
+          top: [{ name: 'A' }, { name: 'B' }, { name: 'C' }], analysisMode: 'COMPARISON',
           dietaryNote: {
             type: 'gluten-free',
             shouldInclude: true
@@ -272,7 +272,7 @@ describe('prompt-builder', () => {
           query: 'pizza',
           language: 'en',
           resultCount: 10,
-          top3Names: ['A', 'B', 'C'],
+          top: [{ name: 'A' }, { name: 'B' }, { name: 'C' }], analysisMode: 'COMPARISON',
           dietaryNote: {
             type: 'gluten-free',
             shouldInclude: false

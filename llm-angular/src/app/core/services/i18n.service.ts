@@ -68,6 +68,7 @@ export interface I18nKeys {
   'card.hours.open_now_until': string;  // "Open now · until {time}"
   'card.hours.closing_soon': string;    // "Closing soon · {time}"
   'card.hours.closed_opens_at': string;  // "Closed · opens at {time}"
+  'card.hours.opens_at': string;         // "opens at {time}" only (no Open/Closed word)
   'card.hours.closed_hours': string;     // "Closed · hours: {range}"
 
   // Restaurant card - Distance units
@@ -143,6 +144,7 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.hours.open_now_until': 'Open now · until {time}',
     'card.hours.closing_soon': 'Closing soon · {time}',
     'card.hours.closed_opens_at': 'Closed · opens at {time}',
+    'card.hours.opens_at': 'opens at {time}',
     'card.hours.closed_hours': 'Closed · hours: {range}',
     'card.distance.meters_short': 'm',
     'card.distance.km_short': 'km',
@@ -202,6 +204,7 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.hours.open_now_until': 'פתוח עכשיו · עד {time}',
     'card.hours.closing_soon': 'נסגר בקרוב · {time}',
     'card.hours.closed_opens_at': 'סגור · נפתח ב־{time}',
+    'card.hours.opens_at': 'נפתח ב־{time}',
     'card.hours.closed_hours': 'סגור · שעות: {range}',
     'card.distance.meters_short': 'מ׳',
     'card.distance.km_short': 'ק״מ',
@@ -261,6 +264,7 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.hours.open_now_until': 'Открыто сейчас · до {time}',
     'card.hours.closing_soon': 'Скоро закроется · {time}',
     'card.hours.closed_opens_at': 'Закрыто · откроется в {time}',
+    'card.hours.opens_at': 'откроется в {time}',
     'card.hours.closed_hours': 'Закрыто · часы: {range}',
     'card.distance.meters_short': 'м',
     'card.distance.km_short': 'км',
@@ -320,6 +324,7 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.hours.open_now_until': 'مفتوح الآن · حتى {time}',
     'card.hours.closing_soon': 'يغلق قريباً · {time}',
     'card.hours.closed_opens_at': 'مغلق · يفتح في {time}',
+    'card.hours.opens_at': 'يفتح في {time}',
     'card.hours.closed_hours': 'مغلق · ساعات: {range}',
     'card.distance.meters_short': 'م',
     'card.distance.km_short': 'كم',
@@ -379,6 +384,7 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.hours.open_now_until': 'Ouvert maintenant · jusqu\'à {time}',
     'card.hours.closing_soon': 'Ferme bientôt · {time}',
     'card.hours.closed_opens_at': 'Fermé · ouvre à {time}',
+    'card.hours.opens_at': 'ouvre à {time}',
     'card.hours.closed_hours': 'Fermé · horaires: {range}',
     'card.distance.meters_short': 'm',
     'card.distance.km_short': 'km',
@@ -438,6 +444,7 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.hours.open_now_until': 'Abierto ahora · hasta {time}',
     'card.hours.closing_soon': 'Cerrando pronto · {time}',
     'card.hours.closed_opens_at': 'Cerrado · abre a las {time}',
+    'card.hours.opens_at': 'abre a las {time}',
     'card.hours.closed_hours': 'Cerrado · horario: {range}',
     'card.distance.meters_short': 'm',
     'card.distance.km_short': 'km',
@@ -497,6 +504,7 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.hours.open_now_until': 'Jetzt geöffnet · bis {time}',
     'card.hours.closing_soon': 'Schließt bald · {time}',
     'card.hours.closed_opens_at': 'Geschlossen · öffnet um {time}',
+    'card.hours.opens_at': 'öffnet um {time}',
     'card.hours.closed_hours': 'Geschlossen · Zeiten: {range}',
     'card.distance.meters_short': 'm',
     'card.distance.km_short': 'km',
@@ -556,6 +564,7 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.hours.open_now_until': 'Aperto ora · fino alle {time}',
     'card.hours.closing_soon': 'Chiude presto · {time}',
     'card.hours.closed_opens_at': 'Chiuso · apre alle {time}',
+    'card.hours.opens_at': 'apre alle {time}',
     'card.hours.closed_hours': 'Chiuso · orari: {range}',
     'card.distance.meters_short': 'm',
     'card.distance.km_short': 'km',
@@ -615,6 +624,7 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.hours.open_now_until': 'አሁን ክፈት · እስከ {time}',
     'card.hours.closing_soon': 'በቅርብ ይዘጋል · {time}',
     'card.hours.closed_opens_at': 'ዝጋ · በ{time} ይከፈታል',
+    'card.hours.opens_at': 'በ{time} ይከፈታል',
     'card.hours.closed_hours': 'ዝጋ · ሰዓት: {range}',
     'card.distance.meters_short': 'ሜ',
     'card.distance.km_short': 'ኪሜ',

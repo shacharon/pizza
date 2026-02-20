@@ -6,6 +6,7 @@
 
 import type { Logger } from 'pino';
 import type { AssistantContext, AssistantLanguage } from '../../../services/search/route2/assistant/assistant-llm.service.js';
+import { buildSummaryEnrichment } from '../../../services/search/route2/assistant/summary-enrichment.js';
 
 export class AssistantContextBuilder {
   constructor(private readonly logger: Logger) { }
@@ -24,21 +25,17 @@ export class AssistantContextBuilder {
 
     // If result has results array, try to build SUMMARY context
     if (result && result.results && Array.isArray(result.results)) {
-      const resultCount = result.results.length;
+      const results = result.results;
+      const resultCount = results.length;
+      const { top, analysisMode } = buildSummaryEnrichment(results, resultCount);
 
-      // Extract top 3 restaurant names
-      const top3Names = result.results
-        .slice(0, 3)
-        .map((r: any) => r.name || 'Unknown')
-        .filter(Boolean);
-
-      // Build SUMMARY context
       const summaryContext: AssistantContext = {
         type: 'SUMMARY',
         query,
         language: language as AssistantLanguage,
         resultCount,
-        top3Names,
+        top,
+        analysisMode,
         metadata: {
           filtersApplied: result.meta?.appliedFilters || []
         }

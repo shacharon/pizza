@@ -24,12 +24,29 @@ export interface AssistantClarifyContext {
   language: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es' | 'other';
 }
 
+/** Top candidate for SUMMARY enrichment (max 4). */
+export interface TopCandidate {
+  name: string;
+  addressShort?: string;
+  rating?: number;
+  userRatingsTotal?: number;
+  priceLevel?: 1 | 2 | 3 | 4;
+  distanceMeters?: number;
+  etaMinutes?: number;
+  openNow?: boolean;
+  closingTimeText?: string;
+}
+
+export type SummaryAnalysisMode = 'SCARCITY' | 'COMPARISON' | 'SATURATED';
+
 export interface AssistantSummaryContext {
   type: 'SUMMARY';
   query: string;
   language: 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es' | 'other';
   resultCount: number;
-  top3Names: string[];
+  /** Top candidates for narration (max 4). */
+  top: TopCandidate[];
+  analysisMode: SummaryAnalysisMode;
   // INSIGHT METADATA: Data for intelligent narration
   // NOTE: openNowCount and currentHour are ONLY included if ALL results have known status
   // If any result has unknown status, these fields are omitted entirely
