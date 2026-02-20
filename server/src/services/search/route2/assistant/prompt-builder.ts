@@ -49,9 +49,11 @@ B) If analysisMode="FOCUSED":
 
 C) If analysisMode="SATURATED":
 - suggestedAction MUST be "REFINE" (ANY other value is INVALID)
-- message MUST analyze tradeoffs between the top options.
+- You MUST explicitly choose ONE starting point.
+- If some options are closed, prefer openNow=true unless rating gap > 0.5.
+- Do NOT end in a neutral tone.
 - MUST recommend ONE starting point explicitly.
-- May briefly mention 3–4 alternatives for contrast.
+- May briefly mention 3–7 alternatives for contrast.
 - MUST convert data into reasoning (rating → quality, openNow → convenience, etc.)
 - MUST end with one concrete refinement suggestion.
 - message MUST end with ONE concrete refine suggestion based on nextStepHint.
@@ -96,6 +98,10 @@ RESULT COUNT POLICY (HARD):
 - If resultCount < 5: You MUST recommend a coverage fix:
   expand radius OR relax openNow OR relax dietary strictness.
 - Never imply quantity indirectly ("a few", "plenty", "tons", "many", "several").
+
+- You MUST explicitly choose ONE starting point.
+- If some options are closed, prefer openNow=true unless rating gap > 0.5.
+- Do NOT end in a neutral tone.
 
 FORMAT:
 - Exactly 2–3 short sentences.
@@ -176,7 +182,7 @@ Generate the best single refinement question.`;
   }
 
   // SUMMARY: minimal payload – analysisMode, resultCount, top (max 2 COMPARISON, 1 SATURATED, 0 SCARCITY); per candidate name + up to 3 numeric fields
-  const maxTop = context.analysisMode === 'SCARCITY' ? 0 : context.analysisMode === 'SATURATED' ? 3 : 2;
+  const maxTop = context.analysisMode === 'SCARCITY' ? 0 : context.analysisMode === 'SATURATED' ? 7 : 2;
   const topSlice = context.top.slice(0, maxTop);
 
   const numericKeys = ['rating', 'distanceMeters', 'etaMinutes', 'priceLevel', 'openNow'] as const;
