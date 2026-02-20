@@ -54,9 +54,9 @@ export class ResultWaiter {
         break;
       }
 
-      // Terminal no-results: return immediately so orchestrator can send stored assist (gate stop/clarify)
-      if (latestStatus === 'DONE_STOPPED' || latestStatus === 'DONE_CLARIFY') {
-        this.logger.debug({ requestId, latestStatus }, '[AssistantSSE] Terminal status (stop/clarify), returning');
+      // Terminal no-results: return immediately so orchestrator can send stored assist or error (gate stop/clarify/failed)
+      if (latestStatus === 'DONE_STOPPED' || latestStatus === 'DONE_CLARIFY' || latestStatus === 'DONE_FAILED') {
+        this.logger.debug({ requestId, latestStatus }, '[AssistantSSE] Terminal status, returning');
         break;
       }
 

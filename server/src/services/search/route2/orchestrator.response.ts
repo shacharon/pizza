@@ -238,6 +238,11 @@ export async function buildFinalResponse(
     subscriberCount
   }, '[ROUTE2] Search results published to WebSocket');
 
+  logger.info(
+    { event: 'ws_terminal_published', type: 'SUCCESS', requestId },
+    '[ROUTE2] Search channel terminal published'
+  );
+
   // DIETARY NOTE: Merged into SUMMARY (no separate message)
   // Dietary hint is now included in the SUMMARY message via assistantContext.dietaryNote
 

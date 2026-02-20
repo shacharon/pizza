@@ -52,11 +52,12 @@ describe('AssistantSseOrchestrator E2E', () => {
     mockLogger = loggerModule.logger;
 
     mockJobStore = {
-      getJob: vi.fn().mockResolvedValue({ 
+      getJob: vi.fn().mockResolvedValue({
         status: 'DONE',
         ownerSessionId: 'sess-123',
         ownerUserId: 'user-1'
       }),
+      getStatus: vi.fn().mockResolvedValue({ status: 'RUNNING' }),
       getResult: vi.fn().mockResolvedValue({
         query: { language: 'en' },
         results: [{ id: '1' }, { id: '2' }]
@@ -268,12 +269,94 @@ describe('AssistantSseOrchestrator E2E', () => {
     });
   });
 
+  describe('Terminal state quick close (no poll/timeout)', () => {
+    it('should close stream immediately with SEARCH_FAILED when job is already DONE_FAILED', async () => {
+      mockJobStore.getJob.mockResolvedValue({
+        status: 'DONE_FAILED',
+        ownerSessionId: 'sess-123',
+        ownerUserId: 'user-1'
+      });
+      mockJobStore.getStatus.mockResolvedValue({
+        status: 'DONE_FAILED',
+        error: { code: 'SEARCH_FAILED', message: 'Backend error' }
+      });
+      mockJobStore.getResult.mockResolvedValue({ query: {} });
+
+      const mockRequest = {
+        params: { requestId: 'req-failed-1' },
+        traceId: 'trace-failed',
+        sessionId: 'sess-123',
+        userId: 'user-1',
+        on: vi.fn()
+      } as any;
+
+      const start = Date.now();
+      await orchestrator.handleRequest(mockRequest, mockResponse as Response);
+      const elapsed = Date.now() - start;
+
+      expect(sseEvents).toHaveLength(4);
+      expect(sseEvents[0].event).toBe('meta');
+      expect(sseEvents[1].event).toBe('narration');
+      expect(sseEvents[2].event).toBe('message');
+      expect(sseEvents[2].data).toMatchObject({
+        type: 'SEARCH_FAILED',
+        message: 'Backend error',
+        blocksSearch: true,
+        language: 'en'
+      });
+      expect(sseEvents[3].event).toBe('done');
+      expect(mockResponse.end).toHaveBeenCalled();
+      expect(elapsed).toBeLessThan(2000);
+    });
+
+    it('should close stream immediately with clarify when job is already DONE_CLARIFY (SEARCH path)', async () => {
+      mockJobStore.getJob.mockResolvedValue({
+        status: 'RUNNING',
+        ownerSessionId: 'sess-123',
+        ownerUserId: 'user-1'
+      });
+      mockJobStore.getStatus.mockResolvedValue({ status: 'DONE_CLARIFY' });
+      mockJobStore.getResult.mockResolvedValue({
+        query: { language: 'en' },
+        assist: { type: 'clarify', message: 'Which city?', question: 'Where?', blocksSearch: true }
+      });
+
+      const mockRequest = {
+        params: { requestId: 'req-clarify-quick' },
+        traceId: 'trace-clarify',
+        sessionId: 'sess-123',
+        userId: 'user-1',
+        on: vi.fn()
+      } as any;
+
+      const start = Date.now();
+      await orchestrator.handleRequest(mockRequest, mockResponse as Response);
+      const elapsed = Date.now() - start;
+
+      expect(sseEvents).toHaveLength(4);
+      expect(sseEvents[0].event).toBe('meta');
+      expect(sseEvents[1].event).toBe('narration');
+      expect(sseEvents[2].event).toBe('message');
+      expect(sseEvents[2].data).toMatchObject({
+        type: 'CLARIFY',
+        message: 'Which city?',
+        question: 'Where?',
+        blocksSearch: true,
+        language: 'en'
+      });
+      expect(sseEvents[3].event).toBe('done');
+      expect(mockResponse.end).toHaveBeenCalled();
+      expect(elapsed).toBeLessThan(2000);
+    });
+  });
+
   describe('Language resolution from job.queryDetectedLanguage', () => {
     it('should use Hebrew from job.queryDetectedLanguage when intent not yet available', async () => {
       const mockRequest = {
         params: { requestId: 'req-hebrew-222' },
         traceId: 'trace-222',
         sessionId: 'sess-222',
+        headers: {},
         on: vi.fn()
       } as any;
 
@@ -282,6 +365,7 @@ describe('AssistantSseOrchestrator E2E', () => {
         ownerSessionId: 'sess-222',
         queryDetectedLanguage: 'he'
       });
+      mockJobStore.getStatus.mockResolvedValue({ status: 'RUNNING' });
 
       mockJobStore.getResult.mockResolvedValue({
         query: {},
@@ -315,16 +399,61 @@ describe('AssistantSseOrchestrator E2E', () => {
         results: []
       });
 
+      const mockRequest = {
+        params: { requestId: 'req-ui-he-333' },
+        traceId: 'trace-333',
+        sessionId: 'sess-333',
+        userId: 'user-333',
+        headers: {},
+        on: vi.fn()
+      } as any;
+
       await orchestrator.handleRequest(mockRequest, mockResponse as Response);
 
       const logCalls = mockLogger.info.mock.calls;
       const languageLog = logCalls.find((call: any[]) => call[0]?.event === 'assistant_sse_language_resolved');
-      
+
       expect(languageLog).toBeDefined();
       expect(languageLog[0].chosen).toBe('he');
-      expect(languageLog[0].source).toBe('filters.uiLanguage');
+      expect(languageLog[0].source).toBe('uiLanguage');
       expect(languageLog[0].candidates.uiLanguage).toBe('he');
       expect(languageLog[0].candidates.jobQueryDetectedLanguage).toBe('en');
+    });
+
+    it('should output Hebrew narration when query is "piza" (en) but job.assistantLanguage or uiLanguage is he', async () => {
+      // Query "piza" typically detects as en; user/UI expects Hebrew
+      mockJobStore.getJob.mockResolvedValue({
+        status: 'RUNNING',
+        ownerSessionId: 'sess-piza',
+        queryDetectedLanguage: 'en',
+        assistantLanguage: 'he'
+      });
+      mockJobStore.getStatus.mockResolvedValue({ status: 'RUNNING' });
+      mockJobStore.getResult.mockResolvedValue({
+        query: { language: 'en' },
+        results: []
+      });
+
+      const mockRequest = {
+        params: { requestId: 'req-piza-he' },
+        traceId: 'trace-piza',
+        sessionId: 'sess-piza',
+        userId: 'user-1',
+        headers: {},
+        on: vi.fn()
+      } as any;
+
+      await orchestrator.handleRequest(mockRequest, mockResponse as Response);
+
+      const languageLog = mockLogger.info.mock.calls.find((call: any[]) => call[0]?.event === 'assistant_sse_language_resolved');
+      expect(languageLog).toBeDefined();
+      expect(languageLog![0].chosen).toBe('he');
+      expect(languageLog![0].source).toBe('job.assistantLanguage');
+
+      const narrationEvent = sseEvents.find(e => e.event === 'narration');
+      expect(narrationEvent).toBeDefined();
+      expect(narrationEvent!.data).toBeDefined();
+      expect(narrationEvent!.data.text).toMatch(/מחפש|עכשיו|תוצאות/);
     });
   });
 });

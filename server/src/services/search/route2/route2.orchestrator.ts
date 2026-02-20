@@ -26,6 +26,8 @@ import { withTimeout } from '../../../lib/reliability/timeout-guard.js';
 import { fireParallelTasks, drainParallelPromises } from './orchestrator.parallel-tasks.js';
 import { handleNearMeLocationCheck, applyNearMeRouteOverride } from './orchestrator.nearme.js';
 import { handleGateStop, handleGateClarify, handleEarlyTextSearchLocationGuard, handleNearbyLocationGuard, handleTextSearchMissingLocationGuard, checkGenericFoodQuery } from './orchestrator.guards.js';
+import { buildDeterministicMissingLocationClarify } from './guards/shared/response-builder.js';
+import { publishTerminalClarify, publishTerminalGateStop } from './orchestrator.search-terminal.js';
 import { resolveAndStoreFilters, applyPostFiltersToResults } from './orchestrator.filters.js';
 import { buildFinalResponse } from './orchestrator.response.js';
 import { handlePipelineError } from './orchestrator.error.js';
@@ -143,11 +145,17 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
 
     // Guard: GATE STOP (not food)
     const stopResponse = await handleGateStop(request, gateResult, ctx, wsManager);
-    if (stopResponse) return stopResponse;
+    if (stopResponse) {
+      publishTerminalGateStop(wsManager, requestId, sessionId, stopResponse.assist as any);
+      return stopResponse;
+    }
 
     // Guard: GATE ASK_CLARIFY (uncertain)
     const clarifyResponse = await handleGateClarify(request, gateResult, ctx, wsManager);
-    if (clarifyResponse) return clarifyResponse;
+    if (clarifyResponse) {
+      publishTerminalClarify(wsManager, requestId, sessionId, clarifyResponse.assist as any);
+      return clarifyResponse;
+    }
 
     // STAGE 2: INTENT
     let intentDecision = await executeIntentStage(request, ctx);
@@ -189,14 +197,20 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
 
     // Guard: Early TEXTSEARCH location check (blocks Google search if no location)
     const earlyTextSearchGuardResponse = await handleEarlyTextSearchLocationGuard(request, gateResult, intentDecision, ctx, wsManager);
-    if (earlyTextSearchGuardResponse) return earlyTextSearchGuardResponse;
+    if (earlyTextSearchGuardResponse) {
+      publishTerminalClarify(wsManager, requestId, sessionId, earlyTextSearchGuardResponse.assist as any);
+      return earlyTextSearchGuardResponse;
+    }
 
     // Check for generic food query (e.g., "what to eat") - sets flag for later
     checkGenericFoodQuery(gateResult, intentDecision, ctx);
 
     // Near-me location check (early stop if no location)
     const nearMeResponse = await handleNearMeLocationCheck(request, intentDecision, ctx, wsManager);
-    if (nearMeResponse) return nearMeResponse;
+    if (nearMeResponse) {
+      publishTerminalClarify(wsManager, requestId, sessionId, nearMeResponse.assist as any);
+      return nearMeResponse;
+    }
 
     // Near-me route override (if detected with location)
     intentDecision = applyNearMeRouteOverride(request, intentDecision, ctx);
@@ -235,7 +249,10 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
 
     // Guard: NEARBY requires userLocation
     const nearbyGuardResponse = await handleNearbyLocationGuard(request, gateResult, intentDecision, mapping, ctx, wsManager);
-    if (nearbyGuardResponse) return nearbyGuardResponse;
+    if (nearbyGuardResponse) {
+      publishTerminalClarify(wsManager, requestId, sessionId, nearbyGuardResponse.assist as any);
+      return nearbyGuardResponse;
+    }
 
     // CHEESEBURGER 2 FIX: TEXTSEARCH anchor validation
     // For TEXTSEARCH: ONLY cityText OR locationBias count as anchors (NOT userLocation)
@@ -275,11 +292,31 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
     // HARD STOP: TEXTSEARCH without location anchor must CLARIFY and must NOT start Google
     if (!allowed) {
       const r = await handleTextSearchMissingLocationGuard(request, gateResult, intentDecision, mapping, ctx, wsManager);
-      if (r) return r;
+      if (r) {
+        publishTerminalClarify(wsManager, requestId, sessionId, r.assist as any);
+        return r;
+      }
       // Fallback: early guard (user-friendly "enable location" message) so client never sees a tech error
       const early = await handleEarlyTextSearchLocationGuard(request, gateResult, intentDecision, ctx, wsManager);
-      if (early) return early;
-      throw new Error('TEXTSEARCH blocked: missing location anchor');
+      if (early) {
+        publishTerminalClarify(wsManager, requestId, sessionId, early.assist as any);
+        return early;
+      }
+      // Deterministic CLARIFY (no throw): job will end as DONE_CLARIFY
+      logger.info(
+        { requestId, pipelineVersion: 'route2', event: 'pipeline_clarify', reason: 'textsearch_missing_location_anchor_fallback' },
+        '[ROUTE2] TEXTSEARCH missing location anchor - returning deterministic CLARIFY'
+      );
+      const deterministicClarify = buildDeterministicMissingLocationClarify({
+        request,
+        ctx,
+        sessionId,
+        sourceLanguage: intentDecision.language as any,
+        gateLanguage: gateResult.gate.language,
+        confidence: intentDecision.confidence
+      });
+      publishTerminalClarify(wsManager, requestId, sessionId, deterministicClarify.assist as any);
+      return deterministicClarify;
     }
 
     // CRITICAL: Fire parallel tasks ONLY after all guards pass (blocksSearch=false confirmed)

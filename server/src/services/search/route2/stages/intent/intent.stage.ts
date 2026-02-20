@@ -12,7 +12,7 @@ import type { Route2Context, IntentResult } from '../../types.js';
 import type { Message } from '../../../../../llm/types.js';
 import { logger } from '../../../../../lib/logger/structured-logger.js';
 import { resolveLLM } from '../../../../../lib/llm/index.js';
-import { IntentLLMSchema } from './intent.types.js';
+import { IntentLLMSchema, type IntentLLM } from './intent.types.js';
 import {
   INTENT_SYSTEM_PROMPT,
   INTENT_JSON_SCHEMA,
@@ -49,6 +49,20 @@ function createFallbackResult(query: string, isTimeout: boolean): IntentResult {
   };
 }
 
+const EXPLICIT_DISTANCE_FROM_ME_PHRASES = ['ממני', 'לידי', 'אליי', 'בקרבתי'] as const;
+
+function queryHasExplicitFromMePhrase(query: string): boolean {
+  return EXPLICIT_DISTANCE_FROM_ME_PHRASES.some(phrase => query.includes(phrase));
+}
+
+/** Extract landmark text as substring after last " מ" (from) in query. */
+function extractLandmarkAfterMem(query: string): string | null {
+  const idx = query.lastIndexOf(' מ');
+  if (idx === -1) return null;
+  const after = query.slice(idx + 2).trim();
+  return after.length > 0 ? after : null;
+}
+
 
 /**
  * Execute INTENT stage
@@ -61,7 +75,7 @@ export async function executeIntentStage(
   request: SearchRequest,
   context: Route2Context
 ): Promise<IntentResult> {
-  const { requestId, traceId, sessionId, llmProvider, userLocation } = context;
+  const { requestId, traceId, sessionId, llmProvider, userLocation, userRegionCode } = context;
   const { queryLen, queryHash } = sanitizeQuery(request.query);
 
   const startTime = startStage(context, 'intent', {
@@ -69,13 +83,23 @@ export async function executeIntentStage(
     queryHash
   });
 
+  const hasUserLocation = !!userLocation;
+  const userMessage = [
+    'Input context:',
+    `hasUserLocation: ${hasUserLocation}`,
+    `userRegionCode: ${userRegionCode ?? 'null'}`,
+    '',
+    'Query:',
+    request.query
+  ].join('\n');
+
   try {
     // Resolve model and timeout for intent purpose
     const { model, timeoutMs } = resolveLLM('intent');
 
     const messages: Message[] = [
       { role: 'system', content: INTENT_SYSTEM_PROMPT },
-      { role: 'user', content: request.query }
+      { role: 'user', content: userMessage }
     ];
 
     const response = await llmProvider.completeJSON(
@@ -114,7 +138,41 @@ export async function executeIntentStage(
       return createFallbackResult(request.query, false);
     }
 
-    const llmResult = response.data;
+    const parsed = IntentLLMSchema.safeParse(response.data);
+    if (!parsed.success) {
+      logger.warn({
+        requestId,
+        pipelineVersion: 'route2',
+        stage: 'intent',
+        event: 'intent_validation_failed',
+        reason: 'landmarkText_rules',
+        issues: parsed.error.issues
+      }, '[ROUTE2] Intent response failed landmarkText validation');
+      endStage(context, 'intent', startTime, { intentFailed: true, reason: 'landmarkText_validation' });
+      return createFallbackResult(request.query, false);
+    }
+
+    let llmResult: IntentLLM = parsed.data;
+
+    // Post-intent validation: explicit_distance_from_me only valid with explicit phrases
+    if (llmResult.reason === 'explicit_distance_from_me' && !queryHasExplicitFromMePhrase(request.query)) {
+      const extractedLandmark = extractLandmarkAfterMem(request.query);
+      logger.info({
+        requestId,
+        pipelineVersion: 'route2',
+        stage: 'intent',
+        event: 'intent_overridden_explicit_distance',
+        originalReason: llmResult.reason,
+        extractedLandmark: extractedLandmark ?? null
+      }, '[ROUTE2] Overriding explicit_distance_from_me to LANDMARK (query lacks phrase)');
+      llmResult = {
+        ...llmResult,
+        route: 'LANDMARK',
+        reason: 'landmark_detected',
+        landmarkText: extractedLandmark ?? llmResult.landmarkText ?? null,
+        radiusMeters: llmResult.radiusMeters ?? null
+      };
+    }
 
     if (llmResult.route === 'NEARBY' && !userLocation) {
       logger.warn({
@@ -125,16 +183,9 @@ export async function executeIntentStage(
         originalReason: llmResult.reason
       }, '[ROUTE2] Intent NEARBY but userLocation missing');
 
-      // Normalize null to undefined for cityText
       const cityText = llmResult.cityText ?? undefined;
 
       return {
-        // אם הוספת CLARIFY בטייפים/סכימה – זה עדיף:
-        // route: 'CLARIFY',
-        // reason: 'missing_user_location',
-        // confidence: Math.min(llmResult.confidence ?? 0.8, 0.8),
-
-        // אם עדיין אין CLARIFY, זה ה"פאץ'" המינימלי:
         route: 'TEXTSEARCH',
         confidence: Math.min(llmResult.confidence ?? 0.8, 0.6),
         reason: 'nearby_location_missing_fallback',
@@ -169,8 +220,9 @@ export async function executeIntentStage(
       reason: llmResult.reason
     });
 
-    // Normalize null to undefined for cityText
     const cityText = llmResult.cityText ?? undefined;
+    const landmarkText = llmResult.landmarkText ?? undefined;
+    const radiusMeters = llmResult.radiusMeters ?? undefined;
 
     return {
       route: llmResult.route,
@@ -180,7 +232,9 @@ export async function executeIntentStage(
       regionCandidate: validatedRegionCandidate,
       regionConfidence: llmResult.regionConfidence,
       regionReason: llmResult.regionReason,
-      ...(cityText && { cityText })
+      ...(cityText && { cityText }),
+      ...(landmarkText !== undefined && { landmarkText: landmarkText ?? null }),
+      ...(radiusMeters !== undefined && { radiusMeters: radiusMeters ?? null })
     };
 
   } catch (error) {

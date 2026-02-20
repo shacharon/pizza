@@ -14,7 +14,7 @@
 
 import { describe, it, mock, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { searchRoute2Internal } from '../route2.orchestrator.js';
+import { searchRoute2 } from '../route2.orchestrator.js';
 import type { SearchRequest } from '../../types/search-request.dto.js';
 import type { Route2Context } from '../types.js';
 import type { LLMProvider } from '../../../../llm/types.js';
@@ -180,45 +180,67 @@ describe('Cheeseburger 2 Fix - TEXTSEARCH Anchor Validation', () => {
       }
     });
 
-    try {
-      // This should trigger CLARIFY and NOT call Google
-      const result = await searchRoute2Internal(request, ctx);
+    // Should return CLARIFY (no throw); job would end as DONE_CLARIFY; WS gets clarify payload
+    const result = await searchRoute2(request, ctx);
 
-      // Assert: Response should be CLARIFY
-      assert.equal(result.assist.type, 'clarify', 'Should return CLARIFY response');
-      assert.equal(result.results.length, 0, 'Should have no results');
-      assert.ok(
-        result.meta.source.includes('textsearch') || result.meta.source.includes('guard'),
-        'Should indicate guard triggered'
-      );
+    // Assert: Response should be CLARIFY (terminal, no unhandled rejection)
+    assert.equal(result.assist.type, 'clarify', 'Should return CLARIFY response');
+    assert.equal(result.results.length, 0, 'Should have no results');
+    assert.ok(
+      result.meta.source.includes('textsearch') || result.meta.source.includes('guard') || result.meta.source.includes('anchor'),
+      'Should indicate guard or missing-location-anchor'
+    );
+    assert.equal(result.meta.failureReason, 'LOCATION_REQUIRED', 'Should have failureReason LOCATION_REQUIRED');
 
-      // Assert: Google Maps NOT called
-      assert.equal(googleMapsCallCount, 0, 'Google Maps should NOT be called for TEXTSEARCH without city/bias');
+    // Assert: Google Maps NOT called
+    assert.equal(googleMapsCallCount, 0, 'Google Maps should NOT be called for TEXTSEARCH without city/bias');
 
-      // Assert: Log shows textsearch_anchor_eval with allowed=false
-      const anchorEvalLog = logEvents.find(e => e.data?.event === 'textsearch_anchor_eval');
-      assert.ok(anchorEvalLog, 'Should have textsearch_anchor_eval log');
-      assert.equal(anchorEvalLog.data.allowed, false, 'Anchor eval should show allowed=false');
-      assert.equal(anchorEvalLog.data.hasUserLocation, true, 'Should detect userLocation');
-      assert.equal(anchorEvalLog.data.hasCityText, false, 'Should detect no cityText');
+    // Assert: Log shows textsearch_anchor_eval with allowed=false
+    const anchorEvalLog = logEvents.find((e: any) => e.data?.event === 'textsearch_anchor_eval');
+    assert.ok(anchorEvalLog, 'Should have textsearch_anchor_eval log');
+    assert.equal(anchorEvalLog.data.allowed, false, 'Anchor eval should show allowed=false');
+    assert.equal(anchorEvalLog.data.hasUserLocation, true, 'Should detect userLocation');
+    assert.equal(anchorEvalLog.data.hasCityText, false, 'Should detect no cityText');
 
-      // Assert: Decision log shows allowed=false
-      const decisionLog = logEvents.find(e => e.data?.event === 'google_parallel_start_decision');
-      assert.ok(decisionLog, 'Should have google_parallel_start_decision log');
-      assert.equal(decisionLog.data.allowed, false, 'Decision should be allowed=false');
-      assert.equal(decisionLog.data.reason, 'missing_location_anchor_textsearch');
+    // Assert: Decision log shows allowed=false
+    const decisionLog = logEvents.find((e: any) => e.data?.event === 'google_parallel_start_decision');
+    assert.ok(decisionLog, 'Should have google_parallel_start_decision log');
+    assert.equal(decisionLog.data.allowed, false, 'Decision should be allowed=false');
+    assert.equal(decisionLog.data.reason, 'missing_location_anchor_textsearch');
 
-      // Assert: NO google_parallel_started log (Google not started)
-      const googleStartedLog = logEvents.find(e => e.data?.event === 'google_parallel_started');
-      assert.equal(googleStartedLog, undefined, 'Should NOT have google_parallel_started log');
+    // Assert: NO google_parallel_started log (Google not started)
+    const googleStartedLog = logEvents.find((e: any) => e.data?.event === 'google_parallel_started');
+    assert.equal(googleStartedLog, undefined, 'Should NOT have google_parallel_started log');
+  });
 
-    } catch (error) {
-      // If guard throws, that's also acceptable
-      assert.ok(
-        error instanceof Error && error.message.includes('TEXTSEARCH blocked'),
-        'Should throw TEXTSEARCH blocked error'
-      );
-    }
+  it('query "piza" (no city_text/bias) → CLARIFY terminal, WS payload shape', async () => {
+    const request: SearchRequest = {
+      query: 'piza',
+      llmProvider: 'openai',
+      sessionId: 'test-session'
+    };
+
+    const ctx = createContext({
+      userLocation: null
+    });
+
+    logEvents.length = 0;
+    googleMapsCallCount = 0;
+
+    const result = await searchRoute2(request, ctx);
+
+    // Terminal: CLARIFY (would set job status DONE_CLARIFY)
+    assert.equal(result.assist.type, 'clarify', 'Should return CLARIFY (terminal status)');
+    assert.equal(result.results.length, 0, 'No results');
+    assert.equal(result.meta.failureReason, 'LOCATION_REQUIRED');
+
+    // WS payload shape: type clarify, message (and optional question/suggestedAction)
+    assert.ok(typeof (result.assist as any).message === 'string' && (result.assist as any).message.length > 0, 'assist.message for WS');
+    const anchorEval = logEvents.find((e: any) => e.data?.event === 'textsearch_anchor_eval');
+    assert.ok(anchorEval, 'textsearch_anchor_eval log');
+    const decisionLog = logEvents.find((e: any) => e.data?.event === 'google_parallel_start_decision');
+    assert.ok(decisionLog, 'google_parallel_start_decision log');
+    assert.equal(googleMapsCallCount, 0, 'Google not called');
   });
 
   it('Test 2: TEXTSEARCH + cityText → Google called', async () => {
@@ -232,7 +254,7 @@ describe('Cheeseburger 2 Fix - TEXTSEARCH Anchor Validation', () => {
       userLocation: null // No GPS
     });
 
-    const result = await searchRoute2Internal(request, ctx);
+    const result = await searchRoute2(request, ctx);
 
     // Assert: Should have results (Google was called)
     assert.ok(result.results.length >= 0, 'Should complete search');
@@ -287,7 +309,7 @@ describe('Cheeseburger 2 Fix - TEXTSEARCH Anchor Validation', () => {
       }
     });
 
-    const result = await searchRoute2Internal(request, ctx);
+    const result = await searchRoute2(request, ctx);
 
     // Assert: Should have results (Google was called)
     assert.ok(result.results.length >= 0, 'Should complete search');
@@ -312,7 +334,7 @@ describe('Cheeseburger 2 Fix - TEXTSEARCH Anchor Validation', () => {
     });
 
     try {
-      const result = await searchRoute2Internal(request, ctx);
+      const result = await searchRoute2(request, ctx);
 
       // Assert: Should be CLARIFY
       assert.equal(result.assist.type, 'clarify', 'Should return CLARIFY');

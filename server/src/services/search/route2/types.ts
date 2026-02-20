@@ -95,10 +95,12 @@ export interface IntentResult {
   confidence: number;
   reason: string;
   language: Gate2Language;
-  regionCandidate: string | null; // ISO-3166-1 alpha-2 candidate (e.g., "IL", "GZ", "FR") or null if invalid - NOT final, must be validated by filters_resolved
+  regionCandidate: string | null;
   regionConfidence: number;
   regionReason: string;
-  cityText?: string; // Optional city name for location bias (e.g., "גדרה", "אשקלון")
+  cityText?: string;
+  landmarkText?: string | null;
+  radiusMeters?: number | null;
 }
 
 // Intent2 specific types (DEPRECATED - will be removed)

@@ -21,6 +21,12 @@ export function createApp() {
   const config = getConfig();
   const isProduction = config.env === 'production';
 
+  app.use((req, res, next) => {
+    if (req.path === '/' || req.path === '/index.html') {
+      res.setHeader('Cache-Control', 'no-store, must-revalidate');
+    }
+    next();
+  });
   // ─────────────────────────────────────────────
   // P0: Global Rate Limiting
   // ─────────────────────────────────────────────
@@ -134,16 +140,16 @@ export function createApp() {
         env: 'production',
         frontendOriginsCount: 0
       }, '[CORS] ⚠️  FRONTEND_ORIGINS missing in production - allowing health checks but rejecting browser CORS');
-      
+
       // Allow requests without Origin (curl, health checks) but reject browser CORS
       const corsFailSafe = cors((req, cb) => {
         const origin = req.headers.origin as string | undefined;
-        
+
         if (!origin) {
           // Allow health checks, curl, server-to-server
           return cb(null, { ...corsCommon, origin: true });
         }
-        
+
         // Reject all browser requests with Origin header
         logger.warn({ origin }, '[CORS] Origin rejected - FRONTEND_ORIGINS not configured');
         return cb(null, { ...corsCommon, origin: false });
@@ -218,7 +224,7 @@ export function createApp() {
   // This makes OPTIONS return 204 early whenever CORS middleware is active.
   // Using regex pattern instead of '*' for modern Express Router compatibility
   if (activeCorsMiddleware) {
-    app.options(/.*/,  activeCorsMiddleware);
+    app.options(/.*/, activeCorsMiddleware);
   }
 
   // 5. Debug & Diagnostics

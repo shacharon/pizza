@@ -263,33 +263,39 @@ export class AssistantSseOrchestrator {
       
       // Load result for language resolution
       const result = await this.jobStore.getResult(requestId);
-      
+
+      // UI language from request (header/cookie) if present
+      const headerUiLanguage = this.getUiLanguageFromRequest(req);
+
       // LANGUAGE RESOLUTION: Priority-based cascade
-      // Priority: uiLanguage > intent.language > assistantLanguage > job.queryDetectedLanguage > 'en'
+      // 1) job.assistantLanguage (Gate2/Intent) 2) job.requestedLanguage 3) uiLanguage 4) job.queryDetectedLanguage
       const candidates = {
-        uiLanguage: ((result as any)?.query?.languageContext?.uiLanguage as AssistantLanguage | undefined) 
+        jobAssistantLanguage: (job as any)?.assistantLanguage as AssistantLanguage | undefined,
+        jobRequestedLanguage: (job as any)?.requestedLanguage as AssistantLanguage | undefined,
+        uiLanguage: ((result as any)?.query?.languageContext?.uiLanguage as AssistantLanguage | undefined)
           ?? ((job as any)?.filters?.uiLanguage as AssistantLanguage | undefined)
-          ?? ((job as any)?.filtersResolved?.final?.uiLanguage as AssistantLanguage | undefined),
-        intentLanguage: (job as any)?.intent?.language as AssistantLanguage | undefined,
-        assistantLanguage: (job as any)?.assistantLanguage as AssistantLanguage | undefined,
+          ?? ((job as any)?.filtersResolved?.final?.uiLanguage as AssistantLanguage | undefined)
+          ?? headerUiLanguage,
         jobQueryDetectedLanguage: job?.queryDetectedLanguage as AssistantLanguage | undefined,
+        intentLanguage: (job as any)?.intent?.language as AssistantLanguage | undefined,
         resultQueryLanguage: ((result as any)?.query?.language as AssistantLanguage | undefined)
       };
 
       const chosenLanguage: AssistantLanguage =
+        candidates.jobAssistantLanguage ??
+        candidates.jobRequestedLanguage ??
         candidates.uiLanguage ??
-        candidates.intentLanguage ??
-        candidates.assistantLanguage ??
         candidates.jobQueryDetectedLanguage ??
+        candidates.intentLanguage ??
         candidates.resultQueryLanguage ??
         'en';
 
-      // Determine source for logging
-      const languageSource = 
-        candidates.uiLanguage ? 'filters.uiLanguage' :
-        candidates.intentLanguage ? 'job.intent.language' :
-        candidates.assistantLanguage ? 'job.assistantLanguage' :
+      const languageSource =
+        candidates.jobAssistantLanguage ? 'job.assistantLanguage' :
+        candidates.jobRequestedLanguage ? 'job.requestedLanguage' :
+        candidates.uiLanguage ? 'uiLanguage' :
         candidates.jobQueryDetectedLanguage ? 'job.queryDetectedLanguage' :
+        candidates.intentLanguage ? 'job.intent.language' :
         candidates.resultQueryLanguage ? 'result.query.language' :
         'fallback';
 
@@ -302,7 +308,7 @@ export class AssistantSseOrchestrator {
           source: languageSource,
           candidates
         },
-        `[AssistantSSE] Language resolved: ${chosenLanguage} (from ${languageSource})`
+        `[AssistantSSE] Language resolved: chosen=${chosenLanguage} source=${languageSource}`
       );
 
       const assistantLanguage = chosenLanguage;
@@ -497,15 +503,21 @@ export class AssistantSseOrchestrator {
     }
 
     // Transition: NARRATION_SENT → WAITING
-    // Step 2: Poll for results readiness
+    // Step 2: Poll for results readiness (skip poll when job is already terminal)
     stateMachine.transition(SseState.WAITING);
-    
-    const pollResult = await this.pollingStrategy.waitForResults(
-      requestId,
-      jobStatus,
-      abortSignal,
-      isClientDisconnected
-    );
+
+    const freshStatus = await this.jobStore.getStatus(requestId);
+    const terminalStatuses = ['DONE_FAILED', 'DONE_CLARIFY', 'DONE_STOPPED'] as const;
+    const isAlreadyTerminal = freshStatus?.status && (terminalStatuses as readonly string[]).includes(freshStatus.status);
+
+    const pollResult = isAlreadyTerminal
+      ? { resultsReady: false, latestStatus: freshStatus!.status }
+      : await this.pollingStrategy.waitForResults(
+          requestId,
+          jobStatus,
+          abortSignal,
+          isClientDisconnected
+        );
 
     // Check for client disconnect after polling
     if (isClientDisconnected() || abortSignal.aborted) {
@@ -548,6 +560,21 @@ export class AssistantSseOrchestrator {
           '[AssistantSSE] Sent stored assist (gate stop/clarify) via SSE'
         );
       }
+    } else if (pollResult.latestStatus === 'DONE_FAILED') {
+      // Job failed: emit error message and close (no timeout wait)
+      const statusWithError = await this.jobStore.getStatus(requestId);
+      const message = (statusWithError as { error?: { message: string } } | null)?.error?.message ?? 'Search failed';
+      writer.sendMessage({
+        type: 'SEARCH_FAILED',
+        message,
+        question: null,
+        blocksSearch: true,
+        language: assistantLanguage
+      });
+      this.logger.info(
+        { requestId, traceId, event: 'assistant_sse_failed_sent' },
+        '[AssistantSSE] Sent job error (DONE_FAILED) via SSE'
+      );
     } else {
       // Transition: WAITING → DONE (timeout case, no summary)
       this.sendTimeoutMessage(
@@ -709,4 +736,23 @@ export class AssistantSseOrchestrator {
     );
   }
 
+  /**
+   * Read UI language from request (x-ui-language header or Accept-Language first tag).
+   * Used as candidate in language resolution when job/result do not provide uiLanguage.
+   */
+  private getUiLanguageFromRequest(req: Request): AssistantLanguage | undefined {
+    const headers = req?.headers;
+    if (!headers || typeof headers !== 'object') return undefined;
+    const xUi = headers['x-ui-language'];
+    if (xUi && typeof xUi === 'string') {
+      const v = xUi.toLowerCase().split(/[-,]/)[0].trim();
+      if (v === 'he' || v === 'en') return v;
+    }
+    const accept = headers['accept-language'];
+    if (accept && typeof accept === 'string') {
+      const first = accept.split(',')[0]?.toLowerCase().split('-')[0].trim();
+      if (first === 'he' || first === 'en') return first;
+    }
+    return undefined;
+  }
 }

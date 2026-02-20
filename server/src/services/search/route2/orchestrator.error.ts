@@ -9,10 +9,11 @@ import { logger } from '../../../lib/logger/structured-logger.js';
 import { publishSearchFailedAssistant } from './assistant/assistant-integration.js';
 import type { WebSocketManager } from '../../../infra/websocket/websocket-manager.js';
 import { classifyPipelineError, PipelineErrorKind } from './pipeline-error-kinds.js';
+import { publishTerminalFailed } from './orchestrator.search-terminal.js';
 
 /**
  * Handle pipeline error
- * Logs error and publishes failure assistant message
+ * Logs error, publishes terminal SEARCH_FAILED to search channel (always), then assistant message when SSE off.
  * PROD Hardening: Standardized error classification
  */
 export async function handlePipelineError(
@@ -46,7 +47,10 @@ export async function handlePipelineError(
     '[ROUTE2] Pipeline failed'
   );
 
-  // Publish SEARCH_FAILED assistant message (best-effort)
+  // Always publish terminal SEARCH_FAILED to search channel (WS still used; no skip when SSE enabled)
+  publishTerminalFailed(wsManager, requestId, ctx.sessionId, { code, message, stage: errorStage });
+
+  // Publish SEARCH_FAILED assistant message (best-effort; skipped when SSE enabled)
   await publishSearchFailedAssistant(ctx, requestId, wsManager, error, kind);
 
   throw error;
