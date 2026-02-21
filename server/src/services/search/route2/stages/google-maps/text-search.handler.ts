@@ -55,7 +55,7 @@ export async function executeTextSearch(
   const cache = getCacheService();
   const fetchFn = async (): Promise<any[]> => {
     try {
-      let attempt = await executeTextSearchAttempt(mapping, apiKey, requestId, traceId);
+      let attempt = await executeTextSearchAttempt(mapping, apiKey, requestId, traceId, ctx.abortSignal);
       let results = attempt.results;
       let metrics = attempt.metrics;
       if (attempt.coverage) {
@@ -81,7 +81,7 @@ export async function executeTextSearch(
           bias: undefined
         };
 
-        const retryAttempt = await executeTextSearchAttempt(retryMapping, apiKey, requestId, traceId);
+        const retryAttempt = await executeTextSearchAttempt(retryMapping, apiKey, requestId, traceId, ctx.abortSignal);
 
         logger.info({
           requestId,
@@ -256,7 +256,8 @@ async function executeTextSearchAttempt(
   mapping: Extract<RouteLLMMapping, { providerMethod: 'textSearch' }>,
   apiKey: string,
   requestId: string,
-  traceId?: string
+  traceId?: string,
+  abortSignal?: AbortSignal
 ): Promise<{ results: any[]; metrics: TextSearchAttemptMetrics; coverage?: ReturnType<typeof buildCoverageReport> }> {
   const results: any[] = [];
   const allRawPlaces: any[] = [];
@@ -292,7 +293,8 @@ async function executeTextSearchAttempt(
         mapping.cityText,
         mapping.region,
         apiKey,
-        requestId
+        requestId,
+        abortSignal
       );
 
       if (cityCoords) {
@@ -356,7 +358,7 @@ async function executeTextSearchAttempt(
   }, '[GOOGLE] Text Search request payload');
 
   // Fetch first page
-  const firstResponse = await callGooglePlacesSearchText(requestBody, apiKey, requestId);
+  const firstResponse = await callGooglePlacesSearchText(requestBody, apiKey, requestId, abortSignal);
   if (firstResponse.places) {
     processBatch(firstResponse.places);
     nextPageToken = firstResponse.nextPageToken;
@@ -365,7 +367,7 @@ async function executeTextSearchAttempt(
   // Fetch additional pages if needed (up to maxResults)
   while (nextPageToken && results.length < maxResults) {
     const pageBody = { ...requestBody, pageToken: nextPageToken };
-    const pageResponse = await callGooglePlacesSearchText(pageBody, apiKey, requestId);
+    const pageResponse = await callGooglePlacesSearchText(pageBody, apiKey, requestId, abortSignal);
 
     if (pageResponse.places) {
       const remaining = maxResults - results.length;
@@ -516,7 +518,8 @@ function buildTextSearchBody(
 export async function callGooglePlacesSearchText(
   body: any,
   apiKey: string,
-  requestId: string
+  requestId: string,
+  signal?: AbortSignal
 ): Promise<any> {
   const url = 'https://places.googleapis.com/v1/places:searchText';
 
@@ -593,7 +596,8 @@ export async function callGooglePlacesSearchText(
           requestId,
           stage: 'google_maps',
           provider: 'google_places',
-          enableDnsPreflight: process.env.ENABLE_DNS_PREFLIGHT === 'true'
+          enableDnsPreflight: process.env.ENABLE_DNS_PREFLIGHT === 'true',
+          ...(signal && { signal })
         });
 
         callDurationMs = Date.now() - callStartTime;

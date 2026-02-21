@@ -17,13 +17,15 @@ import { logger } from '../../../../../../lib/logger/structured-logger.js';
  * @param region - Optional region code for biasing (e.g., 'IL')
  * @param apiKey - Google API key
  * @param requestId - Request ID for logging
+ * @param signal - Optional request-scoped abort signal
  * @returns Coordinates {lat, lng} or null if not found
  */
 export async function geocodeCity(
   address: string,
   region: string | null,
   apiKey: string,
-  requestId: string
+  requestId: string,
+  signal?: AbortSignal
 ): Promise<{ lat: number; lng: number } | null> {
   const params = new URLSearchParams({
     key: apiKey,
@@ -45,7 +47,8 @@ export async function geocodeCity(
     timeoutMs: 8000,
     requestId,
     stage: 'google_maps',
-    provider: 'google_geocoding'
+    provider: 'google_geocoding',
+    ...(signal && { signal })
   });
 
   if (!response.ok) {

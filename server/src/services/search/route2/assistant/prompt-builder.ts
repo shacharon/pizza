@@ -6,7 +6,7 @@
 import type { AssistantLanguage } from './language-detector.js';
 import { normalizeRequestedLanguage, getLanguageName, getLanguageEmphasis } from './language-detector.js';
 
-import type { TopCandidate, SummaryAnalysisMode } from './assistant.types.js';
+import type { AssistantSummaryContext as SummaryContextType, TopCandidate, SummaryAnalysisMode } from './assistant.types.js';
 
 export type AssistantContext =
   | { type: 'GATE_FAIL'; reason: 'NO_FOOD' | 'UNCERTAIN_FOOD'; query: string; language: AssistantLanguage }
@@ -23,9 +23,10 @@ You are the SUMMARY generator for a food search app. Return ONLY valid JSON (no 
 
 HARD RULES:
 - language MUST equal requestedLanguage.
-- message: 4–6 lines separated by "\\n", each line <= 80 chars.
+- message: 4–7 lines separated by "\\n", each line <= 80 chars.
 - No HTML/Markdown. Use "•" for bullets.
 - Use ONLY provided inputs (no guessing).
+- Detect up to 2 unsupported user constraints (e.g. kosher, parking, ETA, reservation, menu, exact price) and include them in "conversationNeeds". Do NOT pretend they were applied as filters.
 
 DECISION:
 - If analysisMode="EMPTY": suggestedAction="RELAX"; question=1 short clarifying question (1 line) or null; message still 4–6 lines.
@@ -36,7 +37,7 @@ STYLE:
 - Decisive. No fluff. No apologies. No "here are".
 
 OUTPUT:
-{"type":"SUMMARY","language":"<requestedLanguage>","message":"<...>","question":null,"suggestedAction":"RELAX|CHOOSE|REFINE","blocksSearch":false}
+{"type":"SUMMARY","language":"<requestedLanguage>","message":"<...>","question":null,"suggestedAction":"RELAX|CHOOSE|REFINE","blocksSearch":false,"conversationNeeds":[{"key":"KOSHER|PARKING|ETA|RESERVATION|MENU|PRICE_EXACT|OTHER","rawText":"..."}]}
 `;
 /**
  * System prompt for streaming (message-only output; no JSON).
@@ -49,11 +50,18 @@ Return ONLY plain text (no JSON, no labels, no markdown).
 
 Rules:
 - No echo of the user query.
-- 2–3 short sentences.
+- 3–4 short sentences.
 - Choose ONE starting point (prefer openNow unless rating gap > 0.5).
 - If resultCount=20: never mention quantity (no digits/words implying amount).
 - If resultCount<5: suggest ONE coverage fix (radius/openNow/diet).
+ - Wrap the chosen restaurant name EXACTLY ONCE with  ***name***
+ - If conversationNeeds exists and non-empty:
+  - Acknowledge up to 2 briefly.
+  - State support is coming soon.
+  - Add ONE blank line.
+  - Then continue normal guidance.
 - Output ONLY in Language: <lang> from the user prompt.
+
 `;
 /**
  * Build prompt for LLM JSON output (used by completeJSON for WebSocket)
@@ -214,7 +222,39 @@ Instructions:
 Generate the message.`;
   }
 
-  // SUMMARY - MESSAGE_ONLY with structured multi-line output
+  // SUMMARY - MESSAGE_ONLY
+  const summaryContext = context as SummaryContextType;
+  const nextStepHint = summaryContext.nextStepHint ?? 'filter by open now, price, or distance';
+
+  // SATURATED: minimal payload (language, resultCount, topNames/topMeta <=4, nextStepHint)
+  if (summaryContext.analysisMode === 'SATURATED') {
+    const topSlice = context.top.slice(0, 4);
+    const topLines = topSlice.map((t) => {
+      const parts = [t.name];
+      if (t.rating != null) parts.push(`rating ${t.rating}`);
+      if (t.openNow !== undefined) parts.push(`openNow ${t.openNow}`);
+      if (t.distanceMeters != null) parts.push(`${t.distanceMeters}m`);
+      if (t.priceLevel != null) parts.push(`price ${t.priceLevel}`);
+      return parts.join(', ');
+    });
+    return `Type: SUMMARY (MESSAGE_ONLY, SATURATED)
+Language: ${requested}
+Result count: ${context.resultCount}
+Top (max 4): ${topLines.join(' | ')}
+Next step hint: ${nextStepHint}
+
+CRITICAL: ${languageEmphasis}. Output ONLY plain text in ${languageInstruction}.
+
+RULES:
+- Choose ONE starting point from Top (prefer openNow unless rating gap > 0.5). Name it exactly once.
+- Wrap the chosen place name EXACTLY ONCE with [[name]]. Example: [[Place Name]].
+- 3–4 short sentences. End with one refine suggestion from the next step hint.
+- No echo of query. No markdown.
+
+Generate the message.`;
+  }
+
+  // Non-SATURATED SUMMARY: full metadata (legacy MESSAGE_ONLY path)
   const metadata = context.metadata || {};
   const dietaryNote = context.dietaryNote?.shouldInclude
     ? `\nDietary Note: Add SOFT gluten-free hint at end (1 line max). NO medical claims, NO guarantees.`

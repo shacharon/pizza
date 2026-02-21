@@ -53,12 +53,14 @@ export class BraveSearchAdapter {
    * @param name - Restaurant name
    * @param cityText - Optional city name
    * @param config - Provider-specific configuration
+   * @param signal - Optional request-scoped abort signal
    * @returns First valid URL or null
    */
   async searchWithRelaxPolicy(
     name: string,
     cityText: string | null,
-    config: ProviderSearchConfig
+    config: ProviderSearchConfig,
+    signal?: AbortSignal
   ): Promise<string | null> {
     const policies: RelaxPolicy[] = ['strict', 'moderate', 'relaxed', 'minimal'];
     
@@ -80,7 +82,7 @@ export class BraveSearchAdapter {
       );
 
       try {
-        const results = await this.client.search(query, 10);
+        const results = await this.client.search(query, 10, signal);
         
         logger.debug(
           {

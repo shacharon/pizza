@@ -1,10 +1,12 @@
 /**
  * Tests for SUMMARY Invariant Fix
  * Ensures SUMMARY cannot produce blocksSearch=true
+ * and SUMMARY cannot claim "no results" when resultCount > 0.
  */
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import { enforceInvariants } from '../validation-rules.js';
 
 describe('SUMMARY blocksSearch Invariant', () => {
   test('enforceInvariants should force blocksSearch=false for SUMMARY', () => {
@@ -180,5 +182,36 @@ describe('SUMMARY blocksSearch Invariant', () => {
     assert.equal(logPayload.severity, 'PROMPT_VIOLATION', 'Should log as prompt violation');
     assert.equal(logPayload.llmValue, true, 'Should log original LLM value');
     assert.equal(logPayload.enforcedValue, false, 'Should log enforced value');
+  });
+});
+
+describe('SUMMARY no-results-claim invariant', () => {
+  test('resultCount=3 + bad message (claims no results) → fallback emitted', () => {
+    const badMessage = 'אין תוצאות למסעדות באזור. נסה להרחיב חיפוש.';
+    const output = {
+      type: 'SUMMARY' as const,
+      message: badMessage,
+      question: null,
+      suggestedAction: 'NONE' as const,
+      blocksSearch: false
+    };
+    const context = {
+      type: 'SUMMARY' as const,
+      query: 'pizza',
+      language: 'he' as const,
+      resultCount: 3,
+      top: [{ name: 'מסעדת אלון' }, { name: 'פיצה דור' }, { name: 'בורגר בר' }],
+      analysisMode: 'COMPARISON' as const
+    };
+    const requestId = 'test-no-results-claim';
+
+    const result = enforceInvariants(output, context, requestId);
+
+    assert.ok(!result.message.includes('אין תוצאות'), 'Fallback must not contain "no results" claim');
+    assert.ok(result.message.includes('הנה התוצאות שמצאתי'), 'Fallback must start with results intro');
+    assert.ok(result.message.includes('מסעדת אלון'), 'Fallback must mention first top name');
+    assert.ok(result.message.includes('פיצה דור'), 'Fallback must mention second top name');
+    assert.ok(result.message.includes('בורגר בר'), 'Fallback must mention third top name');
+    assert.ok(result.message.includes('אפשרויות טובות'), 'Fallback must contain quality phrase');
   });
 });

@@ -4,10 +4,14 @@
  */
 
 import { logger } from '../../../../lib/logger/structured-logger.js';
-import { generateAssistantMessage, type AssistantContext, type AssistantOutput } from './assistant-llm.service.js';
+import { withTimeout, isTimeoutError } from '../../../../lib/reliability/timeout-guard.js';
+import { generateAssistantMessage, generateMessageOnlyText, type AssistantContext, type AssistantOutput } from './assistant-llm.service.js';
 import { publishAssistantMessage, publishAssistantError } from './assistant-publisher.js';
+import { getShortSummaryFallback } from './fallback-messages.js';
 import type { WebSocketManager } from '../../../../infra/websocket/websocket-manager.js';
 import type { Route2Context } from '../types.js';
+import { shouldAbort } from '../types.js';
+import { route2Config } from '../route2.config.js';
 
 /**
  * Generate assistant message and publish to WebSocket
@@ -54,10 +58,9 @@ export async function generateAndPublishAssistant(
     // Note: Invariants (blocksSearch, suggestedAction) are now enforced in generateAssistantMessage()
     // No need for duplicate enforcement here
 
-    // Publish to WebSocket (best-effort) with language metadata
-    publishAssistantMessage(wsManager, requestId, sessionId, assistant, context.language);
-
-    // Return message for HTTP response
+    if (!shouldAbort(ctx)) {
+      publishAssistantMessage(wsManager, requestId, sessionId, assistant, context.language);
+    }
     return assistant.message || fallbackHttpMessage;
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
@@ -73,8 +76,9 @@ export async function generateAndPublishAssistant(
       error: errorMsg
     }, '[ASSISTANT] Failed - publishing error event');
 
-    // Publish assistant_error event (no user-facing message in code)
-    publishAssistantError(wsManager, requestId, sessionId, errorCode);
+    if (!shouldAbort(ctx)) {
+      publishAssistantError(wsManager, requestId, sessionId, errorCode);
+    }
 
     // Return fallback for HTTP only (WS clients get error event)
     return fallbackHttpMessage;
@@ -111,6 +115,7 @@ export function generateAndPublishAssistantDeferred(
 
   // Fire and forget - don't await
   (async () => {
+    if (shouldAbort(ctx)) return;
     const startTime = Date.now();
 
     logger.info({
@@ -135,8 +140,9 @@ export function generateAndPublishAssistantDeferred(
         event: 'assistant_deferred_done'
       }, '[ASSISTANT] Deferred generation completed');
 
-      // Publish to WebSocket with language metadata
-      publishAssistantMessage(wsManager, requestId, sessionId, assistant, context.language);
+      if (!shouldAbort(ctx)) {
+        publishAssistantMessage(wsManager, requestId, sessionId, assistant, context.language);
+      }
     } catch (error) {
       const durationMs = Date.now() - startTime;
       const errorMsg = error instanceof Error ? error.message : String(error);
@@ -153,8 +159,9 @@ export function generateAndPublishAssistantDeferred(
         durationMs
       }, '[ASSISTANT] Deferred generation failed - publishing error event');
 
-      // Publish assistant_error event (no user-facing message)
-      publishAssistantError(wsManager, requestId, sessionId, errorCode);
+      if (!shouldAbort(ctx)) {
+        publishAssistantError(wsManager, requestId, sessionId, errorCode);
+      }
     }
   })().catch(err => {
     // Safety net for unhandled promise rejections
@@ -164,6 +171,121 @@ export function generateAndPublishAssistantDeferred(
       error: err instanceof Error ? err.message : String(err)
     }, '[ASSISTANT] Unhandled error in deferred generation');
   });
+}
+
+/**
+ * Generate final user message via MESSAGE_ONLY LLM (e.g. SATURATED) and publish.
+ * Per-call timeout: MESSAGE_ONLY_TIMEOUT_MS. On timeout: fallback to short default in requestedLanguage.
+ * Logs message_started, message_done with llm_latency_ms, llm_timeout, stage.
+ */
+export async function generateAndPublishMessageOnly(
+  ctx: Route2Context,
+  requestId: string,
+  sessionId: string,
+  context: AssistantContext,
+  wsManager: WebSocketManager
+): Promise<{ durationMs: number }> {
+  const startTime = Date.now();
+  const stage = 'message_only';
+  logger.info(
+    { requestId, pipelineVersion: 'route2', event: 'message_started' },
+    '[ROUTE2] MESSAGE_ONLY LLM started'
+  );
+
+  try {
+    const opts: any = {};
+    if (ctx.traceId) opts.traceId = ctx.traceId;
+    if (ctx.sessionId) opts.sessionId = ctx.sessionId;
+    const text = await withTimeout(
+      generateMessageOnlyText(context, ctx.llmProvider, requestId, opts),
+      route2Config.MESSAGE_ONLY_TIMEOUT_MS,
+      stage
+    );
+    const durationMs = Date.now() - startTime;
+    logger.info(
+      { requestId, pipelineVersion: 'route2', event: 'message_done', durationMs, llm_latency_ms: durationMs, llm_timeout: false, stage },
+      '[ROUTE2] MESSAGE_ONLY LLM done'
+    );
+    const assistant: AssistantOutput = {
+      type: context.type,
+      message: text || '',
+      question: null,
+      suggestedAction: 'NONE',
+      blocksSearch: false
+    };
+    if (!shouldAbort(ctx)) {
+      publishAssistantMessage(wsManager, requestId, sessionId, assistant, context.language);
+    }
+    return { durationMs };
+  } catch (error) {
+    const durationMs = Date.now() - startTime;
+    const timedOut = isTimeoutError(error);
+    if (!shouldAbort(ctx)) {
+      if (timedOut) {
+        const fallbackMessage = getShortSummaryFallback(context.language);
+        const assistant: AssistantOutput = {
+          type: context.type,
+          message: fallbackMessage,
+          question: null,
+          suggestedAction: 'NONE',
+          blocksSearch: false
+        };
+        publishAssistantMessage(wsManager, requestId, sessionId, assistant, context.language);
+      } else {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        const errorCode = errorMsg.toLowerCase().includes('abort') ? 'LLM_TIMEOUT' : 'LLM_FAILED';
+        publishAssistantError(wsManager, requestId, sessionId, errorCode);
+      }
+    }
+    logger.info(
+      { requestId, pipelineVersion: 'route2', event: 'message_done', durationMs, llm_latency_ms: durationMs, llm_timeout: timedOut, stage },
+      '[ROUTE2] MESSAGE_ONLY LLM settled (failed or timeout)'
+    );
+    return { durationMs };
+  }
+}
+
+/**
+ * Generate and publish assistant message; returns a Promise for logging/await.
+ * Same semantics as deferred path but caller can attach .then() for summary_done etc.
+ */
+export async function generateAndPublishAssistantPromise(
+  ctx: Route2Context,
+  requestId: string,
+  sessionId: string,
+  context: AssistantContext,
+  wsManager: WebSocketManager
+): Promise<void> {
+  const sseAssistantEnabled = process.env.FEATURE_SSE_ASSISTANT === 'true';
+  if (sseAssistantEnabled) {
+    logger.info({
+      requestId,
+      assistantType: context.type,
+      event: 'assistant_ws_skipped_due_to_sse',
+      reason: 'sse_enabled'
+    }, '[ASSISTANT] Skipping WS assistant (SSE endpoint is source of truth)');
+    return;
+  }
+
+  const opts: any = {};
+  if (ctx.traceId) opts.traceId = ctx.traceId;
+  if (ctx.sessionId) opts.sessionId = ctx.sessionId;
+
+  try {
+    const assistant = await generateAssistantMessage(context, ctx.llmProvider, requestId, opts);
+    if (!shouldAbort(ctx)) {
+      publishAssistantMessage(wsManager, requestId, sessionId, assistant, context.language);
+    }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    const isTimeout = errorMsg.toLowerCase().includes('timeout') || errorMsg.toLowerCase().includes('abort');
+    const isSchemaError = errorMsg.toLowerCase().includes('schema') || errorMsg.toLowerCase().includes('validation');
+    const errorCode = isTimeout ? 'LLM_TIMEOUT' : (isSchemaError ? 'SCHEMA_INVALID' : 'LLM_FAILED');
+    if (!shouldAbort(ctx)) {
+      publishAssistantError(wsManager, requestId, sessionId, errorCode);
+    }
+    throw error;
+  }
 }
 
 /**
@@ -185,7 +307,7 @@ export async function publishSearchFailedAssistant(
   error: unknown,
   errorKind: string | undefined
 ): Promise<void> {
-  if (!wsManager) {
+  if (!wsManager || shouldAbort(ctx)) {
     return;
   }
 
@@ -248,7 +370,9 @@ export async function publishSearchFailedAssistant(
       language: resolvedLanguage
     }, '[ASSISTANT] Generated SEARCH_FAILED message via LLM');
 
-    publishAssistantMessage(wsManager, requestId, ctx.sessionId, assistant, resolvedLanguage);
+    if (!shouldAbort(ctx)) {
+      publishAssistantMessage(wsManager, requestId, ctx.sessionId, assistant, resolvedLanguage);
+    }
   } catch (assistErr) {
     // If LLM fails, publish assistant_error event (no deterministic fallback)
     const errorMsg = assistErr instanceof Error ? assistErr.message : String(assistErr);
@@ -262,6 +386,8 @@ export async function publishSearchFailedAssistant(
       error: errorMsg
     }, '[ASSISTANT] Failed to generate SEARCH_FAILED message - publishing error event');
 
-    publishAssistantError(wsManager, requestId, ctx.sessionId, errorCode);
+    if (!shouldAbort(ctx)) {
+      publishAssistantError(wsManager, requestId, ctx.sessionId, errorCode);
+    }
   }
 }

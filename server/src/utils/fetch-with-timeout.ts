@@ -20,6 +20,8 @@ export interface FetchWithTimeoutConfig {
   stage?: string;
   provider?: string;
   enableDnsPreflight?: boolean; // Optional DNS check before fetch
+  /** Optional request-scoped abort signal; when aborted, the fetch is cancelled. */
+  signal?: AbortSignal;
 }
 
 export interface TimeoutError extends Error {
@@ -126,11 +128,26 @@ export async function fetchWithTimeout(
     // Set timeout to abort the request
     timeoutId = setTimeout(() => controller.abort(), config.timeoutMs);
 
-    // Execute fetch with abort signal
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal
-    });
+    // If request-scoped signal provided, abort our controller when it aborts
+    let abortListener: (() => void) | undefined;
+    if (config.signal) {
+      if (config.signal.aborted) {
+        controller.abort();
+      } else {
+        abortListener = () => controller.abort();
+        config.signal.addEventListener('abort', abortListener);
+      }
+    }
+
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        ...options,
+        signal: controller.signal
+      });
+    } finally {
+      abortListener && config.signal!.removeEventListener('abort', abortListener);
+    }
 
     const durationMs = Date.now() - startTime;
     console.log(`[FETCH] Response ${response.status} from ${host}${path} (${durationMs}ms)`);

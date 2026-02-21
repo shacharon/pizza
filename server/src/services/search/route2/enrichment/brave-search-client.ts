@@ -62,13 +62,10 @@ export class BraveSearchClient {
 
   /**
    * Search with timeout and retry logic
-   * 
-   * @param query - Search query
-   * @param limit - Max results (1-20)
-   * @returns Normalized search results
+   * @param signal - Optional request-scoped abort signal
    */
-  async search(query: string, limit: number = 10): Promise<SearchResult[]> {
-    return this.searchWithRetry(query, limit, 0);
+  async search(query: string, limit: number = 10, signal?: AbortSignal): Promise<SearchResult[]> {
+    return this.searchWithRetry(query, limit, 0, signal);
   }
 
   /**
@@ -77,12 +74,13 @@ export class BraveSearchClient {
   private async searchWithRetry(
     query: string,
     limit: number,
-    attempt: number
+    attempt: number,
+    signal?: AbortSignal
   ): Promise<SearchResult[]> {
     this.callCount++;
 
     try {
-      const results = await this.searchInternal(query, limit);
+      const results = await this.searchInternal(query, limit, signal);
       
       logger.debug(
         {
@@ -135,7 +133,7 @@ export class BraveSearchClient {
         );
 
         await this.sleep(delayMs);
-        return this.searchWithRetry(query, limit, attempt + 1);
+        return this.searchWithRetry(query, limit, attempt + 1, signal);
       }
 
       // No more retries or non-retryable error
@@ -146,16 +144,23 @@ export class BraveSearchClient {
   /**
    * Internal search implementation with timeout
    */
-  private async searchInternal(query: string, limit: number): Promise<SearchResult[]> {
+  private async searchInternal(query: string, limit: number, signal?: AbortSignal): Promise<SearchResult[]> {
     const url = 'https://api.search.brave.com/res/v1/web/search';
     const params = new URLSearchParams({
       q: query,
       count: String(Math.min(limit, 20)), // Brave max: 20
     });
 
-    // Create abort controller for timeout
     const abortController = new AbortController();
     const timeoutId = setTimeout(() => abortController.abort(), this.timeoutMs);
+    let abortListener: (() => void) | undefined;
+    if (signal) {
+      if (signal.aborted) abortController.abort();
+      else {
+        abortListener = () => abortController.abort();
+        signal.addEventListener('abort', abortListener);
+      }
+    }
 
     try {
       const response = await fetch(`${url}?${params}`, {
@@ -168,6 +173,7 @@ export class BraveSearchClient {
       });
 
       clearTimeout(timeoutId);
+      abortListener && signal?.removeEventListener('abort', abortListener);
 
       if (!response.ok) {
         const errorBody = await response.text();
@@ -192,6 +198,7 @@ export class BraveSearchClient {
       return results;
     } catch (err) {
       clearTimeout(timeoutId);
+      abortListener && signal?.removeEventListener('abort', abortListener);
 
       // Handle abort (timeout)
       if (err instanceof Error && err.name === 'AbortError') {

@@ -13,6 +13,7 @@ import { I18nService } from '../core/services/i18n.service';
 import { SearchStore } from '../state/search.store';
 import { SessionStore } from '../state/session.store';
 import { ActionsStore } from '../state/actions.store';
+import { ActiveRequestIdService } from '../state/active-request-id.service';
 import type {
   SearchFilters,
   Restaurant,
@@ -39,6 +40,7 @@ export class SearchFacade {
   private readonly searchStore = inject(SearchStore);
   private readonly sessionStore = inject(SessionStore);
   private readonly actionsStore = inject(ActionsStore);
+  private readonly activeRequestIdService = inject(ActiveRequestIdService);
 
   // Extracted handler modules
   private readonly apiHandler = inject(SearchApiHandler);
@@ -166,6 +168,7 @@ export class SearchFacade {
       // CRITICAL: Clear currentRequestId BEFORE starting search
       // This ensures events from previous search are ignored immediately
       this.currentRequestId.set(undefined);
+      this.activeRequestIdService.set(undefined);
 
       // CRITICAL: Clear all WS subscriptions to old requests
       // This prevents old events from being delivered after reconnection
@@ -200,6 +203,7 @@ export class SearchFacade {
         // HTTP 202: Async mode - start polling + WS
         const { requestId, resultUrl } = response;
         this.currentRequestId.set(requestId);
+        this.activeRequestIdService.set(requestId);
 
         safeLog('SearchFacade', 'Async 202 accepted', { requestId, resultUrl });
 
@@ -230,6 +234,7 @@ export class SearchFacade {
         // HTTP 200: Sync mode (fallback)
         const syncResponse = response as SearchResponse;
         this.currentRequestId.set(syncResponse.requestId);
+        this.activeRequestIdService.set(syncResponse.requestId);
         this.handleSearchResponse(syncResponse, query);
       }
 
@@ -265,6 +270,13 @@ export class SearchFacade {
    * Handle search response (from sync, polling, or WS)
    */
   private handleSearchResponse(response: SearchResponse, query: string): void {
+    if (response.requestId !== this.currentRequestId()) {
+      safeLog('SearchFacade', 'Ignoring response for non-active requestId', {
+        responseRequestId: response.requestId,
+        activeRequestId: this.currentRequestId()
+      });
+      return;
+    }
     // Only process if we're still on this search
     if (this.searchStore.query() !== query) {
       safeLog('SearchFacade', 'Ignoring stale response for query', { query });
@@ -525,6 +537,7 @@ export class SearchFacade {
 
     this.wsHandler.handleSearchEvent(
       event,
+      this.currentRequestId(),
       {
         onSearchResponse: (response, query) => this.handleSearchResponse(response, query),
         onError: (message) => {

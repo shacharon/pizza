@@ -4,9 +4,10 @@
  * UX-only narration (no chips/filters/state changes)
  */
 
-import { Component, OnInit, OnDestroy, ChangeDetectionStrategy, signal, computed } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectionStrategy, signal, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { WsClientService } from '../../../../core/services/ws-client.service';
+import { ActiveRequestIdService } from '../../../../state/active-request-id.service';
 import { Subscription } from 'rxjs';
 
 /**
@@ -47,6 +48,8 @@ export class AssistantPanelComponent implements OnInit, OnDestroy {
   // WebSocket subscription
   private wsSubscription?: Subscription;
 
+  private readonly activeRequestIdService = inject(ActiveRequestIdService);
+
   constructor(private wsClient: WsClientService) { }
 
   ngOnInit(): void {
@@ -78,6 +81,9 @@ export class AssistantPanelComponent implements OnInit, OnDestroy {
     // Validate message structure
     if (!msg.requestId || typeof msg.seq !== 'number' || !msg.message) {
       console.warn('[AssistantPanel] Invalid message structure:', msg);
+      return;
+    }
+    if (this.activeRequestIdService.activeRequestId() != null && msg.requestId !== this.activeRequestIdService.activeRequestId()) {
       return;
     }
 
@@ -122,6 +128,9 @@ export class AssistantPanelComponent implements OnInit, OnDestroy {
       // Validate message structure
       if (!msg.requestId || !msg.payload || !msg.payload.message) {
         console.warn('[AssistantPanel] Invalid narrator message structure:', msg);
+        return;
+      }
+      if (this.activeRequestIdService.activeRequestId() != null && msg.requestId !== this.activeRequestIdService.activeRequestId()) {
         return;
       }
 

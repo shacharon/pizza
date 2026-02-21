@@ -71,6 +71,8 @@ export interface AssistantSummaryContext {
     type: 'gluten-free';
     shouldInclude: boolean;
   };
+  /** Optional refine hint for SATURATED MESSAGE_ONLY. */
+  nextStepHint?: string;
 }
 
 export interface AssistantSearchFailedContext {
@@ -345,6 +347,34 @@ export async function generateAssistantMessage(
       })
     } as AssistantOutput;
   }
+}
+
+/**
+ * Generate message-only plain text (no JSON). Uses MESSAGE_ONLY prompt + complete().
+ * For SATURATED final message after Google results.
+ */
+export async function generateMessageOnlyText(
+  context: AssistantContext,
+  llmProvider: LLMProvider,
+  requestId: string,
+  opts?: { traceId?: string; sessionId?: string; timeout?: number }
+): Promise<string> {
+  const userPrompt = buildUserPromptMessageOnly(context);
+  const messages = [
+    { role: 'system' as const, content: SYSTEM_PROMPT_MESSAGE_ONLY },
+    { role: 'user' as const, content: userPrompt }
+  ];
+  const llmOpts = buildLLMOptions('assistant', {
+    temperature: 0.7,
+    requestId,
+    stage: 'assistant_llm',
+    promptLength: messages.reduce((sum, m) => sum + m.content.length, 0)
+  });
+  if (opts?.timeout) (llmOpts as any).timeout = opts.timeout;
+  if (opts?.traceId) (llmOpts as any).traceId = opts.traceId;
+  if (opts?.sessionId) (llmOpts as any).sessionId = opts.sessionId;
+  const text = await llmProvider.complete(messages, llmOpts as any);
+  return (text ?? '').trim();
 }
 
 /**

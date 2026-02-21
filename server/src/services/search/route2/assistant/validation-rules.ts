@@ -12,6 +12,41 @@ import type { AssistantContext } from './fallback-messages.js';
 
 const ASSISTANT_LANG_DEBUG = process.env.ASSISTANT_LANG_DEBUG === '1';
 
+/** Hebrew phrases that claim "no results"; SUMMARY cannot claim this when resultCount > 0. */
+const NO_RESULTS_CLAIM_PHRASES = [
+  'אין מסעדות',
+  'לא נמצאו',
+  'אפס תוצאות',
+  '0 תוצאות',
+  'אין תוצאות'
+] as const;
+
+function messageClaimsNoResults(message: string): boolean {
+  const normalized = (message ?? '').trim();
+  return NO_RESULTS_CLAIM_PHRASES.some(phrase => normalized.includes(phrase));
+}
+
+/**
+ * Deterministic Hebrew fallback when SUMMARY wrongly claims no results but resultCount > 0.
+ * 3–5 lines, Hebrew, mentions 1–3 topNames (exactly as provided), no numbers.
+ */
+function summaryFallbackMessageWhenResultsExist(topNames: string[]): string {
+  const names = topNames.slice(0, 3).filter(Boolean);
+  const nameList =
+    names.length === 0
+      ? ''
+      : names.length === 1
+        ? names[0]!
+        : names.length === 2
+          ? `${names[0]} ו-${names[1]}`
+          : `${names[0]}, ${names[1]} ו-${names[2]}`;
+  const line1 = 'הנה התוצאות שמצאתי.';
+  const line2 = nameList ? `${nameList} הם אפשרויות טובות באזור.` : 'יש אפשרויות טובות באזור.';
+  const line3 = 'אפשר למיין לפי מרחק או דירוג.';
+  const line4 = 'בחר מקום שמתאים לך.';
+  return [line1, line2, line3, line4].join('\n');
+}
+
 /** Max sentences allowed in assistant message (prompt target: 3-6) */
 export const MAX_MESSAGE_SENTENCES = 6;
 
@@ -102,6 +137,23 @@ export function enforceInvariants(
       logger.warn({ requestId, event: 'assistant_invariant_enforced', type: 'SUMMARY', field: 'suggestedAction', llmValue: normalized.suggestedAction, enforcedValue: 'NONE' },
         '[ASSISTANT] Enforcing SUMMARY invariant: suggestedAction=NONE');
       normalized.suggestedAction = 'NONE';
+      changed = true;
+    }
+
+    // SUMMARY cannot claim "no results" when resultCount > 0
+    const resultCount = context.resultCount ?? 0;
+    const topNames = (context.top ?? []).map((t: { name: string }) => t.name);
+    if (resultCount > 0 && messageClaimsNoResults(normalized.message)) {
+      const fallbackMessage = summaryFallbackMessageWhenResultsExist(topNames);
+      logger.warn({
+        requestId,
+        event: 'assistant_invariant_enforced_no_results_claim',
+        type: 'SUMMARY',
+        resultCount,
+        topNames: topNames.slice(0, 3),
+        messagePreview: normalized.message.slice(0, 100)
+      }, '[ASSISTANT] SUMMARY claimed no results but resultCount>0 - overriding with deterministic fallback');
+      normalized.message = fallbackMessage;
       changed = true;
     }
   }

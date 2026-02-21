@@ -81,37 +81,47 @@ export class AssistantSseService {
 
   /**
    * Connect to SSE endpoint using fetch + ReadableStream.
+   * Uses AbortController so the stream can be hard-stopped when a new search starts.
    * Decodes stream with TextDecoder('utf-8'), splits on "\n\n", parses "data:" as JSON.
    */
   connect(requestId: string): Observable<AssistantSseEvent> {
     return new Observable<AssistantSseEvent>(observer => {
       const url = `${this.apiBaseUrl}/stream/assistant/${requestId}`;
-
-      console.log('[AssistantSSE] Connecting to SSE', {
-        requestId: requestId.substring(0, 20) + '...',
-        url,
-        timestamp: new Date().toISOString()
-      });
-
-      const decoder = new TextDecoder(UTF8);
-      let buffer = '';
+      const controller = new AbortController();
+      const signal = controller.signal;
       let aborted = false;
+
+      const logClosed = (reason: string): void => {
+        if (aborted) return;
+        aborted = true;
+        console.log('sse_closed', { requestId, reason });
+      };
+
+      console.log('sse_open', { requestId });
 
       fetch(url, {
         method: 'GET',
         credentials: 'include',
-        headers: { Accept: 'text/event-stream' }
+        headers: { Accept: 'text/event-stream' },
+        signal
       })
         .then(async (response): Promise<void> => {
           if (!response.ok || !response.body) {
+            logClosed('http_error');
             observer.error(new Error(`SSE failed: ${response.status}`));
             return;
           }
+          const decoder = new TextDecoder(UTF8);
+          let buffer = '';
           const reader = response.body.getReader();
           try {
-            while (!aborted) {
+            while (!signal.aborted) {
               const { value, done } = await reader.read();
-              if (done) break;
+              if (done) {
+                logClosed('done');
+                observer.complete();
+                return;
+              }
               const chunk = decoder.decode(value, { stream: true });
               buffer += chunk;
               const { events, leftover } = parseSseChunk(buffer);
@@ -130,29 +140,46 @@ export class AssistantSseService {
                 } else if (event === 'message') {
                   observer.next({ type: 'message', data: data as AssistantMessagePayload });
                 } else if (event === 'done') {
+                  logClosed('done');
                   observer.next({ type: 'done' });
                   observer.complete();
                   return;
                 } else if (event === 'error') {
                   const err = data as { code?: string; message?: string };
+                  logClosed('error');
                   observer.next({ type: 'error', data: { code: err?.code ?? 'UNKNOWN', message: err?.message ?? 'SSE error' } });
                   observer.complete();
                   return;
                 }
               }
             }
-            if (!aborted) observer.complete();
+            logClosed('abort');
+            observer.complete();
+          } catch (err: unknown) {
+            if (signal.aborted || (err instanceof Error && err.name === 'AbortError')) {
+              logClosed('abort');
+              observer.complete();
+            } else {
+              logClosed('error');
+              observer.error(err);
+            }
           } finally {
             reader.releaseLock();
           }
         })
         .catch(err => {
-          if (!aborted) observer.error(err);
+          if (signal.aborted || (err instanceof Error && err.name === 'AbortError')) {
+            logClosed('abort');
+            observer.complete();
+          } else {
+            logClosed('error');
+            observer.error(err);
+          }
         });
 
       return () => {
-        aborted = true;
-        console.log('[AssistantSSE] Closing connection', { requestId: requestId.substring(0, 20) + '...' });
+        logClosed('abort');
+        controller.abort();
       };
     });
   }

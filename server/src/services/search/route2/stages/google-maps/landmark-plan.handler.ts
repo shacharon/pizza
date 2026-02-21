@@ -60,7 +60,8 @@ export async function executeLandmarkPlan(
       mapping.geocodeQuery,
       mapping.region,
       apiKey,
-      requestId
+      requestId,
+      ctx.abortSignal
     );
 
     if (!geocodeResult) {
@@ -142,7 +143,7 @@ export async function executeLandmarkPlan(
           region: mapping.region
         }, '[GOOGLE] Keyword normalized for nearby search');
 
-        const response = await callGooglePlacesSearchNearby(requestBody, apiKey, requestId);
+        const response = await callGooglePlacesSearchNearby(requestBody, apiKey, requestId, ctx.abortSignal);
         if (!response.places?.length) return [];
         const out = filterPlacesByBusinessStatus(response.places);
         logBusinessStatusMetrics({
@@ -174,7 +175,7 @@ export async function executeLandmarkPlan(
           requestBody.regionCode = mapping.region;
         }
 
-        const response = await callGooglePlacesSearchText(requestBody, apiKey, requestId);
+        const response = await callGooglePlacesSearchText(requestBody, apiKey, requestId, ctx.abortSignal);
         if (!response.places?.length) return [];
         const out = filterPlacesByBusinessStatus(response.places);
         logBusinessStatusMetrics({
@@ -298,7 +299,8 @@ async function callGoogleGeocodingAPI(
   address: string,
   region: string | null,
   apiKey: string,
-  requestId: string
+  requestId: string,
+  signal?: AbortSignal
 ): Promise<{ lat: number; lng: number } | null> {
   const params = new URLSearchParams({
     key: apiKey,
@@ -320,7 +322,8 @@ async function callGoogleGeocodingAPI(
     timeoutMs: 8000,
     requestId,
     stage: 'google_maps',
-    provider: 'google_geocoding'
+    provider: 'google_geocoding',
+    ...(signal && { signal })
   });
 
   if (!response.ok) {

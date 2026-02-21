@@ -71,12 +71,9 @@ export class GoogleCSEAdapter implements SearchAdapter {
 
   /**
    * Search the web using Google Custom Search API
-   * 
-   * @param query - Search query (e.g., "Pizza House Tel Aviv site:wolt.com")
-   * @param limit - Maximum number of results to return (max 10 per CSE API)
-   * @returns Array of search results
+   * @param signal - Optional request-scoped abort signal
    */
-  async searchWeb(query: string, limit: number): Promise<SearchResult[]> {
+  async searchWeb(query: string, limit: number, signal?: AbortSignal): Promise<SearchResult[]> {
     const url = 'https://www.googleapis.com/customsearch/v1';
     const params = new URLSearchParams({
       key: this.config.apiKey,
@@ -98,7 +95,7 @@ export class GoogleCSEAdapter implements SearchAdapter {
     );
 
     try {
-      const response = await fetch(`${url}?${params}`);
+      const response = await fetch(`${url}?${params}`, { signal: signal ?? null });
 
       if (!response.ok) {
         const errorBody = await response.text();

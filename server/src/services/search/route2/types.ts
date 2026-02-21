@@ -23,6 +23,8 @@ export interface Route2Context {
   traceId?: string;
   sessionId?: string;
   startTime: number;
+  /** Request-scoped abort signal; set by orchestrator at pipeline start. Aborted on pipeline timeout. */
+  abortSignal?: AbortSignal;
   debug?: { stopAfter: string }; // ← הוסף רק את זה
 
   jobCreatedAt?: number; // Timestamp when search job was created (for queueDelayMs)
@@ -53,6 +55,15 @@ export interface Route2Context {
     postFilterMs?: number;
     responseBuildMs?: number;
   };
+}
+
+/**
+ * Returns true if the request has been aborted (e.g. pipeline timeout).
+ * Use before WS/SSE publish and before cache/Redis writes to avoid side-effects after abort.
+ * @param ctx - Route2Context or any object with optional abortSignal (e.g. job for provider worker)
+ */
+export function shouldAbort(ctx?: { abortSignal?: AbortSignal | null } | null): boolean {
+  return ctx?.abortSignal?.aborted === true;
 }
 
 // Gate2 specific types

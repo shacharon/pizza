@@ -128,3 +128,18 @@ export function getDeterministicFallback(
 
   return { message: t.refine, question: null, suggestedAction: 'NONE', blocksSearch: false };
 }
+
+/** Short default message for MESSAGE_ONLY timeout fallback (requestedLanguage). */
+const SHORT_SUMMARY_BY_LANG: Record<Exclude<AssistantLanguage, 'other'>, string> = {
+  he: 'הנה התוצאות. אפשר למיין לפי מרחק או דירוג.',
+  en: 'Here are your results. Sort by distance or rating to refine.',
+  ar: 'إليك النتائج. رتّب حسب المسافة أو التقييم.',
+  ru: 'Вот результаты. Сортировка по расстоянию или рейтингу.',
+  fr: 'Voici les résultats. Triez par distance ou note.',
+  es: 'Aquí tienes los resultados. Ordena por distancia o valoración.'
+};
+
+export function getShortSummaryFallback(requestedLanguage: AssistantLanguage): string {
+  const lang = requestedLanguage === 'other' ? 'en' : requestedLanguage;
+  return SHORT_SUMMARY_BY_LANG[lang] ?? SHORT_SUMMARY_BY_LANG.en;
+}

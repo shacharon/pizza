@@ -20,38 +20,27 @@ export class TimeoutError extends Error {
  * Wrap a promise with a timeout
  * 
  * If the promise doesn't resolve within timeoutMs,
- * rejects with TimeoutError
+ * optionally calls onTimeout then rejects with TimeoutError
  * 
  * @param promise - Promise to wrap
  * @param timeoutMs - Timeout in milliseconds
  * @param operation - Name of operation (for error messages)
+ * @param onTimeout - Optional callback when timeout triggers (e.g. () => controller.abort('reason'))
  * @returns Promise that resolves with result or rejects with timeout
- * 
- * @example
- * ```typescript
- * const result = await withTimeout(
- *   fetchData(),
- *   5000,
- *   'data_fetch'
- * );
- * ```
  */
-export async function withTimeout<T>(
+export function withTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
-  operation: string
+  operation: string,
+  onTimeout?: () => void
 ): Promise<T> {
-  // Create timeout promise that rejects after delay
   const timeoutPromise = new Promise<never>((_, reject) => {
     const timeoutId = setTimeout(() => {
+      onTimeout?.();
       reject(new TimeoutError(operation, timeoutMs));
     }, timeoutMs);
-    
-    // Clear timeout if original promise resolves first
     promise.finally(() => clearTimeout(timeoutId));
   });
-  
-  // Race between original promise and timeout
   return Promise.race([promise, timeoutPromise]);
 }
 

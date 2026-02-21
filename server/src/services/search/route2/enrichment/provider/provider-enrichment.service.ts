@@ -14,6 +14,7 @@
 
 import type { RestaurantResult } from '../../../types/restaurant.types.js';
 import type { Route2Context } from '../../types.js';
+import { shouldAbort } from '../../types.js';
 import { logger } from '../../../../../lib/logger/structured-logger.js';
 import { getRedisClient } from '../../../../../lib/redis/redis-client.js';
 import type { Redis as RedisClient } from 'ioredis';
@@ -264,6 +265,7 @@ async function triggerMatchJob(
     name: restaurant.name,
     cityText,
     addressText: restaurant.address,
+    abortSignal: ctx.abortSignal,
   });
 
   logger.info(
@@ -362,6 +364,8 @@ async function enrichSingleRestaurant(
     restaurantName,
     cityText,
   });
+
+  if (shouldAbort(ctx)) return;
 
   // 2. Attempt to acquire lock
   const lockKey = PROVIDER_REDIS_KEYS.lock(providerId, placeId);

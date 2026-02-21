@@ -29,18 +29,19 @@ export class SearchBarComponent {
   readonly clear = output<void>();
   readonly inputChange = output<string>(); // NEW: Phase B
 
-  // Local state (synced with parent via effect)
+  // Local state (synced with parent only when parent value changes)
   readonly query = signal('');
 
   constructor(private cdr: ChangeDetectorRef) {
-    // Sync local query with parent's value input
-    // This ensures the input reflects the parent's state (persisted query)
+    // Sync from parent only when parent sends a new value (e.g. clear, recent search).
+    // Do NOT overwrite local query when parent value is stale (e.g. facade.query()
+    // stays "" while user types); otherwise the send button stays disabled.
+    let lastParentValue: string | undefined = undefined;
     effect(() => {
       const parentValue = this.value();
-      if (parentValue !== this.query()) {
+      if (parentValue !== lastParentValue) {
+        lastParentValue = parentValue;
         this.query.set(parentValue);
-        // CRITICAL FIX: Explicitly mark for check after signal update
-        // This ensures OnPush change detection picks up the new value
         this.cdr.markForCheck();
       }
     });

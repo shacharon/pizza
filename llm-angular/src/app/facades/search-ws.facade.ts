@@ -7,6 +7,7 @@ import { Injectable, inject, NgZone } from '@angular/core';
 import { WsClientService } from '../core/services/ws-client.service';
 import { AuthService } from '../core/auth/auth.service';
 import { AssistantSseService } from '../core/services/assistant-sse.service';
+import { ActiveRequestIdService } from '../state/active-request-id.service';
 import type { WSServerMessage, AssistantStatus } from '../core/models/ws-protocol.types';
 import type { SearchResponse } from '../domain/types/search.types';
 import { environment } from '../../environments/environment';
@@ -24,6 +25,7 @@ export class SearchWsHandler {
   private readonly authService = inject(AuthService);
   private readonly assistantSse = inject(AssistantSseService);
   private readonly ngZone = inject(NgZone);
+  private readonly activeRequestIdService = inject(ActiveRequestIdService);
 
   // Track SSE subscription for cleanup
   private sseSubscription: Subscription | null = null;
@@ -120,7 +122,7 @@ export class SearchWsHandler {
     if (useSseAssistant && assistantHandler) {
       console.log('[SearchWsHandler] Using SSE for assistant (WS assistant disabled)', { requestId: requestId.substring(0, 20) + '...' });
 
-      // Clean up previous SSE subscription
+      // Hard-stop previous SSE before opening new one (abort stream + clear handlers)
       this.cleanupSse();
 
       // Accumulated text for streaming
@@ -133,6 +135,9 @@ export class SearchWsHandler {
       this.sseSubscription = this.assistantSse.connect(requestId).subscribe({
         next: (event) => {
           this.ngZone.run(() => {
+            if (this.activeRequestIdService.activeRequestId() !== requestId) {
+              return;
+            }
             if (event.type === 'narration') {
               streamedText = event.data.text ?? '';
               isFirstDelta = true; // Reset for new stream
@@ -223,7 +228,7 @@ export class SearchWsHandler {
    */
   private cleanupSse(): void {
     if (this.sseSubscription) {
-      console.log('[SearchWsHandler] Cleaning up previous SSE subscription');
+      console.log('[SearchWsHandler] SSE hard-stop: closing previous stream before opening new one');
       this.sseSubscription.unsubscribe();
       this.sseSubscription = null;
     }
@@ -357,12 +362,20 @@ export class SearchWsHandler {
    */
   handleSearchEvent(
     event: import('../contracts/search.contracts').WsSearchEvent,
+    activeRequestId: string | undefined,
     handlers: SearchEventHandlers,
     fetchResult: (requestId: string) => Promise<SearchResponse | null>,
     cancelPollingStart: () => void,
     cancelPolling: () => void,
     currentQuery: string
   ): void {
+    if (event.requestId !== activeRequestId) {
+      console.debug('[SearchWsHandler] Ignoring search event for non-active requestId', {
+        eventRequestId: event.requestId,
+        activeRequestId
+      });
+      return;
+    }
     const requestId = event.requestId;
 
     switch (event.type) {

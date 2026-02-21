@@ -5,6 +5,7 @@
  */
 
 import type { Route2Context } from './types.js';
+import { shouldAbort } from './types.js';
 import { logger } from '../../../lib/logger/structured-logger.js';
 import { publishSearchFailedAssistant } from './assistant/assistant-integration.js';
 import type { WebSocketManager } from '../../../infra/websocket/websocket-manager.js';
@@ -47,11 +48,12 @@ export async function handlePipelineError(
     '[ROUTE2] Pipeline failed'
   );
 
-  // Always publish terminal SEARCH_FAILED to search channel (WS still used; no skip when SSE enabled)
-  publishTerminalFailed(wsManager, requestId, ctx.sessionId, { code, message, stage: errorStage });
-
-  // Publish SEARCH_FAILED assistant message (best-effort; skipped when SSE enabled)
-  await publishSearchFailedAssistant(ctx, requestId, wsManager, error, kind);
+  if (!shouldAbort(ctx)) {
+    // Always publish terminal SEARCH_FAILED to search channel (WS still used; no skip when SSE enabled)
+    publishTerminalFailed(wsManager, requestId, ctx.sessionId, { code, message, stage: errorStage });
+    // Publish SEARCH_FAILED assistant message (best-effort; skipped when SSE enabled)
+    await publishSearchFailedAssistant(ctx, requestId, wsManager, error, kind);
+  }
 
   throw error;
 }

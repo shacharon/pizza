@@ -88,7 +88,7 @@ export async function executeNearbySearch(
     };
 
     // Fetch first page
-    const firstResponse = await callGooglePlacesSearchNearby(requestBody, apiKey, requestId);
+    const firstResponse = await callGooglePlacesSearchNearby(requestBody, apiKey, requestId, ctx.abortSignal);
     if (firstResponse.places) {
       processBatch(firstResponse.places);
       nextPageToken = firstResponse.nextPageToken;
@@ -97,7 +97,7 @@ export async function executeNearbySearch(
     // Fetch additional pages if needed
     while (nextPageToken && results.length < maxResults) {
       const pageBody = { ...requestBody, pageToken: nextPageToken };
-      const pageResponse = await callGooglePlacesSearchNearby(pageBody, apiKey, requestId);
+      const pageResponse = await callGooglePlacesSearchNearby(pageBody, apiKey, requestId, ctx.abortSignal);
 
       if (pageResponse.places) {
         const remaining = maxResults - results.length;
@@ -280,7 +280,8 @@ function buildNearbySearchBody(
 export async function callGooglePlacesSearchNearby(
   body: any,
   apiKey: string,
-  requestId: string
+  requestId: string,
+  signal?: AbortSignal
 ): Promise<any> {
   const url = 'https://places.googleapis.com/v1/places:searchNearby';
 
@@ -320,7 +321,8 @@ export async function callGooglePlacesSearchNearby(
       requestId,
       stage: 'google_maps',
       provider: 'google_places',
-      enableDnsPreflight: process.env.ENABLE_DNS_PREFLIGHT === 'true'
+      enableDnsPreflight: process.env.ENABLE_DNS_PREFLIGHT === 'true',
+      ...(signal && { signal })
     });
 
     callDurationMs = Date.now() - callStartTime;

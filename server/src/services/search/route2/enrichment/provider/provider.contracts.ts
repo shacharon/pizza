@@ -208,6 +208,11 @@ export interface ProviderEnrichmentJob {
    * Address text (optional, for future use)
    */
   addressText?: string | null;
+
+  /**
+   * Optional request-scoped abort signal (cancels HTTP when request aborts)
+   */
+  abortSignal?: AbortSignal;
 }
 
 /**

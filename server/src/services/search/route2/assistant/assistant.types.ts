@@ -61,6 +61,8 @@ export interface AssistantSummaryContext {
     type: 'gluten-free';
     shouldInclude: boolean;
   };
+  /** Optional refine hint for SATURATED MESSAGE_ONLY (e.g. "filter by open now, price, or distance"). */
+  nextStepHint?: string;
 }
 
 export interface AssistantSearchFailedContext {

@@ -21,7 +21,7 @@ import { detectQueryLanguage } from './utils/query-language-detector.js';
 import { logger } from '../../../lib/logger/structured-logger.js';
 import { wsManager } from '../../../server.js';
 import { sanitizeQuery } from '../../../lib/telemetry/query-sanitizer.js';
-import { withTimeout } from '../../../lib/reliability/timeout-guard.js';
+import { withTimeout, isTimeoutError } from '../../../lib/reliability/timeout-guard.js';
 import { route2Config } from './route2.config.js';
 
 // Extracted modules
@@ -33,10 +33,13 @@ import { publishTerminalClarify, publishTerminalGateStop } from './orchestrator.
 import { resolveAndStoreFilters, applyPostFiltersToResults } from './orchestrator.filters.js';
 import { buildFinalResponse } from './orchestrator.response.js';
 import { handlePipelineError } from './orchestrator.error.js';
-import { deriveEarlyRoutingContext, upgradeToFinalFilters } from './orchestrator.early-context.js';
+import { deriveEarlyRoutingContext, toRequestLanguage, upgradeToFinalFilters } from './orchestrator.early-context.js';
+import { generateAndPublishAssistantPromise } from './assistant/assistant-integration.js';
+import type { AssistantSummaryContext } from './assistant/assistant-llm.service.js';
 
 // Extracted helpers
-import { shouldDebugStop, resolveSessionId } from './orchestrator.helpers.js';
+import { shouldDebugStop, resolveSessionId, resolveAssistantLanguage } from './orchestrator.helpers.js';
+import { shouldAbort } from './types.js';
 
 // Enrichment stages
 import { enrichWithWoltLinks } from './enrichment/provider/wolt.js';
@@ -46,21 +49,38 @@ import { getMetricsCollector } from './enrichment/metrics-collector.js';
 
 /**
  * Publish terminal CLARIFY to search channel and return the response (deduplicates guard+return blocks).
+ * Skips publish if request was aborted (e.g. pipeline timeout).
  */
 function publishClarifyAndReturn(
   wsManager: WebSocketManager,
   requestId: string,
   sessionId: string | undefined,
-  response: SearchResponse
+  response: SearchResponse,
+  ctx: Route2Context
 ): SearchResponse {
-  publishTerminalClarify(wsManager, requestId, sessionId, response.assist as { type: string; message: string; question?: string | null; suggestedAction?: string | null; reason?: string });
+  if (!shouldAbort(ctx)) {
+    publishTerminalClarify(wsManager, requestId, sessionId, response.assist as { type: string; message: string; question?: string | null; suggestedAction?: string | null; reason?: string });
+  }
   return response;
 }
+
+/** Ref passed in so pipeline timeout can abort the request-scoped controller. */
+type AbortControllerRef = { current: AbortController | null };
 
 /**
  * Internal pipeline implementation (without timeout)
  */
-async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context, wsManager: WebSocketManager): Promise<SearchResponse> {
+async function searchRoute2Internal(
+  request: SearchRequest,
+  ctx: Route2Context,
+  wsManager: WebSocketManager,
+  abortControllerRef?: AbortControllerRef
+): Promise<SearchResponse> {
+  if (abortControllerRef) {
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    ctx.abortSignal = controller.signal;
+  }
   const { requestId, startTime } = ctx;
   const sessionId = resolveSessionId(request, ctx);
   const { queryLen, queryHash } = sanitizeQuery(request.query);
@@ -161,13 +181,15 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context, 
     // Guard: GATE STOP (not food)
     const stopResponse = await handleGateStop(request, gateResult, ctx, wsManager);
     if (stopResponse) {
-      publishTerminalGateStop(wsManager, requestId, sessionId, stopResponse.assist as any);
+      if (!shouldAbort(ctx)) {
+        publishTerminalGateStop(wsManager, requestId, sessionId, stopResponse.assist as any);
+      }
       return stopResponse;
     }
 
     // Guard: GATE ASK_CLARIFY (uncertain)
     const clarifyResponse = await handleGateClarify(request, gateResult, ctx, wsManager);
-    if (clarifyResponse) return publishClarifyAndReturn(wsManager, requestId, sessionId, clarifyResponse);
+    if (clarifyResponse) return publishClarifyAndReturn(wsManager, requestId, sessionId, clarifyResponse, ctx);
 
     // STAGE 2: INTENT
     let intentDecision = await executeIntentStage(request, ctx);
@@ -209,14 +231,14 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context, 
 
     // Guard: Early TEXTSEARCH location check (blocks Google search if no location)
     const earlyTextSearchGuardResponse = await handleEarlyTextSearchLocationGuard(request, gateResult, intentDecision, ctx, wsManager);
-    if (earlyTextSearchGuardResponse) return publishClarifyAndReturn(wsManager, requestId, sessionId, earlyTextSearchGuardResponse);
+    if (earlyTextSearchGuardResponse) return publishClarifyAndReturn(wsManager, requestId, sessionId, earlyTextSearchGuardResponse, ctx);
 
     // Check for generic food query (e.g., "what to eat") - sets flag for later
     checkGenericFoodQuery(gateResult, intentDecision, ctx);
 
     // Near-me location check (early stop if no location)
     const nearMeResponse = await handleNearMeLocationCheck(request, intentDecision, ctx, wsManager);
-    if (nearMeResponse) return publishClarifyAndReturn(wsManager, requestId, sessionId, nearMeResponse);
+    if (nearMeResponse) return publishClarifyAndReturn(wsManager, requestId, sessionId, nearMeResponse, ctx);
 
     // Near-me route override (if detected with location)
     intentDecision = applyNearMeRouteOverride(request, intentDecision, ctx);
@@ -255,7 +277,7 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context, 
 
     // Guard: NEARBY requires userLocation
     const nearbyGuardResponse = await handleNearbyLocationGuard(request, gateResult, intentDecision, mapping, ctx, wsManager);
-    if (nearbyGuardResponse) return publishClarifyAndReturn(wsManager, requestId, sessionId, nearbyGuardResponse);
+    if (nearbyGuardResponse) return publishClarifyAndReturn(wsManager, requestId, sessionId, nearbyGuardResponse, ctx);
 
     // CHEESEBURGER 2 FIX: TEXTSEARCH anchor validation
     // For TEXTSEARCH: ONLY cityText OR locationBias count as anchors (NOT userLocation)
@@ -295,10 +317,10 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context, 
     // HARD STOP: TEXTSEARCH without location anchor must CLARIFY and must NOT start Google
     if (!allowed) {
       const r = await handleTextSearchMissingLocationGuard(request, gateResult, intentDecision, mapping, ctx, wsManager);
-      if (r) return publishClarifyAndReturn(wsManager, requestId, sessionId, r);
+      if (r) return publishClarifyAndReturn(wsManager, requestId, sessionId, r, ctx);
       // Fallback: early guard (user-friendly "enable location" message) so client never sees a tech error
       const early = await handleEarlyTextSearchLocationGuard(request, gateResult, intentDecision, ctx, wsManager);
-      if (early) return publishClarifyAndReturn(wsManager, requestId, sessionId, early);
+      if (early) return publishClarifyAndReturn(wsManager, requestId, sessionId, early, ctx);
       // Deterministic CLARIFY (no throw): job will end as DONE_CLARIFY
       logger.info(
         { requestId, pipelineVersion: 'route2', event: 'pipeline_clarify', reason: 'textsearch_missing_location_anchor_fallback' },
@@ -312,7 +334,7 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context, 
         gateLanguage: gateResult.gate.language,
         confidence: intentDecision.confidence
       });
-      return publishClarifyAndReturn(wsManager, requestId, sessionId, deterministicClarify);
+      return publishClarifyAndReturn(wsManager, requestId, sessionId, deterministicClarify, ctx);
     }
 
     // CRITICAL: Fire parallel tasks ONLY after all guards pass (blocksSearch=false confirmed)
@@ -320,6 +342,41 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context, 
     const parallelTasks = fireParallelTasks(request, ctx, intentDecision.route);
     baseFiltersPromise = parallelTasks.baseFiltersPromise;
     postConstraintsPromise = parallelTasks.postConstraintsPromise;
+
+    // Start SUMMARY LLM early (parallel to Google), empty topNames/topMeta; do not block results on it
+    const earlySummaryContext: AssistantSummaryContext = {
+      type: 'SUMMARY',
+      query: request.query,
+      language: resolveAssistantLanguage(ctx, request, toRequestLanguage(intentDecision.language)),
+      resultCount: 0,
+      top: [],
+      analysisMode: 'SCARCITY'
+    };
+    const summaryStartTime = Date.now();
+    logger.info(
+      { requestId, pipelineVersion: 'route2', event: 'summary_started', summaryStage: 'early' },
+      '[ROUTE2] Early SUMMARY LLM started (parallel to Google)'
+    );
+    const summaryPromise = withTimeout(
+      generateAndPublishAssistantPromise(ctx, requestId, sessionId, earlySummaryContext, wsManager),
+      route2Config.SUMMARY_EARLY_TIMEOUT_MS,
+      'summary_early'
+    )
+      .then(() => {
+        const durationMs = Date.now() - summaryStartTime;
+        logger.info(
+          { requestId, pipelineVersion: 'route2', event: 'summary_done', durationMs, llm_latency_ms: durationMs, llm_timeout: false, stage: 'summary_early' },
+          '[ROUTE2] Early SUMMARY LLM done'
+        );
+      })
+      .catch((err) => {
+        const durationMs = Date.now() - summaryStartTime;
+        const timedOut = isTimeoutError(err);
+        logger.info(
+          { requestId, pipelineVersion: 'route2', event: 'summary_done', durationMs, llm_latency_ms: durationMs, llm_timeout: timedOut, stage: 'summary_early' },
+          '[ROUTE2] Early SUMMARY LLM settled (failed or skipped)'
+        );
+      });
 
     // Start Google fetch immediately (don't await yet) - ONLY after guards pass
     const googlePromise = executeGoogleMapsStage(mapping, request, ctx);
@@ -357,6 +414,16 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context, 
     ctx.timings.googleMapsMs = googleResult.durationMs;
 
     const googleTotalDurationMs = Date.now() - googleParallelStartTime;
+    logger.info(
+      {
+        requestId,
+        pipelineVersion: 'route2',
+        event: 'google_done',
+        durationMs: googleResult.durationMs,
+        totalParallelMs: googleTotalDurationMs
+      },
+      '[ROUTE2] Google fetch done'
+    );
     logger.info(
       {
         requestId,
@@ -450,11 +517,13 @@ export async function searchRoute2(
 ): Promise<SearchResponse> {
   const ws = deps?.wsManager ?? wsManager;
 
+  const abortRef: AbortControllerRef = { current: null };
   try {
     return await withTimeout(
-      searchRoute2Internal(request, ctx, ws),
+      searchRoute2Internal(request, ctx, ws, abortRef),
       route2Config.PIPELINE_TIMEOUT_MS,
-      'route2_pipeline'
+      'route2_pipeline',
+      () => abortRef.current?.abort('route2_timeout')
     );
   } catch (error) {
     // Re-throw timeout errors with more context

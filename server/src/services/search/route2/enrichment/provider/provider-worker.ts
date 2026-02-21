@@ -40,6 +40,7 @@ import { wsManager } from '../../../../../server.js';
 import { withTimeout } from '../../../../../lib/reliability/timeout-guard.js';
 import type { ProviderDeepLinkResolver } from '../provider-deeplink-resolver.js';
 import { getMetricsCollector } from '../metrics-collector.js';
+import { shouldAbort } from '../../types.js';
 
 /**
  * Provider Worker - Processes enrichment jobs for any provider
@@ -111,12 +112,14 @@ export class ProviderWorker {
         `[ProviderWorker:${providerId}] Job failed (final)`
       );
 
-      // Write NOT_FOUND and publish patch (no meta on error)
+      // Write NOT_FOUND and publish patch (no meta on error) — skip if request aborted
       const updatedAt = new Date().toISOString();
       try {
-        await this.writeCacheEntry(providerId, placeId, null, 'NOT_FOUND', undefined);
-        await this.publishPatchEvent(providerId, requestId, placeId, 'NOT_FOUND', null, updatedAt, undefined);
-        await this.cleanupLock(providerId, placeId);
+        if (!shouldAbort(job)) {
+          await this.writeCacheEntry(providerId, placeId, null, 'NOT_FOUND', undefined);
+          await this.publishPatchEvent(providerId, requestId, placeId, 'NOT_FOUND', null, updatedAt, undefined);
+          await this.cleanupLock(providerId, placeId);
+        }
       } catch (cleanupErr) {
         logger.warn(
           {
@@ -169,11 +172,14 @@ export class ProviderWorker {
       );
 
       const resolveResult = await withTimeout(
-        this.resolver.resolve({
-          provider: providerId,
-          name,
-          cityText: cityText ?? null,
-        }),
+        this.resolver.resolve(
+          {
+            provider: providerId,
+            name,
+            cityText: cityText ?? null,
+          },
+          job.abortSignal
+        ),
         PROVIDER_JOB_CONFIG.SEARCH_TIMEOUT_MS,
         `${getProviderDisplayName(providerId)} resolution timeout for ${placeId}`
       );
@@ -213,14 +219,12 @@ export class ProviderWorker {
         `[ProviderWorker:${providerId}] Resolution completed`
       );
 
-      // Step 2: Write to Redis cache (with meta)
-      await this.writeCacheEntry(providerId, placeId, url, status, meta);
-
-      // Step 3: Publish WebSocket RESULT_PATCH event with meta
-      await this.publishPatchEvent(providerId, requestId, placeId, status, url, updatedAt, meta);
-
-      // Step 4: Clean up lock (optional, TTL already exists)
-      await this.cleanupLock(providerId, placeId);
+      // Step 2: Write to Redis cache (with meta) — skip if request aborted
+      if (!shouldAbort(job)) {
+        await this.writeCacheEntry(providerId, placeId, url, status, meta);
+        await this.publishPatchEvent(providerId, requestId, placeId, status, url, updatedAt, meta);
+        await this.cleanupLock(providerId, placeId);
+      }
 
       logger.info(
         {

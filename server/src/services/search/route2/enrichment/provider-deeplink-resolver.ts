@@ -94,11 +94,9 @@ export class ProviderDeepLinkResolver {
 
   /**
    * Resolve restaurant deep link using 3-layer strategy
-   * 
-   * @param input - Restaurant and provider info
-   * @returns Resolution result with status, URL, and metadata
+   * @param signal - Optional request-scoped abort signal
    */
-  async resolve(input: ResolveInput): Promise<ResolveResult> {
+  async resolve(input: ResolveInput, signal?: AbortSignal): Promise<ResolveResult> {
     const { provider, name, cityText } = input;
     const config = PROVIDER_CONFIGS[provider];
 
@@ -117,7 +115,7 @@ export class ProviderDeepLinkResolver {
 
     // Prefer Brave Search (with RelaxPolicy)
     if (this.braveAdapter) {
-      const braveResult = await this.tryBraveSearch(provider, name, cityText, config);
+      const braveResult = await this.tryBraveSearch(provider, name, cityText, config, signal);
       if (braveResult) {
         return braveResult;
       }
@@ -130,14 +128,14 @@ export class ProviderDeepLinkResolver {
     if (this.cseClient) {
       // L1: Try CSE with city (only if cityText available)
       if (cityText) {
-        const l1Result = await this.tryLayer1(provider, name, cityText, config);
+        const l1Result = await this.tryLayer1(provider, name, cityText, config, signal);
         if (l1Result) {
           return l1Result;
         }
       }
 
       // L2: Try CSE without city
-      const l2Result = await this.tryLayer2(provider, name, config);
+      const l2Result = await this.tryLayer2(provider, name, config, signal);
       if (l2Result) {
         return l2Result;
       }
@@ -168,7 +166,8 @@ export class ProviderDeepLinkResolver {
     provider: Provider,
     name: string,
     cityText: string | null | undefined,
-    config: ProviderConfig
+    config: ProviderConfig,
+    signal?: AbortSignal
   ): Promise<ResolveResult | null> {
     try {
       const searchConfig: ProviderSearchConfig = {
@@ -180,7 +179,8 @@ export class ProviderDeepLinkResolver {
       const url = await this.braveAdapter!.searchWithRelaxPolicy(
         name,
         cityText ?? null,
-        searchConfig
+        searchConfig,
+        signal
       );
 
       if (url) {
@@ -238,7 +238,8 @@ export class ProviderDeepLinkResolver {
     provider: Provider,
     name: string,
     cityText: string,
-    config: ProviderConfig
+    config: ProviderConfig,
+    signal?: AbortSignal
   ): Promise<ResolveResult | null> {
     const query = this.buildL1Query(provider, name, cityText);
 
@@ -254,7 +255,7 @@ export class ProviderDeepLinkResolver {
     );
 
     try {
-      const results = await this.cseClient!.search(query, 5);
+      const results = await this.cseClient!.search(query, 5, signal);
       const validUrl = this.selectFirstValidUrl(results, config.allowedHosts);
 
       if (validUrl) {
@@ -312,7 +313,8 @@ export class ProviderDeepLinkResolver {
   private async tryLayer2(
     provider: Provider,
     name: string,
-    config: ProviderConfig
+    config: ProviderConfig,
+    signal?: AbortSignal
   ): Promise<ResolveResult | null> {
     const query = this.buildL2Query(provider, name);
 
@@ -327,7 +329,7 @@ export class ProviderDeepLinkResolver {
     );
 
     try {
-      const results = await this.cseClient!.search(query, 5);
+      const results = await this.cseClient!.search(query, 5, signal);
       const validUrl = this.selectFirstValidUrl(results, config.allowedHosts);
 
       if (validUrl) {

@@ -16,6 +16,17 @@ export interface CSEResult {
   snippet: string;
 }
 
+/** Raw item shape from Google CSE API (response.json()) */
+interface GoogleCSEApiItem {
+  title?: string;
+  link?: string;
+  snippet?: string;
+}
+
+interface GoogleCSEApiResponse {
+  items?: GoogleCSEApiItem[];
+}
+
 /**
  * CSE client configuration
  */
@@ -65,13 +76,10 @@ export class GoogleCSEClient {
 
   /**
    * Search with timeout and retry logic
-   * 
-   * @param query - Search query
-   * @param limit - Max results (1-10)
-   * @returns Normalized search results
+   * @param signal - Optional request-scoped abort signal
    */
-  async search(query: string, limit: number = 5): Promise<CSEResult[]> {
-    return this.searchWithRetry(query, limit, 0);
+  async search(query: string, limit: number = 5, signal?: AbortSignal): Promise<CSEResult[]> {
+    return this.searchWithRetry(query, limit, 0, signal);
   }
 
   /**
@@ -80,12 +88,13 @@ export class GoogleCSEClient {
   private async searchWithRetry(
     query: string,
     limit: number,
-    attempt: number
+    attempt: number,
+    signal?: AbortSignal
   ): Promise<CSEResult[]> {
     this.callCount++;
 
     try {
-      const results = await this.searchInternal(query, limit);
+      const results = await this.searchInternal(query, limit, signal);
       
       logger.debug(
         {
@@ -135,7 +144,7 @@ export class GoogleCSEClient {
         );
 
         await this.sleep(delayMs);
-        return this.searchWithRetry(query, limit, attempt + 1);
+        return this.searchWithRetry(query, limit, attempt + 1, signal);
       }
 
       // No more retries or non-retryable error
@@ -146,7 +155,7 @@ export class GoogleCSEClient {
   /**
    * Internal search implementation with timeout
    */
-  private async searchInternal(query: string, limit: number): Promise<CSEResult[]> {
+  private async searchInternal(query: string, limit: number, signal?: AbortSignal): Promise<CSEResult[]> {
     const url = 'https://www.googleapis.com/customsearch/v1';
     const params = new URLSearchParams({
       key: this.apiKey,
@@ -155,9 +164,16 @@ export class GoogleCSEClient {
       num: String(Math.min(limit, 10)), // CSE max: 10
     });
 
-    // Create abort controller for timeout
     const abortController = new AbortController();
     const timeoutId = setTimeout(() => abortController.abort(), this.timeoutMs);
+    let abortListener: (() => void) | undefined;
+    if (signal) {
+      if (signal.aborted) abortController.abort();
+      else {
+        abortListener = () => abortController.abort();
+        signal.addEventListener('abort', abortListener);
+      }
+    }
 
     try {
       const response = await fetch(`${url}?${params}`, {
@@ -165,6 +181,7 @@ export class GoogleCSEClient {
       });
 
       clearTimeout(timeoutId);
+      abortListener && signal!.removeEventListener('abort', abortListener);
 
       if (!response.ok) {
         const errorBody = await response.text();
@@ -177,18 +194,19 @@ export class GoogleCSEClient {
         );
       }
 
-      const data = await response.json();
+      const data = (await response.json()) as GoogleCSEApiResponse;
 
       // Normalize results
-      const results: CSEResult[] = (data.items || []).map((item: any) => ({
-        title: item.title,
-        url: item.link,
-        snippet: item.snippet || '',
+      const results: CSEResult[] = (data.items || []).map((item) => ({
+        title: item.title ?? '',
+        url: item.link ?? '',
+        snippet: item.snippet ?? '',
       }));
 
       return results;
     } catch (err) {
       clearTimeout(timeoutId);
+      abortListener && signal?.removeEventListener('abort', abortListener);
 
       // Handle abort (timeout)
       if (err instanceof Error && err.name === 'AbortError') {

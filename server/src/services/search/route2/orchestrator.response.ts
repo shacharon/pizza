@@ -6,12 +6,15 @@
 import type { SearchRequest } from '../types/search-request.dto.js';
 import type { SearchResponse } from '../types/search-response.dto.js';
 import type { Route2Context, Gate2StageOutput, IntentResult } from './types.js';
+import { shouldAbort } from './types.js';
 import type { RouteLLMMapping } from './stages/route-llm/schemas.js';
 import { logger } from '../../../lib/logger/structured-logger.js';
 import { startStage, endStage } from '../../../lib/telemetry/stage-timer.js';
-import { generateAndPublishAssistant, generateAndPublishAssistantDeferred } from './assistant/assistant-integration.js';
+import { generateAndPublishAssistantDeferred, generateAndPublishMessageOnly } from './assistant/assistant-integration.js';
 import type { AssistantSummaryContext, AssistantGenericQueryNarrationContext } from './assistant/assistant-llm.service.js';
 import { buildSummaryEnrichment } from './assistant/summary-enrichment.js';
+import { getDeterministicFallback } from './assistant/fallback-messages.js';
+import { publishAssistantMessage } from './assistant/assistant-publisher.js';
 import { resolveAssistantLanguage, resolveSessionId } from './orchestrator.helpers.js';
 import { toRequestLanguage } from './orchestrator.early-context.js';
 import type { WebSocketManager } from '../../../infra/websocket/websocket-manager.js';
@@ -90,7 +93,8 @@ export async function buildFinalResponse(
         type: 'gluten-free',
         shouldInclude: true
       }
-    } : {})
+    } : {}),
+    ...(analysisMode === 'SATURATED' ? { nextStepHint: 'filter by open now, price, or distance' } : {})
   };
 
   // SSE GUARD: Skip assistant generation if SSE endpoint is enabled
@@ -107,23 +111,29 @@ export async function buildFinalResponse(
       },
       '[ROUTE2] Skipping assistant generation (SSE endpoint is source of truth)'
     );
-  } else {
-    // NON-BLOCKING: Fire assistant generation asynchronously (deferred)
-    // Don't await - results can be published immediately
-    generateAndPublishAssistantDeferred(
-      ctx,
-      requestId,
-      sessionId,
-      assistantContext,
-      wsManager
-    );
+  } else if (!shouldAbort(ctx)) {
+    // After Google results: fast final message. Non-SATURATED = early SUMMARY result or fallback; SATURATED = MESSAGE_ONLY LLM.
+    if (analysisMode !== 'SATURATED') {
+      const requestedLang = assistantContext.language === 'other' ? 'en' : assistantContext.language;
+      const fallback = getDeterministicFallback(assistantContext, requestedLang);
+      const fallbackOutput = {
+        type: 'SUMMARY' as const,
+        message: fallback.message,
+        question: fallback.question,
+        suggestedAction: fallback.suggestedAction,
+        blocksSearch: fallback.blocksSearch
+      };
+      publishAssistantMessage(wsManager, requestId, sessionId, fallbackOutput, assistantContext.language);
+    } else {
+      await generateAndPublishMessageOnly(ctx, requestId, sessionId, assistantContext, wsManager);
+    }
   }
 
   // HTTP response message: empty (WebSocket clients get real assistant message when ready)
   const assistMessage = '';
 
   // Generic query narration (if flagged) - also non-blocking
-  if ((ctx as any).isGenericQuery && ctx.userLocation) {
+  if ((ctx as any).isGenericQuery && ctx.userLocation && !shouldAbort(ctx)) {
     if (sseAssistantEnabled) {
       logger.info(
         {
@@ -200,48 +210,50 @@ export async function buildFinalResponse(
 
   endStage(ctx, 'response_build', responseBuildStart);
 
-  // Publish completion status to search channel
-  wsManager.publishToChannel('search', requestId, sessionId, {
-    type: 'status',
-    requestId,
-    status: 'completed'
-  });
+  if (!shouldAbort(ctx)) {
+    // Publish completion status to search channel
+    wsManager.publishToChannel('search', requestId, sessionId, {
+      type: 'status',
+      requestId,
+      status: 'completed'
+    });
 
-  // Publish final search results to WebSocket channel
-  const subscriberCount = (wsManager as any).subscriptionManager?.getSubscribers(`search:${requestId}`)?.size || 0;
+    // Publish final search results to WebSocket channel
+    const subscriberCount = (wsManager as any).subscriptionManager?.getSubscribers(`search:${requestId}`)?.size || 0;
 
-  logger.info({
-    requestId,
-    event: 'search_ws_publish_attempt',
-    channel: 'search',
-    payloadType: 'SEARCH_RESULTS',
-    resultCount: finalResults.length,
-    servedFrom: servedFrom || 'unknown',
-    subscriberCount
-  }, '[ROUTE2] Publishing search results to WebSocket');
+    logger.info({
+      requestId,
+      event: 'search_ws_publish_attempt',
+      channel: 'search',
+      payloadType: 'SEARCH_RESULTS',
+      resultCount: finalResults.length,
+      servedFrom: servedFrom || 'unknown',
+      subscriberCount
+    }, '[ROUTE2] Publishing search results to WebSocket');
 
-  wsManager.publishToChannel('search', requestId, sessionId, {
-    type: 'SEARCH_RESULTS',
-    requestId,
-    resultCount: finalResults.length,
-    results: finalResults,
-    servedFrom: servedFrom || 'google_api'
-  });
+    wsManager.publishToChannel('search', requestId, sessionId, {
+      type: 'SEARCH_RESULTS',
+      requestId,
+      resultCount: finalResults.length,
+      results: finalResults,
+      servedFrom: servedFrom || 'google_api'
+    });
 
-  logger.info({
-    requestId,
-    event: 'search_ws_published',
-    channel: 'search',
-    payloadType: 'SEARCH_RESULTS',
-    resultCount: finalResults.length,
-    servedFrom: servedFrom || 'unknown',
-    subscriberCount
-  }, '[ROUTE2] Search results published to WebSocket');
+    logger.info({
+      requestId,
+      event: 'search_ws_published',
+      channel: 'search',
+      payloadType: 'SEARCH_RESULTS',
+      resultCount: finalResults.length,
+      servedFrom: servedFrom || 'unknown',
+      subscriberCount
+    }, '[ROUTE2] Search results published to WebSocket');
 
-  logger.info(
-    { event: 'ws_terminal_published', type: 'SUCCESS', requestId },
-    '[ROUTE2] Search channel terminal published'
-  );
+    logger.info(
+      { event: 'ws_terminal_published', type: 'SUCCESS', requestId },
+      '[ROUTE2] Search channel terminal published'
+    );
+  }
 
   // DIETARY NOTE: Merged into SUMMARY (no separate message)
   // Dietary hint is now included in the SUMMARY message via assistantContext.dietaryNote
