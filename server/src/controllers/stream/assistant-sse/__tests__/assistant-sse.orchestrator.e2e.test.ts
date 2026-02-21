@@ -83,6 +83,7 @@ describe('AssistantSseOrchestrator E2E', () => {
 
     // Mock Response
     mockResponse = {
+      status: vi.fn().mockReturnThis(),
       setHeader: vi.fn(),
       flushHeaders: vi.fn(),
       write: vi.fn((chunk: string) => {
@@ -142,12 +143,13 @@ describe('AssistantSseOrchestrator E2E', () => {
         language: 'en'
       });
 
-      // 3. Summary message
+      // 3. Summary message (LLM output forwarded as-is; suggestedAction included)
       expect(sseEvents[2].event).toBe('message');
       expect(sseEvents[2].data).toMatchObject({
         type: 'SUMMARY',
         message: 'Found 5 restaurants',
-        language: 'en'
+        language: 'en',
+        suggestedAction: 'NONE'
       });
 
       // 4. Done event
@@ -155,6 +157,33 @@ describe('AssistantSseOrchestrator E2E', () => {
 
       // Verify response ended
       expect(mockResponse.end).toHaveBeenCalled();
+    });
+
+    it('should include suggestedAction in message event when LLM returns it', async () => {
+      const { generateAssistantMessage } = await import('../../../../services/search/route2/assistant/assistant-llm.service.js');
+      (generateAssistantMessage as any).mockResolvedValue({
+        type: 'SUMMARY',
+        message: 'Found 3 places',
+        question: null,
+        blocksSearch: false,
+        suggestedAction: 'NONE'
+      });
+
+      const mockRequest = {
+        params: { requestId: 'req-suggested-1' },
+        traceId: 'trace-suggested',
+        sessionId: 'sess-123',
+        userId: 'user-1',
+        on: vi.fn()
+      } as any;
+
+      await orchestrator.handleRequest(mockRequest, mockResponse as Response);
+
+      const messageEvents = sseEvents.filter(e => e.event === 'message');
+      expect(messageEvents.length).toBeGreaterThanOrEqual(1);
+      const summaryMessage = messageEvents.find(m => m.data && (m.data as any).type === 'SUMMARY');
+      expect(summaryMessage).toBeDefined();
+      expect((summaryMessage!.data as any).suggestedAction).toBe('NONE');
     });
   });
 
@@ -383,8 +412,8 @@ describe('AssistantSseOrchestrator E2E', () => {
       expect(languageLog[0].candidates.jobQueryDetectedLanguage).toBe('he');
     });
 
-    it('should prioritize uiLanguage over queryDetectedLanguage', async () => {
-      // Scenario: User has Hebrew UI but query detected as English (e.g., "pizza")
+    it('should use queryDetectedLanguage when present (not uiLanguage)', async () => {
+      // Priority: intent → queryDetectedLanguage → uiLanguage; do NOT use uiLanguage when queryDetectedLanguage exists
       mockJobStore.getJob.mockResolvedValue({
         status: 'RUNNING',
         ownerSessionId: 'sess-333',
@@ -414,19 +443,19 @@ describe('AssistantSseOrchestrator E2E', () => {
       const languageLog = logCalls.find((call: any[]) => call[0]?.event === 'assistant_sse_language_resolved');
 
       expect(languageLog).toBeDefined();
-      expect(languageLog[0].chosen).toBe('he');
-      expect(languageLog[0].source).toBe('uiLanguage');
+      expect(languageLog[0].chosen).toBe('en');
+      expect(languageLog[0].source).toBe('job.queryDetectedLanguage');
       expect(languageLog[0].candidates.uiLanguage).toBe('he');
       expect(languageLog[0].candidates.jobQueryDetectedLanguage).toBe('en');
     });
 
-    it('should output Hebrew narration when query is "piza" (en) but job.assistantLanguage or uiLanguage is he', async () => {
-      // Query "piza" typically detects as en; user/UI expects Hebrew
+    it('should output Hebrew narration when intent.language is he (priority over queryDetectedLanguage)', async () => {
+      // Priority: intent.language → queryDetectedLanguage → uiLanguage
       mockJobStore.getJob.mockResolvedValue({
         status: 'RUNNING',
         ownerSessionId: 'sess-piza',
         queryDetectedLanguage: 'en',
-        assistantLanguage: 'he'
+        intent: { language: 'he' }
       });
       mockJobStore.getStatus.mockResolvedValue({ status: 'RUNNING' });
       mockJobStore.getResult.mockResolvedValue({
@@ -448,7 +477,7 @@ describe('AssistantSseOrchestrator E2E', () => {
       const languageLog = mockLogger.info.mock.calls.find((call: any[]) => call[0]?.event === 'assistant_sse_language_resolved');
       expect(languageLog).toBeDefined();
       expect(languageLog![0].chosen).toBe('he');
-      expect(languageLog![0].source).toBe('job.assistantLanguage');
+      expect(languageLog![0].source).toBe('job.intent.language');
 
       const narrationEvent = sseEvents.find(e => e.event === 'narration');
       expect(narrationEvent).toBeDefined();

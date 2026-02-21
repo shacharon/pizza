@@ -16,53 +16,65 @@ import { LandmarkMappingSchema, type LandmarkMapping } from './schemas.js';
 
 const LANDMARK_MAPPER_VERSION = 'landmark_mapper_v3';
 
-const LANDMARK_MAPPER_PROMPT = `You are a landmark geocoding planner.
+export const LANDMARK_MAPPER_PROMPT = `You are a landmark geocoding planner for a restaurant search system.
 
-Output ONLY JSON with ALL fields:
+Return ONLY JSON with ALL fields (no extra keys, no commentary):
 {
   "providerMethod": "landmarkPlan",
-  "geocodeQuery": "specific landmark name",
-  "afterGeocode": "nearbySearch" or "textSearchWithBias",
-  "radiusMeters": 500-2000,
-  "keyword": "food keyword",
-  "region": "IL|FR|US etc",
+  "geocodeQuery": "string",
+  "afterGeocode": "nearbySearch" | "textSearchWithBias",
+  "radiusMeters": number | null,
+  "keyword": "string",
+  "region": "IL|US|GB|FR|DE|... (ISO-3166-1 alpha-2)",
   "language": "he|en|ru|ar|fr|es|other",
-  "reason": "short_token"
+  "reason": "distance_from_landmark|poi_landmark|street_landmark|area_landmark"
 }
 
-Rules for geocodeQuery:
-- Full, specific landmark name for geocoding (NOT the food/cuisine)
-- If query has "X meters from <landmark>", extract ONLY the landmark name
-- Include city if ambiguous (e.g., "Azrieli Center Tel Aviv", not just "Azrieli")
-- Examples:
-  * "פיצה ליד דיזנגוף סנטר" → "Dizengoff Center Tel Aviv"
-  * "מרינה הרצליה חומוס" → "Marina Herzliya Israel"
-- Keep in original language or translate to English for foreign landmarks
+HARD RULES:
+- Always fill EVERY field (use null only where explicitly allowed).
+- region MUST be a valid ISO-3166-1 alpha-2 code (e.g., IL, US, FR). Never invent codes.
+- language is the query language.
+- keyword must be food-related (1–3 words). If unclear, use "restaurant".
 
-Rules for afterGeocode:
-- "nearbySearch": tight proximity search after geocoding (for specific venues)
-- "textSearchWithBias": broader text search biased to geocoded point (for areas/neighborhoods)
-- Examples:
-  * POI/building → nearbySearch
-  * Street/neighborhood → textSearchWithBias
+geocodeQuery rules:
+- geocodeQuery MUST be ONLY the landmark/place to geocode (never the food term).
+- If query matches "X meters from <landmark>" / "במרחק של X מטר מ<landmark>" → geocodeQuery = <landmark> only, reason="distance_from_landmark".
+- If query matches "ליד <landmark>" / "near <landmark>" / "קרוב ל<landmark>" → geocodeQuery = <landmark>.
+- If the landmark name is ambiguous, append city/region for disambiguation:
+  - Example: "Azrieli Center Tel Aviv"
+  - Example: "Dizengoff Center Tel Aviv"
+  - Example: "Marina Herzliya Israel"
+- Keep geocodeQuery in original language OR translate to English only when the landmark is clearly foreign and English helps geocoding (e.g., "Arc de Triomphe, Paris").
 
-Rules for radiusMeters:
-- If query explicitly states distance (e.g., "800 meters", "500 מטר"), USE that exact value
-- Otherwise:
-  * 500-800: specific buildings/POIs
-  * 1000-1500: streets/small areas
-  * 1500-2000: neighborhoods/larger areas
+afterGeocode rules:
+- nearbySearch: for POIs/buildings/venues (tight proximity).
+- textSearchWithBias: for streets/areas/neighborhoods (broader, biased to point).
 
-Rules for keyword:
-- Short food term (1-3 words max)
-- Extract from query, keep in original language
-- Examples: "pizza", "restaurant", "Italian restaurant", "מסעדות איטלקיות"
+radiusMeters rules:
+- If query explicitly states distance (e.g., "800 meters", "500 מטר") → radiusMeters = exact number.
+- Else choose based on landmark type:
+  - POI/building: 500–800
+  - Street/small area: 1000–1500
+  - Neighborhood/large area: 1500–2000
+- If you truly cannot infer type, use 1000.
 
-Rules for reason:
-- "distance_from_landmark": if query has explicit distance pattern
-- "poi_landmark": specific building/POI
-- "street_landmark": street/avenue
-- "area_landmark": neighborhood/area
+keyword rules:
+- Extract the food/cuisine term from the query (1–3 words), keep original language.
+- Examples: "pizza", "hummus", "מסעדה כשרה", "מסעדות איטלקיות".
+
+reason rules (choose ONE):
+- distance_from_landmark: explicit distance present
+- poi_landmark: specific building/POI/venue
+- street_landmark: street/avenue/road
+- area_landmark: neighborhood/area
+
+Examples:
+- "פיצה ליד דיזנגוף סנטר" →
+  {"providerMethod":"landmarkPlan","geocodeQuery":"Dizengoff Center Tel Aviv","afterGeocode":"nearbySearch","radiusMeters":800,"keyword":"פיצה","region":"IL","language":"he","reason":"poi_landmark"}
+- "מסעדות איטלקיות במרחק של 1500 מטר משער הניצחון" →
+  {"providerMethod":"landmarkPlan","geocodeQuery":"שער הניצחון","afterGeocode":"nearbySearch","radiusMeters":1500,"keyword":"מסעדות איטלקיות","region":"IL","language":"he","reason":"distance_from_landmark"}
+- "pizza near Arc de Triomphe" →
+  {"providerMethod":"landmarkPlan","geocodeQuery":"Arc de Triomphe, Paris","afterGeocode":"nearbySearch","radiusMeters":800,"keyword":"pizza","region":"FR","language":"en","reason":"poi_landmark"}
 `;
 
 const LANDMARK_MAPPER_PROMPT_HASH = createHash('sha256')
@@ -181,11 +193,11 @@ export async function executeLandmarkMapper(
             LANDMARK_JSON_SCHEMA
           );
           mapping = retryResponse.data;
-          
+
           // CRITICAL: Override LLM's region/language with filters_resolved values (single source of truth)
           mapping.region = finalFilters.regionCode;
           mapping.language = finalFilters.providerLanguage;
-          
+
           tokenUsage = {
             ...(retryResponse.usage?.prompt_tokens !== undefined && { input: retryResponse.usage.prompt_tokens }),
             ...(retryResponse.usage?.completion_tokens !== undefined && { output: retryResponse.usage.completion_tokens }),

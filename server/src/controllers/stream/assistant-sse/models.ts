@@ -16,7 +16,7 @@ export interface SseMetaPayload {
 
 /**
  * SSE message event payload
- * Must match AssistantOutput shape from assistant-llm.service
+ * Must match AssistantOutput shape from assistant-llm.service (forward as-is; do not drop fields).
  */
 export interface SseMessagePayload {
   type: string;
@@ -24,6 +24,7 @@ export interface SseMessagePayload {
   question: string | null;
   blocksSearch: boolean;
   language: AssistantLanguage;
+  suggestedAction?: string;
 }
 
 /**

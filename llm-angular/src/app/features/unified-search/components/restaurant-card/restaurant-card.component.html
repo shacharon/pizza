@@ -55,17 +55,12 @@
           <span class="price-level">{{ getPriceLevelShekel(restaurant().priceLevel) }}</span>
           }
           @if (metadataStateDisplay(); as state) {
+          @if (state.tone === 'open') {
           <span class="separator" aria-hidden="true">·</span>
           <span class="meta-state">
-            @if (state.tone === 'open') {
             <span class="state-label state-open">{{ state.label }}</span>
-            } @else {
-            <span class="state-label state-closed">{{ state.label }}</span>
-            }
-            @if (state.rest) {
-            <span class="state-rest"> {{ state.rest }}</span>
-            }
           </span>
+          }
           }
         </div>
 

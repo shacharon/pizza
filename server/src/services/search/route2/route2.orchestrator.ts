@@ -9,6 +9,7 @@
 import type { SearchRequest } from '../types/search-request.dto.js';
 import type { SearchResponse } from '../types/search-response.dto.js';
 import type { Route2Context } from './types.js';
+import type { WebSocketManager } from '../../../infra/websocket/websocket-manager.js';
 
 import { executeGate2Stage } from './stages/gate2.stage.js';
 import { executeIntentStage } from './stages/intent/intent.stage.js';
@@ -21,6 +22,7 @@ import { logger } from '../../../lib/logger/structured-logger.js';
 import { wsManager } from '../../../server.js';
 import { sanitizeQuery } from '../../../lib/telemetry/query-sanitizer.js';
 import { withTimeout } from '../../../lib/reliability/timeout-guard.js';
+import { route2Config } from './route2.config.js';
 
 // Extracted modules
 import { fireParallelTasks, drainParallelPromises } from './orchestrator.parallel-tasks.js';
@@ -43,9 +45,22 @@ import { enrichWithMishlohaLinks } from './enrichment/provider/mishloha.js';
 import { getMetricsCollector } from './enrichment/metrics-collector.js';
 
 /**
+ * Publish terminal CLARIFY to search channel and return the response (deduplicates guard+return blocks).
+ */
+function publishClarifyAndReturn(
+  wsManager: WebSocketManager,
+  requestId: string,
+  sessionId: string | undefined,
+  response: SearchResponse
+): SearchResponse {
+  publishTerminalClarify(wsManager, requestId, sessionId, response.assist as { type: string; message: string; question?: string | null; suggestedAction?: string | null; reason?: string });
+  return response;
+}
+
+/**
  * Internal pipeline implementation (without timeout)
  */
-async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context): Promise<SearchResponse> {
+async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context, wsManager: WebSocketManager): Promise<SearchResponse> {
   const { requestId, startTime } = ctx;
   const sessionId = resolveSessionId(request, ctx);
   const { queryLen, queryHash } = sanitizeQuery(request.query);
@@ -152,10 +167,7 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
 
     // Guard: GATE ASK_CLARIFY (uncertain)
     const clarifyResponse = await handleGateClarify(request, gateResult, ctx, wsManager);
-    if (clarifyResponse) {
-      publishTerminalClarify(wsManager, requestId, sessionId, clarifyResponse.assist as any);
-      return clarifyResponse;
-    }
+    if (clarifyResponse) return publishClarifyAndReturn(wsManager, requestId, sessionId, clarifyResponse);
 
     // STAGE 2: INTENT
     let intentDecision = await executeIntentStage(request, ctx);
@@ -197,20 +209,14 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
 
     // Guard: Early TEXTSEARCH location check (blocks Google search if no location)
     const earlyTextSearchGuardResponse = await handleEarlyTextSearchLocationGuard(request, gateResult, intentDecision, ctx, wsManager);
-    if (earlyTextSearchGuardResponse) {
-      publishTerminalClarify(wsManager, requestId, sessionId, earlyTextSearchGuardResponse.assist as any);
-      return earlyTextSearchGuardResponse;
-    }
+    if (earlyTextSearchGuardResponse) return publishClarifyAndReturn(wsManager, requestId, sessionId, earlyTextSearchGuardResponse);
 
     // Check for generic food query (e.g., "what to eat") - sets flag for later
     checkGenericFoodQuery(gateResult, intentDecision, ctx);
 
     // Near-me location check (early stop if no location)
     const nearMeResponse = await handleNearMeLocationCheck(request, intentDecision, ctx, wsManager);
-    if (nearMeResponse) {
-      publishTerminalClarify(wsManager, requestId, sessionId, nearMeResponse.assist as any);
-      return nearMeResponse;
-    }
+    if (nearMeResponse) return publishClarifyAndReturn(wsManager, requestId, sessionId, nearMeResponse);
 
     // Near-me route override (if detected with location)
     intentDecision = applyNearMeRouteOverride(request, intentDecision, ctx);
@@ -249,10 +255,7 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
 
     // Guard: NEARBY requires userLocation
     const nearbyGuardResponse = await handleNearbyLocationGuard(request, gateResult, intentDecision, mapping, ctx, wsManager);
-    if (nearbyGuardResponse) {
-      publishTerminalClarify(wsManager, requestId, sessionId, nearbyGuardResponse.assist as any);
-      return nearbyGuardResponse;
-    }
+    if (nearbyGuardResponse) return publishClarifyAndReturn(wsManager, requestId, sessionId, nearbyGuardResponse);
 
     // CHEESEBURGER 2 FIX: TEXTSEARCH anchor validation
     // For TEXTSEARCH: ONLY cityText OR locationBias count as anchors (NOT userLocation)
@@ -292,16 +295,10 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
     // HARD STOP: TEXTSEARCH without location anchor must CLARIFY and must NOT start Google
     if (!allowed) {
       const r = await handleTextSearchMissingLocationGuard(request, gateResult, intentDecision, mapping, ctx, wsManager);
-      if (r) {
-        publishTerminalClarify(wsManager, requestId, sessionId, r.assist as any);
-        return r;
-      }
+      if (r) return publishClarifyAndReturn(wsManager, requestId, sessionId, r);
       // Fallback: early guard (user-friendly "enable location" message) so client never sees a tech error
       const early = await handleEarlyTextSearchLocationGuard(request, gateResult, intentDecision, ctx, wsManager);
-      if (early) {
-        publishTerminalClarify(wsManager, requestId, sessionId, early.assist as any);
-        return early;
-      }
+      if (early) return publishClarifyAndReturn(wsManager, requestId, sessionId, early);
       // Deterministic CLARIFY (no throw): job will end as DONE_CLARIFY
       logger.info(
         { requestId, pipelineVersion: 'route2', event: 'pipeline_clarify', reason: 'textsearch_missing_location_anchor_fallback' },
@@ -315,13 +312,12 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
         gateLanguage: gateResult.gate.language,
         confidence: intentDecision.confidence
       });
-      publishTerminalClarify(wsManager, requestId, sessionId, deterministicClarify.assist as any);
-      return deterministicClarify;
+      return publishClarifyAndReturn(wsManager, requestId, sessionId, deterministicClarify);
     }
 
     // CRITICAL: Fire parallel tasks ONLY after all guards pass (blocksSearch=false confirmed)
     // This ensures CLARIFY responses never start base_filters or post_constraints
-    const parallelTasks = fireParallelTasks(request, ctx);
+    const parallelTasks = fireParallelTasks(request, ctx, intentDecision.route);
     baseFiltersPromise = parallelTasks.baseFiltersPromise;
     postConstraintsPromise = parallelTasks.postConstraintsPromise;
 
@@ -389,10 +385,9 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
 
     // STAGE 6.5: PROVIDER ENRICHMENT (async, non-blocking cache-first)
     // Mutates finalResults in-place to attach provider status/urls
-    // Cost controls: Cap at N results (default 10), max 3 concurrent jobs
+    // Cost controls: Cap at N results (route2Config.MAX_RESULTS_TO_ENRICH), max 3 concurrent jobs
     const cityText = (intentDecision as any).cityText ?? null;
-    const maxResultsToEnrich = parseInt(process.env.MAX_RESULTS_TO_ENRICH || '10');
-    const resultsToEnrich = finalResults.slice(0, maxResultsToEnrich);
+    const resultsToEnrich = finalResults.slice(0, route2Config.MAX_RESULTS_TO_ENRICH);
     
     // Initialize metrics tracking
     const metricsCollector = getMetricsCollector();
@@ -414,7 +409,7 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
         requestId,
         totalResults: finalResults.length,
         enrichedResults: resultsToEnrich.length,
-        cappedAt: maxResultsToEnrich,
+        cappedAt: route2Config.MAX_RESULTS_TO_ENRICH,
       },
       '[ROUTE2] Provider enrichment stage completed'
     );
@@ -438,17 +433,27 @@ async function searchRoute2Internal(request: SearchRequest, ctx: Route2Context):
   }
 }
 
+/** Optional dependencies for searchRoute2 (e.g. for testing). When omitted, defaults to server singleton. */
+export interface SearchRoute2Deps {
+  wsManager?: WebSocketManager;
+}
+
 /**
  * Route2 Search Pipeline with Global Timeout
- * P1 Reliability: Wraps pipeline with 45s timeout to prevent indefinite hangs
+ * P1 Reliability: Wraps pipeline with configurable timeout to prevent indefinite hangs
+ * @param deps Optional; pass { wsManager } to override default (e.g. in tests)
  */
-export async function searchRoute2(request: SearchRequest, ctx: Route2Context): Promise<SearchResponse> {
-  const PIPELINE_TIMEOUT_MS = 45_000; // 45 seconds global timeout
+export async function searchRoute2(
+  request: SearchRequest,
+  ctx: Route2Context,
+  deps?: SearchRoute2Deps
+): Promise<SearchResponse> {
+  const ws = deps?.wsManager ?? wsManager;
 
   try {
     return await withTimeout(
-      searchRoute2Internal(request, ctx),
-      PIPELINE_TIMEOUT_MS,
+      searchRoute2Internal(request, ctx, ws),
+      route2Config.PIPELINE_TIMEOUT_MS,
       'route2_pipeline'
     );
   } catch (error) {
@@ -456,7 +461,7 @@ export async function searchRoute2(request: SearchRequest, ctx: Route2Context): 
     if (error && typeof error === 'object' && 'name' in error && error.name === 'TimeoutError') {
       logger.error({
         requestId: ctx.requestId,
-        timeoutMs: PIPELINE_TIMEOUT_MS,
+        timeoutMs: route2Config.PIPELINE_TIMEOUT_MS,
         event: 'pipeline_timeout'
       }, '[ROUTE2] Pipeline timeout exceeded');
     }

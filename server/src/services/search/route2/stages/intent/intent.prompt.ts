@@ -66,6 +66,13 @@ City Text Extraction:
 - Extract ONLY if explicitly mentioned: "תל אביב", "חיפה", "ירושלים", "New York", etc.
 - Return null if no explicit city mentioned
 - Do NOT infer city from region or context
+- For cityText: use title case for place names (e.g. "gedera" → "Gedera", "tel aviv" → "Tel Aviv", "haifa" → "Haifa")
+
+English location patterns (use TEXTSEARCH, reason "explicit_city_mentioned", cityText = place in title case):
+- "<food> in <place>" (e.g. "burger in gedera", "pizza in tel aviv") → route=TEXTSEARCH, reason=explicit_city_mentioned, cityText="<Place>" (title case)
+- "restaurants in <place>" → route=TEXTSEARCH, reason=explicit_city_mentioned, cityText="<Place>" (title case)
+- "near <place>" when <place> is a city/area (e.g. "sushi near haifa", "food near tel aviv") → route=TEXTSEARCH, reason=explicit_city_mentioned, cityText="<Place>" (title case)
+Use LANDMARK only when the place after "near" is a landmark (e.g. "near the Eiffel Tower"), not a city name.
 
 Examples:
 - "מסעדות אסיאתיות בתל אביב" → TEXTSEARCH, reason: "explicit_city_mentioned", cityText: "תל אביב", regionCandidate: "IL"
@@ -73,6 +80,9 @@ Examples:
 - "פיצה לידי" (hasUserLocation=false) → TEXTSEARCH, reason: "ambiguous", cityText: null, regionCandidate: "IL"
 - "שווארמה" → TEXTSEARCH, reason: "default_textsearch", cityText: null, regionCandidate: "IL"
 - "מסעדות איטלקיות במרחק של 1500 מטר משער הניצחון" → LANDMARK, reason: "landmark_detected", landmarkText: "שער הניצחון", radiusMeters: 1500, cityText: null, regionCandidate: "IL"
+- "burger in gedera" → TEXTSEARCH, reason: "explicit_city_mentioned", cityText: "Gedera", regionCandidate: "IL"
+- "pizza in tel aviv" → TEXTSEARCH, reason: "explicit_city_mentioned", cityText: "Tel Aviv", regionCandidate: "IL"
+- "sushi near haifa" → TEXTSEARCH, reason: "explicit_city_mentioned", cityText: "Haifa", regionCandidate: "IL"
 `;
 
 /**

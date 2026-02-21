@@ -4,7 +4,7 @@
  */
 
 import type { SearchRequest } from '../types/search-request.dto.js';
-import type { Route2Context } from './types.js';
+import type { Route2Context, MappingRoute } from './types.js';
 import type { PreGoogleBaseFilters } from './shared/shared-filters.types.js';
 import type { PostConstraints } from './shared/post-constraints.types.js';
 import { resolveBaseFiltersLLM } from './shared/base-filters-llm.js';
@@ -15,10 +15,12 @@ import { DEFAULT_POST_CONSTRAINTS, DEFAULT_BASE_FILTERS } from './failure-messag
 /**
  * Fire parallel tasks immediately after Gate2
  * Returns promises that can be awaited later in the pipeline
+ * @param route Intent route (TEXTSEARCH | NEARBY | LANDMARK) for base_filters context
  */
 export function fireParallelTasks(
   request: SearchRequest,
-  ctx: Route2Context
+  ctx: Route2Context,
+  route: MappingRoute
 ): {
   baseFiltersPromise: Promise<PreGoogleBaseFilters>;
   postConstraintsPromise: Promise<PostConstraints>;
@@ -26,13 +28,13 @@ export function fireParallelTasks(
   const { requestId } = ctx;
 
   logger.info(
-    { requestId, pipelineVersion: 'route2', event: 'parallel_started' },
+    { requestId, pipelineVersion: 'route2', event: 'parallel_started', route },
     '[ROUTE2] Starting parallel tasks (base_filters + post_constraints + intent chain)'
   );
 
   const baseFiltersPromise = resolveBaseFiltersLLM({
     query: request.query,
-    route: 'TEXTSEARCH' as any,
+    route,
     llmProvider: ctx.llmProvider,
     requestId: ctx.requestId,
     ...(ctx.traceId && { traceId: ctx.traceId }),

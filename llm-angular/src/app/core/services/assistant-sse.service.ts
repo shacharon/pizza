@@ -1,12 +1,13 @@
 /**
  * Assistant SSE Service
  * Connects to SSE endpoint for assistant/narrator streaming
- * 
- * Replaces WebSocket 'assistant' channel subscription
- * Uses session cookie authentication (no Authorization header)
+ *
+ * Uses fetch() + ReadableStream + TextDecoder('utf-8') for explicit UTF-8 decoding.
+ * Replaces WebSocket 'assistant' channel subscription.
+ * Uses session cookie authentication (no Authorization header).
  */
 
-import { Injectable, inject } from '@angular/core';
+import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
 
@@ -33,6 +34,43 @@ export interface AssistantMessagePayload {
   question: string | null;
   blocksSearch: boolean;
   language?: string;
+  suggestedAction?: string;
+}
+
+const UTF8 = 'utf-8';
+
+/**
+ * Parse SSE buffer into events. Buffer may contain multiple events separated by "\n\n".
+ * Decode with UTF-8 only; split on "\n\n", parse "data:" as JSON.
+ * Returns events and any incomplete leftover for next chunk.
+ */
+function parseSseChunk(
+  buffer: string
+): { events: Array<{ event: string; data: unknown }>; leftover: string } {
+  const events: Array<{ event: string; data: unknown }> = [];
+  const hasIncomplete = !buffer.endsWith('\n\n');
+  const parts = buffer.split('\n\n');
+  const completeCount = hasIncomplete ? Math.max(0, parts.length - 1) : parts.length;
+  const leftover = hasIncomplete && parts.length > 0 ? parts[parts.length - 1]! + '\n\n' : '';
+
+  for (let i = 0; i < completeCount; i++) {
+    const block = parts[i]!.trim();
+    if (!block.length || block.startsWith(':')) continue;
+    let eventType = 'message';
+    let dataLine: string | null = null;
+    for (const line of block.split('\n')) {
+      if (line.startsWith('event:')) eventType = line.slice(6).trim();
+      else if (line.startsWith('data:')) dataLine = line.slice(5).trim();
+    }
+    if (dataLine !== null) {
+      try {
+        events.push({ event: eventType, data: JSON.parse(dataLine) as unknown });
+      } catch {
+        // Skip malformed data
+      }
+    }
+  }
+  return { events, leftover };
 }
 
 @Injectable({
@@ -42,23 +80,8 @@ export class AssistantSseService {
   private readonly apiBaseUrl = `${environment.apiUrl}${environment.apiBasePath}`;
 
   /**
-   * Connect to SSE endpoint for assistant streaming
-   * 
-   * @param requestId - The search request ID
-   * @returns Observable of SSE events
-   * 
-   * Usage:
-   * ```
-   * assistantSse.connect(requestId).subscribe({
-   *   next: (event) => {
-   *     if (event.type === 'message') {
-   *       handleAssistantMessage(event.data);
-   *     }
-   *   },
-   *   error: (err) => console.error('SSE error', err),
-   *   complete: () => console.log('SSE complete')
-   * });
-   * ```
+   * Connect to SSE endpoint using fetch + ReadableStream.
+   * Decodes stream with TextDecoder('utf-8'), splits on "\n\n", parses "data:" as JSON.
    */
   connect(requestId: string): Observable<AssistantSseEvent> {
     return new Observable<AssistantSseEvent>(observer => {
@@ -70,126 +93,66 @@ export class AssistantSseService {
         timestamp: new Date().toISOString()
       });
 
-      // Create EventSource with credentials (sends session cookie)
-      // TypeScript: withCredentials is not in standard EventSourceInit type, cast to any
-      const eventSource = new EventSource(url, { withCredentials: true } as any);
+      const decoder = new TextDecoder(UTF8);
+      let buffer = '';
+      let aborted = false;
 
-      let hasReceivedMeta = false;
-      let messageCount = 0;
-
-      // Listen for 'meta' event (and 'metadata' for backward compatibility)
-      eventSource.addEventListener('meta', (e: MessageEvent) => {
-        try {
-          const data = JSON.parse(e.data);
-          console.log('[AssistantSSE] meta event', { requestId: data.requestId, language: data.language });
-          hasReceivedMeta = true;
-          observer.next({ type: 'meta', data });
-        } catch (error) {
-          console.error('[AssistantSSE] Failed to parse meta event', error);
-        }
-      });
-
-      // BACKWARD COMPATIBILITY: Also listen for 'metadata' (older backend versions)
-      eventSource.addEventListener('metadata', (e: MessageEvent) => {
-        try {
-          const data = JSON.parse(e.data);
-          console.log('[AssistantSSE] metadata event (legacy)', { requestId: data.requestId });
-          if (!hasReceivedMeta) {
-            hasReceivedMeta = true;
-            observer.next({ type: 'meta', data });
+      fetch(url, {
+        method: 'GET',
+        credentials: 'include',
+        headers: { Accept: 'text/event-stream' }
+      })
+        .then(async (response): Promise<void> => {
+          if (!response.ok || !response.body) {
+            observer.error(new Error(`SSE failed: ${response.status}`));
+            return;
           }
-        } catch (error) {
-          console.error('[AssistantSSE] Failed to parse metadata event', error);
-        }
-      });
-
-      // Listen for 'narration' event (streaming: initial text, e.g. "Searching...")
-      eventSource.addEventListener('narration', (e: MessageEvent) => {
-        try {
-          const data = JSON.parse(e.data) as { text: string };
-          console.log('[AssistantSSE] narration event', { preview: data.text?.substring(0, 40) + '...' });
-          observer.next({ type: 'narration', data });
-        } catch (error) {
-          console.error('[AssistantSSE] Failed to parse narration event', error);
-        }
-      });
-
-      // Listen for 'delta' event (streaming: chunk to append)
-      eventSource.addEventListener('delta', (e: MessageEvent) => {
-        try {
-          const data = JSON.parse(e.data) as { text: string };
-          observer.next({ type: 'delta', data });
-        } catch (error) {
-          console.error('[AssistantSSE] Failed to parse delta event', error);
-        }
-      });
-
-      // Listen for 'ping' (heartbeat, ignore for UI)
-      eventSource.addEventListener('ping', () => {
-        // No-op; keeps connection alive
-      });
-
-      // Listen for 'message' event (legacy: single full assistant message)
-      eventSource.addEventListener('message', (e: MessageEvent) => {
-        try {
-          const data = JSON.parse(e.data) as AssistantMessagePayload;
-          messageCount++;
-          console.log('[AssistantSSE] message event (legacy)', {
-            type: data.type,
-            messageNum: messageCount,
-            preview: data.message?.substring(0, 50) + '...'
-          });
-          observer.next({ type: 'message', data });
-        } catch (error) {
-          console.error('[AssistantSSE] Failed to parse message event', error);
-        }
-      });
-
-      // Listen for 'done' event (stream complete)
-      eventSource.addEventListener('done', (e: MessageEvent) => {
-        console.log('[AssistantSSE] done event', { messageCount, requestId: requestId.substring(0, 20) + '...' });
-        observer.next({ type: 'done' });
-        eventSource.close();
-        observer.complete();
-      });
-
-      // Listen for 'error' event (server-side error)
-      eventSource.addEventListener('error', (e: MessageEvent) => {
-        try {
-          const data = e.data ? JSON.parse(e.data) : { code: 'UNKNOWN', message: 'SSE error' };
-          console.error('[AssistantSSE] error event', data);
-          observer.next({ type: 'error', data });
-          eventSource.close();
-          observer.complete();
-        } catch (parseError) {
-          console.error('[AssistantSSE] Failed to parse error event', parseError);
-          eventSource.close();
-          observer.complete();
-        }
-      });
-
-      // Handle connection errors (network issues, server unreachable)
-      eventSource.onerror = (err) => {
-        console.error('[AssistantSSE] Connection error', {
-          readyState: eventSource.readyState,
-          requestId: requestId.substring(0, 20) + '...'
+          const reader = response.body.getReader();
+          try {
+            while (!aborted) {
+              const { value, done } = await reader.read();
+              if (done) break;
+              const chunk = decoder.decode(value, { stream: true });
+              buffer += chunk;
+              const { events, leftover } = parseSseChunk(buffer);
+              buffer = leftover;
+              for (const { event, data } of events) {
+                if (event === 'meta') {
+                  observer.next({ type: 'meta', data: data as { requestId: string; language: string; startedAt: string } });
+                } else if (event === 'metadata') {
+                  observer.next({ type: 'meta', data: data as { requestId: string; language: string; startedAt: string } });
+                } else if (event === 'narration') {
+                  observer.next({ type: 'narration', data: data as { text: string } });
+                } else if (event === 'delta') {
+                  observer.next({ type: 'delta', data: data as { text: string } });
+                } else if (event === 'ping') {
+                  // no-op
+                } else if (event === 'message') {
+                  observer.next({ type: 'message', data: data as AssistantMessagePayload });
+                } else if (event === 'done') {
+                  observer.next({ type: 'done' });
+                  observer.complete();
+                  return;
+                } else if (event === 'error') {
+                  const err = data as { code?: string; message?: string };
+                  observer.next({ type: 'error', data: { code: err?.code ?? 'UNKNOWN', message: err?.message ?? 'SSE error' } });
+                  observer.complete();
+                  return;
+                }
+              }
+            }
+            if (!aborted) observer.complete();
+          } finally {
+            reader.releaseLock();
+          }
+        })
+        .catch(err => {
+          if (!aborted) observer.error(err);
         });
 
-        // EventSource automatically reconnects on transient errors
-        // Only close if CLOSED state (permanent failure)
-        if (eventSource.readyState === EventSource.CLOSED) {
-          eventSource.close();
-          observer.error(new Error('SSE connection closed'));
-        }
-      };
-
-      // Cleanup: Close EventSource on unsubscribe
       return () => {
-        console.log('[AssistantSSE] Closing connection', {
-          requestId: requestId.substring(0, 20) + '...',
-          messageCount
-        });
-        eventSource.close();
+        aborted = true;
+        console.log('[AssistantSSE] Closing connection', { requestId: requestId.substring(0, 20) + '...' });
       };
     });
   }

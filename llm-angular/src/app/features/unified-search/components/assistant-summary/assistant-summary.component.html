@@ -23,14 +23,14 @@
         }
       </span>
       <div class="message-content">
-        <div class="message-text">
+        <div class="message-text summary">
           {{ getMessageVisibleText(msg) }}
           @if (isMessageStreaming(msg)) {
             <span class="cursor-blink">▌</span>
           }
         </div>
         @if (msg.question && msg.question !== msg.message) {
-        <div class="message-question">{{ msg.question }}</div>
+        <div class="message-question summary">{{ msg.question }}</div>
         }
       </div>
     </div>
@@ -48,13 +48,13 @@
   }
 
   @if (isStreaming()) {
-  <div class="streaming-text">
+  <div class="streaming-text summary">
     {{ text() }}<span class="cursor-blink">▌</span>
   </div>
   }
 
   @if (isCompleted()) {
-  <div class="completed-text">
+  <div class="completed-text summary">
     {{ text() }}
   </div>
   }

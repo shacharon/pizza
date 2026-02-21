@@ -15,32 +15,40 @@ export class SseWriter {
   }
 
   /**
-   * Set SSE headers and flush immediately
+   * Set SSE headers. Must be called before any res.write.
+   * No encoding conversion: response body is UTF-8 only.
    */
   setHeaders(): void {
-    this.res.setHeader('Content-Type', 'text/event-stream');
-    this.res.setHeader('Cache-Control', 'no-cache');
+    this.res.status(200);
+    this.res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    this.res.setHeader('Cache-Control', 'no-cache, no-transform');
     this.res.setHeader('Connection', 'keep-alive');
     this.res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
     this.res.setHeader('Content-Encoding', 'none'); // Disable compression
     this.res.setHeader('Transfer-Encoding', 'chunked'); // Enable chunked transfer
+    if (typeof (this.res as any).flushHeaders === 'function') {
+      (this.res as any).flushHeaders();
+    }
   }
 
   /**
-   * Flush headers to client
+   * Flush headers to client (no-op if already flushed in setHeaders)
    */
   flushHeaders(): void {
-    this.res.flushHeaders();
+    if (typeof (this.res as any).flushHeaders === 'function') {
+      (this.res as any).flushHeaders();
+    }
   }
 
   /**
-   * Send SSE event
+   * Send SSE event. All writes are UTF-8; no encoding conversion.
    * CRITICAL: Flush after each event to ensure immediate delivery (no buffering)
    */
   private sendEvent(event: string, data: any): void {
-    this.res.write(`event: ${event}\n`);
-    this.res.write(`data: ${JSON.stringify(data)}\n\n`);
-    
+    const enc = 'utf8' as BufferEncoding;
+    this.res.write(`event: ${event}\n`, enc);
+    this.res.write(`data: ${JSON.stringify(data)}\n\n`, enc);
+
     // Flush immediately to prevent buffering (especially important for deltas)
     if (typeof (this.res as any).flush === 'function') {
       (this.res as any).flush();
@@ -110,7 +118,7 @@ export class SseWriter {
    * Send SSE comment (keeps connection alive for gateways/ALB; no client-side event)
    */
   sendComment(comment: string = 'k'): void {
-    this.res.write(`: ${comment}\n\n`);
+    this.res.write(`: ${comment}\n\n`, 'utf8');
   }
 
   /**

@@ -19,6 +19,7 @@ import { SseStateMachine, SseState } from './sse-state-machine.js';
 import { PollingStrategy } from './polling-strategy.js';
 import { handleSseError } from './sse-error-handler.js';
 import { getExistingRedisClient } from '../../../lib/redis/redis-client.js';
+import type { SseMessagePayload } from './models.js';
 
 export interface AssistantSseOrchestratorConfig {
   timeoutMs: number;
@@ -267,51 +268,21 @@ export class AssistantSseOrchestrator {
       // UI language from request (header/cookie) if present
       const headerUiLanguage = this.getUiLanguageFromRequest(req);
 
-      // LANGUAGE RESOLUTION: Priority-based cascade
-      // 1) job.assistantLanguage (Gate2/Intent) 2) job.requestedLanguage 3) uiLanguage 4) job.queryDetectedLanguage
-      const candidates = {
-        jobAssistantLanguage: (job as any)?.assistantLanguage as AssistantLanguage | undefined,
-        jobRequestedLanguage: (job as any)?.requestedLanguage as AssistantLanguage | undefined,
-        uiLanguage: ((result as any)?.query?.languageContext?.uiLanguage as AssistantLanguage | undefined)
-          ?? ((job as any)?.filters?.uiLanguage as AssistantLanguage | undefined)
-          ?? ((job as any)?.filtersResolved?.final?.uiLanguage as AssistantLanguage | undefined)
-          ?? headerUiLanguage,
-        jobQueryDetectedLanguage: job?.queryDetectedLanguage as AssistantLanguage | undefined,
-        intentLanguage: (job as any)?.intent?.language as AssistantLanguage | undefined,
-        resultQueryLanguage: ((result as any)?.query?.language as AssistantLanguage | undefined)
-      };
-
-      const chosenLanguage: AssistantLanguage =
-        candidates.jobAssistantLanguage ??
-        candidates.jobRequestedLanguage ??
-        candidates.uiLanguage ??
-        candidates.jobQueryDetectedLanguage ??
-        candidates.intentLanguage ??
-        candidates.resultQueryLanguage ??
-        'en';
-
-      const languageSource =
-        candidates.jobAssistantLanguage ? 'job.assistantLanguage' :
-        candidates.jobRequestedLanguage ? 'job.requestedLanguage' :
-        candidates.uiLanguage ? 'uiLanguage' :
-        candidates.jobQueryDetectedLanguage ? 'job.queryDetectedLanguage' :
-        candidates.intentLanguage ? 'job.intent.language' :
-        candidates.resultQueryLanguage ? 'result.query.language' :
-        'fallback';
+      // LANGUAGE RESOLUTION: intent.language → queryDetectedLanguage → uiLanguage (do NOT use uiLanguage if intent/queryDetectedLanguage exists)
+      const { requestedLanguage: assistantLanguage, source: languageSource, candidates } = this.resolveLanguage(job, result, headerUiLanguage);
 
       this.logger.info(
         {
           requestId,
           traceId: finalTraceId,
           event: 'assistant_sse_language_resolved',
-          chosen: chosenLanguage,
+          chosen: assistantLanguage,
           source: languageSource,
+          metaLanguage: assistantLanguage,
           candidates
         },
-        `[AssistantSSE] Language resolved: chosen=${chosenLanguage} source=${languageSource}`
+        `[AssistantSSE] Language resolved: chosen=${assistantLanguage} source=${languageSource}`
       );
-
-      const assistantLanguage = chosenLanguage;
 
       // Determine flow type and initialize state machine
       const isClarify = jobStatus === 'DONE_CLARIFY';
@@ -548,13 +519,20 @@ export class AssistantSseOrchestrator {
       const assist = (storedResult as any)?.assist;
       if (assist?.message) {
         const sseType = assist.type === 'guide' ? 'GATE_FAIL' : (assist.type === 'clarify' ? 'CLARIFY' : assist.type);
-        writer.sendMessage({
-          type: sseType,
-          message: assist.message,
-          question: assist.question ?? null,
-          blocksSearch: true,
-          language: assistantLanguage
-        });
+        const payload = this.ensureMessageLanguage(
+          {
+            type: sseType,
+            message: assist.message,
+            question: assist.question ?? null,
+            blocksSearch: true,
+            language: assistantLanguage,
+            suggestedAction: (assist as { suggestedAction?: string }).suggestedAction ?? 'RETRY'
+          },
+          assistantLanguage,
+          requestId,
+          traceId
+        );
+        writer.sendMessage(payload);
         this.logger.info(
           { requestId, traceId, sseType, latestStatus: pollResult.latestStatus, event: 'assistant_sse_stopped_clarify_sent' },
           '[AssistantSSE] Sent stored assist (gate stop/clarify) via SSE'
@@ -564,13 +542,14 @@ export class AssistantSseOrchestrator {
       // Job failed: emit error message and close (no timeout wait)
       const statusWithError = await this.jobStore.getStatus(requestId);
       const message = (statusWithError as { error?: { message: string } } | null)?.error?.message ?? 'Search failed';
-      writer.sendMessage({
-        type: 'SEARCH_FAILED',
-        message,
-        question: null,
-        blocksSearch: true,
-        language: assistantLanguage
-      });
+      writer.sendMessage(
+        this.ensureMessageLanguage(
+          { type: 'SEARCH_FAILED', message, question: null, blocksSearch: true, language: assistantLanguage, suggestedAction: 'RETRY' },
+          assistantLanguage,
+          requestId,
+          traceId
+        )
+      );
       this.logger.info(
         { requestId, traceId, event: 'assistant_sse_failed_sent' },
         '[AssistantSSE] Sent job error (DONE_FAILED) via SSE'
@@ -618,18 +597,26 @@ export class AssistantSseOrchestrator {
     isClientDisconnected: () => boolean
   ): Promise<boolean> {
     const freshResult = await this.jobStore.getResult(requestId);
-    const resultPayload = freshResult as { assist?: { type: string; message?: string; question?: string | null; blocksSearch?: boolean } } | null;
+    const resultPayload = freshResult as { assist?: { type: string; message?: string; question?: string | null; blocksSearch?: boolean; suggestedAction?: string } } | null;
 
     // Persisted SUMMARY: use stored assist for this requestId if present (e.g. from a previous run)
     if (resultPayload?.assist?.type === 'SUMMARY' && resultPayload.assist?.message) {
       if (isClientDisconnected() || abortSignal.aborted) return false;
-      writer.sendMessage({
-        type: 'SUMMARY',
-        message: resultPayload.assist.message,
-        question: resultPayload.assist.question ?? null,
-        blocksSearch: resultPayload.assist.blocksSearch ?? false,
-        language: assistantLanguage
-      });
+      writer.sendMessage(
+        this.ensureMessageLanguage(
+          {
+            type: 'SUMMARY',
+            message: resultPayload.assist.message,
+            question: resultPayload.assist.question ?? null,
+            blocksSearch: resultPayload.assist.blocksSearch ?? false,
+            language: assistantLanguage,
+            suggestedAction: resultPayload.assist.suggestedAction ?? 'NONE'
+          },
+          assistantLanguage,
+          requestId,
+          traceId
+        )
+      );
       this.logger.info(
         { requestId, traceId, event: 'summary_emit_decision', source: 'persisted', reason: 'stored_summary_for_request' },
         '[AssistantSSE] SUMMARY sent (persisted)'
@@ -678,13 +665,21 @@ export class AssistantSseOrchestrator {
       const emitSource = (assistant as { _summaryEmitSource?: 'fallback'; _summaryEmitReason?: string })._summaryEmitSource ?? 'llm';
       const emitReason = (assistant as { _summaryEmitReason?: string })._summaryEmitReason ?? 'assistant_llm_resolved';
 
-      writer.sendMessage({
-        type: assistant.type,
-        message: fullMessage,
-        question: assistant.question ?? null,
-        blocksSearch: assistant.blocksSearch ?? false,
-        language: assistantLanguage
-      });
+      writer.sendMessage(
+        this.ensureMessageLanguage(
+          {
+            type: assistant.type,
+            message: fullMessage,
+            question: assistant.question ?? null,
+            blocksSearch: assistant.blocksSearch ?? false,
+            language: assistantLanguage,
+            suggestedAction: assistant.suggestedAction ?? 'NONE'
+          },
+          assistantLanguage,
+          requestId,
+          traceId
+        )
+      );
 
       this.logger.info(
         {
@@ -705,6 +700,69 @@ export class AssistantSseOrchestrator {
   }
 
   /**
+   * Resolve requestedLanguage for SSE (meta.language and message.language).
+   * Priority: intent.language → queryDetectedLanguage → uiLanguage.
+   * Do NOT use uiLanguage if intent or queryDetectedLanguage exists.
+   */
+  private resolveLanguage(
+    job: any,
+    result: any,
+    headerUiLanguage: AssistantLanguage | undefined
+  ): { requestedLanguage: AssistantLanguage; source: string; candidates: Record<string, AssistantLanguage | undefined> } {
+    const intentLanguage = (job as any)?.intent?.language as AssistantLanguage | undefined;
+    const queryDetectedLanguage = job?.queryDetectedLanguage as AssistantLanguage | undefined;
+    const uiLanguage =
+      ((result as any)?.query?.languageContext?.uiLanguage as AssistantLanguage | undefined)
+      ?? ((job as any)?.filters?.uiLanguage as AssistantLanguage | undefined)
+      ?? ((job as any)?.filtersResolved?.final?.uiLanguage as AssistantLanguage | undefined)
+      ?? headerUiLanguage;
+
+    const candidates = {
+      intentLanguage,
+      jobQueryDetectedLanguage: queryDetectedLanguage,
+      uiLanguage
+    };
+
+    // intent.language → queryDetectedLanguage → uiLanguage (skip uiLanguage when intent/queryDetectedLanguage exists)
+    if (intentLanguage) {
+      return { requestedLanguage: intentLanguage, source: 'job.intent.language', candidates };
+    }
+    if (queryDetectedLanguage) {
+      return { requestedLanguage: queryDetectedLanguage, source: 'job.queryDetectedLanguage', candidates };
+    }
+    if (uiLanguage) {
+      return { requestedLanguage: uiLanguage, source: 'uiLanguage', candidates };
+    }
+    return { requestedLanguage: 'en', source: 'fallback', candidates };
+  }
+
+  /**
+   * Enforce meta.language === message.language === requestedLanguage.
+   * If mismatch, override to requestedLanguage and log assistant_language_override.
+   */
+  private ensureMessageLanguage(
+    payload: SseMessagePayload | (SseMessagePayload & { language?: string }),
+    requestedLanguage: AssistantLanguage,
+    requestId: string,
+    traceId: string
+  ): SseMessagePayload {
+    const msgLang = payload.language;
+    if (msgLang !== undefined && msgLang !== requestedLanguage) {
+      this.logger.warn(
+        {
+          requestId,
+          traceId,
+          event: 'assistant_language_override',
+          metaLanguage: requestedLanguage,
+          messageLanguage: msgLang
+        },
+        '[AssistantSSE] meta.language !== message.language; overriding to requestedLanguage'
+      );
+    }
+    return { ...payload, language: requestedLanguage };
+  }
+
+  /**
    * Send timeout message (no LLM)
    */
   private sendTimeoutMessage(
@@ -722,13 +780,21 @@ export class AssistantSseOrchestrator {
       blocksSearch: false
     };
 
-    writer.sendMessage({
-      type: timeoutMessage.type,
-      message: timeoutMessage.message,
-      question: timeoutMessage.question,
-      blocksSearch: timeoutMessage.blocksSearch,
-      language: assistantLanguage
-    });
+    writer.sendMessage(
+      this.ensureMessageLanguage(
+        {
+          type: timeoutMessage.type,
+          message: timeoutMessage.message,
+          question: timeoutMessage.question,
+          blocksSearch: timeoutMessage.blocksSearch,
+          language: assistantLanguage,
+          suggestedAction: timeoutMessage.suggestedAction
+        },
+        assistantLanguage,
+        requestId,
+        traceId
+      )
+    );
 
     this.logger.warn(
       { requestId, traceId, latestStatus, language: assistantLanguage, event: 'assistant_sse_timeout' },
