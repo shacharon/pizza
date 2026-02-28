@@ -128,6 +128,11 @@ CACHE_ASSISTANT_SIZE=200
 DEV_INTENT_MODE=false
 CACHE_INTENT_IN_DEV=false
 CACHE_INTENT_TTL_DEV_MS=30000
+
+# Feature flags (frontend) — single source of truth; frontend reads GET /api/v1/flags
+# Defaults: UNIFIED_SEARCH=true in development, false in production; ACTION_PROPOSALS=false
+UNIFIED_SEARCH=true
+ACTION_PROPOSALS=false
 ```
 
 ## Current System Behavior

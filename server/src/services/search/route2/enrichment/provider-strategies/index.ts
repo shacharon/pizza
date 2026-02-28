@@ -8,7 +8,7 @@ import { selectWoltUrl } from './wolt.strategy.js';
 import { selectTenbisUrl } from './tenbis.strategy.js';
 import { selectMishlohaUrl } from './mishloha.strategy.js';
 
-export type { ProviderSearchConfig, SelectUrlParams } from './types.js';
+export type { ProviderSearchConfig, SelectUrlParams, VerifyResult, ProviderVerifier } from './types.js';
 export { getWoltSlugsForCity } from './wolt-city-slugs.js';
 export { isValidUrl, scoreUrl, normalizeForSlug, getWoltCitySlugFromPath } from './shared.js';
 

@@ -21,3 +21,19 @@ export interface SelectUrlParams {
 }
 
 export type SelectUrlFn = (params: SelectUrlParams) => string | null;
+
+/** Result of provider-specific verification (e.g. page structure, city slug). */
+export interface VerifyResult {
+  accept: boolean;
+  reason?: string;
+}
+
+/** Verifier called after strategy picks a candidate; can reject before returning URL. */
+export interface ProviderVerifier {
+  verify(params: {
+    name: string;
+    cityText: string | null;
+    url: string;
+    title?: string;
+  }): VerifyResult;
+}

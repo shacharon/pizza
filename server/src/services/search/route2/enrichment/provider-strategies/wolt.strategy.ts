@@ -6,6 +6,7 @@
 import { logger } from '../../../../../lib/logger/structured-logger.js';
 import { isValidUrl, getWoltCitySlugFromPath, scoreUrl, normalizeForSlug, nameMatchesCandidate } from './shared.js';
 import { getWoltSlugsForCity } from './wolt-city-slugs.js';
+import { woltVerifier } from './wolt.verifier.js';
 import type { SelectUrlParams } from './types.js';
 
 const TOP_N = 5;
@@ -28,6 +29,8 @@ export function selectWoltUrl(params: SelectUrlParams): string | null {
         const pathname = new URL(r.url).pathname;
         const urlCitySlug = getWoltCitySlugFromPath(pathname);
         if (urlCitySlug && allowedSlugs.includes(urlCitySlug) && nameMatchesCandidate(name, r.title, r.url)) {
+          const result = woltVerifier.verify({ name, cityText, url: r.url, title: r.title });
+          if (!result.accept) continue;
           logger.debug(
             {
               event: 'wolt_strategy_city_and_name_match',
@@ -67,13 +70,13 @@ export function selectWoltUrl(params: SelectUrlParams): string | null {
   const normalizedName = normalizeForSlug(name);
   const normalizedCity = cityText ? normalizeForSlug(cityText) : null;
   const scored = withNameMatch
-    .map((r) => ({ url: r.url, score: scoreUrl(r.url, normalizedName, normalizedCity) }))
+    .map((r) => ({ url: r.url, title: r.title, score: scoreUrl(r.url, normalizedName, normalizedCity) }))
     .filter((x) => x.score > 0)
     .sort((a, b) => b.score - a.score);
 
-  if (scored.length === 0) {
-    return null;
+  for (const { url, title } of scored) {
+    const result = woltVerifier.verify({ name, cityText, url, title });
+    if (result.accept) return url;
   }
-  const first = scored[0];
-  return first ? first.url : null;
+  return null;
 }

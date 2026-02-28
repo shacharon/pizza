@@ -1,24 +1,25 @@
 import { ApplicationConfig, provideZoneChangeDetection, APP_INITIALIZER, isDevMode } from '@angular/core';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { provideRouter } from '@angular/router';
+import { firstValueFrom } from 'rxjs';
 import { routes } from './app.routes';
 import { authInterceptor } from './core/interceptors/auth.interceptor';
 import { httpTimeoutRetryInterceptor } from './core/interceptors/http-timeout-retry.interceptor';
 import { httpErrorInterceptor } from './core/interceptors/http-error.interceptor';
 import { apiSessionInterceptor } from './shared/http/api-session.interceptor';
+import { FlagsApiClient } from './api/flags.api';
 import { FlagsStore } from './state/flags.store';
 import { AuthService } from './core/auth/auth.service';
 import { provideServiceWorker } from '@angular/service-worker';
 
 /**
- * Initialize feature flags on app startup
- * Enables unified search by default in development
+ * Initialize feature flags from backend (GET /api/v1/flags).
+ * On failure, API client returns safe defaults; we set whatever we get.
  */
-function initializeFeatureFlags(flagsStore: FlagsStore) {
-  return () => {
-    // Enable unified search for development
-    flagsStore.setFlag('unifiedSearch', true);
-    console.log('[FeatureFlags] ✅ unifiedSearch enabled');
+function initializeFeatureFlags(flagsStore: FlagsStore, flagsApi: FlagsApiClient) {
+  return async () => {
+    const flags = await firstValueFrom(flagsApi.loadFlags());
+    flagsStore.setFlags(flags);
   };
 }
 
@@ -61,13 +62,14 @@ export const appConfig: ApplicationConfig = {
       deps: [AuthService],
       multi: true
     },
-    // Initialize feature flags on startup
+    // Initialize feature flags from backend on startup
     {
       provide: APP_INITIALIZER,
       useFactory: initializeFeatureFlags,
-      deps: [FlagsStore],
+      deps: [FlagsStore, FlagsApiClient],
       multi: true
-    }, provideServiceWorker('ngsw-worker.js', {
+    },
+    provideServiceWorker('ngsw-worker.js', {
             enabled: !isDevMode(),
             registrationStrategy: 'registerWhenStable:30000'
           })

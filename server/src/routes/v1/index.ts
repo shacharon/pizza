@@ -26,11 +26,17 @@ import { authenticateJWT } from '../../middleware/auth.middleware.js';
 import { authSessionOrJwt } from '../../middleware/auth-session-or-jwt.middleware.js';
 import { createRateLimiter } from '../../middleware/rate-limit.middleware.js';
 import { getConfig } from '../../config/env.js';
+import { getFeatureFlags } from '../../config/feature-flags.js';
 import { getExistingRedisClient } from '../../lib/redis/redis-client.js';
 import { logger } from '../../lib/logger/structured-logger.js';
 
 export function createV1Router(): Router {
   const router = Router();
+
+  // Feature flags for frontend (public, no auth)
+  router.get('/flags', (req: Request, res: Response) => {
+    res.json(getFeatureFlags());
+  });
 
   // P0 Security: Search rate limiting (100 req/min per IP+session)
   const searchRateLimiter = createRateLimiter({

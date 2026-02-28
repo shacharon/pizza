@@ -5,12 +5,13 @@
 
 import { logger } from '../../../../../lib/logger/structured-logger.js';
 import { isValidUrl, nameMatchesCandidate } from './shared.js';
+import { tenbisVerifier } from './tenbis.verifier.js';
 import type { SelectUrlParams } from './types.js';
 
 const TOP_N = 5;
 
 export function selectTenbisUrl(params: SelectUrlParams): string | null {
-  const { results, name, config } = params;
+  const { results, name, cityText, config } = params;
 
   const valid = results.filter((r) => isValidUrl(r.url, config));
   const top5 = valid.slice(0, TOP_N);
@@ -21,6 +22,8 @@ export function selectTenbisUrl(params: SelectUrlParams): string | null {
 
   for (const r of top5) {
     if (nameMatchesCandidate(name, r.title, r.url)) {
+      const result = tenbisVerifier.verify({ name, cityText, url: r.url, title: r.title });
+      if (!result.accept) continue;
       logger.debug(
         {
           event: 'tenbis_strategy_name_match',
