@@ -14,14 +14,27 @@ import { LanguageService } from './core/services/language.service';
 import { AuthService } from './core/auth/auth.service';
 import { provideServiceWorker } from '@angular/service-worker';
 
+/** LocalStorage key prefix for feature-flag overrides (e.g. ff_unifiedSearch = "true") */
+const FF_OVERRIDE_PREFIX = 'ff_';
+
 /**
  * Initialize feature flags from backend (GET /api/v1/flags).
- * On failure, API client returns safe defaults; we set whatever we get.
+ * On failure, API client returns safe defaults. Then apply localStorage overrides
+ * so you can enable unified search locally: localStorage.setItem('ff_unifiedSearch', 'true'); reload.
  */
 function initializeFeatureFlags(flagsStore: FlagsStore, flagsApi: FlagsApiClient) {
   return async () => {
     const flags = await firstValueFrom(flagsApi.loadFlags());
     flagsStore.setFlags(flags);
+
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    const keys = Object.keys(flags);
+    for (const key of keys) {
+      const storageKey = FF_OVERRIDE_PREFIX + key;
+      const raw = window.localStorage.getItem(storageKey);
+      if (raw === 'true') flagsStore.setFlag(key, true);
+      else if (raw === 'false') flagsStore.setFlag(key, false);
+    }
   };
 }
 
