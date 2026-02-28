@@ -22,6 +22,16 @@ export class SearchStateHandler {
   private viewState = signal<ViewMode>('LIST');
   readonly currentView = this.viewState.asReadonly();
 
+  /** Set sort from URL hydration. */
+  setSort(key: SortKey): void {
+    this.sortState.set(key);
+  }
+
+  /** Set active filter chip IDs from URL hydration. */
+  setActiveFilterIds(ids: Set<string>): void {
+    this.filterState.set(new Set(ids));
+  }
+
   /**
    * Handle chip click
    * Returns: { shouldSearch: boolean, filters?: SearchFilters }

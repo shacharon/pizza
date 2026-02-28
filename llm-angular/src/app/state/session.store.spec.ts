@@ -125,6 +125,36 @@ describe('SessionStore', () => {
     expect(store.preferences().recentSearches).toEqual([]);
   });
 
+  it('should set loadedFromStorage false when no stored session', () => {
+    expect(store.loadedFromStorage).toBe(false);
+  });
+
+  it('should set loadedFromStorage true when session restored from storage', () => {
+    sessionStorage.setItem('search-session', JSON.stringify({
+      conversationId: 'saved-session',
+      locale: 'he',
+      region: 'IL',
+      selectedRestaurant: null,
+      preferences: { savedFavorites: [], recentSearches: [] }
+    }));
+    const newStore = new SessionStore();
+    expect(newStore.loadedFromStorage).toBe(true);
+    expect(newStore.locale()).toBe('he');
+  });
+
+  it('should fallback locale to en when restored value is not supported', () => {
+    sessionStorage.setItem('search-session', JSON.stringify({
+      conversationId: 'saved-session',
+      locale: 'xx',
+      region: 'US',
+      selectedRestaurant: null,
+      preferences: { savedFavorites: [], recentSearches: [] }
+    }));
+    const newStore = new SessionStore();
+    expect(newStore.loadedFromStorage).toBe(true);
+    expect(newStore.locale()).toBe('en');
+  });
+
   it('should load from sessionStorage on init', () => {
     const mockState = {
       conversationId: 'existing-session',

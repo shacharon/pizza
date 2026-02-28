@@ -6,13 +6,29 @@
 import { Injectable, signal, computed } from '@angular/core';
 import type { SessionState } from '../domain/types/session.types';
 import type { Restaurant } from '../domain/types/search.types';
+import type { SupportedLang } from '../core/services/language.service';
+
+const SUPPORTED_LOCALES: readonly SupportedLang[] = ['he', 'en', 'ar', 'ru', 'fr', 'es', 'de', 'it', 'am'];
+
+function isSupportedLocale(x: unknown): x is SupportedLang {
+  return typeof x === 'string' && (SUPPORTED_LOCALES as readonly string[]).includes(x);
+}
+
+/** Result of initial load: state and whether it came from storage (vs default). */
+interface SessionLoadResult {
+  state: SessionState;
+  loadedFromStorage: boolean;
+}
 
 @Injectable({ providedIn: 'root' })
 export class SessionStore {
   private readonly storageKey = 'search-session';
 
-  // Private state signal
-  private readonly _state = signal<SessionState>(this.loadFromStorage());
+  private readonly _initial = this.loadFromStorage();
+  private readonly _state = signal<SessionState>(this._initial.state);
+
+  /** True if session was restored from sessionStorage; false if created as default. Do not override locale when true. */
+  readonly loadedFromStorage = this._initial.loadedFromStorage;
 
   // Computed public signals
   readonly conversationId = computed(() => this._state().conversationId);
@@ -99,15 +115,17 @@ export class SessionStore {
   }
 
   // Private helpers
-  private loadFromStorage(): SessionState {
+  private loadFromStorage(): SessionLoadResult {
     try {
+      if (typeof sessionStorage === 'undefined') {
+        return { state: this.createDefault(), loadedFromStorage: false };
+      }
       const stored = sessionStorage.getItem(this.storageKey);
       if (stored) {
         const parsed = JSON.parse(stored);
-        // Ensure all required fields exist
-        return {
+        const state: SessionState = {
           conversationId: parsed.conversationId || this.generateId(),
-          locale: parsed.locale || 'en',
+          locale: isSupportedLocale(parsed.locale) ? parsed.locale : 'en',
           region: parsed.region || 'US',
           selectedRestaurant: parsed.selectedRestaurant || null,
           preferences: {
@@ -115,11 +133,12 @@ export class SessionStore {
             recentSearches: parsed.preferences?.recentSearches || []
           }
         };
+        return { state, loadedFromStorage: true };
       }
     } catch (error) {
       console.warn('[SessionStore] Failed to load from storage:', error);
     }
-    return this.createDefault();
+    return { state: this.createDefault(), loadedFromStorage: false };
   }
 
   private saveToStorage(state: SessionState): void {

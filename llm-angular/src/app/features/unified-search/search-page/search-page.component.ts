@@ -3,8 +3,9 @@
  * Main container for unified search experience
  */
 
-import { Component, inject, OnInit, OnDestroy, ChangeDetectionStrategy, computed, signal, HostListener } from '@angular/core';
+import { Component, inject, OnInit, OnDestroy, ChangeDetectionStrategy, computed, signal, HostListener, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Router, ActivatedRoute } from '@angular/router';
 import { SearchFacade } from '../../../facades/search.facade';
 import { SearchApiHandler } from '../../../facades/search-api.facade';
 import { SearchWsHandler } from '../../../facades/search-ws.facade';
@@ -20,6 +21,13 @@ import { AssistantSummaryComponent } from '../components/assistant-summary/assis
 import { LocationService } from '../../../services/location.service';
 import { PwaInstallService } from '../../../services/pwa-install.service';
 import { I18nService } from '../../../core/services/i18n.service';
+import { InputStateMachine } from '../../../services/input-state-machine.service';
+import {
+  serializeSearchParams,
+  deserializeSearchParams,
+  filterChipIdsFromParams,
+  type SearchParamsState
+} from './search-params.util';
 import type { Restaurant, ClarificationChoice, Coordinates } from '../../../domain/types/search.types';
 import type { ActionType, ActionLevel } from '../../../domain/types/action.types';
 // DEV: Import dev tools for testing (auto-loaded)
@@ -51,11 +59,35 @@ import '../../../facades/assistant-dev-tools';
 })
 export class SearchPageComponent implements OnInit, OnDestroy {
   readonly facade = inject(SearchFacade);
+  private readonly router = inject(Router);
+  private readonly activatedRoute = inject(ActivatedRoute);
+  private readonly stateHandler = inject(SearchStateHandler);
+  private readonly inputStateMachine = inject(InputStateMachine);
   private readonly locationService = inject(LocationService);
   readonly pwaInstall = inject(PwaInstallService);
   readonly i18n = inject(I18nService);
 
   private cleanupInterval?: number;
+  private urlPushTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  private readonly urlPushDebounceMs = 250;
+  private skipNextUrlPush = false;
+  private paramMapSub?: { unsubscribe(): void };
+
+  constructor() {
+    // Push URL when search state changes (debounced). Back/forward is handled by queryParamMap subscription.
+    effect(() => {
+      this.facade.query();
+      this.stateHandler.currentSort();
+      this.stateHandler.activeFilters();
+      this.locationService.location();
+      this.scheduleUrlUpdate();
+    });
+    // Reset SUMMARY toggle when search request changes so new SUMMARY starts collapsed
+    effect(() => {
+      this.facade.requestId();
+      this.assistantSummaryExpanded.set(false);
+    });
+  }
 
   // Scroll collapse state
   readonly isHeroCollapsed = signal(false);
@@ -237,6 +269,48 @@ export class SearchPageComponent implements OnInit, OnDestroy {
     return hasGlobalCards || legacyGlobal;
   });
 
+  /** True when contextual cards are only SUMMARY (toggleable); CLARIFY/GATE_FAIL stay always visible */
+  readonly isContextualAssistantSummaryOnly = computed(() => {
+    const cards = this.contextualCardMessages();
+    return cards.length > 0 && cards.every(c => c.type === 'SUMMARY');
+  });
+
+  /** True when global cards are only SUMMARY (toggleable) */
+  readonly isGlobalAssistantSummaryOnly = computed(() => {
+    const cards = this.globalCardMessages();
+    return cards.length > 0 && cards.every(c => c.type === 'SUMMARY');
+  });
+
+  /** Toggle state for SUMMARY-only assistant: collapsed by default, user expands to push results down */
+  readonly assistantSummaryExpanded = signal(false);
+
+  /** Show full assistant block for contextual: when not SUMMARY-only (always show) or SUMMARY-only and expanded */
+  readonly showContextualAssistantExpanded = computed(() => {
+    if (!this.showContextualAssistant()) return false;
+    if (!this.isContextualAssistantSummaryOnly()) return true;
+    return this.assistantSummaryExpanded();
+  });
+
+  /** Show only the "Show why" toggle button for contextual SUMMARY-only when collapsed */
+  readonly showContextualAssistantToggle = computed(() => {
+    return this.showContextualAssistant() && this.isContextualAssistantSummaryOnly() && !this.assistantSummaryExpanded();
+  });
+
+  /** Show full assistant block for global (same logic as contextual) */
+  readonly showGlobalAssistantExpanded = computed(() => {
+    if (!this.showGlobalAssistant()) return false;
+    if (!this.isGlobalAssistantSummaryOnly()) return true;
+    return this.assistantSummaryExpanded();
+  });
+
+  readonly showGlobalAssistantToggle = computed(() => {
+    return this.showGlobalAssistant() && this.isGlobalAssistantSummaryOnly() && !this.assistantSummaryExpanded();
+  });
+
+  toggleAssistantSummary(): void {
+    this.assistantSummaryExpanded.update(v => !v);
+  }
+
   readonly hasAsyncRecommendations = computed(() => {
     return this.facade.recommendations().length > 0;
   });
@@ -402,16 +476,96 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   // Cuisine chips removed - discovery via free-text search + assistant only
 
   ngOnInit(): void {
+    if (typeof window !== 'undefined') {
+      this.paramMapSub = this.activatedRoute.queryParamMap.subscribe(paramMap => {
+        if (this.skipNextUrlPush) {
+          this.skipNextUrlPush = false;
+          return;
+        }
+        const q = paramMap.get('q')?.trim();
+        if (!q) return;
+        const deserialized = deserializeSearchParams(paramMap);
+        this.stateHandler.setSort(deserialized.sort ?? 'BEST_MATCH');
+        this.stateHandler.setActiveFilterIds(filterChipIdsFromParams(deserialized));
+        this.inputStateMachine.selectRecent(q);
+        this.facade.search(q, deserialized.filters).then(() => {
+          this.visibleCount.set(10);
+        });
+        this.skipNextUrlPush = true;
+        setTimeout(() => { this.skipNextUrlPush = false; }, 500);
+      });
+    }
     // Setup periodic cleanup of expired actions (every minute)
-    this.cleanupInterval = window.setInterval(() => {
+    this.cleanupInterval = typeof window !== 'undefined' ? window.setInterval(() => {
       this.facade.cleanupExpiredActions();
-    }, 60000);
+    }, 60000) : undefined;
   }
 
   ngOnDestroy(): void {
-    if (this.cleanupInterval) {
+    if (this.cleanupInterval != null) {
       clearInterval(this.cleanupInterval);
     }
+    if (this.urlPushTimeoutId != null) {
+      clearTimeout(this.urlPushTimeoutId);
+    }
+    this.paramMapSub?.unsubscribe();
+  }
+
+  /** Debounced URL update: push current search state to query params (replaceUrl: false for history). */
+  private scheduleUrlUpdate(): void {
+    if (typeof window === 'undefined') return;
+    if (this.urlPushTimeoutId != null) clearTimeout(this.urlPushTimeoutId);
+    this.urlPushTimeoutId = setTimeout(() => {
+      this.urlPushTimeoutId = null;
+      if (this.skipNextUrlPush) return;
+      const loc = this.locationService.location();
+      const state: SearchParamsState = {
+        query: this.facade.query() || '',
+        openNow: this.openNowFromActiveFilters(),
+        priceLevel: this.priceLevelFromActiveFilters(),
+        dietary: this.dietaryFromActiveFilters(),
+        sort: this.stateHandler.currentSort(),
+        lat: loc?.lat,
+        lng: loc?.lng
+      };
+      const nextParams = serializeSearchParams(state);
+      const current = this.activatedRoute.snapshot.queryParamMap;
+      const nextKeys = Object.keys(nextParams);
+      const same = nextKeys.length === current.keys.length &&
+        nextKeys.every(k => current.get(k) === nextParams[k]);
+      if (same) return;
+      this.skipNextUrlPush = true;
+      this.router.navigate([], {
+        relativeTo: this.activatedRoute,
+        queryParams: nextParams,
+        queryParamsHandling: 'merge',
+        replaceUrl: false
+      });
+    }, this.urlPushDebounceMs);
+  }
+
+  private openNowFromActiveFilters(): boolean | undefined {
+    const ids = this.stateHandler.activeFilters();
+    if (ids.includes('opennow')) return true;
+    if (ids.includes('closednow')) return false;
+    return undefined;
+  }
+
+  private priceLevelFromActiveFilters(): number | undefined {
+    const ids = this.stateHandler.activeFilters();
+    for (const id of ids) {
+      if (id.startsWith('price<=')) {
+        const n = parseInt(id.replace('price<=', ''), 10);
+        if (!isNaN(n) && n >= 1 && n <= 4) return n;
+      }
+    }
+    return undefined;
+  }
+
+  private dietaryFromActiveFilters(): string[] | undefined {
+    const ids = this.stateHandler.activeFilters();
+    const dietary = ids.filter(id => ['glutenfree', 'kosher', 'vegan'].includes(id));
+    return dietary.length ? dietary : undefined;
   }
 
   // Phase 6: Recommendation click handler

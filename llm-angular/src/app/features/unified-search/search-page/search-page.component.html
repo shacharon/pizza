@@ -43,8 +43,19 @@
     </div>
 
     <!-- CANONICAL ROUTING: Contextual Assistant (under input) -->
-    @if (showContextualAssistant()) {
+    @if (showContextualAssistantToggle()) {
+    <div class="assistant-toggle-row">
+      <button type="button" class="assistant-toggle-btn" (click)="toggleAssistantSummary()" aria-expanded="false">
+        <span class="assistant-toggle-icon">✨</span>
+        <span class="assistant-toggle-label">Show why</span>
+      </button>
+    </div>
+    }
+    @if (showContextualAssistantExpanded()) {
     <div class="assistant-message-container compact">
+      @if (isContextualAssistantSummaryOnly() && assistantSummaryExpanded()) {
+      <button type="button" class="assistant-hide-link" (click)="toggleAssistantSummary()">Hide</button>
+      }
       <app-assistant-summary [cardMessages]="contextualCardMessages()" [messages]="contextualMessages()"
         [text]="asyncAssistantMessage()" [status]="facade.assistantState()" [error]="facade.assistantError()"
         [locale]="'en'" />
@@ -52,8 +63,19 @@
     }
 
     <!-- CANONICAL ROUTING: Global/System Assistant (under input) -->
-    @if (showGlobalAssistant()) {
+    @if (showGlobalAssistantToggle()) {
+    <div class="assistant-toggle-row">
+      <button type="button" class="assistant-toggle-btn" (click)="toggleAssistantSummary()" aria-expanded="false">
+        <span class="assistant-toggle-icon">✨</span>
+        <span class="assistant-toggle-label">Show why</span>
+      </button>
+    </div>
+    }
+    @if (showGlobalAssistantExpanded()) {
     <div class="assistant-message-container compact">
+      @if (isGlobalAssistantSummaryOnly() && assistantSummaryExpanded()) {
+      <button type="button" class="assistant-hide-link" (click)="toggleAssistantSummary()">Hide</button>
+      }
       <app-assistant-summary [cardMessages]="globalCardMessages()" [messages]="globalMessages()"
         [text]="asyncAssistantMessage()" [status]="facade.assistantState()" [error]="facade.assistantError()"
         [locale]="'en'" />
