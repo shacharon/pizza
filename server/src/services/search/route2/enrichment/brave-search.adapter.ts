@@ -10,7 +10,8 @@
  */
 
 import { logger } from '../../../../lib/logger/structured-logger.js';
-import type { BraveSearchClient, SearchResult } from './brave-search-client.js';
+import type { BraveSearchClient } from './brave-search-client.js';
+import { selectBestUrlForProvider } from './provider-strategies/index.js';
 
 /**
  * Relax policy: progressive query relaxation
@@ -95,13 +96,13 @@ export class BraveSearchAdapter {
           `[BraveAdapter] Got ${results.length} raw results`
         );
 
-        // Filter and rank results
-        const validUrl = this.selectBestUrl(
+        // Provider-specific selection (Wolt: top 5 + city match; Tenbis/Mishloha: score best)
+        const validUrl = selectBestUrlForProvider({
           results,
           name,
           cityText,
-          config
-        );
+          config,
+        });
 
         if (validUrl) {
           logger.info(
@@ -195,215 +196,6 @@ export class BraveSearchAdapter {
       default:
         return `site:${host} "${name}"`;
     }
-  }
-
-  /**
-   * Select best URL from results
-   * 
-   * Scoring factors:
-   * 1. Must match host allowlist
-   * 2. Must match required path segments (e.g., /restaurant/)
-   * 3. Prefer URLs with city slug
-   * 4. Prefer URLs with normalized name slug
-   */
-  private selectBestUrl(
-    results: SearchResult[],
-    name: string,
-    cityText: string | null,
-    config: ProviderSearchConfig
-  ): string | null {
-    const normalizedName = this.normalizeForSlug(name);
-    const normalizedCity = cityText ? this.normalizeForSlug(cityText) : null;
-
-    // Filter valid results
-    const validResults = results
-      .filter((result) => this.isValidUrl(result.url, config))
-      .map((result) => ({
-        result,
-        score: this.scoreUrl(result.url, normalizedName, normalizedCity),
-      }))
-      .filter((item) => item.score > 0) // Must have positive score
-      .sort((a, b) => b.score - a.score); // Sort by score descending
-
-    if (validResults.length === 0) {
-      return null;
-    }
-
-    const bestResult = validResults[0];
-    
-    if (!bestResult) {
-      return null;
-    }
-    
-    logger.debug(
-      {
-        event: 'search_adapter_scoring',
-        provider: config.provider,
-        totalResults: results.length,
-        validResults: validResults.length,
-        bestScore: bestResult.score,
-        bestUrl: bestResult.result.url,
-        allScores: validResults.map(v => ({ url: v.result.url, score: v.score })),
-      },
-      '[BraveAdapter] Result scoring completed'
-    );
-
-    return bestResult.result.url;
-  }
-
-  /**
-   * Check if URL is valid for provider
-   * 
-   * Validates:
-   * - Host matches allowlist
-   * - Path contains required segments (if specified)
-   */
-  private isValidUrl(url: string, config: ProviderSearchConfig): boolean {
-    try {
-      const parsedUrl = new URL(url);
-      const hostname = parsedUrl.hostname.toLowerCase();
-      const pathname = parsedUrl.pathname.toLowerCase();
-
-      // Check host allowlist
-      const hostMatches = config.allowedHosts.some((allowedHost) => {
-        if (allowedHost.startsWith('*.')) {
-          const baseDomain = allowedHost.substring(2).toLowerCase();
-          return hostname === baseDomain || hostname.endsWith(`.${baseDomain}`);
-        } else {
-          return hostname === allowedHost.toLowerCase();
-        }
-      });
-
-      if (!hostMatches) {
-        logger.info(
-          {
-            event: 'provider_url_rejected',
-            provider: config.provider,
-            url,
-            hostname,
-            allowedHosts: config.allowedHosts,
-            reason: 'host_not_in_allowlist',
-          },
-          '[BraveAdapter] URL rejected: host not in allowlist'
-        );
-        
-        return false;
-      }
-
-      // Check required path segments
-      if (config.requiredPathSegments && config.requiredPathSegments.length > 0) {
-        const hasRequiredPath = config.requiredPathSegments.some((segment) =>
-          pathname.includes(segment.toLowerCase())
-        );
-        
-        if (!hasRequiredPath) {
-          logger.info(
-            {
-              event: 'provider_url_rejected',
-              provider: config.provider,
-              url,
-              pathname,
-              requiredSegments: config.requiredPathSegments,
-              reason: 'missing_required_path_segment',
-            },
-            '[BraveAdapter] URL rejected: missing required path segment'
-          );
-          
-          return false;
-        }
-      }
-
-      // WOLT-SPECIFIC: Validate Israeli restaurant URLs only
-      if (config.provider === 'wolt') {
-        // Must contain /isr/ for Israel
-        if (!pathname.includes('/isr/')) {
-          logger.info(
-            {
-              event: 'provider_url_rejected',
-              provider: config.provider,
-              url,
-              pathname,
-              reason: 'wrong_country',
-            },
-            '[BraveAdapter] Wolt URL rejected: not Israeli restaurant (missing /isr/)'
-          );
-          
-          return false;
-        }
-
-        // Must contain /restaurant/ for restaurant pages (not venues or other types)
-        if (!pathname.includes('/restaurant/')) {
-          logger.info(
-            {
-              event: 'provider_url_rejected',
-              provider: config.provider,
-              url,
-              pathname,
-              reason: 'wrong_country',
-            },
-            '[BraveAdapter] Wolt URL rejected: not a restaurant page (missing /restaurant/)'
-          );
-          
-          return false;
-        }
-      }
-
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * Score URL based on relevance factors
-   * 
-   * Scoring:
-   * - Base: 1 (valid result)
-   * - City slug match: +2
-   * - Name slug match: +3
-   */
-  private scoreUrl(
-    url: string,
-    normalizedName: string,
-    normalizedCity: string | null
-  ): number {
-    try {
-      const pathname = new URL(url).pathname.toLowerCase();
-      let score = 1; // Base score for valid result
-
-      // Check for city slug in path
-      if (normalizedCity && pathname.includes(normalizedCity)) {
-        score += 2;
-      }
-
-      // Check for name slug in path
-      if (pathname.includes(normalizedName)) {
-        score += 3;
-      }
-
-      return score;
-    } catch {
-      return 0;
-    }
-  }
-
-  /**
-   * Normalize text for slug matching
-   * 
-   * - Lowercase
-   * - Remove special chars
-   * - Replace spaces with hyphens
-   * - Collapse multiple hyphens
-   */
-  private normalizeForSlug(text: string): string {
-    return text
-      .toLowerCase()
-      .normalize('NFD') // Decompose accents
-      .replace(/[\u0300-\u036f]/g, '') // Remove accents
-      .replace(/[^a-z0-9\s-]/g, '') // Keep only alphanumeric, spaces, hyphens
-      .replace(/\s+/g, '-') // Replace spaces with hyphens
-      .replace(/-+/g, '-') // Collapse multiple hyphens
-      .replace(/^-|-$/g, ''); // Trim hyphens
   }
 
   /**
