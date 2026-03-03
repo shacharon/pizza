@@ -16,6 +16,7 @@ describe('SearchPageComponent', () => {
     const facadeSpy = jasmine.createSpyObj('SearchFacade', [
       'search',
       'reset',
+      'restoreStateFromParams',
       'selectRestaurant',
       'proposeAction',
       'approveAction',

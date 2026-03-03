@@ -63,6 +63,7 @@ export class SearchBarComponent implements OnDestroy {
   private readonly destroyRef = inject(DestroyRef);
   readonly speech = inject(SpeechToTextService);
   readonly listening = toSignal(this.speech.listening$, { initialValue: false });
+  readonly speechStatusMessage = toSignal(this.speech.statusMessage$, { initialValue: null as string | null });
 
   readonly effectivePlaceholder = computed(() =>
     this.listening() ? 'Listening…' : this.placeholder()
@@ -134,6 +135,7 @@ export class SearchBarComponent implements OnDestroy {
     el.style.height = `${h}px`;
   }
 
+  /** Called only from mic button click (user gesture). start() must be invoked directly from this path. */
   toggleMic(): void {
     if (this.listening()) {
       this.speech.stop();
@@ -143,7 +145,7 @@ export class SearchBarComponent implements OnDestroy {
         this.submitted.set(false);
         this.inputChange.emit('');
       }
-      this.speech.start('he-IL');
+      this.speech.start('he-IL', { fromUserGesture: true });
     }
     this.cdr.markForCheck();
   }
@@ -151,6 +153,20 @@ export class SearchBarComponent implements OnDestroy {
   onSearch(): void {
     const q = this.query().trim();
     if (q) {
+      this.search.emit(q);
+      this.submitted.set(true);
+    }
+  }
+
+  onKeydown(event: KeyboardEvent, textarea: HTMLTextAreaElement): void {
+    if (event.key !== 'Enter') return;
+    if (event.shiftKey) {
+      return;
+    }
+    event.preventDefault();
+    const q = textarea.value.trim();
+    if (q) {
+      this.query.set(q);
       this.search.emit(q);
       this.submitted.set(true);
     }

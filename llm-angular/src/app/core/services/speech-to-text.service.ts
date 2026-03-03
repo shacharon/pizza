@@ -45,13 +45,14 @@ interface ISpeechRecognition extends EventTarget {
   stop(): void;
   abort(): void;
   onresult: ((event: SpeechRecognitionEvent) => void) | null;
-  onerror: ((event: Event & { error: string }) => void) | null;
+  onerror: ((event: Event & { error?: string; message?: string }) => void) | null;
   onend: (() => void) | null;
   onstart: (() => void) | null;
   onaudiostart: (() => void) | null;
   onaudioend: (() => void) | null;
   onsoundstart: (() => void) | null;
   onsoundend: (() => void) | null;
+  onspeechstart?: (() => void) | null;
   onspeechend: (() => void) | null;
 }
 
@@ -74,6 +75,25 @@ declare global {
  * For production-grade reliability across browsers,
  * consider server-side STT (e.g., Whisper).
  */
+const LOG_PREFIX = '[SpeechToText]';
+
+function safeLog(message: string, detail?: Record<string, unknown>): void {
+  try {
+    if (typeof console !== 'undefined' && console.warn) {
+      const payload = detail ? ` ${JSON.stringify(detail)}` : '';
+      console.warn(`${LOG_PREFIX} ${message}${payload}`);
+    }
+  } catch {
+    // no-op
+  }
+}
+
+/** Android Chrome has known issues with continuous: true; use false there. */
+function isAndroid(): boolean {
+  if (typeof navigator === 'undefined' || !navigator.userAgent) return false;
+  return /Android/i.test(navigator.userAgent);
+}
+
 @Injectable({
   providedIn: 'root',
 })
@@ -81,6 +101,7 @@ export class SpeechToTextService {
   private recognition: ISpeechRecognition | null = null;
   private readonly transcriptSubject = new Subject<SpeechTranscript>();
   private readonly listeningSubject = new BehaviorSubject<boolean>(false);
+  private readonly statusMessageSubject = new BehaviorSubject<string | null>(null);
   private isListening = false;
 
   /** Stream of transcript updates; both interim and final results are emitted. */
@@ -94,43 +115,163 @@ export class SpeechToTextService {
     shareReplay({ bufferSize: 1, refCount: true })
   );
 
-  /** Whether the Web Speech API is available (secure context + supported browser). */
+  /** Stream of status/error message for UI (unsupported, blocked, error code). Null when OK. */
+  readonly statusMessage$: Observable<string | null> = this.statusMessageSubject.asObservable().pipe(
+    distinctUntilChanged(),
+    shareReplay({ bufferSize: 1, refCount: true })
+  );
+
+  /**
+   * Whether the Web Speech API is available.
+   * Requires: window, secure context (HTTPS), and SpeechRecognition or webkitSpeechRecognition.
+   * Returns false when any check fails so UI can hide the mic and we avoid silent no-ops.
+   */
   isSupported(): boolean {
-    if (typeof window === 'undefined') return false;
+    if (typeof window === 'undefined') {
+      safeLog('isSupported() false: no window');
+      return false;
+    }
+    const win = window as Window & { isSecureContext?: boolean };
+    const hasSecure = typeof win.isSecureContext === 'boolean';
+    const secure = hasSecure && win.isSecureContext === true;
+    const hasSpeech = typeof window.SpeechRecognition === 'function';
+    const hasWebkit = typeof window.webkitSpeechRecognition === 'function';
     const Ctor = window.SpeechRecognition ?? window.webkitSpeechRecognition;
-    return typeof Ctor === 'function';
+    const hasConstructor = typeof Ctor === 'function';
+    const supported = secure && hasConstructor;
+    safeLog('isSupported()', {
+      result: supported,
+      isSecureContext: hasSecure ? secure : 'unknown',
+      hasSpeechRecognition: hasSpeech,
+      hasWebkitSpeechRecognition: hasWebkit,
+      constructor: hasSpeech ? 'SpeechRecognition' : hasWebkit ? 'webkitSpeechRecognition' : 'none',
+    });
+    return supported;
+  }
+
+  /** Clear the current status/error message (e.g. after user dismisses or retries). */
+  clearStatus(): void {
+    this.statusMessageSubject.next(null);
+  }
+
+  private setStatusMessage(msg: string): void {
+    this.statusMessageSubject.next(msg);
+    safeLog('statusMessage', { message: msg });
   }
 
   /**
    * Start recognition. Optional lang (e.g. 'en-US', 'he-IL').
+   * Must be called directly from a user gesture (e.g. button click); otherwise some browsers (e.g. Android Chrome) block mic.
    * No-op if already listening or if API is not supported.
    */
-  start(lang?: string): void {
-    if (this.isListening) return;
-    if (!this.isSupported()) return;
+  start(lang?: string, options?: { fromUserGesture?: boolean }): void {
+    const fromUserGesture = options?.fromUserGesture ?? false;
+    safeLog('start() invoked', { lang, fromUserGesture, isListening: this.isListening });
 
-    this.disposeRecognition();
+    if (this.isListening) {
+      safeLog('start() no-op: already listening');
+      return;
+    }
+
+    if (typeof window === 'undefined') {
+      safeLog('start() blocked: no window');
+      this.setStatusMessage('Voice input not available');
+      return;
+    }
+
+    const win = window as Window & { isSecureContext?: boolean };
+    const isSecure = win.isSecureContext === true;
+    if (!isSecure) {
+      safeLog('start() blocked: not a secure context (HTTPS required)');
+      this.setStatusMessage('Voice input needs a secure connection (HTTPS). Open in Chrome over HTTPS.');
+      return;
+    }
+
     const Ctor = window.SpeechRecognition ?? window.webkitSpeechRecognition;
-    if (typeof Ctor !== 'function') return;
+    if (typeof Ctor !== 'function') {
+      safeLog('start() unsupported: no SpeechRecognition constructor');
+      this.setStatusMessage(
+        isAndroid()
+          ? 'Voice input isn\'t supported here. Try Chrome on Android.'
+          : 'Voice input isn\'t supported in this browser.'
+      );
+      return;
+    }
+
+    const ctorName = window.SpeechRecognition ? 'SpeechRecognition' : 'webkitSpeechRecognition';
+    const android = isAndroid();
+    safeLog('start() proceeding (sync from user gesture)', {
+      constructor: ctorName,
+      lang: lang ?? navigator.language ?? 'en-US',
+      isAndroid: android,
+    });
+
+    this.statusMessageSubject.next(null);
+    this.disposeRecognition();
+
+    // Always call start synchronously from this stack so recognition.start() runs in the same user gesture.
+    // On Android, deferring (e.g. after getUserMedia.then) causes not-allowed because the gesture is lost.
+    this.createAndStartRecognition(Ctor, lang, android);
+  }
+
+  private createAndStartRecognition(
+    Ctor: new () => ISpeechRecognition,
+    lang: string | undefined,
+    android: boolean
+  ): void {
+    if (this.isListening) return;
+    this.disposeRecognition();
     this.recognition = new Ctor();
 
-    this.recognition.continuous = true;
+    // Android Chrome: continuous=true often fails (mic drops after 1–2s or never starts). Use false.
+    this.recognition.continuous = !android;
     this.recognition.interimResults = true;
     this.recognition.lang = lang ?? navigator.language ?? 'en-US';
     this.recognition.maxAlternatives = 1;
+    safeLog('recognition config', { continuous: this.recognition.continuous, android });
 
     this.recognition.onstart = () => {
+      safeLog('event: onstart');
       this.isListening = true;
       this.listeningSubject.next(true);
     };
 
+    this.recognition.onaudiostart = () => {
+      safeLog('event: onaudiostart');
+    };
+
+    if ('onspeechstart' in this.recognition) {
+      this.recognition.onspeechstart = () => {
+        safeLog('event: onspeechstart');
+      };
+    }
+
+    this.recognition.onspeechend = () => {
+      safeLog('event: onspeechend');
+    };
+
     this.recognition.onend = () => {
+      safeLog('event: onend');
       this.setStopped();
     };
 
-    this.recognition.onerror = (event: Event & { error?: string }) => {
-      const err = (event as { error?: string }).error;
+    this.recognition.onerror = (event: Event & { error?: string; message?: string }) => {
+      const err = (event as { error?: string; message?: string }).error;
+      const msg = (event as { error?: string; message?: string }).message;
+      const code = err ?? 'unknown';
+      safeLog('event: onerror', { error: code, message: msg });
       if (err !== 'aborted') {
+        if (err === 'not-allowed' || err === 'service-not-allowed') {
+          this.setStatusMessage('Microphone access was denied. Allow mic in browser or device settings.');
+        } else if (err === 'no-speech') {
+          this.setStatusMessage('No speech detected. Try again.');
+        } else if (err === 'network') {
+          this.setStatusMessage('Voice input needs a network connection.');
+        } else if (err === 'audio-capture') {
+          this.setStatusMessage('Microphone not available.');
+        } else {
+          this.setStatusMessage('Voice input couldn\'t start. Try again or use the keyboard.');
+        }
         this.setStopped();
       }
     };
@@ -149,7 +290,11 @@ export class SpeechToTextService {
 
     try {
       this.recognition.start();
-    } catch {
+      safeLog('recognition.start() called');
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      safeLog('recognition.start() threw', { error: message });
+      this.setStatusMessage('Voice input couldn\'t start. Try again or use the keyboard.');
       this.setStopped();
     }
   }
@@ -183,6 +328,9 @@ export class SpeechToTextService {
       this.recognition.onend = null;
       this.recognition.onerror = null;
       this.recognition.onstart = null;
+      this.recognition.onaudiostart = null;
+      if (this.recognition.onspeechstart !== undefined) this.recognition.onspeechstart = null;
+      this.recognition.onspeechend = null;
       this.recognition.abort();
     } catch {
       // ignore

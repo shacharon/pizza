@@ -511,10 +511,8 @@ export class SearchPageComponent implements OnInit, OnDestroy {
         const deserialized = deserializeSearchParams(paramMap);
         this.stateHandler.setSort(deserialized.sort ?? 'BEST_MATCH');
         this.stateHandler.setActiveFilterIds(filterChipIdsFromParams(deserialized));
-        this.inputStateMachine.selectRecent(q);
-        this.facade.search(q, deserialized.filters).then(() => {
-          this.visibleCount.set(10);
-        });
+        // Restore UI state only; do NOT auto-submit search (refresh/rehydration)
+        this.facade.restoreStateFromParams(q);
         this.skipNextUrlPush = true;
         setTimeout(() => { this.skipNextUrlPush = false; }, 500);
       });

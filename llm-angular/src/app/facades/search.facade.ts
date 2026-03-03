@@ -634,6 +634,15 @@ export class SearchFacade {
     this.actionService.cleanupExpired();
   }
 
+  /**
+   * Restore UI state from URL/storage without triggering search.
+   * Use on page load / rehydration only. Search runs only on explicit user action.
+   */
+  restoreStateFromParams(query: string): void {
+    this.searchStore.setQuery(query);
+    this.inputStateMachine.input(query);
+  }
+
   // NEW: Phase B - Input state management
   onInput(text: string): void {
     this.inputStateMachine.input(text);

@@ -49,23 +49,22 @@
   }
 }
 
-// SearchDock (sticky on page scroll)
+// SearchDock (sticky, floating composer layout — no outer card)
 .search-dock {
   position: sticky;
   top: 0;
   z-index: 50;
-  background: #ffffff;
-  border-bottom: 1px solid #e5e7eb;
+  background: transparent;
   padding: 1rem;
   padding-top: max(1rem, env(safe-area-inset-top)); // Safe area for notch
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  
+  // No border/shadow: composer is the single primary surface
+
   // Apply shared horizontal constraint
   .search-input-wrapper {
     @extend .content-column;
   }
-  
-  // Compact assistant in dock - shared horizontal constraint; auto height (no truncation)
+
+  // Helper/error below composer: inline, not inside a card
   .assistant-message-container.compact,
   .assistant-line-container.compact {
     @extend .content-column;
@@ -229,13 +228,13 @@
   }
 }
 
-// Assistant Message Container (ABOVE input) - V1: English/LTR only
+// Assistant Message Container — inline below composer (no card)
 .assistant-message-container {
   margin-bottom: 0.875rem;
-  padding: 0.875rem 1rem;
-  background: #ffffff;
-  border: 1px solid #f3f4f6;
-  border-radius: 8px;
+  padding: 0.5rem 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
   direction: ltr;
   text-align: left;
 
@@ -298,9 +297,9 @@
     }
   }
   
-  // Compact mode in SearchDock - auto height for full message (Option B)
+  // Compact mode in SearchDock - inline, no card
   &.compact {
-    padding: 0.5rem 1rem;
+    padding: 0.375rem 0;
     margin-bottom: 0.5rem;
     
     ::ng-deep .assistant-summary {
@@ -323,16 +322,16 @@
   }
 }
 
-// Assistant Line Container (ABOVE input, if present)
+// Assistant Line Container — inline below composer (no card), RTL preserved
 .assistant-line-container {
   margin-bottom: 0.75rem;
-  padding: 0.625rem 1rem;
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
+  padding: 0.375rem 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
   direction: rtl;
   text-align: right;
-  
+
   ::ng-deep .assistant-line {
     .assistant-text {
       color: #6b7280;

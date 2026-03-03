@@ -8,7 +8,7 @@
         [ngModel]="query()"
         (ngModelChange)="onInput($event)"
         (input)="resizeTextarea()"
-        (keydown.enter)="onSearchFromInput(searchInput.value)"
+        (keydown)="onKeydown($event, searchInput)"
         [disabled]="disabled()"
         [placeholder]="effectivePlaceholder()"
         [class.has-clear]="query() && !loading()"
@@ -72,4 +72,7 @@
       </button>
       }
   </div>
+  @if (speechStatusMessage()) {
+  <p class="speech-status-message" role="status" aria-live="polite">{{ speechStatusMessage() }}</p>
+  }
 </div>
