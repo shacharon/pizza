@@ -154,6 +154,25 @@ export class SpeechToTextService {
     this.statusMessageSubject.next(null);
   }
 
+  /**
+   * When the API is not supported, returns a short hint for the UI (e.g. "Voice search: use Chrome on Android").
+   * When supported, returns null. Use this to show a friendly fallback when the mic button is hidden.
+   */
+  getSupportHint(): string | null {
+    if (typeof window === 'undefined') return null;
+    const win = window as Window & { isSecureContext?: boolean };
+    if (win.isSecureContext !== true) {
+      return 'Voice search needs a secure connection (HTTPS).';
+    }
+    const Ctor = window.SpeechRecognition ?? window.webkitSpeechRecognition;
+    if (typeof Ctor !== 'function') {
+      return isAndroid()
+        ? 'Voice search: use Chrome on Android.'
+        : 'Voice search: use Chrome or Edge.';
+    }
+    return null;
+  }
+
   private setStatusMessage(msg: string): void {
     this.statusMessageSubject.next(msg);
     safeLog('statusMessage', { message: msg });

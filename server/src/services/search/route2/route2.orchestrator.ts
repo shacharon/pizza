@@ -23,8 +23,8 @@ import { wsManager } from '../../../server.js';
 import { sanitizeQuery } from '../../../lib/telemetry/query-sanitizer.js';
 import { withTimeout, isTimeoutError } from '../../../lib/reliability/timeout-guard.js';
 import { route2Config } from './route2.config.js';
-import { SearchConfig } from '../config/search.config.js';
-import { applyRankingWithSocialProofBoost } from './ranking/ranking-apply.js';
+import { applyBaselineRanking, BASELINE_WEIGHTS } from './ranking/ranking-apply.js';
+import { logRankingObservability } from './ranking/ranking-observability.js';
 
 // Extracted modules
 import { fireParallelTasks, drainParallelPromises } from './orchestrator.parallel-tasks.js';
@@ -447,14 +447,47 @@ async function searchRoute2Internal(
     const postFilterResult = applyPostFiltersToResults(googleResult.results, postConstraints, finalFilters, ctx);
     let finalResults = postFilterResult.resultsFiltered;
 
-    // Soft ranking: score (rating + reviews + social-proof boost), sort, assign score/rank (no removal)
-    const rankingWeights = SearchConfig.ranking.weights;
-    const socialProofBoosts = SearchConfig.ranking.socialProofBoosts;
-    finalResults = applyRankingWithSocialProofBoost(finalResults, {
-      rating: rankingWeights.rating,
-      reviewCount: rankingWeights.reviewCount,
-      ...(socialProofBoosts && { socialProofBoosts })
+    // Capture top 5 post-filter order for ranking observability (RANKING_DEBUG only)
+    const top5Before = finalResults.slice(0, 5).map((r: { id?: string; name?: string }, i: number) => ({
+      rank: i + 1,
+      id: r.id,
+      name: r.name
+    }));
+
+    // Baseline ranking: fixed weights (rating, reviewSocial, distance, openNow, priceFit), sort, assign score/rank (no removal)
+    const rankingOutcome = applyBaselineRanking(
+      finalResults,
+      ctx.userLocation != null ? { userLocation: ctx.userLocation } : undefined
+    );
+    finalResults = rankingOutcome.results;
+
+    logRankingObservability({
+      requestId,
+      top5Before,
+      top5After: rankingOutcome.top5Breakdown,
+      baselineWeights: { ...BASELINE_WEIGHTS },
+      finalWeights: { ...BASELINE_WEIGHTS },
+      appliedSignals: []
     });
+
+    logger.debug(
+      {
+        requestId,
+        pipelineVersion: 'route2',
+        event: 'ranking_baseline_top5',
+        top5: rankingOutcome.top5Breakdown.map(({ id, name, score, breakdown }) => ({
+          id,
+          name,
+          score: Math.round(score * 1000) / 1000,
+          r: Math.round(breakdown.rating * 1000) / 1000,
+          rs: Math.round(breakdown.reviewSocial * 1000) / 1000,
+          d: Math.round(breakdown.distance * 1000) / 1000,
+          o: Math.round(breakdown.open * 1000) / 1000,
+          p: Math.round(breakdown.priceFit * 1000) / 1000
+        }))
+      },
+      '[ROUTE2] Baseline ranking top 5 score breakdown'
+    );
 
     // Get merged filters for response building
     const filtersForPostFilter = {

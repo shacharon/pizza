@@ -59,9 +59,11 @@
   padding-top: max(1rem, env(safe-area-inset-top)); // Safe area for notch
   // No border/shadow: composer is the single primary surface
 
-  // Apply shared horizontal constraint
+  // Apply shared horizontal constraint; allow voice/error message below composer to show (no clip)
   .search-input-wrapper {
     @extend .content-column;
+    overflow: visible;
+    min-width: 0;
   }
 
   // Helper/error below composer: inline, not inside a card

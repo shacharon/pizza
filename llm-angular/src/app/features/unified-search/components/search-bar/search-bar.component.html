@@ -1,35 +1,36 @@
 <div class="composer">
-  <div class="input-box">
-    <div class="input-wrapper">
-      <textarea
-        #searchInput
-        rows="1"
-        class="composer-input search-input"
-        [ngModel]="query()"
-        (ngModelChange)="onInput($event)"
-        (input)="resizeTextarea()"
-        (keydown)="onKeydown($event, searchInput)"
-        [disabled]="disabled()"
-        [placeholder]="effectivePlaceholder()"
-        [class.has-clear]="query() && !loading()"
-        aria-label="Search for restaurants"
-      ></textarea>
-      @if (query() && !loading()) {
-      <button
-        type="button"
-        class="action-clear-inner"
-        (click)="onClear()"
-        [disabled]="disabled()"
-        aria-label="Clear search"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-          <path d="M18 6L6 18M6 6l12 12"/>
-        </svg>
-      </button>
-      }
+  <div class="composer-row">
+    <div class="input-box">
+      <div class="input-wrapper">
+        <textarea
+          #searchInput
+          rows="1"
+          class="composer-input search-input"
+          [ngModel]="query()"
+          (ngModelChange)="onInput($event)"
+          (input)="resizeTextarea()"
+          (keydown)="onKeydown($event, searchInput)"
+          [disabled]="disabled()"
+          [placeholder]="effectivePlaceholder()"
+          [class.has-clear]="query() && !loading()"
+          aria-label="Search for restaurants"
+        ></textarea>
+        @if (query() && !loading()) {
+        <button
+          type="button"
+          class="action-clear-inner"
+          (click)="onClear()"
+          [disabled]="disabled()"
+          aria-label="Clear search"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M18 6L6 18M6 6l12 12"/>
+          </svg>
+        </button>
+        }
+      </div>
     </div>
-  </div>
-  <div class="composer-actions" role="group" aria-label="Search actions">
+    <div class="composer-actions" role="group" aria-label="Search actions">
       @if (speech.isSupported()) {
       <button
         type="button"
@@ -71,8 +72,12 @@
         </svg>
       </button>
       }
+    </div>
   </div>
   @if (speechStatusMessage()) {
   <p class="speech-status-message" role="status" aria-live="polite">{{ speechStatusMessage() }}</p>
+  }
+  @if (!speech.isSupported() && speech.getSupportHint()) {
+  <p class="speech-support-hint" role="note">{{ speech.getSupportHint() }}</p>
   }
 </div>
