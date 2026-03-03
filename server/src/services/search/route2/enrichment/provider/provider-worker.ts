@@ -187,20 +187,21 @@ export class ProviderWorker {
       const { status, url, meta } = resolveResult;
       const updatedAt = new Date().toISOString();
 
-      // Track CSE usage in metrics if CSE was used (L1 or L2)
-      if (meta.source === 'cse') {
+      // Track provider-search usage (Brave or CSE) in metrics
+      if (meta.source === 'brave' || meta.source === 'cse') {
         const metricsCollector = getMetricsCollector();
-        metricsCollector.recordCseCall(requestId);
-        
+        metricsCollector.recordProviderSearchCall(requestId);
+
         logger.debug(
           {
-            event: 'provider_cse_call_tracked',
+            event: 'provider_search_call_tracked',
             providerId,
             requestId,
             placeId,
+            source: meta.source,
             layerUsed: meta.layerUsed,
           },
-          `[ProviderWorker:${providerId}] CSE call tracked in metrics`
+          `[ProviderWorker:${providerId}] Provider search call tracked in metrics`
         );
       }
 
@@ -354,7 +355,7 @@ export class ProviderWorker {
     placeId: string,
     url: string | null,
     status: 'FOUND' | 'NOT_FOUND',
-    meta?: { layerUsed: 1 | 2 | 3; source: 'cse' | 'internal' }
+    meta?: { layerUsed: 1 | 2 | 3; source: 'brave' | 'cse' | 'internal' }
   ): Promise<void> {
     const cacheEntry: ProviderCacheEntry = {
       url,
@@ -405,7 +406,7 @@ export class ProviderWorker {
     status: 'FOUND' | 'NOT_FOUND',
     url: string | null,
     updatedAt: string,
-    meta?: { layerUsed: 1 | 2 | 3; source: 'cse' | 'internal' }
+    meta?: { layerUsed: 1 | 2 | 3; source: 'brave' | 'cse' | 'internal' }
   ): Promise<void> {
     // Use unified provider patch method (includes structured logging)
     wsManager.publishProviderPatch(providerId, placeId, requestId, status, url, updatedAt, meta);

@@ -31,6 +31,15 @@ export const BASELINE_WEIGHTS = {
   priceFit: 0.05
 } as const;
 
+/** Weights shape for ranking (same keys as BASELINE_WEIGHTS). Sum must be 1 when used. */
+export type BaselineWeightsLike = {
+  rating: number;
+  reviewCountSocialProof: number;
+  distanceMeters: number;
+  openNow: number;
+  priceFit: number;
+};
+
 const normalizer = new ScoreNormalizer();
 const distanceCalculator = new DistanceCalculator();
 
@@ -64,6 +73,8 @@ export interface BaselineRankingInput {
 
 export interface BaselineRankingOptions {
   userLocation?: { lat: number; lng: number } | null;
+  /** When set, use these weights instead of BASELINE_WEIGHTS (e.g. from resolveRankingWeights). Sum should be 1. */
+  weights?: BaselineWeightsLike;
 }
 
 /**
@@ -71,17 +82,19 @@ export interface BaselineRankingOptions {
  * - distanceMeters missing: use neutral 0.5 (no penalty).
  * - priceLevel missing: priceFit = neutral 0.5.
  * - reviewSocial = blend of normalizeReviews and normalized social-proof boost (weight 0.25).
+ * - Uses options.weights when provided (e.g. from resolveRankingWeights), else BASELINE_WEIGHTS.
  */
 export function computeBaselineScore(
   result: BaselineRankingInput,
   options?: BaselineRankingOptions
 ): { totalScore: number; breakdown: BaselineScoreBreakdown } {
+  const weights = options?.weights ?? BASELINE_WEIGHTS;
   const rNorm = normalizer.normalizeRating(result.rating);
   const reviewNorm = normalizer.normalizeReviews(result.userRatingsTotal);
   const socialBoost = getSocialProofBoost(result.socialProofTags, BASELINE_SOCIAL_WEIGHTS);
   const socialNorm = Math.min(1, socialBoost / MAX_SOCIAL_BOOST);
   const reviewSocialRaw = Math.min(1, 0.75 * reviewNorm + 0.25 * socialNorm);
-  const reviewSocial = BASELINE_WEIGHTS.reviewCountSocialProof * reviewSocialRaw;
+  const reviewSocial = weights.reviewCountSocialProof * reviewSocialRaw;
 
   let distanceNorm = 0.5;
   if (result.distanceMeters != null && typeof result.distanceMeters === 'number' && result.distanceMeters >= 0) {
@@ -95,17 +108,17 @@ export function computeBaselineScore(
     );
     distanceNorm = normalizer.normalizeDistance(distanceKm);
   }
-  const distance = BASELINE_WEIGHTS.distanceMeters * distanceNorm;
+  const distance = weights.distanceMeters * distanceNorm;
 
   const openNorm = normalizer.normalizeOpen(result.openNow);
-  const open = BASELINE_WEIGHTS.openNow * openNorm;
+  const open = weights.openNow * openNorm;
 
   // priceFit: neutral (0.5) when priceLevel missing; full (1.0) when present (no intent-based preference)
   const priceFitNorm =
     result.priceLevel != null && typeof result.priceLevel === 'number' ? 1.0 : 0.5;
-  const priceFit = BASELINE_WEIGHTS.priceFit * priceFitNorm;
+  const priceFit = weights.priceFit * priceFitNorm;
 
-  const rating = BASELINE_WEIGHTS.rating * rNorm;
+  const rating = weights.rating * rNorm;
   const totalScore = rating + reviewSocial + distance + open + priceFit;
 
   return {
@@ -139,12 +152,15 @@ export function applyBaselineRanking<T extends Record<string, unknown>>(
     score,
     rank: i + 1
   })) as T[];
-  const top5Breakdown = withScore.slice(0, 5).map(({ result, score, breakdown }) => ({
-    id: (result as { id?: string }).id,
-    name: (result as { name?: string }).name,
-    score,
-    breakdown
-  }));
+  const top5Breakdown = withScore.slice(0, 5).map(({ result, score, breakdown }) => {
+    const r = result as { id?: string; name?: string };
+    return {
+      ...(r.id !== undefined && { id: r.id }),
+      ...(r.name !== undefined && { name: r.name }),
+      score,
+      breakdown
+    };
+  });
   return { results: resultsWithRank, top5Breakdown };
 }
 

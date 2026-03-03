@@ -171,8 +171,8 @@ export interface ProviderState {
   url: string | null;
   updatedAt?: string; // ISO timestamp of last update (optional, only in patches)
   meta?: {
-    layerUsed?: 1 | 2 | 3; // Resolution layer: 1=CSE+city, 2=CSE, 3=internal search
-    source?: 'cse' | 'internal'; // Resolution source
+    layerUsed?: 1 | 2 | 3; // 1=provider search+city, 2=provider search, 3=internal
+    source?: 'brave' | 'cse' | 'internal'; // Resolution source
   };
 }
 

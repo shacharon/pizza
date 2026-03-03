@@ -7,6 +7,7 @@
 
 import { Component, input, output, ChangeDetectionStrategy, computed, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Router } from '@angular/router';
 import { ReasonLabelComponent } from '../reason-label/reason-label.component';
 import type { Restaurant, Coordinates } from '../../../../domain/types/search.types';
 import type { ActionType, ActionLevel } from '../../../../domain/types/action.types';
@@ -103,6 +104,7 @@ export function formatOpenStatusLine(params: {
 })
 export class RestaurantCardComponent {
   public readonly i18n = inject(I18nService);
+  private readonly router = inject(Router);
 
   // Inputs
   readonly restaurant = input.required<Restaurant>();
@@ -138,7 +140,12 @@ export class RestaurantCardComponent {
   private static debuggedCards = new Set<string>();
 
   onCardClick(): void {
-    this.cardClick.emit(this.restaurant());
+    const r = this.restaurant();
+    const placeId = r?.id ?? r?.placeId ?? '';
+    if (placeId) {
+      this.router.navigate(['/r', placeId]);
+    }
+    this.cardClick.emit(r);
   }
 
   /**

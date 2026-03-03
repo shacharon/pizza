@@ -475,7 +475,7 @@ export class WebSocketManager {
     status: 'FOUND' | 'NOT_FOUND',
     url: string | null,
     updatedAt?: string,
-    meta?: { layerUsed: 1 | 2 | 3; source: 'cse' | 'internal' }
+    meta?: { layerUsed: 1 | 2 | 3; source: 'brave' | 'cse' | 'internal' }
   ): PublishSummary {
     return this.publishManager.publishProviderPatch(provider, placeId, requestId, status, url, updatedAt, meta);
   }

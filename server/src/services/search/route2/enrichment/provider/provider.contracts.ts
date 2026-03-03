@@ -167,7 +167,7 @@ export interface ProviderCacheEntry {
    */
   meta?: {
     layerUsed: 1 | 2 | 3;
-    source: 'cse' | 'internal';
+    source: 'brave' | 'cse' | 'internal';
   };
 }
 
@@ -244,7 +244,7 @@ export interface JobResult {
    */
   meta?: {
     layerUsed: 1 | 2 | 3;
-    source: 'cse' | 'internal';
+    source: 'brave' | 'cse' | 'internal';
   };
 
   /**

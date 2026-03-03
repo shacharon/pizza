@@ -29,11 +29,11 @@ export interface ResolveInput {
 }
 
 /**
- * Resolution metadata
+ * Resolution metadata (source = actual search engine or internal fallback)
  */
 export interface ResolutionMeta {
   layerUsed: 1 | 2 | 3;
-  source: 'cse' | 'internal';
+  source: 'brave' | 'cse' | 'internal';
 }
 
 /**
@@ -189,7 +189,7 @@ export class ProviderDeepLinkResolver {
           url,
           meta: {
             layerUsed: 1,
-            source: 'cse', // Keep 'cse' for backward compatibility in metrics
+            source: 'brave',
           },
         };
       }

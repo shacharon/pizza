@@ -1,12 +1,13 @@
 <article class="restaurant-card" [class.selected]="selected()" [class.top-result]="isTopResult()"
-  [class.compact]="compact()" role="button" tabindex="0" [attr.aria-label]="'View details for ' + restaurant().name">
+  [class.compact]="compact()" role="button" tabindex="0" [attr.aria-label]="'View details for ' + restaurant().name"
+  (click)="onCardClick()" (keydown.enter)="onCardClick()" (keydown.space)="$event.preventDefault(); onCardClick()">
 
   @if (showReasonLabel() && isTopResult()) {
   <app-reason-label [restaurant]="restaurant()" />
   }
 
   <!-- Main content area (clickable for details) - Bottega 4-line layout, LTR -->
-  <div class="card-content" (click)="onCardClick()">
+  <div class="card-content">
     <div class="card-header">
       <!-- P0 Security: Secure photo loading via backend proxy -->
       <div class="photo-wrapper shrink-0">

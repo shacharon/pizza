@@ -24,6 +24,7 @@ import { sanitizeQuery } from '../../../lib/telemetry/query-sanitizer.js';
 import { withTimeout, isTimeoutError } from '../../../lib/reliability/timeout-guard.js';
 import { route2Config } from './route2.config.js';
 import { applyBaselineRanking, BASELINE_WEIGHTS } from './ranking/ranking-apply.js';
+import { resolveRankingWeights } from './ranking/ranking-weight-resolver.js';
 import { logRankingObservability } from './ranking/ranking-observability.js';
 
 // Extracted modules
@@ -454,20 +455,39 @@ async function searchRoute2Internal(
       name: r.name
     }));
 
-    // Baseline ranking: fixed weights (rating, reviewSocial, distance, openNow, priceFit), sort, assign score/rank (no removal)
-    const rankingOutcome = applyBaselineRanking(
-      finalResults,
-      ctx.userLocation != null ? { userLocation: ctx.userLocation } : undefined
-    );
+    // Resolve ranking weights from intent/filters/post-constraints (dynamic); fallback to baseline when no signals
+    const rankingResolution = resolveRankingWeights({
+      intent: intentDecision,
+      finalFilters,
+      postConstraints,
+      baselineWeights: { ...BASELINE_WEIGHTS }
+    });
+
+    // Ranking: score with resolved weights, sort, assign score/rank (no removal)
+    const rankingOutcome = applyBaselineRanking(finalResults, {
+      ...(ctx.userLocation != null && { userLocation: ctx.userLocation }),
+      weights: rankingResolution.finalWeights
+    });
     finalResults = rankingOutcome.results;
 
+    const hasDistanceSignal =
+      intentDecision.route === 'NEARBY' ||
+      ['near_me_phrase', 'explicit_distance_from_me'].includes(intentDecision.reason ?? '');
     logRankingObservability({
       requestId,
       top5Before,
       top5After: rankingOutcome.top5Breakdown,
       baselineWeights: { ...BASELINE_WEIGHTS },
-      finalWeights: { ...BASELINE_WEIGHTS },
-      appliedSignals: []
+      finalWeights: { ...rankingResolution.finalWeights } as Record<string, number>,
+      appliedSignals: rankingResolution.appliedSignals,
+      signalContext: {
+        route: intentDecision.route,
+        openState: finalFilters.openState ?? postConstraints.openState ?? null,
+        priceIntent: finalFilters.priceIntent ?? null,
+        priceLevels: finalFilters.priceLevels ?? null,
+        priceLevel: postConstraints.priceLevel ?? null,
+        hasDistanceSignal
+      }
     });
 
     logger.debug(

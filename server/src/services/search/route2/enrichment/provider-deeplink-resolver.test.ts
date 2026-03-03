@@ -32,7 +32,7 @@ describe('ProviderDeepLinkResolver', () => {
       const result = await resolver.resolve(input);
 
       // Assert: Result uses L3 fallback (internal search URL)
-      // This is the root cause of the bug: no CSE client -> no CSE calls -> cseCallsTotal stays 0
+      // No CSE client -> no provider-search calls -> providerSearchCallsTotal stays 0
       assert.strictEqual(result.status, 'NOT_FOUND', 'Status should be NOT_FOUND for L3');
       assert.strictEqual(result.meta.layerUsed, 3, 'Should use L3');
       assert.strictEqual(result.meta.source, 'internal', 'Source should be internal');

@@ -3,7 +3,7 @@
  * 
  * Tracks and aggregates metrics for provider enrichment operations:
  * - Provider layer distribution (per requestId)
- * - CSE calls per request
+ * - Provider search API calls per request (Brave or CSE)
  * - Cache hit rates
  * - Job completion times
  */
@@ -34,8 +34,8 @@ export interface ProviderMetrics {
     };
   };
   
-  // Cost metrics
-  cseCallsTotal: number;
+  // Cost metrics (Brave or CSE provider-search calls)
+  providerSearchCallsTotal: number;
   totalRestaurants: number;
   enrichedRestaurants: number;
   
@@ -60,7 +60,7 @@ export class MetricsCollector {
     this.metrics.set(requestId, {
       requestId,
       providers: {},
-      cseCallsTotal: 0,
+      providerSearchCallsTotal: 0,
       totalRestaurants,
       enrichedRestaurants: 0,
       startTime: Date.now(),
@@ -114,13 +114,13 @@ export class MetricsCollector {
   }
 
   /**
-   * Record a CSE API call
+   * Record a provider-search API call (Brave or CSE)
    */
-  recordCseCall(requestId: string): void {
+  recordProviderSearchCall(requestId: string): void {
     const metrics = this.metrics.get(requestId);
     if (!metrics) return;
 
-    metrics.cseCallsTotal++;
+    metrics.providerSearchCallsTotal++;
   }
 
   /**
@@ -171,7 +171,7 @@ export class MetricsCollector {
         requestId,
         totalRestaurants: metrics.totalRestaurants,
         enrichedRestaurants: metrics.enrichedRestaurants,
-        cseCallsTotal: metrics.cseCallsTotal,
+        providerSearchCallsTotal: metrics.providerSearchCallsTotal,
         durationMs: metrics.durationMs,
         providers: {
           wolt: metrics.providers.wolt || null,
@@ -184,8 +184,8 @@ export class MetricsCollector {
     // Log provider layer distribution (requested by user)
     this.logProviderLayerDistribution(requestId, metrics);
 
-    // Log CSE calls per request (requested by user)
-    this.logCseCallsPerRequest(requestId, metrics);
+    // Log provider search calls per request
+    this.logProviderSearchCallsPerRequest(requestId, metrics);
 
     // Clean up old metrics (keep last 100 requests)
     if (this.metrics.size > 100) {
@@ -221,20 +221,20 @@ export class MetricsCollector {
   }
 
   /**
-   * Log CSE calls per request
+   * Log provider search calls per request
    */
-  private logCseCallsPerRequest(requestId: string, metrics: ProviderMetrics): void {
+  private logProviderSearchCallsPerRequest(requestId: string, metrics: ProviderMetrics): void {
     logger.info(
       {
-        event: 'cse_calls_per_request',
+        event: 'provider_search_calls_per_request',
         requestId,
-        cseCallsTotal: metrics.cseCallsTotal,
+        providerSearchCallsTotal: metrics.providerSearchCallsTotal,
         totalRestaurants: metrics.totalRestaurants,
-        callsPerRestaurant: metrics.totalRestaurants > 0 
-          ? (metrics.cseCallsTotal / metrics.totalRestaurants).toFixed(2) 
+        callsPerRestaurant: metrics.totalRestaurants > 0
+          ? (metrics.providerSearchCallsTotal / metrics.totalRestaurants).toFixed(2)
           : 0,
       },
-      '[Metrics] CSE calls per request'
+      '[Metrics] Provider search calls per request'
     );
   }
 

@@ -8,6 +8,7 @@
  * - /api/v1/auth/ws-ticket      POST / (protected - generates WS ticket)
  * - /api/v1/auth/whoami         GET / (protected - returns auth context, accepts cookie or Bearer JWT)
  * - /api/v1/search              POST /, GET /stats (protected - accepts Bearer JWT or session cookie)
+ * - /api/v1/restaurants/:id     GET (protected - single restaurant details by placeId)
  * - /api/v1/stream/assistant/*  GET /:requestId (protected - SSE endpoint, accepts cookie or Bearer JWT)
  * - /api/v1/analytics/*         POST /events, GET /events, GET /stats, DELETE /events (protected)
  * - /api/v1/photos/*            GET /* (proxy to Google Places photos, public)
@@ -18,6 +19,7 @@
 
 import { Router, Request, Response } from 'express';
 import searchRouter from '../../controllers/search/search.controller.js';
+import restaurantsRouter from '../../controllers/restaurants/restaurants.controller.js';
 import analyticsRouter from '../../controllers/analytics/analytics.controller.js';
 import photosRouter from '../../controllers/photos/photos.controller.js';
 import authRouter from '../../controllers/auth/auth.controller.js';
@@ -52,6 +54,14 @@ export function createV1Router(): Router {
   // P0 Security: Protected search endpoint
   // Accepts session cookie OR JWT Bearer token
   router.use('/search', authSessionOrJwt, searchRateLimiter, searchRouter);
+
+  // Restaurant details by placeId (same auth as search; rate limit for read-heavy usage)
+  const restaurantsRateLimiter = createRateLimiter({
+    windowMs: 60 * 1000,
+    maxRequests: 60,
+    keyPrefix: 'restaurants'
+  });
+  router.use('/restaurants', authSessionOrJwt, restaurantsRateLimiter, restaurantsRouter);
 
   // SSE streaming endpoint for assistant (cookie-first auth)
   // No rate limiting for SSE (long-lived connections)

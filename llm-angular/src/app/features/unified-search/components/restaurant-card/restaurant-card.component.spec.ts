@@ -4,6 +4,7 @@
  */
 
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { Router } from '@angular/router';
 import { RestaurantCardComponent } from './restaurant-card.component';
 import { I18nService } from '../../../../core/services/i18n.service';
 import type { Restaurant, Coordinates } from '../../../../domain/types/search.types';
@@ -24,7 +25,8 @@ describe('RestaurantCardComponent', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [RestaurantCardComponent]
+      imports: [RestaurantCardComponent],
+      providers: [{ provide: Router, useValue: { navigate: jasmine.createSpy('navigate') } }]
     }).compileComponents();
 
     fixture = TestBed.createComponent(RestaurantCardComponent);

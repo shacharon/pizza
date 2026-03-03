@@ -139,7 +139,7 @@ export class PublishManager {
     status: 'FOUND' | 'NOT_FOUND',
     url: string | null,
     updatedAt?: string,
-    meta?: { layerUsed: 1 | 2 | 3; source: 'cse' | 'internal' }
+    meta?: { layerUsed: 1 | 2 | 3; source: 'brave' | 'cse' | 'internal' }
   ): PublishSummary {
     const timestamp = updatedAt || new Date().toISOString();
 
