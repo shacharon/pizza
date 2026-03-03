@@ -18,7 +18,7 @@ import { publishAssistantMessage } from './assistant/assistant-publisher.js';
 import { resolveAssistantLanguage, resolveSessionId } from './orchestrator.helpers.js';
 import { toRequestLanguage } from './orchestrator.early-context.js';
 import type { WebSocketManager } from '../../../infra/websocket/websocket-manager.js';
-import { buildAppliedFiltersArray } from './orchestrator.filters.js';
+import { buildAppliedFiltersArray, buildFiltersWithMeta } from './orchestrator.filters.js';
 
 /**
  * Build final search response with assistant summary
@@ -72,6 +72,7 @@ export async function buildFinalResponse(
   const currentHour = new Date().getHours();
   const radiusKm = (mapping as any).radiusMeters ? Math.round((mapping as any).radiusMeters / 1000) : undefined;
   const appliedFilters = buildAppliedFiltersArray(filtersForPostFilter);
+  const filtersWithMeta = buildFiltersWithMeta(filtersForPostFilter);
 
   const assistantContext: AssistantSummaryContext = {
     type: 'SUMMARY',
@@ -202,6 +203,7 @@ export async function buildFinalResponse(
       tookMs: totalDurationMs,
       mode: mapping.providerMethod === 'textSearch' ? ('textsearch' as const) : ('nearbysearch' as const),
       appliedFilters,
+      filtersWithMeta,
       confidence: intentDecision.confidence,
       source: 'route2',
       failureReason: 'NONE'

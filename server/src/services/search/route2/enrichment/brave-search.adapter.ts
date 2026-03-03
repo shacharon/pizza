@@ -70,33 +70,10 @@ export class BraveSearchAdapter {
       const attempt = i + 1;
       
       const query = this.buildQuery(name, cityText, config.provider, policy);
-      
-      logger.debug(
-        {
-          event: 'search_adapter_attempt',
-          provider: config.provider,
-          policy,
-          attempt,
-          query,
-        },
-        `[BraveAdapter] Attempt ${attempt}/${policies.length} (${policy})`
-      );
 
       try {
         const results = await this.client.search(query, 10, signal);
-        
-        logger.debug(
-          {
-            event: 'search_adapter_raw_results',
-            provider: config.provider,
-            policy,
-            attempt,
-            resultCount: results.length,
-          },
-          `[BraveAdapter] Got ${results.length} raw results`
-        );
 
-        // Provider-specific selection (Wolt: top 5 + city match; Tenbis/Mishloha: score best)
         const validUrl = selectBestUrlForProvider({
           results,
           name,
@@ -105,31 +82,8 @@ export class BraveSearchAdapter {
         });
 
         if (validUrl) {
-          logger.info(
-            {
-              event: 'search_adapter_match',
-              provider: config.provider,
-              policy,
-              attempt,
-              urlHost: new URL(validUrl).hostname,
-              urlPath: new URL(validUrl).pathname,
-            },
-            `[BraveAdapter] Match found on attempt ${attempt} (${policy})`
-          );
-          
           return validUrl;
         }
-
-        logger.debug(
-          {
-            event: 'search_adapter_no_match',
-            provider: config.provider,
-            policy,
-            attempt,
-          },
-          `[BraveAdapter] No valid matches for attempt ${attempt}`
-        );
-        
       } catch (err) {
         logger.warn(
           {
@@ -146,16 +100,10 @@ export class BraveSearchAdapter {
       }
     }
 
-    // All attempts exhausted
-    logger.info(
-      {
-        event: 'search_adapter_exhausted',
-        provider: config.provider,
-        attemptsTotal: policies.length,
-      },
-      '[BraveAdapter] All attempts exhausted, no matches'
+    logger.debug(
+      { event: 'search_adapter_exhausted', provider: config.provider },
+      '[BraveAdapter] All attempts exhausted'
     );
-
     return null;
   }
 

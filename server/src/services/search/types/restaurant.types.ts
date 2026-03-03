@@ -92,6 +92,8 @@ export interface RestaurantResult {
 
   // Enrichment
   tags?: string[];  // ['pizza', 'romantic', 'fast-food']
+  /** Deterministic social-proof tags from rating + reviewCount only (no LLM) */
+  socialProofTags?: ('HIDDEN_GEM' | 'CROWD_FAVORITE' | 'POPULAR_RELIABLE')[];
   /** Deterministic category from primaryType or types[]: cafe > bakery > restaurant */
   category?: 'restaurant' | 'cafe' | 'bakery';
   matchReasons?: string[];  // Why this matches the query (REQUIRED after ranking)

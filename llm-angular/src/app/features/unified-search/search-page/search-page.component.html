@@ -150,8 +150,58 @@
     @if (shouldShowResults() && !facade.hasGroups() && !facade.loading()) {
     <section class="results-section">
       <div class="results-header">
-        <!-- Applied Filters Chips (V1: English only) -->
-
+        @if (hasAnyFilterSections()) {
+        <div class="applied-filters-by-enforcement">
+          @if (filtersByEnforcement().hard.length > 0) {
+          <div class="filter-section">
+            <span class="filter-section-label">Enforced</span>
+            <div class="filter-badges">
+              @for (item of filtersByEnforcement().hard; track item.key + (item.value ?? '')) {
+              <span class="filter-badge filter-badge--hard" [attr.title]="'Applied filter: ' + getFilterDisplayLabel(item.key)">
+                {{ getFilterDisplayLabel(item.key) }}{{ getFilterValueLabel(item) ? ': ' + getFilterValueLabel(item) : '' }}
+              </span>
+              }
+            </div>
+          </div>
+          }
+          @if (filtersByEnforcement().soft.length > 0) {
+          <div class="filter-section">
+            <span class="filter-section-label">Preferences</span>
+            <div class="filter-badges">
+              @for (item of filtersByEnforcement().soft; track item.key + (item.value ?? '')) {
+              <span class="filter-badge filter-badge--soft" [attr.title]="'Preference: ' + getFilterDisplayLabel(item.key)">
+                {{ getFilterDisplayLabel(item.key) }}{{ getFilterValueLabel(item) ? ': ' + getFilterValueLabel(item) : '' }}
+              </span>
+              }
+            </div>
+          </div>
+          }
+          @if (filtersByEnforcement().hint.length > 0) {
+          <div class="filter-section">
+            <span class="filter-section-label">AI hints</span>
+            <div class="filter-badges">
+              @for (item of filtersByEnforcement().hint; track item.key + (item.value ?? '')) {
+              <span class="filter-badge filter-badge--hint" [attr.title]="'Hint: ' + getFilterDisplayLabel(item.key)">
+                {{ getFilterDisplayLabel(item.key) }}
+              </span>
+              }
+            </div>
+          </div>
+          }
+          @if (filtersByEnforcement().not_applied.length > 0) {
+          <div class="filter-section">
+            <span class="filter-section-label">Not enforced</span>
+            <div class="filter-badges">
+              @for (item of filtersByEnforcement().not_applied; track item.key + (item.value ?? '')) {
+              <span class="filter-badge filter-badge--not-applied" [attr.title]="'Preference noted (not applied): ' + getFilterDisplayLabel(item.key)">
+                {{ getFilterDisplayLabel(item.key) }}
+              </span>
+              }
+            </div>
+          </div>
+          }
+        </div>
+        }
       </div>
 
       <!-- Results Container -->

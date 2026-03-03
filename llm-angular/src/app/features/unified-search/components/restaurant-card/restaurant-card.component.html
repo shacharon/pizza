@@ -64,6 +64,15 @@
           }
         </div>
 
+        <!-- Social proof tags: Hidden Gem / Crowd Favorite / Popular & Reliable (only when present) -->
+        @if (socialProofTagsDisplay().length > 0) {
+        <div class="social-proof-row" role="list" aria-label="Social proof">
+          @for (tag of socialProofTagsDisplay(); track tag.id) {
+          <span class="social-proof-tag" role="listitem" [attr.title]="tag.tooltip">{{ tag.label }}</span>
+          }
+        </div>
+        }
+
         <!-- Line 3: Address 📍 street (single line, ellipsis) -->
         <div class="address-line">
           <span class="address-icon" aria-hidden="true">📍</span>

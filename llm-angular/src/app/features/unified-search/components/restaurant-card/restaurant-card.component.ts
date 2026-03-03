@@ -253,6 +253,23 @@ export class RestaurantCardComponent {
     return '₪'.repeat(Math.min(level, 4));
   }
 
+  /** Social proof tags (Hidden Gem, Crowd Favorite, Popular & Reliable). Only when present from backend. */
+  readonly socialProofTagsDisplay = computed((): Array<{ id: string; label: string; tooltip: string }> => {
+    const tags = this.restaurant().socialProofTags;
+    if (!tags?.length) return [];
+    type SocialProofTagId = 'HIDDEN_GEM' | 'CROWD_FAVORITE' | 'POPULAR_RELIABLE';
+    type SocialProofKey = 'card.social_proof.hidden_gem' | 'card.social_proof.crowd_favorite' | 'card.social_proof.popular_reliable';
+    const keyMap: Record<SocialProofTagId, SocialProofKey> = {
+      HIDDEN_GEM: 'card.social_proof.hidden_gem',
+      CROWD_FAVORITE: 'card.social_proof.crowd_favorite',
+      POPULAR_RELIABLE: 'card.social_proof.popular_reliable'
+    };
+    const tooltipText = this.i18n.t('card.social_proof.tooltip');
+    return (tags as string[])
+      .filter((id): id is SocialProofTagId => id in keyMap)
+      .map(id => ({ id, label: this.i18n.t(keyMap[id]), tooltip: tooltipText }));
+  });
+
   /** Feature chips for line 4: GF, kosher, vegetarian. Max 3. From dietaryHints + tags. */
   readonly featureChips = computed((): Array<{ key: 'card.chip.gf' | 'card.chip.kosher' | 'card.chip.vegetarian' }> => {
     const r = this.restaurant();

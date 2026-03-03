@@ -60,6 +60,12 @@ export interface I18nKeys {
   'card.category.cafe': string;
   'card.category.bakery': string;
 
+  // Restaurant card - Social proof tags (from rating + review count)
+  'card.social_proof.hidden_gem': string;
+  'card.social_proof.crowd_favorite': string;
+  'card.social_proof.popular_reliable': string;
+  'card.social_proof.tooltip': string;
+
   // Restaurant card - Reviews label (e.g. "749 reviews")
   'card.reviews': string;
   'card.reviews_label': string;  // Standalone word e.g. "reviews" for "(749 reviews)"
@@ -144,6 +150,10 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.category.restaurant': 'Restaurant',
     'card.category.cafe': 'Cafe',
     'card.category.bakery': 'Bakery',
+    'card.social_proof.hidden_gem': 'Hidden Gem',
+    'card.social_proof.crowd_favorite': 'Crowd Favorite',
+    'card.social_proof.popular_reliable': 'Popular & Reliable',
+    'card.social_proof.tooltip': 'Based on rating and review count',
     'card.reviews': '{count} reviews',
     'card.reviews_label': 'reviews',
     'card.hours.open_until': 'Open until {time}',
@@ -207,6 +217,10 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.category.restaurant': 'מסעדה',
     'card.category.cafe': 'קפה',
     'card.category.bakery': 'מאפייה',
+    'card.social_proof.hidden_gem': 'יהלום חבוי',
+    'card.social_proof.crowd_favorite': 'אהוב על הקהל',
+    'card.social_proof.popular_reliable': 'פופולרי ואמין',
+    'card.social_proof.tooltip': 'לפי דירוג ומספר ביקורות',
     'card.reviews': '{count} ביקורות',
     'card.reviews_label': 'ביקורות',
     'card.hours.open_until': 'פתוח עד {time}',
@@ -270,6 +284,10 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.category.restaurant': 'Ресторан',
     'card.category.cafe': 'Кафе',
     'card.category.bakery': 'Пекарня',
+    'card.social_proof.hidden_gem': 'Скрытая жемчужина',
+    'card.social_proof.crowd_favorite': 'Любимец публики',
+    'card.social_proof.popular_reliable': 'Популярный и надёжный',
+    'card.social_proof.tooltip': 'По рейтингу и количеству отзывов',
     'card.reviews': '{count} отзывов',
     'card.reviews_label': 'отзывов',
     'card.hours.open_until': 'Открыто до {time}',
@@ -333,6 +351,10 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.category.restaurant': 'مطعم',
     'card.category.cafe': 'مقهى',
     'card.category.bakery': 'مخبز',
+    'card.social_proof.hidden_gem': 'جوهرة مخفية',
+    'card.social_proof.crowd_favorite': 'مفضل الجمهور',
+    'card.social_proof.popular_reliable': 'شائع وموثوق',
+    'card.social_proof.tooltip': 'بناءً على التقييم وعدد المراجعات',
     'card.reviews': '{count} تقييمات',
     'card.reviews_label': 'تقييمات',
     'card.hours.open_until': 'مفتوح حتى {time}',
@@ -396,6 +418,10 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.category.restaurant': 'Restaurant',
     'card.category.cafe': 'Café',
     'card.category.bakery': 'Boulangerie',
+    'card.social_proof.hidden_gem': 'Perle rare',
+    'card.social_proof.crowd_favorite': 'Favori du public',
+    'card.social_proof.popular_reliable': 'Populaire et fiable',
+    'card.social_proof.tooltip': 'D\'après la note et le nombre d\'avis',
     'card.reviews': '{count} avis',
     'card.reviews_label': 'avis',
     'card.hours.open_until': 'Ouvert jusqu\'à {time}',
@@ -459,6 +485,10 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.category.restaurant': 'Restaurante',
     'card.category.cafe': 'Café',
     'card.category.bakery': 'Panadería',
+    'card.social_proof.hidden_gem': 'Joya oculta',
+    'card.social_proof.crowd_favorite': 'Favorito del público',
+    'card.social_proof.popular_reliable': 'Popular y fiable',
+    'card.social_proof.tooltip': 'Según valoración y número de reseñas',
     'card.reviews': '{count} reseñas',
     'card.reviews_label': 'reseñas',
     'card.hours.open_until': 'Abierto hasta {time}',
@@ -522,6 +552,10 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.category.restaurant': 'Restaurant',
     'card.category.cafe': 'Café',
     'card.category.bakery': 'Bäckerei',
+    'card.social_proof.hidden_gem': 'Geheimer Tipp',
+    'card.social_proof.crowd_favorite': 'Publikumsliebling',
+    'card.social_proof.popular_reliable': 'Beliebt und zuverlässig',
+    'card.social_proof.tooltip': 'Basierend auf Bewertung und Anzahl der Bewertungen',
     'card.reviews': '{count} Bewertungen',
     'card.reviews_label': 'Bewertungen',
     'card.hours.open_until': 'Geöffnet bis {time}',
@@ -585,6 +619,10 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.category.restaurant': 'Ristorante',
     'card.category.cafe': 'Caffè',
     'card.category.bakery': 'Panetteria',
+    'card.social_proof.hidden_gem': 'Gioiello nascosto',
+    'card.social_proof.crowd_favorite': 'Preferito dal pubblico',
+    'card.social_proof.popular_reliable': 'Popolare e affidabile',
+    'card.social_proof.tooltip': 'In base a valutazione e numero di recensioni',
     'card.reviews': '{count} recensioni',
     'card.reviews_label': 'recensioni',
     'card.hours.open_until': 'Aperto fino alle {time}',
@@ -648,6 +686,10 @@ const TRANSLATIONS: Record<SupportedUiLang, I18nKeys> = {
     'card.category.restaurant': 'ርስቶራንት',
     'card.category.cafe': 'ቡና ቤት',
     'card.category.bakery': 'ዳቦ ቤት',
+    'card.social_proof.hidden_gem': 'Hidden Gem',
+    'card.social_proof.crowd_favorite': 'Crowd Favorite',
+    'card.social_proof.popular_reliable': 'Popular & Reliable',
+    'card.social_proof.tooltip': 'Based on rating and review count',
     'card.reviews': '{count} ግምገማዎች',
     'card.reviews_label': 'ግምገማዎች',
     'card.hours.open_until': 'እስከ {time} ክፈት',

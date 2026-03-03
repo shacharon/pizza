@@ -115,7 +115,7 @@ export function applyPostFiltersToResults(
 }
 
 /**
- * Build applied filters array for metadata
+ * Build applied filters array for metadata (legacy).
  */
 export function buildAppliedFiltersArray(filtersForPostFilter: any): string[] {
   const appliedFiltersArray: string[] = [];
@@ -125,3 +125,6 @@ export function buildAppliedFiltersArray(filtersForPostFilter: any): string[] {
   if (filtersForPostFilter.isGlutenFree) appliedFiltersArray.push('gluten-free:soft');
   return appliedFiltersArray;
 }
+
+/** Build per-filter metadata (enforcement + source) from constraints registry. */
+export { buildFiltersWithMeta } from './constraints/build-filters-with-meta.js';

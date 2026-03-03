@@ -78,6 +78,8 @@ export interface Restaurant {
   phoneNumber?: string;
   website?: string;
   tags?: string[];
+  /** Deterministic social-proof tags from backend (rating + review count only) */
+  socialProofTags?: ('HIDDEN_GEM' | 'CROWD_FAVORITE' | 'POPULAR_RELIABLE')[];
   source?: string;  // NEW: Phase B
   groupKind?: 'EXACT' | 'NEARBY';  // NEW: Phase B
   distanceMeters?: number;  // NEW: Phase B
@@ -206,10 +208,20 @@ export interface ParsedQuery {
   language: string;
 }
 
+/** Per-filter metadata from backend (enforcement + source). */
+export interface FilterAppliedMeta {
+  key: string;
+  value?: string | number | boolean | null;
+  enforcement: 'hard' | 'soft' | 'hint' | 'not_applied';
+  source: string;
+}
+
 export interface SearchMeta {
   tookMs: number;
   mode: string;
   appliedFilters: string[];
+  /** Applied/extracted filters with enforcement; used for filter display sections. */
+  filtersWithMeta?: FilterAppliedMeta[];
   confidence: number;
   confidenceLevel?: 'high' | 'medium' | 'low';  // Phase 1: Combined confidence level
   source: string;

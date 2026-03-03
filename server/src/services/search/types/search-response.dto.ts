@@ -24,10 +24,20 @@ export interface SearchResponseQuery {
   language: string;  // Detected language (ISO code)
 }
 
+/** Per-filter metadata: key, value, enforcement, source (from constraints registry). */
+export interface FilterAppliedMeta {
+  key: string;
+  value?: string | number | boolean | null;
+  enforcement: 'hard' | 'soft' | 'hint' | 'not_applied';
+  source: string;
+}
+
 export interface SearchResponseMeta {
   tookMs: number;  // Response time
   mode: SearchMode;  // Search mode used
-  appliedFilters: string[];  // Filters that were applied
+  appliedFilters: string[];  // Filters that were applied (legacy)
+  /** Applied/extracted filters with enforcement + source (constraints contract). */
+  filtersWithMeta?: FilterAppliedMeta[];
   confidence: number;  // Intent parsing confidence (0-1)
   confidenceLevel?: 'high' | 'medium' | 'low';  // Phase 1: Combined confidence level
   source: string;  // Provider source(s) used
@@ -161,6 +171,7 @@ export function createSearchResponse(params: {
     tookMs: number;
     mode: SearchMode;
     appliedFilters: string[];
+    filtersWithMeta?: FilterAppliedMeta[];
     confidence: number;
     source: string;
     failureReason: import('./search.types.js').FailureReason;  // REQUIRED

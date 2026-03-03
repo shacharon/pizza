@@ -23,6 +23,8 @@ import { wsManager } from '../../../server.js';
 import { sanitizeQuery } from '../../../lib/telemetry/query-sanitizer.js';
 import { withTimeout, isTimeoutError } from '../../../lib/reliability/timeout-guard.js';
 import { route2Config } from './route2.config.js';
+import { SearchConfig } from '../config/search.config.js';
+import { applyRankingWithSocialProofBoost } from './ranking/ranking-apply.js';
 
 // Extracted modules
 import { fireParallelTasks, drainParallelPromises } from './orchestrator.parallel-tasks.js';
@@ -46,6 +48,10 @@ import { enrichWithWoltLinks } from './enrichment/provider/wolt.js';
 import { enrichWithTenbisLinks } from './enrichment/provider/tenbis.js';
 import { enrichWithMishlohaLinks } from './enrichment/provider/mishloha.js';
 import { getMetricsCollector } from './enrichment/metrics-collector.js';
+import {
+  decidePlaceDetailsEnrichment,
+  buildPlaceDetailsIntentInput,
+} from './enrichment/place-details-policy.js';
 
 /**
  * Publish terminal CLARIFY to search channel and return the response (deduplicates guard+return blocks).
@@ -439,7 +445,16 @@ async function searchRoute2Internal(
     // STAGE 6: POST_FILTERS (await post constraints, apply filters)
     const postConstraints = await postConstraintsPromise;
     const postFilterResult = applyPostFiltersToResults(googleResult.results, postConstraints, finalFilters, ctx);
-    const finalResults = postFilterResult.resultsFiltered;
+    let finalResults = postFilterResult.resultsFiltered;
+
+    // Soft ranking: score (rating + reviews + social-proof boost), sort, assign score/rank (no removal)
+    const rankingWeights = SearchConfig.ranking.weights;
+    const socialProofBoosts = SearchConfig.ranking.socialProofBoosts;
+    finalResults = applyRankingWithSocialProofBoost(finalResults, {
+      rating: rankingWeights.rating,
+      reviewCount: rankingWeights.reviewCount,
+      ...(socialProofBoosts && { socialProofBoosts })
+    });
 
     // Get merged filters for response building
     const filtersForPostFilter = {
@@ -479,6 +494,36 @@ async function searchRoute2Internal(
         cappedAt: route2Config.MAX_RESULTS_TO_ENRICH,
       },
       '[ROUTE2] Provider enrichment stage completed'
+    );
+
+    // Place Details enrichment policy (cost control): decide only, no API calls yet
+    const placeDetailsIntentInput = buildPlaceDetailsIntentInput({
+      dietaryPreferences: (intentDecision as any).intent?.preferences?.dietary,
+      isKosher: postConstraints.isKosher,
+      isGlutenFree: postConstraints.isGlutenFree,
+      hasVibeIntent: false, // future: from post-constraints or intent
+    });
+    const pdConfig = route2Config.placeDetailsEnrichment;
+    const placeDetailsPlan = decidePlaceDetailsEnrichment(
+      placeDetailsIntentInput,
+      finalResults,
+      pdConfig,
+      new Set() // TODO: resolve cached placeIds from hints cache (TTL-based)
+    );
+    logger.info(
+      {
+        event: 'place_details_enrichment_decision',
+        requestId,
+        requested: placeDetailsPlan.requested,
+        skippedReason: placeDetailsPlan.skippedReason ?? undefined,
+        enrichedCount: placeDetailsPlan.placeIdsToEnrich.length,
+        candidateCount: placeDetailsPlan.candidateCount,
+        cacheHits: placeDetailsPlan.cacheHits,
+        cacheMisses: placeDetailsPlan.cacheMisses,
+      },
+      placeDetailsPlan.requested
+        ? `[ROUTE2] Place Details enrichment requested: ${placeDetailsPlan.placeIdsToEnrich.length} to enrich, ${placeDetailsPlan.cacheHits} cache hits, ${placeDetailsPlan.cacheMisses} cache misses`
+        : `[ROUTE2] Place Details enrichment skipped: ${placeDetailsPlan.skippedReason ?? 'not_requested'}`
     );
 
     // STAGE 7: BUILD RESPONSE

@@ -3,6 +3,8 @@
  * Maps Google Place API responses to internal format
  */
 
+import { computeSocialProofTags } from '../../ranking/social-proof-tags.js';
+
 /** Category derived from primaryType or types[] for restaurant DTO */
 export type PlaceCategory = 'restaurant' | 'cafe' | 'bakery';
 
@@ -92,6 +94,7 @@ export function mapGooglePlaceToResult(place: any): any {
     ) || [],
     googleMapsUrl: place.googleMapsUri || `https://www.google.com/maps/place/?q=place_id:${placeId}`,
     tags: place.types || [],
+    socialProofTags: computeSocialProofTags(place.rating, place.userRatingCount),
     category: mapPlaceCategory(place),
     // NEW: Structured provider enrichments
     // Initialize all providers as PENDING (will be enriched asynchronously)

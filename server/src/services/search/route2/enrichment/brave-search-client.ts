@@ -81,19 +81,6 @@ export class BraveSearchClient {
 
     try {
       const results = await this.searchInternal(query, limit, signal);
-      
-      logger.debug(
-        {
-          event: 'search_api_success',
-          engine: 'brave',
-          query,
-          resultCount: results.length,
-          attempt: attempt + 1,
-          callNumber: this.callCount,
-        },
-        '[BraveSearchClient] Search succeeded'
-      );
-
       return results;
     } catch (err) {
       const error = err instanceof BraveSearchError ? err : new BraveSearchError(
@@ -118,20 +105,7 @@ export class BraveSearchClient {
 
       // Retry logic
       if (error.isRetryable && attempt < this.maxRetries) {
-        const delayMs = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
-        
-        logger.info(
-          {
-            event: 'search_api_retrying',
-            engine: 'brave',
-            query,
-            attempt: attempt + 1,
-            nextAttempt: attempt + 2,
-            delayMs,
-          },
-          '[BraveSearchClient] Retrying after delay'
-        );
-
+        const delayMs = Math.pow(2, attempt) * 1000;
         await this.sleep(delayMs);
         return this.searchWithRetry(query, limit, attempt + 1, signal);
       }

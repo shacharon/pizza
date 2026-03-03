@@ -100,19 +100,6 @@ export class ProviderDeepLinkResolver {
     const { provider, name, cityText } = input;
     const config = PROVIDER_CONFIGS[provider];
 
-    // Log context at resolve start
-    logger.debug(
-      {
-        event: 'provider_resolver_context',
-        hasBraveAdapter: this.braveAdapter !== null,
-        hasCseClient: this.cseClient !== null,
-        provider,
-        hasCityText: cityText !== null && cityText !== undefined,
-        restaurantName: name,
-      },
-      `[ProviderResolver] Resolve context: Brave=${this.braveAdapter ? 'YES' : 'NO'}, CSE=${this.cseClient ? 'YES' : 'NO'}, provider=${provider}, city=${cityText ? 'YES' : 'NO'}`
-    );
-
     // Prefer Brave Search (with RelaxPolicy)
     if (this.braveAdapter) {
       const braveResult = await this.tryBraveSearch(provider, name, cityText, config, signal);
@@ -527,30 +514,12 @@ export function createResolverFromEnv(): ProviderDeepLinkResolver {
       timeoutMs: 5000,
       maxRetries: 2,
     });
-    
-    logger.info(
-      {
-        event: 'search_client_created',
-        engine: 'google_cse',
-        timeoutMs: 5000,
-        maxRetries: 2,
-      },
-      '[BOOT] Google CSE client created successfully (fallback)'
-    );
   }
 
-  // Log final search engine status
   const searchEngine = braveClient ? 'brave' : cseClient ? 'google_cse' : 'none';
-  
   logger.info(
-    {
-      event: 'provider_resolver_engine',
-      engine: searchEngine,
-      braveEnabled: Boolean(braveClient),
-      cseEnabled: Boolean(cseClient),
-      nodeEnv,
-    },
-    `[BOOT] Provider Resolver Engine: ${searchEngine.toUpperCase()} ${!braveClient && !cseClient ? '(L3 fallback only)' : ''}`
+    { event: 'provider_resolver_engine', engine: searchEngine, braveEnabled: Boolean(braveClient), cseEnabled: Boolean(cseClient) },
+    `[BOOT] Provider Resolver: ${searchEngine}`
   );
 
   if (!braveClient && !cseClient) {

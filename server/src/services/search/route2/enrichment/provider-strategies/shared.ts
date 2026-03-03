@@ -3,7 +3,6 @@
  * Used by Tenbis and Mishloha strategies (same behavior as today).
  */
 
-import { logger } from '../../../../../lib/logger/structured-logger.js';
 import type { ProviderSearchConfig } from './types.js';
 
 export function isValidUrl(url: string, config: ProviderSearchConfig): boolean {
@@ -21,17 +20,6 @@ export function isValidUrl(url: string, config: ProviderSearchConfig): boolean {
     });
 
     if (!hostMatches) {
-      logger.info(
-        {
-          event: 'provider_url_rejected',
-          provider: config.provider,
-          url,
-          hostname,
-          allowedHosts: config.allowedHosts,
-          reason: 'host_not_in_allowlist',
-        },
-        '[BraveAdapter] URL rejected: host not in allowlist'
-      );
       return false;
     }
 
@@ -40,46 +28,15 @@ export function isValidUrl(url: string, config: ProviderSearchConfig): boolean {
         pathname.includes(segment.toLowerCase())
       );
       if (!hasRequiredPath) {
-        logger.info(
-          {
-            event: 'provider_url_rejected',
-            provider: config.provider,
-            url,
-            pathname,
-            requiredSegments: config.requiredPathSegments,
-            reason: 'missing_required_path_segment',
-          },
-          '[BraveAdapter] URL rejected: missing required path segment'
-        );
         return false;
       }
     }
 
     if (config.provider === 'wolt') {
       if (!pathname.includes('/isr/')) {
-        logger.info(
-          {
-            event: 'provider_url_rejected',
-            provider: config.provider,
-            url,
-            pathname,
-            reason: 'wrong_country',
-          },
-          '[BraveAdapter] Wolt URL rejected: not Israeli restaurant (missing /isr/)'
-        );
         return false;
       }
       if (!pathname.includes('/restaurant/')) {
-        logger.info(
-          {
-            event: 'provider_url_rejected',
-            provider: config.provider,
-            url,
-            pathname,
-            reason: 'wrong_country',
-          },
-          '[BraveAdapter] Wolt URL rejected: not a restaurant page (missing /restaurant/)'
-        );
         return false;
       }
     }

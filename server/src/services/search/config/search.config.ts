@@ -32,6 +32,12 @@ export interface RankingConfig {
     maxRawScore: number;  // Phase 3: Expected max before normalization
     distanceMaxKm: number;  // Phase 3: Distance beyond which score = 0
   };
+  /** Optional soft boost per social-proof tag (additive, does not remove results) */
+  socialProofBoosts?: {
+    HIDDEN_GEM?: number;
+    CROWD_FAVORITE?: number;
+    POPULAR_RELIABLE?: number;
+  };
 }
 
 export interface SessionConfig {
@@ -105,6 +111,11 @@ export const SearchConfig = {
       maxRawScore: 100,     // Phase 3: Expected max before normalization
       distanceMaxKm: 5,     // Phase 3: Distance beyond which score = 0 (5km)
     },
+    socialProofBoosts: {
+      HIDDEN_GEM: 2,
+      CROWD_FAVORITE: 3,
+      POPULAR_RELIABLE: 1.5,
+    },
   } as RankingConfig,
 
   /**
@@ -167,6 +178,7 @@ export function createSearchConfig(overrides?: {
       weights: { ...SearchConfig.ranking.weights, ...overrides?.ranking?.weights },
       thresholds: { ...SearchConfig.ranking.thresholds, ...overrides?.ranking?.thresholds },
       scoring: { ...SearchConfig.ranking.scoring, ...overrides?.ranking?.scoring },
+      socialProofBoosts: { ...SearchConfig.ranking.socialProofBoosts, ...overrides?.ranking?.socialProofBoosts },
     },
     session: { ...SearchConfig.session, ...overrides?.session },
     places: { ...SearchConfig.places, ...overrides?.places },

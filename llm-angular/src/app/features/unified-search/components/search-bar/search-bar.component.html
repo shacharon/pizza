@@ -1,24 +1,75 @@
-<div class="search-bar">
-  <div class="search-input-container">
-    <textarea #searchInput rows="3" class="search-input" [ngModel]="query()" (ngModelChange)="onInput($event)"
-      (keydown.enter)="onSearchFromInput(searchInput.value)" [disabled]="disabled()" [placeholder]="placeholder()"
-      aria-label="Search for restaurants"></textarea>
-    
-    @if (query() && !loading()) {
-    <button type="button" class="clear-button" (click)="onClear()" [disabled]="disabled()" aria-label="Clear search">
-      ✕
-    </button>
-    }
-    
-    @if (loading()) {
-    <span class="loading-indicator" aria-label="Loading"></span>
-    } @else {
-    <button type="button" class="send-button" (click)="onSearchFromInput(searchInput.value)" [disabled]="disabled() || !query()" aria-label="Search">
-      <svg class="send-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M22 2L11 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-    </button>
-    }
+<div class="composer">
+  <div class="input-box">
+    <div class="input-wrapper">
+      <textarea
+        #searchInput
+        rows="1"
+        class="composer-input search-input"
+        [ngModel]="query()"
+        (ngModelChange)="onInput($event)"
+        (input)="resizeTextarea()"
+        (keydown.enter)="onSearchFromInput(searchInput.value)"
+        [disabled]="disabled()"
+        [placeholder]="effectivePlaceholder()"
+        [class.has-clear]="query() && !loading()"
+        aria-label="Search for restaurants"
+      ></textarea>
+      @if (query() && !loading()) {
+      <button
+        type="button"
+        class="action-clear-inner"
+        (click)="onClear()"
+        [disabled]="disabled()"
+        aria-label="Clear search"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M18 6L6 18M6 6l12 12"/>
+        </svg>
+      </button>
+      }
+    </div>
+  </div>
+  <div class="composer-actions" role="group" aria-label="Search actions">
+      @if (speech.isSupported()) {
+      <button
+        type="button"
+        class="action-btn action-mic"
+        [class.listening]="listening()"
+        (click)="toggleMic()"
+        [disabled]="disabled()"
+        [attr.aria-label]="listening() ? 'Stop voice input' : 'Start voice input'"
+      >
+        @if (listening()) {
+        <svg class="mic-icon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <rect x="6" y="6" width="12" height="12" rx="2"/>
+        </svg>
+        } @else {
+        <svg class="mic-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M12 2a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+          <line x1="12" y1="19" x2="12" y2="23"/>
+          <line x1="8" y1="23" x2="16" y2="23"/>
+        </svg>
+        }
+      </button>
+      }
+      @if (loading()) {
+      <button type="button" class="action-btn action-send" disabled aria-label="Loading">
+        <span class="send-spinner" aria-hidden="true"></span>
+      </button>
+      } @else {
+      <button
+        type="button"
+        class="action-btn action-send"
+        (click)="onSearchFromInput(searchInput.value)"
+        [disabled]="disabled() || !query()"
+        aria-label="Search"
+      >
+        <svg class="send-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M22 2L11 13" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      }
   </div>
 </div>

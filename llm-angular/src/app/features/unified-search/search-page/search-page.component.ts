@@ -28,6 +28,12 @@ import {
   filterChipIdsFromParams,
   type SearchParamsState
 } from './search-params.util';
+import {
+  groupFiltersByEnforcement,
+  getFilterDisplayLabel,
+  getFilterValueLabel,
+  type FiltersByEnforcement
+} from './filter-enforcement.util';
 import type { Restaurant, ClarificationChoice, Coordinates } from '../../../domain/types/search.types';
 import type { ActionType, ActionLevel } from '../../../domain/types/action.types';
 // DEV: Import dev tools for testing (auto-loaded)
@@ -458,13 +464,31 @@ export class SearchPageComponent implements OnInit, OnDestroy {
     return null;
   });
 
-  // NEW: Gluten-free SOFT hint filter active
+  // NEW: Gluten-free SOFT hint filter active (fallback when filtersWithMeta missing)
   readonly glutenFreeFilterActive = computed(() => {
     const response = this.response();
     if (!response) return false;
-
+    const withMeta = response.meta?.filtersWithMeta;
+    if (withMeta?.length) {
+      return withMeta.some(f => f.key === 'glutenFree' && f.enforcement === 'hint');
+    }
     const appliedFilters = response.meta?.appliedFilters || [];
     return appliedFilters.includes('gluten-free:soft');
+  });
+
+  /** Filters grouped by enforcement for UI sections (Enforced / Preferences / AI hints / Not enforced). */
+  readonly filtersByEnforcement = computed((): FiltersByEnforcement => {
+    const meta = this.response()?.meta;
+    return groupFiltersByEnforcement(meta?.filtersWithMeta);
+  });
+
+  readonly getFilterDisplayLabel = getFilterDisplayLabel;
+  readonly getFilterValueLabel = getFilterValueLabel;
+
+  /** Whether any filter section has items to show. */
+  readonly hasAnyFilterSections = computed(() => {
+    const g = this.filtersByEnforcement();
+    return g.hard.length > 0 || g.soft.length > 0 || g.hint.length > 0 || g.not_applied.length > 0;
   });
 
   // Bottom placeholder: All card messages (contextual + global)
