@@ -72,7 +72,11 @@ export function buildGuardResponse(params: GuardResponseParams): SearchResponse 
       appliedFilters: [],
       confidence,
       source,
-      failureReason
+      failureReason,
+      ...(failureReason === 'LOCATION_REQUIRED' && {
+        locationRequired: true as const,
+        locationResume: { query: request.query }
+      })
     }
   };
 }
@@ -128,7 +132,9 @@ export function buildDeterministicMissingLocationClarify(params: DeterministicCl
       appliedFilters: [],
       confidence,
       source: 'route2_textsearch_missing_location_anchor',
-      failureReason: 'LOCATION_REQUIRED'
+      failureReason: 'LOCATION_REQUIRED',
+      locationRequired: true as const,
+      locationResume: { query: request.query }
     }
   };
 }

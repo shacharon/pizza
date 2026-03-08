@@ -72,7 +72,7 @@ export class SearchWsHandler {
       setMessage: (message: string, requestId?: string, blocksSearch?: boolean, resetAnimation?: boolean) => void;
       setStatus: (status: AssistantStatus) => void;
     },
-    onTerminalAssistantMessage?: (payload: { type: string; message?: string; question?: string | null; blocksSearch?: boolean }) => void
+    onTerminalAssistantMessage?: (payload: { type: string; message?: string; question?: string | null; blocksSearch?: boolean; requestLocationPermission?: true; locationResume?: { query: string } }) => void
   ): Promise<void> {
     // STEP 1: Ensure WS is connected and authenticated (blocks until ready)
     try {
@@ -192,7 +192,9 @@ export class SearchWsHandler {
                   type: payload.type,
                   message: payload.message,
                   question: payload.question ?? null,
-                  blocksSearch: payload.blocksSearch
+                  blocksSearch: payload.blocksSearch,
+                  requestLocationPermission: (payload as any).requestLocationPermission,
+                  locationResume: (payload as any).locationResume
                 });
               }
             } else if (event.type === 'done') {
@@ -388,11 +390,11 @@ export class SearchWsHandler {
 
       case 'ready':
         console.log('[SearchWsHandler] WS ready:', event.ready, event.resultUrl);
-        if (event.ready === 'results') {
+        if (event.ready === 'results' || event.ready === 'ask') {
           // Stop all polling
           cancelPolling();
 
-          // Fetch results
+          // Fetch full result (for results and ask/clarify - clarify carries meta.locationRequired for permission)
           fetchResult(requestId)
             .then(response => {
               if (response) {

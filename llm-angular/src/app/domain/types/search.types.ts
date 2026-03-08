@@ -168,6 +168,7 @@ export type FailureReason =
   | 'NONE'
   | 'NO_RESULTS'
   | 'LOW_CONFIDENCE'
+  | 'LOCATION_REQUIRED'
   | 'GEOCODING_FAILED'
   | 'GOOGLE_API_ERROR'
   | 'TIMEOUT'
@@ -229,6 +230,11 @@ export interface SearchMeta {
   originalQuery?: string;
   failureReason?: FailureReason;
   liveData?: LiveDataVerification;
+  /** Missing-location auto-resume: set only when location required and missing. Use locationResume.query to resume. */
+  locationRequired?: true;
+  /** Unified signal: request location permission (Gate or early INTENT guard). Frontend opens permission popup when true. */
+  requestLocationPermission?: true;
+  locationResume?: { query: string };
   // Phase 8: Opening hours summary (for transparency)
   openNowSummary?: {
     open: number;

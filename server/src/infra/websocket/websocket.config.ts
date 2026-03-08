@@ -48,6 +48,12 @@ export function resolveWebSocketConfig(
   if (redisUrl) {
     resolvedConfig.redisUrl = redisUrl;
   }
+  if (config?.redis !== undefined) {
+    resolvedConfig.redis = config.redis;
+  }
+  if (config?.getTicketFromMemory) {
+    resolvedConfig.getTicketFromMemory = config.getTicketFromMemory;
+  }
 
   // 4. Production security gate with Fallback Logic
   if (isProduction) {
@@ -98,8 +104,9 @@ export function resolveWebSocketConfig(
 /**
  * Validate Redis requirement for ticket-based auth
  * P0 Security: Enforces strict production/staging guards
+ * When Redis is down in dev, in-memory ticket store can be used (getTicketFromMemory).
  */
-export function validateRedisForAuth(hasRedis: boolean): void {
+export function validateRedisForAuth(hasRedis: boolean, hasMemoryFallback: boolean = false): void {
   const requireAuth = process.env.WS_REQUIRE_AUTH !== 'false'; // default true
   const env = process.env.NODE_ENV || 'development';
   const isProdOrStaging = env === 'production' || env === 'staging';
@@ -113,19 +120,17 @@ export function validateRedisForAuth(hasRedis: boolean): void {
     throw new Error(`[P0 Security] WS_REQUIRE_AUTH cannot be disabled in ${env}`);
   }
 
-  // P0: If auth is enabled, Redis MUST be available
-  if (requireAuth && !hasRedis) {
+  // P0: If auth is enabled, need Redis or in-memory fallback (dev only)
+  if (requireAuth && !hasRedis && !hasMemoryFallback) {
     logger.error(
       { env, requireAuth },
-      'SECURITY: Redis required for WebSocket ticket authentication'
+      'SECURITY: Redis or in-memory ticket store required for WebSocket ticket authentication'
     );
     
-    // Fail-fast in production/staging
     if (isProdOrStaging) {
       throw new Error(`[P0 Security] Redis connection required for WebSocket authentication in ${env}`);
     }
     
-    // In dev/test, throw anyway (no bypass)
     throw new Error('Redis connection required for WebSocket ticket authentication');
   }
 }

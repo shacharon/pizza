@@ -72,7 +72,12 @@ export function buildGuardResponse(params: GuardResponseParams): SearchResponse 
       appliedFilters: [],
       confidence,
       source,
-      failureReason
+      failureReason,
+      ...(failureReason === 'LOCATION_REQUIRED' && {
+        locationRequired: true as const,
+        locationResume: { query: request.query },
+        requestLocationPermission: true as const
+      })
     }
   };
 }

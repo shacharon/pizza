@@ -31,7 +31,7 @@ import type {
   WSConnectionConfig,
   WSConnectionCallbacks,
   WSTicketProvider,
-  WSTicketResponse,
+  WSTicketResult,
   WSSubscribeParams
 } from './ws/ws-types';
 
@@ -59,7 +59,7 @@ export class WsClientService {
   constructor() {
     // Ticket provider adapter (bridges Angular DI to plain TS modules)
     const ticketProvider: WSTicketProvider = {
-      requestTicket: async (): Promise<WSTicketResponse> => {
+      requestTicket: async (): Promise<WSTicketResult> => {
         return await firstValueFrom(this.authApi.requestWSTicket());
       },
       ensureAuth: async (): Promise<void> => {

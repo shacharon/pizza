@@ -1,0 +1,96 @@
+<header class="header">
+  <h1 class="title">Evaluate POC</h1>
+</header>
+
+<main class="main">
+  <section class="form-section">
+    <div class="sample-buttons">
+      <span class="label">Sample:</span>
+      <button type="button" class="btn-sample" (click)="setSample(0)">Sample 1</button>
+      <button type="button" class="btn-sample" (click)="setSample(1)">Sample 2</button>
+      <button type="button" class="btn-sample" (click)="setSample(2)">Sample 3</button>
+    </div>
+
+    <label class="field">
+      <span class="field-label">User text</span>
+      <textarea
+        class="textarea"
+        [(ngModel)]="userText"
+        placeholder="Enter text to evaluate..."
+        rows="4"
+      ></textarea>
+    </label>
+
+    <label class="field">
+      <span class="field-label">Model</span>
+      <select class="select" [(ngModel)]="model">
+        <option *ngFor="let m of models" [value]="m">{{ m }}</option>
+      </select>
+    </label>
+
+    <label class="field">
+      <span class="field-label">Temperature: {{ temperature }}</span>
+      <input
+        type="range"
+        class="slider"
+        min="0"
+        max="2"
+        step="0.1"
+        [(ngModel)]="temperature"
+      />
+    </label>
+
+    <label class="field">
+      <span class="field-label">API key</span>
+      <input
+        type="password"
+        class="input"
+        [(ngModel)]="apiKey"
+        placeholder="OpenAI API key (in memory only)"
+        autocomplete="off"
+      />
+    </label>
+
+    <div class="actions">
+      <button
+        type="button"
+        class="btn-evaluate"
+        [disabled]="!canEvaluate()"
+        (click)="evaluate()"
+      >
+        {{ loading() ? 'Evaluating…' : 'Evaluate' }}
+      </button>
+    </div>
+
+    <p class="error" *ngIf="error() as err">{{ err }}</p>
+  </section>
+
+  <section class="results-section">
+    <h2 class="results-title">Results</h2>
+    <ng-container *ngIf="result(); else noResults">
+      <p class="summary">{{ result()!.summary }}</p>
+      <div class="scores">
+        <span class="score-pill">Overall: {{ result()!.overallScore }}</span>
+        <span class="score-pill">Seriousness: {{ result()!.seriousness }}</span>
+        <span class="score-pill">Emotional depth: {{ result()!.emotionalDepth }}</span>
+        <span class="score-pill">Authenticity: {{ result()!.authenticity }}</span>
+        <span class="score-pill">Effort: {{ result()!.effort }}</span>
+      </div>
+      <div class="red-flags" *ngIf="result()!.redFlags?.length">
+        <span class="field-label">Red flags:</span>
+        <ul>
+          <li *ngFor="let flag of result()!.redFlags">{{ flag }}</li>
+        </ul>
+      </div>
+      <div class="debug-wrap">
+        <button type="button" class="debug-summary" (click)="toggleDebug()">
+          {{ debugOpen() ? '▼' : '▶' }} Debug: raw response
+        </button>
+        <pre class="debug-pre" *ngIf="debugOpen()">{{ result()!.rawResponseText }}</pre>
+      </div>
+    </ng-container>
+    <ng-template #noResults>
+      <p class="no-results">Run Evaluate to see results.</p>
+    </ng-template>
+  </section>
+</main>

@@ -118,9 +118,31 @@ export class SearchFacade {
   private readonly currentRequestId = signal<string | undefined>(undefined);
   readonly requestId = this.currentRequestId.asReadonly();
 
+  /**
+   * Pending location-resume state: set before permission request, cleared after success/denial/failure.
+   * Ensures resume runs exactly once and guards against duplicate delivery (WS + poll) or re-render.
+   */
+  private pendingLocationResume: {
+    requestId: string;
+    query: string;
+    filters?: SearchFilters;
+  } | null = null;
+
+  /** Filters for the in-flight search; used when building pending location-resume only. */
+  private lastSearchFiltersForResume: SearchFilters | undefined;
+
   // CARD STATE: Explicit state machine for search lifecycle
   private readonly _cardState = signal<SearchCardState>('RUNNING');
   readonly cardState = this._cardState.asReadonly();
+
+  /** True when clarify state is due to missing location (auto-resume flow). Prefers explicit meta.locationRequired. */
+  readonly isLocationRequiredClarify = computed(
+    () =>
+      this.cardState() === 'CLARIFY' &&
+      (this.meta()?.requestLocationPermission === true ||
+        this.meta()?.locationRequired === true ||
+        this.meta()?.failureReason === 'LOCATION_REQUIRED')
+  );
 
   // Derived state queries (for backward compatibility)
   readonly isWaitingForClarification = computed(() => this.cardState() === 'CLARIFY');
@@ -176,6 +198,12 @@ export class SearchFacade {
 
       // CARD STATE: Reset to RUNNING for fresh search
       this._cardState.set('RUNNING');
+
+      // Clear pending location-resume so a new search is never considered a duplicate resume
+      this.pendingLocationResume = null;
+
+      // Capture filters for this request (used only if we later build pending location-resume)
+      this.lastSearchFiltersForResume = filters;
 
       // Update input state machine
       this.recentSearchesService.add(query);
@@ -313,6 +341,26 @@ export class SearchFacade {
       this._cardState.set('STOP');
     }
 
+    // Auto-resume for missing-location flow: unified signal (Gate or early INTENT guard)
+    const failureReason = response.meta?.failureReason;
+    const locationRequired = response.meta?.locationRequired === true;
+    const requestLocationPermission = response.meta?.requestLocationPermission === true;
+    const isMissingLocation = requestLocationPermission || locationRequired || failureReason === 'LOCATION_REQUIRED';
+    if (isMissingLocation) {
+      this._cardState.set('CLARIFY');
+      safeLog('SearchFacade', 'missing_location_signal_emitted', {
+        event: 'missing_location_signal_emitted',
+        requestId: response.requestId,
+        requestLocationPermission: !!requestLocationPermission,
+        locationRequired: !!locationRequired
+      });
+      safeLog('SearchFacade', 'permission_popup_triggerable', {
+        event: 'permission_popup_triggerable',
+        requestId: response.requestId
+      });
+      this.tryAutoResumeAfterMissingLocation(response, query);
+    }
+
     // Update input state machine
     this.inputStateMachine.searchComplete();
 
@@ -321,6 +369,130 @@ export class SearchFacade {
       resultCount: response.results.length,
       cardState: this.cardState()
     });
+  }
+
+  /**
+   * When Gate detects location required and missing: store pending state, request permission once,
+   * then resume exactly once on grant; clear pending on success, denial, or hard failure.
+   * Uses explicit contract: meta.locationRequired and meta.locationResume.query.
+   */
+  private async tryAutoResumeAfterMissingLocation(response: SearchResponse, query: string): Promise<void> {
+    const resumeQuery = response.meta?.locationResume?.query ?? response.query?.original ?? query;
+    const filters = this.lastSearchFiltersForResume;
+
+    // Guard: already have pending for this request (duplicate delivery or re-render) → do not start again
+    if (this.pendingLocationResume?.requestId === response.requestId) {
+      safeLog('SearchFacade', 'Auto-resume already pending for this request', { requestId: response.requestId });
+      return;
+    }
+
+    // Store pending state before permission request so we resume exactly this request
+    this.pendingLocationResume = { requestId: response.requestId, query: resumeQuery, filters };
+
+    safeLog('SearchFacade', 'auto_resume_pending', {
+      event: 'auto_resume_pending',
+      requestId: response.requestId,
+      query: resumeQuery
+    });
+
+    safeLog('SearchFacade', 'gate_missing_location_detected', {
+      event: 'gate_missing_location_detected',
+      requestId: response.requestId,
+      query: resumeQuery
+    });
+
+    safeLog('SearchFacade', 'location_permission_requested', {
+      event: 'location_permission_requested',
+      requestId: response.requestId
+    });
+
+    try {
+      await this.locationService.requestLocation();
+      const state = this.locationService.state();
+
+      if (state === 'ON') {
+        safeLog('SearchFacade', 'location_permission_granted', {
+          event: 'location_permission_granted',
+          requestId: response.requestId
+        });
+        safeLog('SearchFacade', 'auto_resume_started', {
+          event: 'auto_resume_started',
+          requestId: response.requestId,
+          query: resumeQuery
+        });
+        this.search(resumeQuery, filters);
+        // search() clears pendingLocationResume at start → success path cleared
+      } else {
+        safeLog('SearchFacade', 'location_permission_denied', {
+          event: 'location_permission_denied',
+          requestId: response.requestId,
+          locationState: state
+        });
+        this.pendingLocationResume = null;
+        // Fallback: user stays on clarify UI (ask for city/area text)
+      }
+    } catch (err) {
+      safeError('SearchFacade', 'Location permission request failed', { requestId: response.requestId, err });
+      this.pendingLocationResume = null;
+    }
+  }
+
+  /**
+   * Trigger location permission popup from SSE signal (requestLocationPermission).
+   * Lighter than tryAutoResumeAfterMissingLocation: does not require full SearchResponse.
+   */
+  private async triggerLocationPermissionFromSignal(resumeQuery: string): Promise<void> {
+    const requestId = this.currentRequestId();
+    const filters = this.lastSearchFiltersForResume;
+
+    if (this.pendingLocationResume?.requestId === requestId) {
+      safeLog('SearchFacade', 'Auto-resume already pending for this request (SSE signal)', { requestId });
+      return;
+    }
+
+    this.pendingLocationResume = { requestId: requestId!, query: resumeQuery, filters };
+
+    safeLog('SearchFacade', 'auto_resume_pending', {
+      event: 'auto_resume_pending',
+      requestId,
+      query: resumeQuery,
+      source: 'sse_signal'
+    });
+
+    safeLog('SearchFacade', 'location_permission_requested', {
+      event: 'location_permission_requested',
+      requestId,
+      source: 'sse_signal'
+    });
+
+    try {
+      await this.locationService.requestLocation();
+      const state = this.locationService.state();
+
+      if (state === 'ON') {
+        const coords = this.locationService.location();
+        safeLog('SearchFacade', 'location_permission_granted', {
+          event: 'location_permission_granted',
+          requestId,
+          hasCoords: !!coords,
+          lat: coords?.lat,
+          lng: coords?.lng
+        });
+        safeLog('SearchFacade', 'auto_resume_started', { event: 'auto_resume_started', requestId, query: resumeQuery });
+        this.search(resumeQuery, filters);
+      } else {
+        safeLog('SearchFacade', 'location_permission_failed', {
+          event: 'location_permission_failed',
+          requestId,
+          locationState: state,
+          hint: state === 'ERROR' ? 'Geolocation API unavailable - check browser/OS location services' : 'User denied permission'
+        });
+        this.pendingLocationResume = null;
+      }
+    } catch (err) {
+      safeError('SearchFacade', 'Location permission request failed (SSE signal)', { requestId, err });
+      this.pendingLocationResume = null;
+    }
   }
 
   /**
@@ -491,6 +663,8 @@ export class SearchFacade {
     message?: string;
     question?: string | null;
     blocksSearch?: boolean;
+    requestLocationPermission?: true;
+    locationResume?: { query: string };
   }): void {
     if (payload.type === 'CLARIFY' && payload.blocksSearch === true) {
       safeLog('SearchFacade', 'DONE_CLARIFY - stopping search, waiting for user input');
@@ -498,6 +672,21 @@ export class SearchFacade {
       this._cardState.set('CLARIFY');
       this.apiHandler.cancelPolling();
       this.assistantHandler.setStatus('completed');
+
+      if (payload.requestLocationPermission) {
+        const resumeQuery = payload.locationResume?.query || this.query() || '';
+        safeLog('SearchFacade', 'missing_location_signal_emitted', {
+          event: 'missing_location_signal_emitted',
+          source: 'sse_clarify',
+          requestId: this.currentRequestId(),
+          requestLocationPermission: true
+        });
+        safeLog('SearchFacade', 'permission_popup_triggerable', {
+          event: 'permission_popup_triggerable',
+          requestId: this.currentRequestId()
+        });
+        this.triggerLocationPermissionFromSignal(resumeQuery);
+      }
     } else if (payload.type === 'GATE_FAIL') {
       safeLog('SearchFacade', 'GATE_FAIL - terminal state');
       this._cardState.set('STOP');
@@ -514,10 +703,14 @@ export class SearchFacade {
   }
 
   private handleSearchEvent(event: import('../contracts/search.contracts').WsSearchEvent): void {
-    // CARD STATE: Ignore search events if in CLARIFY state (non-terminal)
+    // CARD STATE: Ignore search events if in CLARIFY state, UNLESS it's ready=ask (location permission fetch)
     if (this.cardState() === 'CLARIFY') {
-      safeLog('SearchFacade', 'Ignoring search event - waiting for clarification');
-      return;
+      const isReadyAsk = event.type === 'ready' && (event as any).ready === 'ask';
+      if (!isReadyAsk) {
+        safeLog('SearchFacade', 'Ignoring search event - waiting for clarification');
+        return;
+      }
+      safeLog('SearchFacade', 'Allowing ready=ask through CLARIFY guard (location permission fetch)');
     }
 
     // CARD STATE: Map backend event to card state

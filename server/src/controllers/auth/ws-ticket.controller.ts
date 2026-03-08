@@ -13,6 +13,7 @@ import crypto from 'crypto';
 import { logger } from '../../lib/logger/structured-logger.js';
 import { authSessionOrJwt, type AuthenticatedRequest } from '../../middleware/auth-session-or-jwt.middleware.js';
 import { getExistingRedisClient } from '../../lib/redis/redis-client.js';
+import { setTicket as setMemoryTicket } from '../../lib/ws-ticket-memory-store.js';
 
 const router = Router();
 
@@ -42,13 +43,17 @@ function generateTicket(): string {
  * - Cookie: session=<sessionId> (preferred) OR Authorization: Bearer <JWT>
  * 
  * Response:
- * - ticket: string - one-time ticket for WebSocket connection
- * - ttlSeconds: number - TTL (60s)
+ * - wsAvailable: boolean - when false, WebSocket is unavailable (degraded mode); client should use polling/SSE
+ * - ticket?: string - present when wsAvailable is true
+ * - ttlSeconds?: number - TTL (60s) when ticket is present
+ * - message?: string - human-readable when wsAvailable is false
  * - traceId: string - request trace ID
+ * 
+ * When Redis is down: returns 200 with wsAvailable: false (soft fail). No 503.
+ * Optional: set REDIS_WS_MEMORY_FALLBACK=true to issue in-memory tickets when Redis is down (single-instance dev).
  * 
  * Error codes:
  * - MISSING_SESSION (401): Missing sessionId
- * - WS_TICKET_REDIS_NOT_READY (503): Redis not available (client should retry with backoff)
  */
 router.post('/ws-ticket', authSessionOrJwt, async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
@@ -77,24 +82,40 @@ router.post('/ws-ticket', authSessionOrJwt, async (req: Request, res: Response) 
       });
     }
 
-    // Get Redis client (must be initialized at boot, not lazy-loaded)
+    // Get Redis client (or degraded / in-memory fallback when Redis is down)
     const redis = getExistingRedisClient();
+    const useMemoryFallback = process.env.REDIS_WS_MEMORY_FALLBACK === 'true';
 
     if (!redis) {
-      logger.error(
-        {
-          event: 'ws_ticket_redis_unavailable',
-          traceId,
+      // Option A: in-memory tickets (single-instance dev) when explicitly enabled
+      if (useMemoryFallback) {
+        const ticket = generateTicket();
+        const ticketData = {
+          userId: userId || null,
           sessionId,
-          pid: process.pid,
-        },
-        '[WSTicket] Redis client not available - check boot logs for redis_boot_status'
-      );
+          createdAt: Date.now()
+        };
+        setMemoryTicket(ticket, ticketData, TICKET_TTL_SECONDS);
+        logger.info(
+          { traceId, sessionId, store: 'memory' },
+          '[WSTicket] Ticket generated (in-memory fallback, Redis down)'
+        );
+        return res.status(200).json({
+          wsAvailable: true,
+          ticket,
+          ttlSeconds: TICKET_TTL_SECONDS,
+          traceId
+        });
+      }
 
-      return res.status(503).json({
-        error: 'SERVICE_UNAVAILABLE',
-        code: 'WS_TICKET_REDIS_NOT_READY',
-        message: 'WebSocket ticket service temporarily unavailable - Redis not ready',
+      // Option B: degraded mode — 200 with wsAvailable: false (no ticket). Client uses polling/SSE.
+      logger.warn(
+        { traceId, sessionId, event: 'ws_ticket_degraded' },
+        '[WSTicket] Redis unavailable — returning wsAvailable: false (soft fail)'
+      );
+      return res.status(200).json({
+        wsAvailable: false,
+        message: 'WebSocket unavailable (degraded mode). Use polling or SSE for updates.',
         traceId
       });
     }
@@ -124,6 +145,7 @@ router.post('/ws-ticket', authSessionOrJwt, async (req: Request, res: Response) 
     );
 
     return res.status(200).json({
+      wsAvailable: true,
       ticket,
       ttlSeconds: TICKET_TTL_SECONDS,
       traceId

@@ -91,7 +91,9 @@ export async function handleNearMeLocationCheck(
         appliedFilters: [],
         confidence: intentDecision.confidence,
         source: 'route2_near_me_clarify',
-        failureReason: 'LOCATION_REQUIRED'
+        failureReason: 'LOCATION_REQUIRED',
+        locationRequired: true as const,
+        locationResume: { query: request.query }
       }
     };
   }

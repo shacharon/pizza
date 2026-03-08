@@ -681,6 +681,20 @@
   }
 }
 
+// Missing-location auto-resume: one-line hint (no modal, no repeated prompt)
+.location-required-hint {
+  @extend .content-column;
+  margin: 0.375rem 0 0.5rem 0;
+  padding: 0;
+  font-size: 0.875rem;
+  color: #6b7280;
+  line-height: 1.4;
+
+  &.denied {
+    color: #9ca3af;
+  }
+}
+
 // Phase 5: Mode Indicators (subtle, non-intrusive)
 .mode-indicator {
   @extend .content-column;

@@ -18,7 +18,8 @@ import { HARD_CLOSE_REASONS } from './ws-close-reasons.js';
 export async function verifyClient(
   info: { origin?: string; req: any; secure?: boolean },
   allowedOrigins: string[],
-  redis: Redis.Redis | null
+  redis: Redis.Redis | null,
+  getTicketFromMemory?: (ticket: string) => { userId?: string | null; sessionId: string; createdAt: number } | null
 ): Promise<boolean> {
   const env = process.env.NODE_ENV || 'development';
   const isProdOrStaging = env === 'production' || env === 'staging';
@@ -72,7 +73,7 @@ export async function verifyClient(
 
   // Phase 3: Authentication
   if (requireAuth) {
-    return await verifyTicket(info, redis, ip, rawOrigin);
+    return await verifyTicket(info, redis, ip, rawOrigin, getTicketFromMemory);
   } else {
     logger.warn(
       { ip },
@@ -90,7 +91,8 @@ async function verifyTicket(
   info: { origin?: string; req: any; secure?: boolean },
   redis: Redis.Redis | null,
   ip: string | undefined,
-  rawOrigin: string | undefined
+  rawOrigin: string | undefined,
+  getTicketFromMemory?: (ticket: string) => { userId?: string | null; sessionId: string; createdAt: number } | null
 ): Promise<boolean> {
   // Extract ticket from query param (SECURE: one-time ticket, not JWT)
   const url = new URL(info.req.url || '', 'ws://dummy');
@@ -98,6 +100,23 @@ async function verifyTicket(
 
   if (!ticket) {
     logger.warn({ ip, origin: rawOrigin }, 'WS: Rejected - no auth ticket');
+    (info.req as any).wsRejectReason = HARD_CLOSE_REASONS.NOT_AUTHORIZED;
+    return false;
+  }
+
+  // When Redis is down, try in-memory store (dev/single-instance fallback)
+  if (!redis && getTicketFromMemory) {
+    const payload = getTicketFromMemory(ticket);
+    if (payload) {
+      (info.req as any).userId = payload.userId || undefined;
+      (info.req as any).sessionId = payload.sessionId;
+      logger.debug(
+        { ip, sessionId: payload.sessionId.substring(0, 12) + '...', hasUserId: Boolean(payload.userId) },
+        'WS: Authenticated via in-memory ticket (Redis down)'
+      );
+      return true;
+    }
+    logger.warn({ ip, origin: rawOrigin }, 'WS: Rejected - ticket invalid or expired (memory store)');
     (info.req as any).wsRejectReason = HARD_CLOSE_REASONS.NOT_AUTHORIZED;
     return false;
   }

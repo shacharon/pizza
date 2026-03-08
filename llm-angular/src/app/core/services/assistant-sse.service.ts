@@ -35,6 +35,8 @@ export interface AssistantMessagePayload {
   blocksSearch: boolean;
   language?: string;
   suggestedAction?: string;
+  requestLocationPermission?: true;
+  locationResume?: { query: string };
 }
 
 const UTF8 = 'utf-8';

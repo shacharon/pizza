@@ -87,7 +87,7 @@ export async function getRedisClient(options: RedisClientOptions): Promise<Redis
       msg: '[Redis] About to create Redis client instance'
     });
 
-    let redis: RedisClient;
+    let redis: RedisClient | undefined;
     try {
       redis = new Redis(url, {
         maxRetriesPerRequest,
@@ -162,6 +162,14 @@ export async function getRedisClient(options: RedisClientOptions): Promise<Redis
   } catch (err) {
     const error = err as Error & { code?: string; errno?: string | number };
     lastConnectionError = `${error.name}: ${error.message}${error.code ? ` (${error.code})` : ''}`;
+    redisInitialized = true; // So getExistingRedisClient no longer warns "before initialization"
+    if (typeof redis !== 'undefined' && redis) {
+      try {
+        redis.destroy();
+      } catch (_) {
+        /* ignore */
+      }
+    }
     logger.warn({
       event: 'REDIS_CONNECTION_FAILED',
       error: error.message,

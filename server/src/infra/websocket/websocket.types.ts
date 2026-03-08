@@ -19,6 +19,10 @@ export interface WebSocketManagerConfig {
   requestStateStore?: IRequestStateStore;
   jobStore?: ISearchJobStore;
   redisUrl?: string;
+  /** Shared Redis client (preferred). When null/undefined and redisUrl set, a client may be created. */
+  redis?: import('ioredis').Redis | null;
+  /** When Redis is down: get ticket from in-memory store for verification. */
+  getTicketFromMemory?: (ticket: string) => { userId?: string | null; sessionId: string; createdAt: number } | null;
 }
 
 /**

@@ -5,7 +5,7 @@
 
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpErrorResponse, HttpHeaders } from '@angular/common/http';
-import { Observable, from, switchMap, catchError, throwError } from 'rxjs';
+import { Observable, from, switchMap, catchError, throwError, of } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { AuthService } from '../auth/auth.service';
 import { safeLog, safeError } from '../../shared/utils/safe-logger';
@@ -22,6 +22,19 @@ export interface WSTicketResponse {
   ticket: string;
   expiresInSeconds: number;
   traceId: string;
+}
+
+/** Degraded response when Redis/WS is unavailable — client should use polling or SSE */
+export interface WSTicketDegradedResponse {
+  wsAvailable: false;
+  message?: string;
+  traceId: string;
+}
+
+export type WSTicketResult = WSTicketResponse | WSTicketDegradedResponse;
+
+export function isWSTicketAvailable(r: WSTicketResult): r is WSTicketResponse {
+  return 'ticket' in r && typeof (r as WSTicketResponse).ticket === 'string';
 }
 
 @Injectable({ providedIn: 'root' })
@@ -67,29 +80,20 @@ export class AuthApiService {
    * Request a one-time WebSocket ticket
    * Protected endpoint - requires JWT Authorization header
    * 
-   * Security:
-   * - MUST await JWT token before making request
-   * - Explicitly includes Authorization Bearer header
-   * - Explicitly includes X-Session-Id header
-   * - On 401 (stale/invalid JWT): clears token and retries ONCE
-   * - On 503 (Redis not ready): retries with backoff (200ms, 500ms, 1s) max 3 tries
-   * 
-   * Dev logging:
-   * - Logs ticket request start (dev only)
-   * - Logs whether Authorization header is present (dev only)
-   * - NEVER logs the actual token value
+   * On 200 with wsAvailable: false (or 503 after retries): returns degraded result so app continues
+   * with polling/SSE. Search flow must not depend on WS.
    */
-  requestWSTicket(): Observable<WSTicketResponse> {
+  requestWSTicket(): Observable<WSTicketResult> {
     return from(this.authService.getToken()).pipe(
       switchMap(token => this.requestTicketWithRetry(token, 0))
     );
   }
 
   /**
-   * Internal: Request ticket with 503 retry logic
-   * Retries up to 3 times with exponential backoff (200ms, 500ms, 1s)
+   * Internal: Request ticket with 503 retry logic.
+   * On 200 with wsAvailable: false or 503 after retries: emit degraded result (no throw).
    */
-  private requestTicketWithRetry(token: string, attemptNumber: number): Observable<WSTicketResponse> {
+  private requestTicketWithRetry(token: string, attemptNumber: number): Observable<WSTicketResult> {
     const sessionId = this.getSessionId();
 
     // Dev logging (NEVER log actual token/session values)
@@ -105,11 +109,30 @@ export class AuthApiService {
       'X-Session-Id': sessionId
     });
 
-    return this.http.post<WSTicketResponse>(
+    return this.http.post<WSTicketResult>(
       `${this.baseUrl}/auth/ws-ticket`,
       {},
       { headers }
     ).pipe(
+      switchMap((body) => {
+        // Backend returns 200 with wsAvailable: false when Redis is down (soft fail)
+        if (body && (body as any).wsAvailable === false) {
+          if (!environment.production) {
+            safeLog('WS-Ticket', 'WebSocket unavailable (degraded mode) — use polling/SSE', {
+              message: (body as any).message
+            });
+          }
+          return of(body as WSTicketDegradedResponse);
+        }
+        // Normal: ticket + ttlSeconds (backend may send wsAvailable: true or legacy shape)
+        const res = body as WSTicketResponse;
+        const normalized: WSTicketResponse = {
+          ticket: res.ticket,
+          expiresInSeconds: (res as any).ttlSeconds ?? res.expiresInSeconds ?? 60,
+          traceId: res.traceId ?? (body as any).traceId
+        };
+        return of(normalized);
+      }),
       catchError((error: unknown) => {
         // Handle 401: clear stale token and retry ONCE
         if (error instanceof HttpErrorResponse && error.status === 401) {
@@ -139,10 +162,22 @@ export class AuthApiService {
                 'X-Session-Id': sessionId
               });
 
-              return this.http.post<WSTicketResponse>(
+              return this.http.post<WSTicketResult>(
                 `${this.baseUrl}/auth/ws-ticket`,
                 {},
                 { headers }
+              ).pipe(
+                switchMap((body) => {
+                  if (body && (body as any).wsAvailable === false) {
+                    return of(body as WSTicketDegradedResponse);
+                  }
+                  const res = body as WSTicketResponse;
+                  return of({
+                    ticket: res.ticket,
+                    expiresInSeconds: (res as any).ttlSeconds ?? res.expiresInSeconds ?? 60,
+                    traceId: res.traceId ?? (body as any).traceId
+                  });
+                })
               );
             }),
             catchError(retryError => {
@@ -172,7 +207,7 @@ export class AuthApiService {
             }
 
             // Wait for backoff delay, then retry
-            return new Observable<WSTicketResponse>(observer => {
+            return new Observable<WSTicketResult>(observer => {
               const timeoutId = setTimeout(() => {
                 this.requestTicketWithRetry(token, attemptNumber + 1).subscribe({
                   next: (response) => observer.next(response),
@@ -186,16 +221,18 @@ export class AuthApiService {
             });
           }
 
-          // Max retries exceeded or different 503 error
+          // Max retries exceeded or different 503: treat as degraded (non-fatal), continue with polling
           if (!environment.production) {
-            safeError('WS-Ticket', '503 error - max retries exceeded or non-retryable', {
+            safeLog('WS-Ticket', '503 after retries — switching to polling/SSE (non-fatal)', {
               errorCode,
               attemptNumber: attemptNumber + 1
             });
           }
-
-          // Re-throw error if not retrying
-          return throwError(() => error);
+          return of({
+            wsAvailable: false as const,
+            message: 'WebSocket temporarily unavailable (Redis not ready). Use polling or SSE.',
+            traceId: (error.error as any)?.traceId ?? ''
+          });
         }
 
         // Re-throw other errors

@@ -398,6 +398,52 @@ export class AssistantSseOrchestrator {
         return;
       }
 
+      // If pipeline already stored an assist (e.g. gate pre-check ASK_CLARIFY / STOP), send it as structured message so UI shows regular assistant help, not plain text
+      const assist = (result as any)?.assist;
+      if (assist?.message) {
+        const sseType = assist.type === 'guide' ? 'GATE_FAIL' : (assist.type === 'clarify' ? 'CLARIFY' : assist.type);
+        const meta = (result as any)?.meta;
+        const isLocationRequired = meta?.requestLocationPermission === true || meta?.locationRequired === true;
+        const payload = this.ensureMessageLanguage(
+          {
+            type: sseType,
+            message: assist.message,
+            question: assist.question ?? null,
+            blocksSearch: true,
+            language: assistantLanguage,
+            suggestedAction: (assist as { suggestedAction?: string }).suggestedAction ?? 'RETRY',
+            ...(isLocationRequired && {
+              requestLocationPermission: true as const,
+              locationResume: meta.locationResume ?? { query: (result as any)?.query?.original ?? '' }
+            })
+          },
+          assistantLanguage,
+          requestId,
+          traceId
+        );
+        if (isLocationRequired) {
+          this.logger.info(
+            { requestId, traceId, event: 'missing_location_signal_emitted', source: 'sse_clarify' },
+            '[AssistantSSE] Emitting requestLocationPermission in SSE CLARIFY payload'
+          );
+        }
+        writer.sendMessage(payload);
+        this.logger.info(
+          { requestId, traceId, sseType, event: 'assistant_sse_stopped_clarify_sent' },
+          '[AssistantSSE] Sent stored assist (CLARIFY_STOPPED flow) via SSE'
+        );
+        stateMachine.transition(SseState.MESSAGE_SENT);
+        stateMachine.transition(SseState.DONE);
+        writer.sendDone();
+        const durationMs = Date.now() - startTime;
+        this.logger.info(
+          { requestId, durationMs, flow: 'clarify_stopped', event: 'assistant_sse_completed' },
+          '[AssistantSSE] SSE stream completed'
+        );
+        writer.end();
+        return;
+      }
+
       // Build context and stream assistant reply (token-by-token)
       const context = await this.contextBuilder.buildContext(requestId, job, result);
       const llmProvider = this.createLLMProvider();
@@ -519,6 +565,8 @@ export class AssistantSseOrchestrator {
       const assist = (storedResult as any)?.assist;
       if (assist?.message) {
         const sseType = assist.type === 'guide' ? 'GATE_FAIL' : (assist.type === 'clarify' ? 'CLARIFY' : assist.type);
+        const meta = (storedResult as any)?.meta;
+        const isLocationRequired = meta?.requestLocationPermission === true || meta?.locationRequired === true;
         const payload = this.ensureMessageLanguage(
           {
             type: sseType,
@@ -526,12 +574,22 @@ export class AssistantSseOrchestrator {
             question: assist.question ?? null,
             blocksSearch: true,
             language: assistantLanguage,
-            suggestedAction: (assist as { suggestedAction?: string }).suggestedAction ?? 'RETRY'
+            suggestedAction: (assist as { suggestedAction?: string }).suggestedAction ?? 'RETRY',
+            ...(isLocationRequired && {
+              requestLocationPermission: true as const,
+              locationResume: meta.locationResume ?? { query: (storedResult as any)?.query?.original ?? '' }
+            })
           },
           assistantLanguage,
           requestId,
           traceId
         );
+        if (isLocationRequired) {
+          this.logger.info(
+            { requestId, traceId, event: 'missing_location_signal_emitted', source: 'sse_clarify' },
+            '[AssistantSSE] Emitting requestLocationPermission in SSE CLARIFY payload'
+          );
+        }
         writer.sendMessage(payload);
         this.logger.info(
           { requestId, traceId, sseType, latestStatus: pollResult.latestStatus, event: 'assistant_sse_stopped_clarify_sent' },

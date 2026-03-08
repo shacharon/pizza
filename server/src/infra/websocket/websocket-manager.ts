@@ -52,20 +52,30 @@ export class WebSocketManager {
     // 1. Resolve and validate configuration
     this.config = resolveWebSocketConfig(config);
 
-    // 2. Initialize Redis Connection
-    if (this.config.redisUrl) {
+    // 2. Redis: use shared client if provided, else create from redisUrl (avoid duplicate client when Redis is down)
+    if (config.redis !== undefined) {
+      this.redis = config.redis ?? null;
+      if (this.redis) {
+        logger.info({ msg: 'WebSocketManager: Using shared Redis client' });
+      } else {
+        logger.warn({ msg: 'WebSocketManager: Redis unavailable, WS auth will use memory fallback if configured' });
+      }
+    } else if (this.config.redisUrl) {
       this.redis = new Redis.Redis(this.config.redisUrl, {
         maxRetriesPerRequest: 3,
         enableReadyCheck: true
       });
+      this.redis.on('error', (err: Error) => {
+        logger.warn({ error: err.message, msg: '[Redis] WebSocketManager client error' });
+      });
       logger.info(
         { redisUrl: this.config.redisUrl.split('@')[1] || 'local' },
-        'WebSocketManager: Redis enabled'
+        'WebSocketManager: Redis enabled (dedicated client)'
       );
     }
 
-    // 3. Validate Redis requirement for auth
-    validateRedisForAuth(!!this.redis);
+    // 3. Validate Redis requirement for auth (allow in-memory fallback in dev when Redis down)
+    validateRedisForAuth(!!this.redis, !!this.config.getTicketFromMemory);
 
     // 4. Initialize extracted modules
     this.pendingSubscriptionsManager = new PendingSubscriptionsManager();
@@ -87,7 +97,12 @@ export class WebSocketManager {
       server,
       path: this.config.path,
       verifyClient: (info, callback) => {
-        verifyClient(info, this.config.allowedOrigins, this.redis)
+        verifyClient(
+          info,
+          this.config.allowedOrigins,
+          this.redis,
+          this.config.getTicketFromMemory
+        )
           .then((allowed) => callback(allowed))
           .catch((err) => {
             logger.error({ error: err instanceof Error ? err.message : 'unknown' }, 'WS: verifyClient error');

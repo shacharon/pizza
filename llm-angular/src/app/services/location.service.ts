@@ -20,7 +20,8 @@ export class LocationService {
   }
 
   /**
-   * Request user location via browser geolocation API
+   * Request user location via browser geolocation API.
+   * Tries low-accuracy first (fast), then retries with high-accuracy on failure.
    */
   async requestLocation(): Promise<void> {
     if (!navigator.geolocation) {
@@ -31,13 +32,7 @@ export class LocationService {
     this.state.set('REQUESTING');
 
     try {
-      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: false,
-          timeout: 10000,
-          maximumAge: 300000 // 5 minutes
-        });
-      });
+      const position = await this.getCurrentPositionWithRetry();
 
       const coords: Coordinates = {
         lat: position.coords.latitude,
@@ -49,7 +44,6 @@ export class LocationService {
       this.saveToStorage(coords);
     } catch (error: any) {
       if (error.code === 1) {
-        // PERMISSION_DENIED
         this.state.set('DENIED');
       } else {
         this.state.set('ERROR');
@@ -57,6 +51,27 @@ export class LocationService {
       this.location.set(null);
       this.clearStorage();
     }
+  }
+
+  private getCurrentPositionWithRetry(): Promise<GeolocationPosition> {
+    return new Promise<GeolocationPosition>((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(resolve, (firstError) => {
+        if (firstError.code === 1) {
+          reject(firstError);
+          return;
+        }
+        // Retry once with high accuracy and longer timeout
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 20000,
+          maximumAge: 600000
+        });
+      }, {
+        enableHighAccuracy: false,
+        timeout: 15000,
+        maximumAge: 300000
+      });
+    });
   }
 
   /**

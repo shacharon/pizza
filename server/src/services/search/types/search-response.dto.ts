@@ -46,6 +46,14 @@ export interface SearchResponseMeta {
   originalQuery?: string;
   failureReason: import('./search.types.js').FailureReason;  // REQUIRED: Always computed
   liveData?: import('./search.types.js').LiveDataVerification;
+  /**
+   * Missing-location auto-resume contract (deterministic, explicit).
+   * Present only when location was required for this route and missing.
+   * - locationRequired: explicit signal; client may request permission and re-submit.
+   * - locationResume: exact state to resume with (re-submit same query + userLocation; sessionId on response root).
+   */
+  locationRequired?: true;
+  locationResume?: { query: string };
   // Pagination support
   nextPageToken?: string | null;  // Token to fetch next page of results (from Google Places API)
   hasMore?: boolean;  // Whether more results are available

@@ -286,9 +286,8 @@ async function searchRoute2Internal(
     const nearbyGuardResponse = await handleNearbyLocationGuard(request, gateResult, intentDecision, mapping, ctx, wsManager);
     if (nearbyGuardResponse) return publishClarifyAndReturn(wsManager, requestId, sessionId, nearbyGuardResponse, ctx);
 
-    // CHEESEBURGER 2 FIX: TEXTSEARCH anchor validation
-    // For TEXTSEARCH: ONLY cityText OR locationBias count as anchors (NOT userLocation)
-    // For NEARBY: userLocation counts
+    // TEXTSEARCH anchor validation
+    // Accept cityText, locationBias, OR userLocation (GPS from permission grant) as valid anchors.
     const hasUserLocation = !!ctx.userLocation;
     const hasCityText = !!intentDecision.cityText || !!(mapping as any).cityText;
     const hasLocationBias = !!(mapping as any).bias;
@@ -297,10 +296,9 @@ async function searchRoute2Internal(
     let reason = 'location_anchor_present';
 
     if (intentDecision.route === 'TEXTSEARCH') {
-      // TEXTSEARCH requires cityText OR bias (NOT userLocation)
-      const hasTextSearchAnchor = hasCityText || hasLocationBias;
+      const hasTextSearchAnchor = hasCityText || hasLocationBias || hasUserLocation;
       allowed = hasTextSearchAnchor;
-      reason = hasTextSearchAnchor ? 'has_city_or_bias' : 'missing_location_anchor_textsearch';
+      reason = hasTextSearchAnchor ? 'has_city_or_bias_or_gps' : 'missing_location_anchor_textsearch';
 
       logger.info({
         requestId,

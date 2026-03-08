@@ -41,17 +41,35 @@ export interface WSConnectionCallbacks {
 }
 
 /**
- * Ticket response from auth API
+ * Ticket response from auth API (when WS is available)
  */
 export interface WSTicketResponse {
   ticket: string;
+  expiresInSeconds?: number;
+  ttlSeconds?: number;
+  traceId?: string;
+}
+
+/**
+ * Degraded response when WS is unavailable — client should use polling/SSE
+ */
+export interface WSTicketDegradedResponse {
+  wsAvailable: false;
+  message?: string;
+  traceId?: string;
+}
+
+export type WSTicketResult = WSTicketResponse | WSTicketDegradedResponse;
+
+export function isWSTicketAvailable(r: WSTicketResult): r is WSTicketResponse {
+  return r != null && 'ticket' in r && typeof (r as WSTicketResponse).ticket === 'string';
 }
 
 /**
  * Ticket provider interface (abstracts auth API)
  */
 export interface WSTicketProvider {
-  requestTicket(): Promise<WSTicketResponse>;
+  requestTicket(): Promise<WSTicketResult>;
   ensureAuth(): Promise<void>;
 }
 

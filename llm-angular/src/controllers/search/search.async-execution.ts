@@ -128,14 +128,26 @@ export async function executeBackgroundSearch(params: BackgroundParams): Promise
 
     // Final WS Notification
     if (wsEventType === 'clarify') {
+      const isMissingLocation = response.meta?.failureReason === 'LOCATION_REQUIRED' || response.meta?.locationRequired === true;
+      if (isMissingLocation) {
+        logger.info({
+          requestId,
+          event: 'missing_location_signal_emitted',
+          source: 'early_intent_or_gate'
+        }, 'Blocking missing-location: emitting ready+ask so frontend fetches result and triggers permission');
+      }
+      // Publish type: ready, ready: ask so frontend fetches full result (with meta.locationRequired) and triggers permission popup
       publishSearchEvent(requestId, {
         channel: 'search',
         contractsVersion: CONTRACTS_VERSION,
-        type: 'clarify',
+        type: 'ready',
         requestId,
         ts: new Date().toISOString(),
         stage: 'done',
-        message: response.assist?.message || 'Please clarify'
+        ready: 'ask',
+        decision: 'ASK_CLARIFY',
+        message: response.assist?.message || 'Please clarify',
+        resultUrl
       });
     } else if (wsEventType === 'stopped') {
       // GATE STOP - pipeline stopped, no results by design

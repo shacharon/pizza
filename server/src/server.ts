@@ -148,15 +148,14 @@ async function initializeRedis() {
         } else {
           logger.warn(
             {
-              event: 'redis_unavailable_ws_auth_disabled',
+              event: 'redis_unavailable_ws_memory_fallback',
               wsRequiresAuth: true,
               redisConnected: false,
               env: config.env,
             },
-            '[BOOT] WARNING: Redis unavailable, WS authentication will be disabled in dev'
+            '[BOOT] Redis unavailable in dev - WS tickets will use in-memory fallback (single-instance only)'
           );
-          // Override WS_REQUIRE_AUTH in dev when Redis is down
-          process.env.WS_REQUIRE_AUTH = 'false';
+          // Keep WS_REQUIRE_AUTH true; /ws-ticket and verifyClient use in-memory store when Redis is down
         }
       }
     } catch (error) {
@@ -281,13 +280,17 @@ const server = app.listen(port, () => {
 // Phase 3: Initialize WebSocket manager
 // Import jobStore for Phase 1 authorization
 import { searchJobStore } from './services/search/job-store/index.js';
+import { getAndDeleteTicket } from './lib/ws-ticket-memory-store.js';
 
+const sharedRedis = getExistingRedisClient();
 export const wsManager = new WebSocketManager(server, {
   path: '/ws',
   heartbeatIntervalMs: 30_000,
   allowedOrigins: process.env.WS_ALLOWED_ORIGINS?.split(',') || ['*'],
   requestStateStore, // Phase 3: Enable late-subscriber replay
-  jobStore: searchJobStore // Phase 1: Enable ownership verification
+  jobStore: searchJobStore, // Phase 1: Enable ownership verification
+  redis: sharedRedis, // Use shared client; when Redis is down no second client is created
+  ...(sharedRedis ? {} : { getTicketFromMemory: getAndDeleteTicket }), // Fallback when Redis down
 });
 
 /**

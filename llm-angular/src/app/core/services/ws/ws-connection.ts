@@ -21,9 +21,10 @@ import type {
   WSConnectionConfig,
   WSConnectionCallbacks,
   WSTicketProvider,
+  WSTicketResult,
   ConnectionStatus
 } from './ws-types';
-import { isHardCloseReason } from './ws-types';
+import { isWSTicketAvailable, isHardCloseReason } from './ws-types';
 
 const MAX_RECONNECT_ATTEMPTS = 10;
 
@@ -70,14 +71,26 @@ export class WSConnection {
       await this.ticketProvider.ensureAuth();
 
       // STEP 2: Request NEW one-time ticket (CRITICAL: fetch fresh ticket every time)
-      let ticketResponse: any;
+      let ticketResponse: WSTicketResult;
       try {
         console.log('[WS] ws_ticket_requested', {
           timestamp: new Date().toISOString()
         });
         ticketResponse = await this.ticketProvider.requestTicket();
+
+        // Degraded: backend returned wsAvailable: false (Redis down or 503 after retries)
+        if (!isWSTicketAvailable(ticketResponse)) {
+          console.warn('[WS] WebSocket unavailable (degraded mode) — use polling/SSE', {
+            message: ticketResponse.message,
+            timestamp: new Date().toISOString()
+          });
+          this.callbacks.onStatusChange('disconnected');
+          this.connectInFlight = false;
+          return; // Resolve without connecting — app continues with polling/SSE
+        }
+
         console.log('[WS] ws_ticket_received', {
-          expiresInSeconds: ticketResponse.expiresInSeconds,
+          expiresInSeconds: ticketResponse.expiresInSeconds ?? (ticketResponse as any).ttlSeconds,
           timestamp: new Date().toISOString()
         });
       } catch (error: any) {
@@ -89,8 +102,6 @@ export class WSConnection {
         }
         throw error; // Re-throw other errors
       }
-
-      console.log('[WS] Ticket OK, connecting...');
 
       // STEP 3: Connect with ticket in URL query param
       const wsUrl = `${this.config.wsBaseUrl}/ws?ticket=${encodeURIComponent(ticketResponse.ticket)}`;

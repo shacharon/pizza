@@ -44,6 +44,15 @@
       </div>
 
       <!-- CANONICAL ROUTING: Contextual Assistant (under input) -->
+      @if (facade.isLocationRequiredClarify() && (locationState() === 'REQUESTING' || locationState() === 'DENIED' || locationState() === 'ERROR')) {
+      <p class="location-required-hint" [class.denied]="locationState() === 'DENIED' || locationState() === 'ERROR'">
+        @if (locationState() === 'REQUESTING') {
+        <span>Using your location to search…</span>
+        } @else {
+        <span>Add a city or area above to search.</span>
+        }
+      </p>
+      }
       @if (showContextualAssistantToggle()) {
       <div class="assistant-toggle-row">
         <button type="button" class="assistant-toggle-btn" (click)="toggleAssistantSummary()" aria-expanded="false">
@@ -141,7 +150,7 @@
     </div>
     }
 
-    @if (isClarifyMode() && !facade.loading()) {
+    @if (isClarifyMode() && !facade.loading() && !facade.isLocationRequiredClarify()) {
     <div class="mode-indicator clarify">
       <span class="mode-icon">❓</span>
       <span class="mode-text">Need more info</span>

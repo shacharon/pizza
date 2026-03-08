@@ -49,7 +49,7 @@ export type WsSearchEvent =
         ready: ReadyKind;
         decision: SearchDecision;
         message?: string;
-        resultUrl?: string; // only when ready=results
+        resultUrl?: string; // when ready=results or ready=ask (fetch full result for permission meta)
         resultCount?: number; // only when ready=results
     }
     | {

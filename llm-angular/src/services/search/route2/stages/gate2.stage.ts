@@ -18,6 +18,10 @@ import { logger } from '../../../../lib/logger/structured-logger.js';
 import { startStage, endStage } from '../../../../lib/telemetry/stage-timer.js';
 import { sanitizeQuery } from '../../../../lib/telemetry/query-sanitizer.js';
 import { resolveLLM } from '../../../../lib/llm/index.js';
+import {
+  getGate2QueryValidityPreDecision,
+  shouldOverrideFoodToClarify
+} from './gate2/gate2-query-validity.js';
 
 // Gate2 Zod Schema for LLM output (before routing logic) - SOURCE OF TRUTH
 const Gate2LLMSchema = z.object({
@@ -140,6 +144,22 @@ function applyDeterministicRouting(llmResult: z.infer<typeof Gate2LLMSchema>): G
 }
 
 /**
+ * Build Gate2Result for NOT_FOOD (STOP) or ASK_CLARIFY from validity pre-decision.
+ */
+function gateResultFromValidity(
+  outcome: 'NOT_FOOD' | 'ASK_CLARIFY'
+): Gate2Result {
+  const route = outcome === 'NOT_FOOD' ? 'STOP' : 'ASK_CLARIFY';
+  const foodSignal = outcome === 'NOT_FOOD' ? 'NO' : 'UNCERTAIN';
+  return {
+    foodSignal,
+    language: 'other',
+    route,
+    confidence: 0.7
+  };
+}
+
+/**
  * Execute GATE2 stage
  * 
  * @param request Search request
@@ -159,6 +179,27 @@ export async function executeGate2Stage(
   });
 
   try {
+    // Query validity pre-check: gibberish, profanity fragments, anchor-only → NOT_FOOD or ASK_CLARIFY without LLM
+    const validityOutcome = getGate2QueryValidityPreDecision(request.query);
+    if (validityOutcome !== 'PASS') {
+      const gate = gateResultFromValidity(validityOutcome);
+      endStage(context, 'gate2', startTime, {
+        route: gate.route,
+        foodSignal: gate.foodSignal,
+        confidence: gate.confidence,
+        validityPreCheck: validityOutcome
+      });
+      logger.info({
+        requestId,
+        traceId,
+        stage: 'gate2',
+        event: 'gate2_validity_precheck',
+        validityOutcome,
+        route: gate.route
+      }, '[ROUTE2] Gate2 query validity pre-check');
+      return { gate };
+    }
+
     // Call LLM for classification
     const messages: Message[] = [
       { role: 'system', content: GATE2_SYSTEM_PROMPT },
@@ -290,7 +331,24 @@ export async function executeGate2Stage(
     }
 
     // Apply deterministic routing
-    const gate = applyDeterministicRouting(llmResult);
+    let gate = applyDeterministicRouting(llmResult);
+
+    // Override: if LLM said YES but query is noisy/hostile/nonsensical, prefer ASK_CLARIFY
+    if (gate.route === 'CONTINUE' && shouldOverrideFoodToClarify(request.query)) {
+      gate = {
+        ...gate,
+        foodSignal: 'UNCERTAIN',
+        route: 'ASK_CLARIFY',
+        confidence: Math.min(gate.confidence, 0.65)
+      };
+      logger.info({
+        requestId,
+        traceId,
+        stage: 'gate2',
+        event: 'gate2_noise_override',
+        originalRoute: 'CONTINUE'
+      }, '[ROUTE2] Gate2 override FOOD → ASK_CLARIFY (noise/hostility)');
+    }
 
     endStage(context, 'gate2', startTime, {
       route: gate.route,

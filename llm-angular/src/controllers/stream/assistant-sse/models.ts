@@ -24,6 +24,9 @@ export interface SseMessagePayload {
   question: string | null;
   blocksSearch: boolean;
   language: AssistantLanguage;
+  suggestedAction?: string;
+  requestLocationPermission?: true;
+  locationResume?: { query: string };
 }
 
 /**

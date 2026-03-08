@@ -16,6 +16,7 @@ import { NarrationTemplates } from './narration-templates.js';
 import { OwnershipValidator } from './ownership-validator.js';
 import { AssistantContextBuilder } from './assistant-context-builder.js';
 import { SseStateMachine, SseState } from './sse-state-machine.js';
+import type { SseMessagePayload } from './models.js';
 import { PollingStrategy } from './polling-strategy.js';
 import { handleSseError } from './sse-error-handler.js';
 import { getExistingRedisClient } from '../../../lib/redis/redis-client.js';
@@ -415,6 +416,47 @@ export class AssistantSseOrchestrator {
 
       if (isClientDisconnected() || abortSignal.aborted) {
         this.logger.debug({ requestId, traceId }, '[AssistantSSE] Client disconnected after narration');
+        writer.end();
+        return;
+      }
+
+      // If pipeline already stored an assist (e.g. gate pre-check ASK_CLARIFY / STOP), send it as structured message so UI shows regular assistant help, not plain text
+      const assist = result?.assist;
+      if (assist?.message) {
+        const sseType = assist.type === 'guide' ? 'GATE_FAIL' : (assist.type === 'clarify' ? 'CLARIFY' : assist.type);
+        const meta = result?.meta;
+        const isLocationRequired = meta?.requestLocationPermission === true || meta?.locationRequired === true;
+        const payload: SseMessagePayload = {
+          type: sseType,
+          message: assist.message,
+          question: assist.question ?? null,
+          blocksSearch: true,
+          language: assistantLanguage,
+          suggestedAction: assist.suggestedAction ?? 'RETRY',
+          ...(isLocationRequired && {
+            requestLocationPermission: true as const,
+            locationResume: meta.locationResume ?? { query: result?.query?.original ?? '' }
+          })
+        };
+        if (isLocationRequired) {
+          this.logger.info(
+            { requestId, traceId, event: 'missing_location_signal_emitted', source: 'sse_clarify' },
+            '[AssistantSSE] Emitting requestLocationPermission in SSE CLARIFY payload'
+          );
+        }
+        writer.sendMessage(payload);
+        this.logger.info(
+          { requestId, traceId, sseType, event: 'assistant_sse_stopped_clarify_sent' },
+          '[AssistantSSE] Sent stored assist (CLARIFY_STOPPED flow) via SSE'
+        );
+        stateMachine.transition(SseState.MESSAGE_SENT);
+        stateMachine.transition(SseState.DONE);
+        writer.sendDone();
+        const durationMs = Date.now() - startTime;
+        this.logger.info(
+          { requestId, durationMs, flow: 'clarify_stopped', event: 'assistant_sse_completed' },
+          '[AssistantSSE] SSE stream completed'
+        );
         writer.end();
         return;
       }
