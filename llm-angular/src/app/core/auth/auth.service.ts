@@ -37,13 +37,12 @@ export class AuthService {
   private fetchPromise: Promise<string> | null = null;
 
   constructor(private http: HttpClient) {
-    // Load token from localStorage on startup
+    // Load token from localStorage on startup — drop expired so Android/PWA recover
     const stored = this.loadTokenFromStorage();
-    if (stored) {
+    if (stored && !this.isTokenExpired(stored)) {
       this.tokenCache.set(stored);
-      
+
       // DUAL MODE ONLY: Request session cookie for SSE
-      // In cookie_only mode, bootstrap service handles session creation
       if (environment.authMode === 'dual') {
         this.requestSessionCookie(stored).catch((error: unknown) => {
           console.warn('[Auth] Failed to obtain session cookie on startup:', error);
@@ -51,20 +50,46 @@ export class AuthService {
       } else {
         console.debug('[Auth] AUTH_MODE=cookie_only - skipping requestSessionCookie on startup');
       }
+    } else if (stored) {
+      console.log('[Auth] Stored JWT expired on startup — will fetch fresh token on first request');
+      this.clearToken();
+    }
+  }
+
+  /**
+   * Returns true if JWT is missing exp or already expired (30s skew).
+   */
+  private isTokenExpired(token: string): boolean {
+    try {
+      const parts = token.split('.');
+      if (parts.length < 2) return true;
+      const payloadJson = atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'));
+      const payload = JSON.parse(payloadJson) as { exp?: number };
+      if (!payload.exp) return true;
+      const now = Math.floor(Date.now() / 1000);
+      return payload.exp < now + 30;
+    } catch {
+      return true;
     }
   }
 
   /**
    * Get current JWT token (async)
-   * Fetches from backend if not available
+   * Fetches from backend if not available or expired
    * 
    * @returns Promise<string> - JWT token
    */
   async getToken(): Promise<string> {
-    // Return cached token if available
+    // Return cached token if available AND not expired
     const cached = this.tokenCache();
-    if (cached) {
+    if (cached && !this.isTokenExpired(cached)) {
       return cached;
+    }
+
+    // Stale token in memory/localStorage — clear so Android/PWA users recover
+    if (cached && this.isTokenExpired(cached)) {
+      console.log('[Auth] Cached JWT expired — fetching fresh token');
+      this.clearToken();
     }
 
     // If already fetching, return existing promise

@@ -134,15 +134,13 @@ export class AuthApiService {
         return of(normalized);
       }),
       catchError((error: unknown) => {
-        // Handle 401: clear stale token and retry ONCE
+        // Handle 401: clear stale token, bootstrap cookie, retry ONCE
         if (error instanceof HttpErrorResponse && error.status === 401) {
-          if (!environment.production) {
-            safeLog('WS-Ticket', '401 received, clearing token and retrying once', {
-              errorCode: (error.error as any)?.code
-            });
-          }
+          safeLog('WS-Ticket', '401 received, refreshing auth and retrying once', {
+            errorCode: (error.error as any)?.code
+          });
 
-          // Clear stale token
+          // Clear stale JWT and get a fresh one (+ session cookie via AuthService)
           this.authService.clearToken();
 
           // Retry once with fresh token
@@ -150,12 +148,10 @@ export class AuthApiService {
             switchMap(newToken => {
               const sessionId = this.getSessionId();
 
-              if (!environment.production) {
-                safeLog('WS-Ticket-Retry', 'Retrying with fresh token', {
-                  tokenPresent: !!newToken,
-                  sessionIdPresent: !!sessionId
-                });
-              }
+              safeLog('WS-Ticket-Retry', 'Retrying with fresh token', {
+                tokenPresent: !!newToken,
+                sessionIdPresent: !!sessionId
+              });
 
               const headers = new HttpHeaders({
                 'Authorization': `Bearer ${newToken}`,
@@ -165,7 +161,7 @@ export class AuthApiService {
               return this.http.post<WSTicketResult>(
                 `${this.baseUrl}/auth/ws-ticket`,
                 {},
-                { headers }
+                { headers, withCredentials: true }
               ).pipe(
                 switchMap((body) => {
                   if (body && (body as any).wsAvailable === false) {

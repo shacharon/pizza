@@ -8,6 +8,7 @@ import { httpLoggingMiddleware } from './middleware/httpLogging.middleware.js';
 import { errorMiddleware } from './middleware/error.middleware.js';
 import { securityHeadersMiddleware } from './middleware/security-headers.middleware.js';
 import { createRateLimiter } from './middleware/rate-limit.middleware.js';
+import { autoRefreshExpiredCookie } from './middleware/auto-refresh-expired-cookie.middleware.js';
 
 import { createV1Router } from './routes/v1/index.js';
 import { getExistingRedisClient } from './lib/redis/redis-client.js';
@@ -246,7 +247,11 @@ export function createApp() {
     });
   });
 
-  // 6. Routing
+  // 6. Auto-refresh expired cookies (for mobile users)
+  // Runs BEFORE auth so Android/iOS users with old 1h cookies get a fresh cookie silently
+  app.use('/api/v1', autoRefreshExpiredCookie);
+
+  // 7. Routing
   const v1Router = createV1Router();
   app.use('/api/v1', v1Router);
 

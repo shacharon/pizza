@@ -35,13 +35,8 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
     return next(req);
   }
 
-  // Skip if Authorization header already present (manual override)
-  if (req.headers.has('Authorization')) {
-    return next(req);
-  }
-
   // Skip auth endpoint itself (avoid circular dependency)
-  if (req.url.includes('/auth/token')) {
+  if (req.url.includes('/auth/token') || req.url.includes('/auth/bootstrap')) {
     return next(req);
   }
 
@@ -54,47 +49,40 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   // DUAL MODE: Attach JWT as before
   const authService = inject(AuthService);
 
-  // Get token and attach to request
-  return from(authService.getToken()).pipe(
-    switchMap(token => {
-      // Clone request with Authorization header
-      const cloned = req.clone({
-        setHeaders: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-      
-      return next(cloned);
-    }),
-    catchError((error: unknown) => {
-      // Handle 401 INVALID_TOKEN by refreshing token once
-      if (error instanceof HttpErrorResponse && error.status === 401) {
-        const errorCode = (error.error as any)?.code;
-        
-        if (errorCode === 'INVALID_TOKEN') {
-          console.log('[Auth] Received 401 INVALID_TOKEN, refreshing token...');
-          
-          // Refresh token and retry request once
-          return from(authService.refreshToken()).pipe(
-            switchMap(newToken => {
-              const retried = req.clone({
-                setHeaders: {
-                  Authorization: `Bearer ${newToken}`
-                }
-              });
-              
-              console.log('[Auth] Retrying request with new token');
-              return next(retried);
-            }),
-            catchError(refreshError => {
-              console.error('[Auth] Token refresh failed', refreshError);
-              return throwError(() => refreshError);
-            })
-          );
-        }
+  const sendWithToken = (token: string) => {
+    // Keep explicit Authorization if caller set one AND it's not stale —
+    // otherwise always attach a fresh token from AuthService.
+    if (req.headers.has('Authorization') && !req.headers.get('Authorization')?.includes('Bearer')) {
+      return next(req);
+    }
+    const cloned = req.clone({
+      setHeaders: {
+        Authorization: `Bearer ${token}`
       }
-      
-      // Re-throw other errors
+    });
+    return next(cloned);
+  };
+
+  // Get token and attach to request (getToken auto-refreshes expired JWTs)
+  return from(authService.getToken()).pipe(
+    switchMap(token => sendWithToken(token)),
+    catchError((error: unknown) => {
+      // Handle 401 by refreshing token once (covers INVALID_TOKEN and expired JWT)
+      if (error instanceof HttpErrorResponse && error.status === 401) {
+        console.log('[Auth] Received 401, refreshing token...');
+
+        return from(authService.refreshToken()).pipe(
+          switchMap(newToken => {
+            console.log('[Auth] Retrying request with new token');
+            return sendWithToken(newToken);
+          }),
+          catchError(refreshError => {
+            console.error('[Auth] Token refresh failed', refreshError);
+            return throwError(() => refreshError);
+          })
+        );
+      }
+
       return throwError(() => error);
     })
   );
