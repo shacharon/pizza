@@ -19,6 +19,7 @@
 import type { SearchRequest } from '../../types/search-request.dto.js';
 import type { Route2Context, RouteLLMMapping, GoogleMapsResult } from '../types.js';
 import { logger } from '../../../../lib/logger/structured-logger.js';
+import { logStageBoundary } from '../../../../lib/logging/pipeline-stage-log.js';
 
 // Import handlers
 import { executeTextSearch } from './google-maps/text-search.handler.js';
@@ -42,7 +43,7 @@ export async function executeGoogleMapsStage(
   const startTime = Date.now();
 
   // Log stage start
-  logger.info({
+  logStageBoundary({
     requestId,
     pipelineVersion: 'route2',
     stage: 'google_maps',
@@ -88,7 +89,7 @@ export async function executeGoogleMapsStage(
     const durationMs = Date.now() - startTime;
 
     // Log stage completion
-    logger.info({
+    logStageBoundary({
       requestId,
       pipelineVersion: 'route2',
       stage: 'google_maps',

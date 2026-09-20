@@ -11,6 +11,7 @@ import type { Route2Context, IntentResult, FinalSharedFilters } from '../../type
 import type { Message } from '../../../../../llm/types.js';
 import { buildLLMJsonSchema } from '../../../../../llm/types.js';
 import { logger } from '../../../../../lib/logger/structured-logger.js';
+import { logStageBoundary } from '../../../../../lib/logging/pipeline-stage-log.js';
 import { resolveLLM } from '../../../../../lib/llm/index.js';
 import { LandmarkMappingSchema, type LandmarkMapping } from './schemas.js';
 
@@ -99,7 +100,7 @@ export async function executeLandmarkMapper(
   const { requestId, traceId, sessionId, llmProvider } = context;
   const startTime = Date.now();
 
-  logger.info({
+  logStageBoundary({
     requestId,
     pipelineVersion: 'route2',
     stage: 'landmark_mapper',
@@ -238,7 +239,7 @@ export async function executeLandmarkMapper(
     const durationMs = Date.now() - startTime;
 
     // Debug dump
-    logger.info({
+    logStageBoundary({
       requestId,
       pipelineVersion: 'route2',
       stage: 'landmark_mapper',

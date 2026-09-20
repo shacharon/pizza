@@ -1,7 +1,7 @@
 /**
  * One INFO line per search for CloudWatch (prod).
  * Filter: event = "search_audit"
- * Does not replace the verbose local pipeline logs.
+ * Stage start/end: local by default; prod only if LOG_PIPELINE_STAGES=true.
  */
 
 import { logger } from '../../../lib/logger/structured-logger.js';

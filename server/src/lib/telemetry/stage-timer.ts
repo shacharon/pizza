@@ -1,15 +1,14 @@
 /**
  * Stage Timer Utility
  * Provides consistent timing instrumentation for pipeline stages
- * 
- * LOG NOISE REDUCTION:
- * - Major events (pipeline_selected, pipeline_completed/failed) always at INFO
- * - Stage events: INFO if >2000ms (slow threshold), DEBUG otherwise
+ *
+ * stage_started / stage_completed: local by default; prod only if LOG_PIPELINE_STAGES=true.
+ * Timings are always stored on context for search_audit.
  */
 
 import { performance } from 'perf_hooks';
 import type { Route2Context } from '../../services/search/route2/types.js';
-import { logger } from '../logger/structured-logger.js';
+import { logStageBoundary } from '../logging/pipeline-stage-log.js';
 import { SLOW_THRESHOLDS } from '../logging/sampling.js';
 
 export interface StageTimerExtra {
@@ -50,10 +49,7 @@ export function startStage(
     ctx.timings = {};
   }
 
-  // Major stages always INFO, others DEBUG
-  const logLevel = isMajorStage(stage) ? 'info' : 'debug';
-
-  logger[logLevel]({
+  logStageBoundary({
     requestId: ctx.requestId,
     ...(ctx.traceId && { traceId: ctx.traceId }),
     ...(ctx.sessionId && { sessionId: ctx.sessionId }),
@@ -86,11 +82,9 @@ export function endStage(
   const key = `${stage.replace(/_/g, '')}Ms` as keyof typeof ctx.timings;
   (ctx.timings as any)[key] = durationMs;
 
-  // Threshold-based logging: INFO if major stage OR slow (>2000ms)
   const isSlow = durationMs > SLOW_THRESHOLDS.STAGE;
-  const logLevel = isMajorStage(stage) || isSlow ? 'info' : 'debug';
 
-  logger[logLevel]({
+  logStageBoundary({
     requestId: ctx.requestId,
     ...(ctx.traceId && { traceId: ctx.traceId }),
     ...(ctx.sessionId && { sessionId: ctx.sessionId }),

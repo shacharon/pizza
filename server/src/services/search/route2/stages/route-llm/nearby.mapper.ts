@@ -11,6 +11,7 @@ import type { Route2Context, IntentResult, FinalSharedFilters } from '../../type
 import type { Message } from '../../../../../llm/types.js';
 import { buildLLMJsonSchema } from '../../../../../llm/types.js';
 import { logger } from '../../../../../lib/logger/structured-logger.js';
+import { logStageBoundary } from '../../../../../lib/logging/pipeline-stage-log.js';
 import { NearbyMappingSchema, type NearbyMapping } from './schemas.js';
 
 const NEARBY_MAPPER_VERSION = 'nearby_mapper_v1';
@@ -86,7 +87,7 @@ export async function executeNearbyMapper(
     throw new Error('NEARBY route requires userLocation in context');
   }
 
-  logger.info({
+  logStageBoundary({
     requestId,
     pipelineVersion: 'route2',
     stage: 'nearby_mapper',
@@ -230,7 +231,7 @@ export async function executeNearbyMapper(
 
     const durationMs = Date.now() - startTime;
 
-    logger.info({
+    logStageBoundary({
       requestId,
       pipelineVersion: 'route2',
       stage: 'nearby_mapper',
