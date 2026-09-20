@@ -16,7 +16,7 @@ import { searchJobStore } from '../../services/search/job-store/index.js';
 import { hashSessionId, sanitizePhotoUrls } from '../../utils/security.utils.js';
 import { wsManager } from '../../server.js';
 import { detectQueryLanguage } from '../../services/search/route2/utils/query-language-detector.js';
-import { getClientIp } from '../../lib/logging/http-response-log.js';
+import { getClientIp } from '../../lib/http/client-ip.js';
 
 // Extracted modules
 import { executeBackgroundSearch } from './search.async-execution.js';
