@@ -6,6 +6,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { logger } from '../lib/logger/structured-logger.js';
 import jwt from 'jsonwebtoken';
+import { isExpiredTokenError } from '../lib/logging/http-response-log.js';
 
 /**
  * Fail-fast JWT secret resolver (TypeScript-safe)
@@ -125,11 +126,13 @@ export function authenticateJWT(
 
     next();
   } catch (error) {
-    logger.warn(
+    const expired = isExpiredTokenError(error);
+    logger[expired ? 'debug' : 'warn'](
       {
         traceId: req.traceId,
         path: req.path,
-        error: error instanceof Error ? error.message : 'unknown'
+        error: error instanceof Error ? error.message : 'unknown',
+        event: expired ? 'auth_jwt_expired' : 'auth_failed_invalid_jwt'
       },
       '[Auth] JWT verification failed'
     );

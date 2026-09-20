@@ -16,6 +16,7 @@ import { searchJobStore } from '../../services/search/job-store/index.js';
 import { hashSessionId, sanitizePhotoUrls } from '../../utils/security.utils.js';
 import { wsManager } from '../../server.js';
 import { detectQueryLanguage } from '../../services/search/route2/utils/query-language-detector.js';
+import { getClientIp } from '../../lib/logging/http-response-log.js';
 
 // Extracted modules
 import { executeBackgroundSearch } from './search.async-execution.js';
@@ -51,15 +52,15 @@ router.post('/', async (req: Request, res: Response) => {
     const authenticatedSessionId = getAuthenticatedSession(req);
 
     // 3. Define Context
+    const clientIp = getClientIp(req);
     const route2Context: Route2Context = {
       requestId,
       startTime: Date.now(),
       llmProvider: llm,
       userLocation: queryData.userLocation ?? null,
-      //   debug: { stopAfter: 'intent' },   // 👈 זו השורה
-      // Fix: Only include optional properties if they actually have a value
       ...(req.traceId && { traceId: req.traceId }),
-      ...(authenticatedSessionId && { sessionId: authenticatedSessionId })
+      ...(authenticatedSessionId && { sessionId: authenticatedSessionId }),
+      ...(clientIp && { clientIp })
     };
 
 

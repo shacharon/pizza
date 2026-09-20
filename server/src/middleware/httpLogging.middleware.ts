@@ -12,12 +12,14 @@
  * Log Noise Reduction:
  * - OPTIONS requests: only log errors (4xx/5xx) or 1% sample
  * - Regular requests: DEBUG level (INFO for errors/warnings)
- * - Responses: DEBUG level (ERROR for 5xx, WARN for 4xx)
+ * - Responses: DEBUG for 2xx; ERROR for 5xx; WARN for 4xx on real API paths
+ * - Scanner 4xx (/, phpunit, .env, favicon): not logged (was filling CloudWatch)
  * - Slow requests (>5000ms): always INFO regardless of method
  */
 
 import { Request, Response, NextFunction } from 'express';
 import { shouldSampleRandom, SAMPLING_RATES, SLOW_THRESHOLDS } from '../lib/logging/sampling.js';
+import { resolveHttpResponseLog } from '../lib/logging/http-response-log.js';
 
 export function httpLoggingMiddleware(
   req: Request,
@@ -43,33 +45,32 @@ export function httpLoggingMiddleware(
   // Capture response finish
   res.on('finish', () => {
     const duration = Date.now() - startTime;
+    const decision = resolveHttpResponseLog({
+      path: req.path,
+      originalUrl: req.originalUrl,
+      statusCode: res.statusCode,
+      durationMs: duration,
+      slowThresholdMs: SLOW_THRESHOLDS.HTTP,
+    });
     const isError = res.statusCode >= 500;
-    const isWarn = res.statusCode >= 400 && res.statusCode < 500;
-    const isSlow = duration > SLOW_THRESHOLDS.HTTP;
-    
-    // Determine log level
-    let level: 'error' | 'warn' | 'info' | 'debug' = 'debug';
-    if (isError) {
-      level = 'error';
-    } else if (isWarn) {
-      level = 'warn';
-    } else if (isSlow) {
-      // Slow requests always INFO (even if 2xx)
-      level = 'info';
+    const isClientError = res.statusCode >= 400 && res.statusCode < 500;
+
+    if (decision.skip) {
+      return;
     }
-    
+
     // OPTIONS: only log errors or 1% sample
-    const shouldLogOptions = isOptions && (isError || isWarn || shouldSampleRandom(SAMPLING_RATES.LOW));
+    const shouldLogOptions = isOptions && (isError || isClientError || shouldSampleRandom(SAMPLING_RATES.LOW));
     const shouldLogRegular = !isOptions;
-    
+
     if (shouldLogOptions || shouldLogRegular) {
-      req.log[level]({
+      req.log[decision.level]({
         method: req.method,
         path: req.path,
         statusCode: res.statusCode,
         durationMs: duration,
-        ...(isOptions && level === 'debug' && { sampled: true }),
-        ...(isSlow && { slow: true })
+        ...(isOptions && decision.level === 'debug' && { sampled: true }),
+        ...(duration > SLOW_THRESHOLDS.HTTP && { slow: true })
       }, 'HTTP response');
     }
   });

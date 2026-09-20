@@ -5,17 +5,26 @@
 
 import crypto from 'crypto';
 
+const QUERY_PREVIEW_MAX = 200;
+
 /**
- * Sanitize a user query for logging
- * Never logs the raw query, only length and hash
+ * Length + hash always. Preview is truncated plaintext for CloudWatch search-audit
+ * (food queries, not secrets). Tokens/cookies stay in logger redact.
  */
 export function sanitizeQuery(query: string): {
   queryLen: number;
   queryHash: string;
+  queryPreview: string;
 } {
+  const normalized = query.replace(/\s+/g, ' ').trim();
+  const queryPreview =
+    normalized.length <= QUERY_PREVIEW_MAX
+      ? normalized
+      : `${normalized.slice(0, QUERY_PREVIEW_MAX)}…`;
   return {
     queryLen: query.length,
-    queryHash: crypto.createHash('sha256').update(query).digest('hex').substring(0, 12)
+    queryHash: crypto.createHash('sha256').update(query).digest('hex').substring(0, 12),
+    queryPreview,
   };
 }
 

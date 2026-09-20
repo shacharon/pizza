@@ -39,6 +39,7 @@ import { handlePipelineError } from './orchestrator.error.js';
 import { deriveEarlyRoutingContext, toRequestLanguage, upgradeToFinalFilters } from './orchestrator.early-context.js';
 import { generateAndPublishAssistantPromise } from './assistant/assistant-integration.js';
 import type { AssistantSummaryContext } from './assistant/assistant-llm.service.js';
+import { initSearchAudit, logSearchAudit } from './search-audit.js';
 
 // Extracted helpers
 import { shouldDebugStop, resolveSessionId, resolveAssistantLanguage } from './orchestrator.helpers.js';
@@ -90,7 +91,13 @@ async function searchRoute2Internal(
   }
   const { requestId, startTime } = ctx;
   const sessionId = resolveSessionId(request, ctx);
-  const { queryLen, queryHash } = sanitizeQuery(request.query);
+  const { queryLen, queryHash, queryPreview } = sanitizeQuery(request.query);
+  initSearchAudit(ctx, request);
+  if (ctx.searchAudit) {
+    ctx.searchAudit.queryLen = queryLen;
+    ctx.searchAudit.queryHash = queryHash;
+    ctx.searchAudit.queryPreview = queryPreview;
+  }
 
   logger.info(
     { requestId, pipelineVersion: 'route2', event: 'pipeline_selected', queryLen, queryHash },
@@ -122,6 +129,8 @@ async function searchRoute2Internal(
     try {
       const { userRegionCode, source: userRegionSource } = await resolveUserRegionCode(ctx);
       ctx.userRegionCode = userRegionCode;
+      ctx.userRegionSource = userRegionSource;
+      if (ctx.searchAudit) ctx.searchAudit.userRegionSource = userRegionSource;
 
       logger.info(
         {
@@ -147,6 +156,11 @@ async function searchRoute2Internal(
 
     // STAGE 1: GATE2
     const gateResult = await executeGate2Stage(request, ctx);
+    if (ctx.searchAudit && gateResult.gate) {
+      ctx.searchAudit.gateFoodSignal = gateResult.gate.foodSignal;
+      ctx.searchAudit.gateRoute = gateResult.gate.route;
+      ctx.searchAudit.gateConfidence = gateResult.gate.confidence;
+    }
 
     // Debug stop after gate2
     if (shouldDebugStop(ctx, 'gate2')) {
@@ -200,6 +214,12 @@ async function searchRoute2Internal(
 
     // STAGE 2: INTENT
     let intentDecision = await executeIntentStage(request, ctx);
+    if (ctx.searchAudit) {
+      ctx.searchAudit.intentRoute = intentDecision.route;
+      ctx.searchAudit.intentReason = intentDecision.reason;
+      ctx.searchAudit.intentLanguage = intentDecision.language;
+      ctx.searchAudit.cityText = intentDecision.cityText ?? null;
+    }
 
     // Debug stop after intent
     if (shouldDebugStop(ctx, 'intent')) {
@@ -615,13 +635,16 @@ export async function searchRoute2(
 
   const abortRef: AbortControllerRef = { current: null };
   try {
-    return await withTimeout(
+    const response = await withTimeout(
       searchRoute2Internal(request, ctx, ws, abortRef),
       route2Config.PIPELINE_TIMEOUT_MS,
       'route2_pipeline',
       () => abortRef.current?.abort('route2_timeout')
     );
+    logSearchAudit(request, ctx, response);
+    return response;
   } catch (error) {
+    logSearchAudit(request, ctx, null, error);
     // Re-throw timeout errors with more context
     if (error && typeof error === 'object' && 'name' in error && error.name === 'TimeoutError') {
       logger.error({

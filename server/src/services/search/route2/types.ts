@@ -55,6 +55,27 @@ export interface Route2Context {
     postFilterMs?: number;
     responseBuildMs?: number;
   };
+  /** Client IP from ALB X-Forwarded-For (search-audit only). */
+  clientIp?: string;
+  userRegionSource?: string;
+  /** Filled during the pipeline; one CloudWatch line at the end. */
+  searchAudit?: SearchAuditState;
+}
+
+/** Compact prod fields for event=search_audit */
+export interface SearchAuditState {
+  finishedLogged?: boolean;
+  queryPreview?: string;
+  queryHash?: string;
+  queryLen?: number;
+  userRegionSource?: string;
+  gateFoodSignal?: string;
+  gateRoute?: string;
+  gateConfidence?: number;
+  intentRoute?: string;
+  intentReason?: string;
+  intentLanguage?: string;
+  cityText?: string | null;
 }
 
 /**

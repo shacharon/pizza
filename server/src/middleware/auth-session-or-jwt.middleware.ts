@@ -20,6 +20,7 @@ import {
   verifySessionCookie,
   extractSessionCookieFromHeader
 } from '../lib/session-cookie/session-cookie.service.js';
+import { isExpiredTokenError } from '../lib/logging/http-response-log.js';
 
 const config = getConfig();
 
@@ -215,12 +216,13 @@ export function authSessionOrJwt(
 
     next();
   } catch (error) {
-    logger.warn(
+    const expired = isExpiredTokenError(error);
+    logger[expired ? 'debug' : 'warn'](
       {
         traceId,
         path: req.path,
         error: error instanceof Error ? error.message : 'unknown',
-        event: 'auth_failed_invalid_jwt'
+        event: expired ? 'auth_jwt_expired' : 'auth_failed_invalid_jwt'
       },
       '[Auth] Both session cookie and JWT verification failed'
     );
