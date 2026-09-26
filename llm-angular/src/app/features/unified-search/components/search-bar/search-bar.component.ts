@@ -26,14 +26,25 @@ const MIN_AUTO_SUBMIT_LENGTH = 2;
 const TEXTAREA_MIN_HEIGHT_PX = 24;
 const TEXTAREA_MAX_HEIGHT_PX = 144;
 
-/** Example searches typed into the empty box so people see how to ask. */
-const SEARCH_EXAMPLE_PROMPTS = [
-  'pizza near me, open now',
-  'quiet sushi for two',
-  'gluten-free brunch downtown',
-  'spicy ramen under $20',
+/** Example searches typed into the empty box: two Hebrew, two English, two Arabic, two Russian. */
+export const SEARCH_EXAMPLE_PROMPTS = [
+  'מסעדה איטלקית, 300 מטר, בשנקין',
+  'המבורגר כשר שאפשר ללכת אליו',
+  'Italian restaurant, 300 meters away, on Shenkin',
+  'kosher burger I can walk to',
+  'مطعم إيطالي، على بعد 300 متر، في شنكين',
+  'برغر كوشر أقدر أمشي إليه',
+  'итальянский ресторан в 300 метрах, на Шенкин',
+  'кошерный бургер, до которого можно дойти',
+  'Italian restaurant, 300 meters away, on Shenkin',
   'kosher burger I can walk to',
 ] as const;
+
+export function searchExampleDir(index: number): 'rtl' | 'ltr' {
+  const count = SEARCH_EXAMPLE_PROMPTS.length;
+  const text = SEARCH_EXAMPLE_PROMPTS[((index % count) + count) % count] ?? '';
+  return /^[\u0590-\u08FF]/.test(text) ? 'rtl' : 'ltr';
+}
 
 const TYPEWRITER_TYPE_MS = 48;
 const TYPEWRITER_DELETE_MS = 24;
@@ -123,6 +134,7 @@ export class SearchBarComponent implements OnDestroy {
   readonly query = signal('');
   readonly submitted = signal(false);
   readonly typedPlaceholder = signal('');
+  readonly hintDir = signal<'rtl' | 'ltr'>('rtl');
 
   @ViewChild('searchInput') searchInputRef: ElementRef<HTMLTextAreaElement> | undefined;
 
@@ -254,6 +266,7 @@ export class SearchBarComponent implements OnDestroy {
 
     const next = stepTypewriter(this.typewriter, SEARCH_EXAMPLE_PROMPTS);
     this.typewriter = next.state;
+    this.hintDir.set(searchExampleDir(next.state.exampleIndex));
     this.typedPlaceholder.set(next.state.text);
     this.cdr.markForCheck();
     this.scheduleTypewriter(next.delay);

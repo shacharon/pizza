@@ -53,6 +53,11 @@
   overflow: hidden;
   pointer-events: none;
   user-select: none;
+
+  &.rtl {
+    direction: rtl;
+    text-align: right;
+  }
 }
 
 .typewriter-caret {

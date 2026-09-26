@@ -16,7 +16,7 @@
           aria-label="Search for restaurants"
         ></textarea>
         @if (showTypewriterHint()) {
-        <span class="typewriter-hint" aria-hidden="true">{{ typedPlaceholder() }}<span class="typewriter-caret"></span></span>
+        <span class="typewriter-hint" [class.rtl]="hintDir() === 'rtl'" [attr.dir]="hintDir()" aria-hidden="true">{{ typedPlaceholder() }}<span class="typewriter-caret"></span></span>
         }
         @if (query() && !loading()) {
         <button

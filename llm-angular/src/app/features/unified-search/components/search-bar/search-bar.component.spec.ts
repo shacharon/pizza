@@ -4,7 +4,7 @@
 
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormsModule } from '@angular/forms';
-import { SearchBarComponent, stepTypewriter } from './search-bar.component';
+import { SearchBarComponent, SEARCH_EXAMPLE_PROMPTS, searchExampleDir, stepTypewriter } from './search-bar.component';
 
 describe('SearchBarComponent', () => {
   let component: SearchBarComponent;
@@ -18,6 +18,24 @@ describe('SearchBarComponent', () => {
     fixture = TestBed.createComponent(SearchBarComponent);
     component = fixture.componentInstance;
     fixture.detectChanges();
+  });
+
+  it('cycles two Hebrew, two English, two Arabic, two Russian, then Hebrew again', () => {
+    expect(SEARCH_EXAMPLE_PROMPTS[0]).toContain('בשנקין');
+    expect(SEARCH_EXAMPLE_PROMPTS[1]).toContain('כשר');
+    expect(SEARCH_EXAMPLE_PROMPTS[2]).toContain('Shenkin');
+    expect(SEARCH_EXAMPLE_PROMPTS[3]).toContain('kosher burger');
+    expect(SEARCH_EXAMPLE_PROMPTS[4]).toContain('شنكين');
+    expect(SEARCH_EXAMPLE_PROMPTS[5]).toContain('كوشر');
+    expect(SEARCH_EXAMPLE_PROMPTS[6]).toContain('Шенкин');
+    expect(SEARCH_EXAMPLE_PROMPTS[7]).toContain('кошерный');
+    expect(SEARCH_EXAMPLE_PROMPTS[8]).toContain('Shenkin');
+    expect(SEARCH_EXAMPLE_PROMPTS[9]).toContain('kosher burger');
+    expect(SEARCH_EXAMPLE_PROMPTS[10 % SEARCH_EXAMPLE_PROMPTS.length]).toBe(SEARCH_EXAMPLE_PROMPTS[0]);
+    expect(searchExampleDir(0)).toBe('rtl');
+    expect(searchExampleDir(2)).toBe('ltr');
+    expect(searchExampleDir(4)).toBe('rtl');
+    expect(searchExampleDir(6)).toBe('ltr');
   });
 
   it('should create', () => {
