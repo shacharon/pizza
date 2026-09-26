@@ -1,5 +1,7 @@
 :host {
-    display: block;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
     /* PWA fixes: Ensure app-root doesn't interfere with sticky or scrolling */
     width: 100%;
     max-width: 100%;
@@ -35,7 +37,41 @@
 }
 
 .container {
+    flex: 1;
     max-width: 960px;
+    width: 100%;
     margin: 16px auto;
     padding: 0 16px;
+}
+
+.site-footer {
+    padding: 1.25rem 1rem 1.5rem;
+}
+
+.site-footer-nav {
+    max-width: 960px;
+    margin: 0 auto;
+    display: flex;
+    justify-content: center;
+    gap: 1.25rem;
+}
+
+.site-footer-nav button {
+    border: 0;
+    padding: 0;
+    background: none;
+    color: #6b7280;
+    font: inherit;
+    font-size: 0.875rem;
+    cursor: pointer;
+}
+
+.site-footer-nav button:hover {
+    color: #111827;
+    text-decoration: underline;
+}
+
+.site-footer-nav .feedback {
+    color: #c2410c;
+    font-weight: 600;
 }

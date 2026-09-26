@@ -17,6 +17,16 @@ export const routes: Routes = [
         loadComponent: () => import('./features/restaurant-details/restaurant-details.component')
             .then(m => m.RestaurantDetailsComponent)
     },
+    {
+        path: 'privacy',
+        loadComponent: () => import('./legal/privacy-page.component')
+            .then(m => m.PrivacyPageComponent)
+    },
+    {
+        path: 'terms',
+        loadComponent: () => import('./legal/terms-page.component')
+            .then(m => m.TermsPageComponent)
+    },
     { path: '**', redirectTo: 'search' }
 ];
 

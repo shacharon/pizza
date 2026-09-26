@@ -7,3 +7,11 @@
   <router-outlet></router-outlet>
   <p *ngIf="false">Welcome</p>
 </main>
+<footer class="site-footer">
+  <nav class="site-footer-nav" aria-label="Site">
+    <button type="button" (click)="notices.open('privacy')">Privacy</button>
+    <button type="button" (click)="notices.open('terms')">Terms</button>
+    <button type="button" class="feedback" (click)="notices.open('feedback')">Feedback</button>
+  </nav>
+</footer>
+<app-site-notices #notices />

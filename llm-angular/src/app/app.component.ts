@@ -2,12 +2,13 @@ import { Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterOutlet } from '@angular/router';
 import { LanguageService } from './core/services/language.service';
+import { SiteNoticesComponent } from './legal/site-notices.component';
 
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, RouterOutlet],
+  imports: [CommonModule, RouterOutlet, SiteNoticesComponent],
   templateUrl: './app.component.html',
   styleUrls: ['./app.component.scss']
 })

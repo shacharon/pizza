@@ -38,6 +38,7 @@ export const ENDPOINTS = {
   
   // Analytics v1
   ANALYTICS_EVENTS: `${API_BASE}/analytics/events`,
+  FEEDBACK: `${API_BASE}/feedback`,
   ANALYTICS_STATS: `${API_BASE}/analytics/stats`,
   
   // Dialogue v1

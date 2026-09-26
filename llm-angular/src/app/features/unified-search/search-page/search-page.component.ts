@@ -23,10 +23,8 @@ import { PwaInstallService } from '../../../services/pwa-install.service';
 import { I18nService } from '../../../core/services/i18n.service';
 import { InputStateMachine } from '../../../services/input-state-machine.service';
 import {
-  serializeSearchParams,
   deserializeSearchParams,
-  filterChipIdsFromParams,
-  type SearchParamsState
+  filterChipIdsFromParams
 } from './search-params.util';
 import {
   groupFiltersByEnforcement,
@@ -74,20 +72,9 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   readonly i18n = inject(I18nService);
 
   private cleanupInterval?: number;
-  private urlPushTimeoutId: ReturnType<typeof setTimeout> | null = null;
-  private readonly urlPushDebounceMs = 250;
-  private skipNextUrlPush = false;
   private paramMapSub?: { unsubscribe(): void };
 
   constructor() {
-    // Push URL when search state changes (debounced). Back/forward is handled by queryParamMap subscription.
-    effect(() => {
-      this.facade.query();
-      this.stateHandler.currentSort();
-      this.stateHandler.activeFilters();
-      this.locationService.location();
-      this.scheduleUrlUpdate();
-    });
     // Reset SUMMARY toggle when search request changes so new SUMMARY starts collapsed
     effect(() => {
       this.facade.requestId();
@@ -502,19 +489,20 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     if (typeof window !== 'undefined') {
       this.paramMapSub = this.activatedRoute.queryParamMap.subscribe(paramMap => {
-        if (this.skipNextUrlPush) {
-          this.skipNextUrlPush = false;
-          return;
-        }
         const q = paramMap.get('q')?.trim();
-        if (!q) return;
-        const deserialized = deserializeSearchParams(paramMap);
-        this.stateHandler.setSort(deserialized.sort ?? 'BEST_MATCH');
-        this.stateHandler.setActiveFilterIds(filterChipIdsFromParams(deserialized));
-        // Restore UI state only; do NOT auto-submit search (refresh/rehydration)
-        this.facade.restoreStateFromParams(q);
-        this.skipNextUrlPush = true;
-        setTimeout(() => { this.skipNextUrlPush = false; }, 500);
+        if (q) {
+          const deserialized = deserializeSearchParams(paramMap);
+          this.stateHandler.setSort(deserialized.sort ?? 'BEST_MATCH');
+          this.stateHandler.setActiveFilterIds(filterChipIdsFromParams(deserialized));
+          // Restore the box once from an old link. The search itself is the POST body.
+          this.facade.restoreStateFromParams(q);
+        }
+        if (paramMap.keys.length === 0) return;
+        void this.router.navigate([], {
+          relativeTo: this.activatedRoute,
+          queryParams: {},
+          replaceUrl: true
+        });
       });
     }
     // Setup periodic cleanup of expired actions (every minute)
@@ -527,67 +515,7 @@ export class SearchPageComponent implements OnInit, OnDestroy {
     if (this.cleanupInterval != null) {
       clearInterval(this.cleanupInterval);
     }
-    if (this.urlPushTimeoutId != null) {
-      clearTimeout(this.urlPushTimeoutId);
-    }
     this.paramMapSub?.unsubscribe();
-  }
-
-  /** Debounced URL update: push current search state to query params (replaceUrl: false for history). */
-  private scheduleUrlUpdate(): void {
-    if (typeof window === 'undefined') return;
-    if (this.urlPushTimeoutId != null) clearTimeout(this.urlPushTimeoutId);
-    this.urlPushTimeoutId = setTimeout(() => {
-      this.urlPushTimeoutId = null;
-      if (this.skipNextUrlPush) return;
-      const loc = this.locationService.location();
-      const state: SearchParamsState = {
-        query: this.facade.query() || '',
-        openNow: this.openNowFromActiveFilters(),
-        priceLevel: this.priceLevelFromActiveFilters(),
-        dietary: this.dietaryFromActiveFilters(),
-        sort: this.stateHandler.currentSort(),
-        lat: loc?.lat,
-        lng: loc?.lng
-      };
-      const nextParams = serializeSearchParams(state);
-      const current = this.activatedRoute.snapshot.queryParamMap;
-      const nextKeys = Object.keys(nextParams);
-      const same = nextKeys.length === current.keys.length &&
-        nextKeys.every(k => current.get(k) === nextParams[k]);
-      if (same) return;
-      this.skipNextUrlPush = true;
-      this.router.navigate([], {
-        relativeTo: this.activatedRoute,
-        queryParams: nextParams,
-        queryParamsHandling: 'merge',
-        replaceUrl: false
-      });
-    }, this.urlPushDebounceMs);
-  }
-
-  private openNowFromActiveFilters(): boolean | undefined {
-    const ids = this.stateHandler.activeFilters();
-    if (ids.includes('opennow')) return true;
-    if (ids.includes('closednow')) return false;
-    return undefined;
-  }
-
-  private priceLevelFromActiveFilters(): number | undefined {
-    const ids = this.stateHandler.activeFilters();
-    for (const id of ids) {
-      if (id.startsWith('price<=')) {
-        const n = parseInt(id.replace('price<=', ''), 10);
-        if (!isNaN(n) && n >= 1 && n <= 4) return n;
-      }
-    }
-    return undefined;
-  }
-
-  private dietaryFromActiveFilters(): string[] | undefined {
-    const ids = this.stateHandler.activeFilters();
-    const dietary = ids.filter(id => ['glutenfree', 'kosher', 'vegan'].includes(id));
-    return dietary.length ? dietary : undefined;
   }
 
   // Phase 6: Recommendation click handler
@@ -755,8 +683,8 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   onWindowScroll(): void {
     const scrollTop = window.scrollY || document.documentElement.scrollTop;
     
-    // Collapse hero when scrolled more than 8px
-    this.isHeroCollapsed.set(scrollTop > 8);
+    // Keep the logo and headline on screen through a short scroll, then ease them away.
+    this.isHeroCollapsed.set(scrollTop > 160);
   }
 }
 

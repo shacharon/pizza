@@ -31,6 +31,7 @@ import { getConfig } from '../../config/env.js';
 import { getFeatureFlags } from '../../config/feature-flags.js';
 import { getExistingRedisClient } from '../../lib/redis/redis-client.js';
 import { logger } from '../../lib/logger/structured-logger.js';
+import { sendFeedbackEmail } from '../../services/feedback/send-feedback-email.js';
 
 export function createV1Router(): Router {
   const router = Router();
@@ -38,6 +39,29 @@ export function createV1Router(): Router {
   // Feature flags for frontend (public, no auth)
   router.get('/flags', (req: Request, res: Response) => {
     res.json(getFeatureFlags());
+  });
+
+  const feedbackRateLimiter = createRateLimiter({
+    windowMs: 60 * 1000,
+    maxRequests: 10,
+    keyPrefix: 'feedback'
+  });
+  router.post('/feedback', feedbackRateLimiter, async (req: Request, res: Response) => {
+    const mood = req.body?.mood;
+    const note = String(req.body?.note ?? '').trim().slice(0, 500);
+    if (mood !== 'like' && mood !== 'work') {
+      res.status(400).json({ error: 'mood required' });
+      return;
+    }
+    logger.info({ event: 'site_feedback', mood, note }, '[Feedback] note');
+    try {
+      await sendFeedbackEmail(mood, note);
+    } catch (err) {
+      logger.error({ err, event: 'site_feedback_email_failed', mood }, '[Feedback] email failed');
+      res.status(502).json({ error: 'email failed' });
+      return;
+    }
+    res.status(200).json({ received: true });
   });
 
   // P0 Security: Search rate limiting (100 req/min per IP+session)
