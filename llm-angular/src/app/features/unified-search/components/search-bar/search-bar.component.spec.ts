@@ -4,7 +4,7 @@
 
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormsModule } from '@angular/forms';
-import { SearchBarComponent } from './search-bar.component';
+import { SearchBarComponent, stepTypewriter } from './search-bar.component';
 
 describe('SearchBarComponent', () => {
   let component: SearchBarComponent;
@@ -24,9 +24,31 @@ describe('SearchBarComponent', () => {
     expect(component).toBeTruthy();
   });
 
-  it('should have default placeholder', () => {
-    const input = fixture.nativeElement.querySelector('.search-input');
-    expect(input.placeholder).toBe('Search for restaurants...');
+  it('should type an example, hold, then delete into the next example', () => {
+    let state = { exampleIndex: 0, charIndex: 0, phase: 'typing' as const, text: '' };
+    let delay = 0;
+    const first = 'pizza near me, open now';
+    for (let i = 0; i < first.length; i++) {
+      const next = stepTypewriter(state, [first, 'quiet sushi for two']);
+      state = next.state;
+      delay = next.delay;
+    }
+    expect(state.text).toBe(first);
+    expect(state.phase).toBe('holding');
+    expect(delay).toBe(5000);
+
+    const afterHold = stepTypewriter(state, [first, 'quiet sushi for two']);
+    expect(afterHold.state.phase).toBe('deleting');
+
+    state = afterHold.state;
+    while (state.text.length > 0 || state.phase === 'deleting') {
+      const next = stepTypewriter(state, [first, 'quiet sushi for two']);
+      state = next.state;
+      if (state.phase === 'typing' && state.text === '') break;
+    }
+    const typed = stepTypewriter(state, [first, 'quiet sushi for two']);
+    expect(typed.state.text).toBe('q');
+    expect(typed.state.exampleIndex).toBe(1);
   });
 
   it('should accept custom placeholder', () => {

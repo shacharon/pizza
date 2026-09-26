@@ -40,7 +40,39 @@
   min-width: 0;
 }
 
+.typewriter-hint {
+  position: absolute;
+  top: 12px;
+  inset-inline-start: 16px;
+  inset-inline-end: 48px;
+  z-index: 2;
+  color: #64748b;
+  font-size: 1rem;
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+}
+
+.typewriter-caret {
+  display: inline-block;
+  width: 1px;
+  height: 1.05em;
+  margin-inline-start: 1px;
+  background: #64748b;
+  vertical-align: text-bottom;
+  animation: typewriter-blink 1s steps(1) infinite;
+}
+
+@keyframes typewriter-blink {
+  0%, 50% { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}
+
 .composer-input {
+  position: relative;
+  z-index: 1;
   width: 100%;
   min-height: 24px;
   max-height: 144px;
@@ -257,6 +289,12 @@
   .composer-input {
     min-height: 24px;
     max-height: 132px;
+    font-size: 16px;
+  }
+
+  .typewriter-hint {
+    top: 10px;
+    inset-inline-start: 12px;
     font-size: 16px;
   }
 

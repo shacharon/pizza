@@ -15,6 +15,9 @@
           [class.has-clear]="query() && !loading()"
           aria-label="Search for restaurants"
         ></textarea>
+        @if (showTypewriterHint()) {
+        <span class="typewriter-hint" aria-hidden="true">{{ typedPlaceholder() }}<span class="typewriter-caret"></span></span>
+        }
         @if (query() && !loading()) {
         <button
           type="button"

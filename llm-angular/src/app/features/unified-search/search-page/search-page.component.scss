@@ -54,7 +54,7 @@
   position: sticky;
   top: 0;
   z-index: 50;
-  background: transparent;
+  background: #f9fafb;
   padding: 0.75rem 1rem;
   padding-top: max(0.75rem, env(safe-area-inset-top)); // Safe area for notch
   // No border/shadow: composer is the single primary surface

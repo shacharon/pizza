@@ -7,6 +7,7 @@ import {
   computed,
   ChangeDetectionStrategy,
   ChangeDetectorRef,
+  NgZone,
   inject,
   DestroyRef,
   OnDestroy,
@@ -24,6 +25,70 @@ const MIN_AUTO_SUBMIT_LENGTH = 2;
 
 const TEXTAREA_MIN_HEIGHT_PX = 24;
 const TEXTAREA_MAX_HEIGHT_PX = 144;
+
+/** Example searches typed into the empty box so people see how to ask. */
+const SEARCH_EXAMPLE_PROMPTS = [
+  'pizza near me, open now',
+  'quiet sushi for two',
+  'gluten-free brunch downtown',
+  'spicy ramen under $20',
+  'kosher burger I can walk to',
+] as const;
+
+const TYPEWRITER_TYPE_MS = 48;
+const TYPEWRITER_DELETE_MS = 24;
+const TYPEWRITER_HOLD_MS = 5000;
+const TYPEWRITER_GAP_MS = 400;
+const TYPEWRITER_START_DELAY_MS = 280;
+
+type TypewriterPhase = 'typing' | 'holding' | 'deleting';
+
+interface TypewriterState {
+  exampleIndex: number;
+  charIndex: number;
+  phase: TypewriterPhase;
+  text: string;
+}
+
+/** One typewriter frame: type a letter, hold, delete a letter, then the next example. */
+export function stepTypewriter(
+  state: TypewriterState,
+  examples: readonly string[],
+): { state: TypewriterState; delay: number } {
+  const example = examples[state.exampleIndex] ?? '';
+  if (state.phase === 'holding') {
+    return { state: { ...state, phase: 'deleting' }, delay: TYPEWRITER_DELETE_MS };
+  }
+  if (state.phase === 'deleting') {
+    const charIndex = Math.max(0, state.charIndex - 1);
+    if (charIndex === 0) {
+      return {
+        state: {
+          exampleIndex: (state.exampleIndex + 1) % examples.length,
+          charIndex: 0,
+          phase: 'typing',
+          text: '',
+        },
+        delay: TYPEWRITER_GAP_MS,
+      };
+    }
+    return {
+      state: { ...state, charIndex, text: example.slice(0, charIndex) },
+      delay: TYPEWRITER_DELETE_MS,
+    };
+  }
+  const charIndex = Math.min(example.length, state.charIndex + 1);
+  const done = charIndex >= example.length;
+  return {
+    state: {
+      ...state,
+      charIndex,
+      phase: done ? 'holding' : 'typing',
+      text: example.slice(0, charIndex),
+    },
+    delay: done ? TYPEWRITER_HOLD_MS : TYPEWRITER_TYPE_MS,
+  };
+}
 
 function stripTriggerFromStart(text: string): string {
   let s = text.trim();
@@ -46,7 +111,8 @@ function stripTriggerFromStart(text: string): string {
 })
 export class SearchBarComponent implements OnDestroy {
   readonly value = input<string>('');
-  readonly placeholder = input('Tell me what you want to eat…');
+  /** Static placeholder. Empty means cycle example searches with a typewriter. */
+  readonly placeholder = input('');
   readonly disabled = input(false);
   readonly loading = input(false);
 
@@ -56,20 +122,36 @@ export class SearchBarComponent implements OnDestroy {
 
   readonly query = signal('');
   readonly submitted = signal(false);
+  readonly typedPlaceholder = signal('');
 
   @ViewChild('searchInput') searchInputRef: ElementRef<HTMLTextAreaElement> | undefined;
 
   private readonly cdr = inject(ChangeDetectorRef);
+  private readonly ngZone = inject(NgZone);
   private readonly destroyRef = inject(DestroyRef);
   readonly speech = inject(SpeechToTextService);
   readonly listening = toSignal(this.speech.listening$, { initialValue: false });
   readonly speechStatusMessage = toSignal(this.speech.statusMessage$, { initialValue: null as string | null });
 
-  readonly effectivePlaceholder = computed(() =>
-    this.listening() ? 'Listening…' : this.placeholder()
+  readonly effectivePlaceholder = computed(() => {
+    if (this.listening()) return 'Listening…';
+    return this.placeholder();
+  });
+
+  /** Example sentence drawn inside the empty box. Native placeholders do not repaint letter by letter. */
+  readonly showTypewriterHint = computed(() =>
+    !this.listening() && !this.placeholder() && this.query().trim().length === 0
   );
 
   private autoSubmittedThisSession = false;
+  private typewriterTimer: ReturnType<typeof setTimeout> | null = null;
+  private typewriter: TypewriterState = {
+    exampleIndex: 0,
+    charIndex: 0,
+    phase: 'typing',
+    text: '',
+  };
+  private pausedByInput = false;
 
   constructor() {
     let lastParentValue: string | undefined = undefined;
@@ -118,10 +200,63 @@ export class SearchBarComponent implements OnDestroy {
     });
 
     afterNextRender(() => this.resizeTextarea());
+
+    effect(() => {
+      this.syncTypewriter(this.query().trim().length > 0 || this.listening() || !!this.placeholder());
+    });
   }
 
   ngOnDestroy(): void {
+    this.clearTypewriter();
     this.speech.stop();
+  }
+
+  private syncTypewriter(paused: boolean): void {
+    if (paused) {
+      this.clearTypewriter();
+      if (this.query().trim().length > 0) {
+        this.pausedByInput = true;
+      }
+      return;
+    }
+    if (this.pausedByInput) {
+      this.pausedByInput = false;
+      this.typewriter = { exampleIndex: this.typewriter.exampleIndex, charIndex: 0, phase: 'typing', text: '' };
+      this.typedPlaceholder.set('');
+    }
+    if (this.typewriterTimer == null) {
+      const delay = this.typewriter.charIndex === 0 && this.typewriter.phase === 'typing'
+        ? TYPEWRITER_START_DELAY_MS
+        : TYPEWRITER_TYPE_MS;
+      this.scheduleTypewriter(delay);
+    }
+  }
+
+  private scheduleTypewriter(ms: number): void {
+    this.clearTypewriter();
+    this.typewriterTimer = setTimeout(() => {
+      this.ngZone.run(() => this.advanceTypewriter());
+    }, ms);
+  }
+
+  private clearTypewriter(): void {
+    if (this.typewriterTimer != null) {
+      clearTimeout(this.typewriterTimer);
+      this.typewriterTimer = null;
+    }
+  }
+
+  private advanceTypewriter(): void {
+    this.typewriterTimer = null;
+    if (this.placeholder() || this.listening() || this.query().trim().length > 0) {
+      return;
+    }
+
+    const next = stepTypewriter(this.typewriter, SEARCH_EXAMPLE_PROMPTS);
+    this.typewriter = next.state;
+    this.typedPlaceholder.set(next.state.text);
+    this.cdr.markForCheck();
+    this.scheduleTypewriter(next.delay);
   }
 
   resizeTextarea(): void {
