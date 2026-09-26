@@ -1,6 +1,7 @@
 <div class="search-page">
   <!-- Hero Section (collapses on scroll) -->
   <div class="hero-section" [class.collapsed]="isHeroCollapsed()">
+    <img class="brand-logo" src="going2eat-logo.png" alt="going2eat" />
     <h1 class="page-title">Search food the way you think</h1>
     <p class="page-subtitle">Natural food search. Just tell us what you're in the mood for.</p>
 
@@ -29,6 +30,7 @@
 
   <!-- SearchDock (sticky on scroll) -->
   <div class="search-dock">
+    <img class="brand-mark" src="icon-192.png" alt="" [class.visible]="isHeroCollapsed()" />
     <!-- Assistant Line (always shown - includes WS status) -->
     @if (facade.assistantLineMessages().length > 0) {
     <div class="assistant-line-container compact">

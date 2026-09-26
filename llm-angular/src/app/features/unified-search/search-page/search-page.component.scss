@@ -20,27 +20,27 @@
   max-width: 700px;
   background: linear-gradient(180deg, #ffffff 0%, #f9fafb 100%);
   
-  // Smooth fade + slide transition (NO layout changes)
-  transition: 
-    opacity 200ms ease-out,
-    transform 200ms ease-out,
-    filter 200ms ease-out;
-  
-  // Performance hint
-  will-change: transform;
+  overflow: hidden;
+  max-height: 640px;
+  // Ease away only after a real scroll, then give the space back to the search bar.
+  transition:
+    opacity 420ms ease,
+    transform 420ms ease,
+    max-height 420ms ease,
+    padding 420ms ease;
   
   // Expanded state (default)
   opacity: 1;
   transform: translateY(0);
   pointer-events: auto;
-  filter: blur(0);
   
-  // Collapsed state (keeps space, only visual fade)
   &.collapsed {
     opacity: 0;
-    transform: translateY(-8px); // Subtle upward slide
-    pointer-events: none; // Prevent interaction when hidden
-    filter: blur(2px); // Gentle blur effect
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    transform: translateY(-12px);
+    pointer-events: none;
   }
   
   // Respect prefers-reduced-motion: instant transitions
@@ -99,6 +99,30 @@
 .results-frame {
   background: #f9fafb;
   padding: 1rem 1rem 1.5rem;
+}
+
+.brand-logo {
+  display: block;
+  width: min(168px, 46vw);
+  height: auto;
+  margin: 0 auto 0.5rem;
+}
+
+.brand-mark {
+  display: block;
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 0.35rem;
+  object-fit: contain;
+  opacity: 0;
+  transform: translateY(-6px);
+  pointer-events: none;
+  transition: opacity 320ms ease, transform 320ms ease;
+
+  &.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .page-title {
