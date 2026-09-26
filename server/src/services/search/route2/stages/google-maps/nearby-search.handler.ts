@@ -10,6 +10,8 @@ import { getCacheService, raceWithCleanup } from './cache-manager.js';
 import { mapGooglePlaceToResult } from './result-mapper.js';
 import { filterPlacesByBusinessStatus, filterResultsByBusinessStatus, logBusinessStatusMetrics } from './business-status.js';
 import { buildCoverageReport } from './field-coverage.js';
+import { buildNearbyGoogleCall } from './nearby-food-query.js';
+import { callGooglePlacesSearchText } from './text-search.handler.js';
 import type { RouteLLMMapping, Route2Context } from '../../types.js';
 
 // Field mask for Google Places API (New) - includes opening hours + businessStatus (filter permanently closed)
@@ -25,18 +27,22 @@ export async function executeNearbySearch(
 ): Promise<{ results: any[], servedFrom: 'cache' | 'google_api' }> {
   const { requestId, traceId } = ctx;
   const startTime = Date.now();
+  const googleCall = buildNearbyGoogleCall(mapping);
 
   logger.info({
     requestId,
     provider: 'google_places_new',
-    method: 'searchNearby',
+    method: googleCall.api,
     location: mapping.location,
     radiusMeters: mapping.radiusMeters,
     keyword: mapping.keyword,
+    ...(googleCall.api === 'searchText' && { textQuery: googleCall.textQuery }),
     region: mapping.region,
     language: mapping.language,
     anchorSource: 'USER_LOCATION'
-  }, '[GOOGLE] Calling Nearby Search API (New) - anchor: user location');
+  }, googleCall.api === 'searchText'
+    ? '[GOOGLE] Nearby food term via Text Search - anchor: user location'
+    : '[GOOGLE] Calling Nearby Search API (New) - anchor: user location');
 
   const apiKey = process.env.GOOGLE_API_KEY;
   if (!apiKey) {
@@ -51,7 +57,8 @@ export async function executeNearbySearch(
 
   // Prepare cache key parameters
   const cacheKeyParams: CacheKeyParams = {
-    category: mapping.keyword,
+    category: googleCall.api === 'searchText' ? googleCall.textQuery : mapping.keyword,
+    ...(googleCall.api === 'searchText' && { filters: ['food-text'] }),
     lat: mapping.location.lat,
     lng: mapping.location.lng,
     radius: mapping.radiusMeters,
@@ -71,7 +78,10 @@ export async function executeNearbySearch(
     let totalMissingStatus = 0;
     const totalPermPlaceIds: string[] = [];
 
-    const requestBody = buildNearbySearchBody(mapping);
+    const requestBody = googleCall.body;
+    const callPlaces = googleCall.api === 'searchText'
+      ? callGooglePlacesSearchText
+      : callGooglePlacesSearchNearby;
 
     const processBatch = (places: any[]) => {
       const out = filterPlacesByBusinessStatus(places);
@@ -88,7 +98,7 @@ export async function executeNearbySearch(
     };
 
     // Fetch first page
-    const firstResponse = await callGooglePlacesSearchNearby(requestBody, apiKey, requestId, ctx.abortSignal);
+    const firstResponse = await callPlaces(requestBody, apiKey, requestId, ctx.abortSignal);
     if (firstResponse.places) {
       processBatch(firstResponse.places);
       nextPageToken = firstResponse.nextPageToken;
@@ -97,7 +107,7 @@ export async function executeNearbySearch(
     // Fetch additional pages if needed
     while (nextPageToken && results.length < maxResults) {
       const pageBody = { ...requestBody, pageToken: nextPageToken };
-      const pageResponse = await callGooglePlacesSearchNearby(pageBody, apiKey, requestId, ctx.abortSignal);
+      const pageResponse = await callPlaces(pageBody, apiKey, requestId, ctx.abortSignal);
 
       if (pageResponse.places) {
         const remaining = maxResults - results.length;
@@ -205,12 +215,14 @@ export async function executeNearbySearch(
     logger.info({
       requestId,
       provider: 'google_places_new',
-      method: 'searchNearby',
+      method: googleCall.api,
       durationMs,
       resultCount: resultsFiltered.length,
       fieldMaskUsed: PLACES_FIELD_MASK,
       servedFrom
-    }, '[GOOGLE] Nearby Search completed');
+    }, googleCall.api === 'searchText'
+      ? '[GOOGLE] Nearby food Text Search completed'
+      : '[GOOGLE] Nearby Search completed');
 
     return { results: resultsFiltered, servedFrom };
 
@@ -228,49 +240,6 @@ export async function executeNearbySearch(
 
     throw error;
   }
-}
-
-/**
- * Build Nearby Search API request body (New API)
- */
-function buildNearbySearchBody(
-  mapping: Extract<RouteLLMMapping, { providerMethod: 'nearbySearch' }>
-): any {
-  // Normalize keyword for non-IL regions
-  let normalizedKeyword = mapping.keyword;
-  if (mapping.region && mapping.region !== 'IL') {
-    // Convert to English with "restaurant" suffix
-    if (mapping.keyword.includes('איטלק') || mapping.keyword.toLowerCase().includes('italian')) {
-      normalizedKeyword = 'Italian restaurant';
-    } else {
-      // Generic: append "restaurant" if not present
-      normalizedKeyword = mapping.keyword.toLowerCase().includes('restaurant')
-        ? mapping.keyword
-        : `${mapping.keyword} restaurant`;
-    }
-  }
-
-  const body: any = {
-    locationRestriction: {
-      circle: {
-        center: {
-          latitude: mapping.location.lat,
-          longitude: mapping.location.lng
-        },
-        radius: mapping.radiusMeters
-      }
-    },
-    languageCode: mapping.language === 'he' ? 'he' : 'en',
-    includedTypes: ['restaurant'],
-    rankPreference: 'DISTANCE'
-  };
-
-  // Add region code (only if valid)
-  if (mapping.region) {
-    body.regionCode = mapping.region;
-  }
-
-  return body;
 }
 
 /**
