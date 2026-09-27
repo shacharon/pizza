@@ -187,6 +187,9 @@ export interface AssistPayload {
   type: 'clarify' | 'suggest' | 'guide' | 'recovery';
   mode?: 'NORMAL' | 'RECOVERY' | 'CLARIFY';  // Phase 5: Added CLARIFY mode
   message: string;  // LLM-generated, multilingual
+  question?: string;
+  reason?: string;
+  suggestedAction?: string;
 
   // NEW: Reference chip IDs instead of inline actions
   primaryActionId?: string;     // Highlighted chip

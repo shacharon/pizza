@@ -163,6 +163,21 @@
   }
 }
 
+.location-denied {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  max-width: 28rem;
+  text-align: center;
+}
+
+.location-hint {
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: #6b7280;
+}
+
 .location-link {
   background: none;
   border: none;
@@ -892,6 +907,17 @@
   font-weight: 500;
 }
 
+.search-composer-block .missing-location-question {
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-top: 0.5rem;
+  text-align: center;
+
+  .message-question {
+    font-style: italic;
+  }
+}
+
 // Results Container: extends to viewport bottom with consistent background
 .results-container {
   background: #f9fafb;
@@ -908,6 +934,21 @@
   display: grid;
   gap: 1.25rem;
   grid-template-columns: 1fr;
+}
+
+.results-grid--enter {
+  animation: results-fade-in 0.4s ease-out;
+}
+
+@keyframes results-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .results-grid--enter {
+    animation: none;
+  }
 }
 
 // Bottom Gutter: persistent spacer to prevent results spilling under page

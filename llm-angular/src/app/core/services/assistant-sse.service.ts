@@ -4,12 +4,14 @@
  *
  * Uses fetch() + ReadableStream + TextDecoder('utf-8') for explicit UTF-8 decoding.
  * Replaces WebSocket 'assistant' channel subscription.
- * Uses session cookie authentication (no Authorization header).
+ * Auth matches the rest of the API: session cookie, plus Bearer JWT in dual mode.
+ * A raw fetch does not go through the auth interceptor, so the token is attached here.
  */
 
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
+import { AuthService } from '../auth/auth.service';
 
 /**
  * SSE Event Types
@@ -80,6 +82,7 @@ function parseSseChunk(
 })
 export class AssistantSseService {
   private readonly apiBaseUrl = `${environment.apiUrl}${environment.apiBasePath}`;
+  private readonly auth = inject(AuthService);
 
   /**
    * Connect to SSE endpoint using fetch + ReadableStream.
@@ -101,73 +104,89 @@ export class AssistantSseService {
 
       console.log('sse_open', { requestId });
 
-      fetch(url, {
+      const openStream = (headers: Record<string, string>) => fetch(url, {
         method: 'GET',
         credentials: 'include',
-        headers: { Accept: 'text/event-stream' },
+        headers,
         signal
-      })
-        .then(async (response): Promise<void> => {
-          if (!response.ok || !response.body) {
-            logClosed('http_error');
-            observer.error(new Error(`SSE failed: ${response.status}`));
-            return;
-          }
-          const decoder = new TextDecoder(UTF8);
-          let buffer = '';
-          const reader = response.body.getReader();
-          try {
-            while (!signal.aborted) {
-              const { value, done } = await reader.read();
-              if (done) {
+      });
+
+      const headersFor = async (refresh: boolean): Promise<Record<string, string>> => {
+        const headers: Record<string, string> = { Accept: 'text/event-stream' };
+        if (environment.authMode === 'cookie_only') return headers;
+        const token = refresh ? await this.auth.refreshToken() : await this.auth.getToken();
+        headers['Authorization'] = `Bearer ${token}`;
+        return headers;
+      };
+
+      const readStream = async (response: Response): Promise<void> => {
+        if (!response.ok || !response.body) {
+          logClosed('http_error');
+          observer.error(new Error(`SSE failed: ${response.status}`));
+          return;
+        }
+        const decoder = new TextDecoder(UTF8);
+        let buffer = '';
+        const reader = response.body.getReader();
+        try {
+          while (!signal.aborted) {
+            const { value, done } = await reader.read();
+            if (done) {
+              logClosed('done');
+              observer.complete();
+              return;
+            }
+            const chunk = decoder.decode(value, { stream: true });
+            buffer += chunk;
+            const { events, leftover } = parseSseChunk(buffer);
+            buffer = leftover;
+            for (const { event, data } of events) {
+              if (event === 'meta' || event === 'metadata') {
+                observer.next({ type: 'meta', data: data as { requestId: string; language: string; startedAt: string } });
+              } else if (event === 'narration') {
+                observer.next({ type: 'narration', data: data as { text: string } });
+              } else if (event === 'delta') {
+                observer.next({ type: 'delta', data: data as { text: string } });
+              } else if (event === 'ping') {
+                // no-op
+              } else if (event === 'message') {
+                observer.next({ type: 'message', data: data as AssistantMessagePayload });
+              } else if (event === 'done') {
                 logClosed('done');
+                observer.next({ type: 'done' });
+                observer.complete();
+                return;
+              } else if (event === 'error') {
+                const err = data as { code?: string; message?: string };
+                logClosed('error');
+                observer.next({ type: 'error', data: { code: err?.code ?? 'UNKNOWN', message: err?.message ?? 'SSE error' } });
                 observer.complete();
                 return;
               }
-              const chunk = decoder.decode(value, { stream: true });
-              buffer += chunk;
-              const { events, leftover } = parseSseChunk(buffer);
-              buffer = leftover;
-              for (const { event, data } of events) {
-                if (event === 'meta') {
-                  observer.next({ type: 'meta', data: data as { requestId: string; language: string; startedAt: string } });
-                } else if (event === 'metadata') {
-                  observer.next({ type: 'meta', data: data as { requestId: string; language: string; startedAt: string } });
-                } else if (event === 'narration') {
-                  observer.next({ type: 'narration', data: data as { text: string } });
-                } else if (event === 'delta') {
-                  observer.next({ type: 'delta', data: data as { text: string } });
-                } else if (event === 'ping') {
-                  // no-op
-                } else if (event === 'message') {
-                  observer.next({ type: 'message', data: data as AssistantMessagePayload });
-                } else if (event === 'done') {
-                  logClosed('done');
-                  observer.next({ type: 'done' });
-                  observer.complete();
-                  return;
-                } else if (event === 'error') {
-                  const err = data as { code?: string; message?: string };
-                  logClosed('error');
-                  observer.next({ type: 'error', data: { code: err?.code ?? 'UNKNOWN', message: err?.message ?? 'SSE error' } });
-                  observer.complete();
-                  return;
-                }
-              }
             }
+          }
+          logClosed('abort');
+          observer.complete();
+        } catch (err: unknown) {
+          if (signal.aborted || (err instanceof Error && err.name === 'AbortError')) {
             logClosed('abort');
             observer.complete();
-          } catch (err: unknown) {
-            if (signal.aborted || (err instanceof Error && err.name === 'AbortError')) {
-              logClosed('abort');
-              observer.complete();
-            } else {
-              logClosed('error');
-              observer.error(err);
-            }
-          } finally {
-            reader.releaseLock();
+          } else {
+            logClosed('error');
+            observer.error(err);
           }
+        } finally {
+          reader.releaseLock();
+        }
+      };
+
+      headersFor(false)
+        .then(async (headers): Promise<void> => {
+          let response = await openStream(headers);
+          if (response.status === 401 && environment.authMode !== 'cookie_only' && !signal.aborted) {
+            response = await openStream(await headersFor(true));
+          }
+          await readStream(response);
         })
         .catch(err => {
           if (signal.aborted || (err instanceof Error && err.name === 'AbortError')) {

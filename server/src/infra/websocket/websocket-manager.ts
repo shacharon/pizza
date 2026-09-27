@@ -53,7 +53,7 @@ export class WebSocketManager {
     this.config = resolveWebSocketConfig(config);
 
     // 2. Redis: use shared client if provided, else create from redisUrl (avoid duplicate client when Redis is down)
-    if (config.redis !== undefined) {
+    if (config != null && config.redis !== undefined) {
       this.redis = config.redis ?? null;
       if (this.redis) {
         logger.info({ msg: 'WebSocketManager: Using shared Redis client' });

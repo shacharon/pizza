@@ -32,7 +32,7 @@ export const SEARCH_EXAMPLE_PROMPTS = [
   'המבורגר כשר שאפשר ללכת אליו',
   'פיצה ליד הבית, 10 דקות הליכה',
   'בית קפה שקט בחוץ, בדיזנגוף',
-  'sushi open now, near Rothschild',
+  'Italian restaurant open now, on the Champs-Élysées',
   'cheap falafel with a seat, on Allenby',
   'breakfast and good coffee, a short walk',
   'fish restaurant by the sea, not too expensive',
@@ -40,7 +40,7 @@ export const SEARCH_EXAMPLE_PROMPTS = [
   'برغر كوشر أقدر أمشي إليه',
   'итальянский ресторан в 300 метрах, на Шенкин',
   'кошерный бургер, до которого можно дойти',
-  'sushi open now, near Rothschild',
+  'hamburger open now, in Queens',
   'cheap falafel with a seat, on Allenby',
 ] as const;
 

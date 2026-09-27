@@ -19,6 +19,7 @@ import { resolveAssistantLanguage, resolveSessionId } from './orchestrator.helpe
 import { toRequestLanguage } from './orchestrator.early-context.js';
 import type { WebSocketManager } from '../../../infra/websocket/websocket-manager.js';
 import { buildAppliedFiltersArray, buildFiltersWithMeta } from './orchestrator.filters.js';
+import { assistForSearchResponse } from './guards/shared/response-builder.js';
 
 /**
  * Build final search response with assistant summary
@@ -198,7 +199,7 @@ export async function buildFinalResponse(
     },
     results: finalResults,
     chips: [],
-    assist: { type: 'guide', message: assistMessage },
+    assist: assistForSearchResponse(ctx.missingLocationQuestion, assistMessage) as SearchResponse['assist'],
     meta: {
       tookMs: totalDurationMs,
       mode: mapping.providerMethod === 'textSearch' ? ('textsearch' as const) : ('nearbysearch' as const),

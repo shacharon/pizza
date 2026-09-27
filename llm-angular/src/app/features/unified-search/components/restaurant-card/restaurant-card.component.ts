@@ -892,34 +892,37 @@ export class RestaurantCardComponent {
   }
 
   /**
-   * Provider links (Wolt, 10bis, Mishloha) - inline text links
-   * Only shows providers when status === FOUND and url is valid
-   * Returns array of provider links to display (empty array if none)
+   * Order buttons (Wolt, 10bis, Mishloha).
+   * Only includes providers when status === FOUND and url is valid.
+   * Returns an empty array when none qualify.
    */
   readonly providerLinks = computed(() => {
     const restaurant = this.restaurant();
     const restaurantName = restaurant.name;
     const providers = restaurant.providers || {};
 
-    // Provider configurations (Wolt, 10bis, Mishloha)
     const providerConfigs: Array<{
       id: 'wolt' | 'tenbis' | 'mishloha';
+      name: string;
       label: string;
       urlPrefix: string;
     }> = [
       {
         id: 'wolt',
-        label: 'Wolt',
+        name: 'Wolt',
+        label: 'Order on Wolt',
         urlPrefix: 'https://wolt.com/'
       },
       {
         id: 'tenbis',
-        label: '10bis',
+        name: '10bis',
+        label: 'Order on 10bis',
         urlPrefix: 'https://www.10bis.co.il/next/'
       },
       {
         id: 'mishloha',
-        label: 'Mishloha',
+        name: 'Mishloha',
+        label: 'Order on Mishloha',
         urlPrefix: 'https://www.mishloha.co.il/now/r/'
       }
     ];
@@ -965,7 +968,7 @@ export class RestaurantCardComponent {
           // Other providers: basic prefix check
           if (!url.startsWith(config.urlPrefix)) {
             if (typeof ngDevMode !== 'undefined' && ngDevMode) {
-              console.warn(`[RestaurantCard] Invalid ${config.label} URL for ${restaurantName}:`, {
+              console.warn(`[RestaurantCard] Invalid ${config.name} URL for ${restaurantName}:`, {
                 url,
                 expectedPrefix: config.urlPrefix
               });

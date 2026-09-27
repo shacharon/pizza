@@ -1,13 +1,8 @@
 /**
  * Early INTENT Guard Tests (2026-02-03)
  * 
- * Verifies that the early INTENT guard blocks Google searches for TEXTSEARCH
- * queries without location anchors, preventing wasted API calls.
- * 
- * Test cases:
- * 1. TEXTSEARCH without location → CLARIFY, blocks search
- * 2. TEXTSEARCH with city_text → continues
- * 3. NEARBY route → continues (different guard)
+ * TEXTSEARCH without a location continues (returns null).
+ * City and GPS also continue. NEARBY is ignored by this guard.
  */
 
 import { describe, it, mock } from 'node:test';
@@ -66,8 +61,8 @@ function createIntentDecision(overrides: Partial<IntentResult> = {}): IntentResu
 }
 
 describe('Early INTENT Guard - handleEarlyTextSearchLocationGuard', () => {
-  describe('CLARIFY triggers', () => {
-    it('Case 1: TEXTSEARCH with only device region (IL) → returns CLARIFY, blocks search', async () => {
+  describe('no location continues', () => {
+    it('Case 1: TEXTSEARCH with only device region (IL) → continues', async () => {
       const request: SearchRequest = {
         query: 'ציזבורגר',
         llmProvider: 'openai',
@@ -94,18 +89,10 @@ describe('Early INTENT Guard - handleEarlyTextSearchLocationGuard', () => {
         mockWsManager
       );
 
-      // Assert: Returns CLARIFY response
-      assert.notEqual(result, null, 'Should return CLARIFY (not null)');
-      assert.equal(result?.assist.type, 'clarify', 'Should have clarify assist');
-      assert.equal(result?.meta.source, 'route2_early_textsearch_guard', 'Should be from early guard');
-      assert.equal(result?.meta.failureReason, 'LOCATION_REQUIRED', 'Should require location');
-      assert.equal(result?.results.length, 0, 'Should return no results');
-
-      // Note: regionCode/regionCandidate are NOT location anchors
-      // Only userLocation, cityText, or bias count as location anchors
+      assert.equal(result, null, 'Should continue when the only gap is location');
     });
 
-    it('Case 1b: TEXTSEARCH without location → returns CLARIFY, blocks search', async () => {
+    it('Case 1b: TEXTSEARCH without location → continues', async () => {
       const request: SearchRequest = {
         query: 'ציזבורגר',
         llmProvider: 'openai',
@@ -130,12 +117,7 @@ describe('Early INTENT Guard - handleEarlyTextSearchLocationGuard', () => {
         mockWsManager
       );
 
-      // Assert: Returns CLARIFY response
-      assert.notEqual(result, null, 'Should return CLARIFY (not null)');
-      assert.equal(result?.assist.type, 'clarify', 'Should have clarify assist');
-      assert.equal(result?.meta.source, 'route2_early_textsearch_guard', 'Should be from early guard');
-      assert.equal(result?.meta.failureReason, 'LOCATION_REQUIRED', 'Should require location');
-      assert.equal(result?.results.length, 0, 'Should return no results');
+      assert.equal(result, null, 'Should continue when there is no GPS and no city');
     });
 
     it('Case 1b: TEXTSEARCH with userLocation but no cityText → continues', async () => {
@@ -286,9 +268,7 @@ describe('Early INTENT Guard - handleEarlyTextSearchLocationGuard', () => {
         mockWsManager
       );
 
-      // Assert: Still returns CLARIFY despite having regionCode/regionCandidate
-      assert.notEqual(result, null, 'Should return CLARIFY even with regionCode');
-      assert.equal(result?.assist.type, 'clarify', 'regionCode is not a location anchor');
+      assert.equal(result, null, 'regionCode is not a location anchor; search still continues');
     });
 
     it('should treat cityText as location anchor', async () => {
@@ -331,7 +311,7 @@ describe('Early INTENT Guard - handleEarlyTextSearchLocationGuard', () => {
       // 2. Gate guards (STOP, ASK_CLARIFY)
       // 3. Fire parallel tasks (baseFilters, postConstraints)
       // 4. Intent stage (routing decision)
-      // 5. **Early INTENT guard** ← NEW (blocks Google for TEXTSEARCH without location)
+      // 5. Early INTENT guard returns null for TEXTSEARCH without location (search continues)
       // 6. Near-me checks
       // 7. Near-me route override
       // 8. Route-LLM (mapping decision)
@@ -344,8 +324,7 @@ describe('Early INTENT Guard - handleEarlyTextSearchLocationGuard', () => {
       //
       // KEY POINT:
       // - Early guard runs AFTER intent, BEFORE route-LLM
-      // - Prevents Google API call for TEXTSEARCH without location
-      // - No google_parallel_start_decision log when blocked
+      // - TEXTSEARCH without location continues; the question is on the success response
 
       assert.ok(true, 'Flow documented');
     });
@@ -354,10 +333,10 @@ describe('Early INTENT Guard - handleEarlyTextSearchLocationGuard', () => {
       // EXPECTED LOGS:
       // ==============
       // 
-      // Case 1: TEXTSEARCH without location (BLOCKED)
-      // - pipeline_clarify { reason: 'early_textsearch_no_location', blocksSearch: true }
-      // - NO google_parallel_start_decision log
-      // - Response: assist.type='clarify', meta.source='route2_early_textsearch_guard'
+      // Case 1: TEXTSEARCH without location (CONTINUES)
+      // - early_textsearch_no_location_continue
+      // - google_parallel_start_decision allowed=true, reason missing_location_question_attached
+      // - Response includes places plus MISSING_LOCATION assist, failureReason NONE
       //
       // Case 2: TEXTSEARCH with cityText (CONTINUES)
       // - google_parallel_start_decision { route: 'TEXTSEARCH', hasLocation: true, allowed: true }

@@ -37,6 +37,59 @@ import type { ActionType, ActionLevel } from '../../../domain/types/action.types
 // DEV: Import dev tools for testing (auto-loaded)
 import '../../../facades/assistant-dev-tools';
 
+const MISSING_LOCATION_COPY = {
+  en: {
+    dir: 'ltr' as const,
+    message: 'To search for restaurants I need a location. Enable location or type a city or area.',
+    question: 'Where do you want to search? (city or area)',
+    button: 'Enable location'
+  },
+  he: {
+    dir: 'rtl' as const,
+    message: 'כדי לחפש מסעדות אני צריך מיקום. תאפשר מיקום או כתוב עיר/אזור.',
+    question: 'איפה תרצה לחפש? (עיר או אזור)',
+    button: 'אפשר מיקום'
+  },
+  ar: {
+    dir: 'rtl' as const,
+    message: 'للبحث عن مطاعم أحتاج موقعاً. فعّل الموقع أو اكتب مدينة أو منطقة.',
+    question: 'أين تريد أن تبحث؟ (مدينة أو منطقة)',
+    button: 'تفعيل الموقع'
+  },
+  ru: {
+    dir: 'ltr' as const,
+    message: 'Чтобы искать рестораны, мне нужно место. Включите геолокацию или напишите город или район.',
+    question: 'Где искать? (город или район)',
+    button: 'Включить геолокацию'
+  }
+};
+
+export type MissingLocationCopy = {
+  dir: 'ltr' | 'rtl';
+  message: string;
+  question: string;
+  button: string;
+};
+
+/** Prompt language follows the letters in the search: Hebrew, Arabic, Russian, or English. */
+export function missingLocationCopy(query: string): MissingLocationCopy {
+  let hebrew = 0;
+  let arabic = 0;
+  let cyrillic = 0;
+  let latin = 0;
+  for (const char of query) {
+    if (/[\u0590-\u05FF]/.test(char)) hebrew++;
+    else if (/[\u0600-\u06FF]/.test(char)) arabic++;
+    else if (/[\u0400-\u04FF]/.test(char)) cyrillic++;
+    else if (/[A-Za-z]/.test(char)) latin++;
+  }
+  const top = Math.max(hebrew, arabic, cyrillic, latin);
+  if (top > 0 && hebrew === top) return MISSING_LOCATION_COPY.he;
+  if (top > 0 && arabic === top) return MISSING_LOCATION_COPY.ar;
+  if (top > 0 && cyrillic === top) return MISSING_LOCATION_COPY.ru;
+  return MISSING_LOCATION_COPY.en;
+}
+
 @Component({
   selector: 'app-search-page',
   standalone: true,
@@ -88,6 +141,7 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   // Location state
   readonly locationState = this.locationService.state;
   readonly locationCoords = this.locationService.location;
+  readonly locationBlockedRetries = this.locationService.blockedRetries;
 
   // Phase 5: Mode indicators
   readonly response = this.facade.response;
@@ -347,6 +401,30 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   // Pagination: Visible count (starts at 10, increments by 5)
   private visibleCount = signal(10);
 
+  /** True when the next results grid should fade in. Chips turn this off. */
+  readonly fadeOnAppear = signal(true);
+
+  /** Location row under the search box. Hidden when GPS is on or the assist is absent. */
+  readonly showMissingLocationQuestion = computed(() => {
+    const response = this.response();
+    const assist = response?.assist;
+    if (!response?.results?.length || !assist) {
+      return false;
+    }
+    if (this.locationState() === 'ON') {
+      return false;
+    }
+    return assist.type === 'clarify'
+      && assist.reason === 'MISSING_LOCATION'
+      && assist.suggestedAction === 'ASK_LOCATION'
+      && !!assist.message
+      && !!assist.question;
+  });
+
+  readonly missingLocationPrompt = computed(() =>
+    missingLocationCopy(this.facade.query() || this.response()?.query?.original || '')
+  );
+
   // All results after filtering (not paginated)
   private readonly allResults = computed(() => {
     let results = this.facade.results();
@@ -525,6 +603,7 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   }
 
   onSearch(query: string): void {
+    this.fadeOnAppear.set(true);
     this.facade.search(query);
     // Reset visible count on new search
     this.visibleCount.set(10);
@@ -541,6 +620,7 @@ export class SearchPageComponent implements OnInit, OnDestroy {
 
   // NEW: Phase B - Recent search selection
   onRecentSearchClick(query: string): void {
+    this.fadeOnAppear.set(true);
     this.facade.onSelectRecent(query);
   }
 
@@ -570,6 +650,7 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   }
 
   onChipClick(chipId: string): void {
+    this.fadeOnAppear.set(false);
     // Trigger actual filtering/sorting via facade (single source of truth)
     this.facade.onChipClick(chipId);
     // Reset visible count when filtering/sorting (new search pool)

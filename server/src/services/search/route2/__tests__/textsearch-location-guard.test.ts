@@ -1,8 +1,8 @@
 /**
  * Text Search Location Guard Tests
  * 
- * Verifies that text search queries without location anchors trigger CLARIFY
- * instead of making country-wide Google searches.
+ * Verifies that text search without a location anchor continues (returns null).
+ * City, GPS, bias, and near-me also continue. The location question is attached later.
  */
 
 import { describe, it, mock } from 'node:test';
@@ -65,8 +65,8 @@ function createIntentDecision(overrides: Partial<IntentResult> = {}): IntentResu
 }
 
 describe('handleTextSearchMissingLocationGuard', () => {
-  describe('CLARIFY triggers', () => {
-    it('A) should trigger CLARIFY for textSearch with no location anchors', async () => {
+  describe('no location anchor continues', () => {
+    it('A) should continue for textSearch with no location anchors', async () => {
       const request: SearchRequest = {
         query: 'ציזבורגר',
         llmProvider: 'openai',
@@ -101,12 +101,7 @@ describe('handleTextSearchMissingLocationGuard', () => {
         mockWsManager
       );
 
-      // Should return CLARIFY response
-      assert.notEqual(result, null, 'Guard should trigger CLARIFY');
-      assert.equal(result?.assist.type, 'clarify');
-      assert.equal(result?.meta.source, 'route2_textsearch_location_clarify');
-      assert.equal(result?.meta.failureReason, 'LOCATION_REQUIRED');
-      assert.equal(result?.results.length, 0);
+      assert.equal(result, null, 'Guard should continue when the only gap is location');
     });
   });
 
@@ -354,7 +349,7 @@ describe('handleTextSearchMissingLocationGuard', () => {
   });
 
   describe('Edge cases', () => {
-    it('should trigger CLARIFY when cityText is empty string', async () => {
+    it('should continue when cityText is an empty string', async () => {
       const request: SearchRequest = {
         query: 'ציזבורגר',
         llmProvider: 'openai',
@@ -388,9 +383,7 @@ describe('handleTextSearchMissingLocationGuard', () => {
         mockWsManager
       );
 
-      // Should trigger CLARIFY (empty string is falsy)
-      assert.notEqual(result, null, 'Guard should trigger for empty cityText');
-      assert.equal(result?.assist.type, 'clarify');
+      assert.equal(result, null, 'Empty cityText continues; the question is attached on the search response');
     });
 
     it('should continue when cityText is in intentDecision but not in mapping', async () => {

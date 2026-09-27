@@ -17,6 +17,7 @@ import { executeRouteLLM } from './stages/route-llm/route-llm.dispatcher.js';
 import { executeGoogleMapsStage } from './stages/google-maps.stage.js';
 
 import { resolveUserRegionCode } from './utils/region-resolver.js';
+import { isNearMeQuery } from './utils/near-me-detector.js';
 import { detectQueryLanguage } from './utils/query-language-detector.js';
 import { logger } from '../../../lib/logger/structured-logger.js';
 import { wsManager } from '../../../server.js';
@@ -256,7 +257,7 @@ async function searchRoute2Internal(
       '[ROUTE2] Intent routing decided' + (intentDecision.regionCandidate ? ' (regionCandidate will be validated by filters_resolved)' : '')
     );
 
-    // Guard: Early TEXTSEARCH location check (blocks Google search if no location)
+    // TEXTSEARCH without a location continues. The guard returns null; the question is attached on the success response.
     const earlyTextSearchGuardResponse = await handleEarlyTextSearchLocationGuard(request, gateResult, intentDecision, ctx, wsManager);
     if (earlyTextSearchGuardResponse) return publishClarifyAndReturn(wsManager, requestId, sessionId, earlyTextSearchGuardResponse, ctx);
 
@@ -317,8 +318,15 @@ async function searchRoute2Internal(
 
     if (intentDecision.route === 'TEXTSEARCH') {
       const hasTextSearchAnchor = hasCityText || hasLocationBias || hasUserLocation;
-      allowed = hasTextSearchAnchor;
-      reason = hasTextSearchAnchor ? 'has_city_or_bias_or_gps' : 'missing_location_anchor_textsearch';
+      const missingLocationOnly = !hasTextSearchAnchor && !isNearMeQuery(request.query);
+      if (missingLocationOnly) {
+        ctx.missingLocationQuestion = true;
+        allowed = true;
+        reason = 'missing_location_question_attached';
+      } else {
+        allowed = hasTextSearchAnchor;
+        reason = hasTextSearchAnchor ? 'has_city_or_bias_or_gps' : 'missing_location_anchor_textsearch';
+      }
 
       logger.info({
         requestId,
@@ -326,7 +334,8 @@ async function searchRoute2Internal(
         hasCityText,
         hasLocationBias,
         hasUserLocation,
-        allowed
+        allowed,
+        missingLocationQuestion: ctx.missingLocationQuestion === true
       }, '[ROUTE2] TEXTSEARCH anchor evaluation');
     }
 
@@ -339,7 +348,7 @@ async function searchRoute2Internal(
       reason
     }, '[ROUTE2] Google parallel start decision');
 
-    // HARD STOP: TEXTSEARCH without location anchor must CLARIFY and must NOT start Google
+    // Near-me text search with no anchor still stops here. A plain text search with no location stays allowed and continues.
     if (!allowed) {
       const r = await handleTextSearchMissingLocationGuard(request, gateResult, intentDecision, mapping, ctx, wsManager);
       if (r) return publishClarifyAndReturn(wsManager, requestId, sessionId, r, ctx);

@@ -52,8 +52,8 @@ const GATE2_SCHEMA_HASH = createHash('sha256')
   .digest('hex')
   .substring(0, 12);
 
-const GATE2_PROMPT_VERSION = 'gate2_v8';
-const GATE2_SYSTEM_PROMPT = `You are Gate2 for FOOD SEARCH DOMAIN. Return ONLY JSON.
+export const GATE2_PROMPT_VERSION = 'gate2_v9';
+export const GATE2_SYSTEM_PROMPT = `You are Gate2 for FOOD SEARCH DOMAIN. Return ONLY JSON.
 
 Schema: {"foodSignal":"NO|YES|UNCERTAIN","confidence":0..1}
 
@@ -62,10 +62,11 @@ Decide foodSignal:
   1) ANY food/venue terms in ANY language (pizza, sushi, מסעדה, рестораны, مطاعم, שווארמיה).
   2) Food actions: find/order/recommend/near me/open now/delivery/“מה לאכול”.
   3) Hunger expressions.
+  4) A misspelling of a food, cuisine, or restaurant word (about one or two letters off) is still YES. Examples: itlain, piza, restarents.
 
 - UNCERTAIN: generic “open now/near me/what’s here” with no food terms.
 
-- NO: clearly not food (weather/news/tourism) OR pure profanity with no food intent.
+- NO: clearly not food (weather/news/tourism/sex/porn) OR pure profanity with no food intent.
 
 CRITICAL RULE:
 - "restaurants near [location]" in ANY script (Latin/Cyrillic/Arabic/Hebrew) => YES 0.90+.
@@ -88,6 +89,12 @@ Examples:
 "מה פתוח עכשיו" -> {"foodSignal":"UNCERTAIN","confidence":0.55}
 "מה פתוח עכשיו לאכול" -> {"foodSignal":"YES","confidence":0.80}
 "weather in London" -> {"foodSignal":"NO","confidence":1.0}
+"itlain next to me" -> {"foodSignal":"YES","confidence":0.92}
+"piza" -> {"foodSignal":"YES","confidence":0.95}
+"restarents" -> {"foodSignal":"YES","confidence":0.92}
+"Italian next to me" -> {"foodSignal":"YES","confidence":0.95}
+"what's open near me" -> {"foodSignal":"UNCERTAIN","confidence":0.55}
+"sex near me" -> {"foodSignal":"NO","confidence":1.0}
 `;
 /*
 //Return ONLY JSON.

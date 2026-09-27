@@ -72,8 +72,8 @@ function createIntentDecision(overrides: Partial<IntentResult> = {}): IntentResu
 }
 
 describe('CLARIFY Short-Circuit - Guard Level Tests', () => {
-  describe('Early TEXTSEARCH guard triggers CLARIFY', () => {
-    it('query "ציזבורגר" with no cityText/bias should trigger CLARIFY', async () => {
+  describe('Early TEXTSEARCH guard continues without a location', () => {
+    it('query "ציזבורגר" with no cityText/bias should continue', async () => {
       const request: SearchRequest = {
         query: 'ציזבורגר', // cheeseburger with no location
         llmProvider: 'openai',
@@ -99,23 +99,10 @@ describe('CLARIFY Short-Circuit - Guard Level Tests', () => {
         mockWsManager
       );
 
-      // ASSERTIONS
-      assert.notEqual(response, null, 'Guard should trigger CLARIFY (not return null)');
-      assert.equal(response?.assist?.type, 'clarify', 'Should return CLARIFY response');
-      assert.equal(response?.results.length, 0, 'Should have no results');
-      assert.equal(
-        response?.meta?.source,
-        'route2_early_textsearch_guard',
-        'Should be from early textsearch guard'
-      );
-      assert.equal(
-        response?.meta?.failureReason,
-        'LOCATION_REQUIRED',
-        'Should indicate location is required'
-      );
+      assert.equal(response, null, 'Guard should continue so the text search can run');
     });
 
-    it('query "המבורגר" with no cityText should trigger CLARIFY', async () => {
+    it('query "המבורגר" with no cityText should continue', async () => {
       const request: SearchRequest = {
         query: 'המבורגר', // hamburger
         llmProvider: 'openai',
@@ -139,8 +126,7 @@ describe('CLARIFY Short-Circuit - Guard Level Tests', () => {
         mockWsManager
       );
 
-      assert.notEqual(response, null, 'Should trigger CLARIFY');
-      assert.equal(response?.assist?.type, 'clarify');
+      assert.equal(response, null, 'Should continue');
     });
   });
 

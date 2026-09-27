@@ -1,6 +1,6 @@
 /**
  * Nearby Search (New) cannot take a free-text keyword.
- * A real food word must go out as Text Search biased to the user's circle.
+ * A real food word goes out as Text Search inside a rectangle built from the user's circle.
  * A generic "restaurant / near me" query stays on type-only Nearby Search.
  */
 
@@ -37,6 +37,25 @@ export type NearbyGoogleCall =
   | { api: 'searchNearby'; body: Record<string, unknown> }
   | { api: 'searchText'; textQuery: string; body: Record<string, unknown> };
 
+/** Text Search (New) hard fence is a rectangle. Build it from the same circle Nearby Search uses. */
+export function circleToTextSearchRectangle(
+  lat: number,
+  lng: number,
+  radiusMeters: number
+): {
+  low: { latitude: number; longitude: number };
+  high: { latitude: number; longitude: number };
+} {
+  const metersPerDegreeLat = 111320;
+  const latRad = (lat * Math.PI) / 180;
+  const dLat = radiusMeters / metersPerDegreeLat;
+  const dLng = radiusMeters / (metersPerDegreeLat * Math.max(Math.cos(latRad), 0.01));
+  return {
+    low: { latitude: lat - dLat, longitude: lng - dLng },
+    high: { latitude: lat + dLat, longitude: lng + dLng },
+  };
+}
+
 export function buildNearbyGoogleCall(mapping: NearbyMapping): NearbyGoogleCall {
   const textQuery = nearbyFoodTextQuery(mapping.keyword, mapping.region);
   const languageCode = mapping.language === 'he' ? 'he' : 'en';
@@ -63,14 +82,12 @@ export function buildNearbyGoogleCall(mapping: NearbyMapping): NearbyGoogleCall 
   const body: Record<string, unknown> = {
     textQuery,
     languageCode,
-    locationBias: {
-      circle: {
-        center: {
-          latitude: mapping.location.lat,
-          longitude: mapping.location.lng,
-        },
-        radius: mapping.radiusMeters,
-      },
+    locationRestriction: {
+      rectangle: circleToTextSearchRectangle(
+        mapping.location.lat,
+        mapping.location.lng,
+        mapping.radiusMeters
+      ),
     },
   };
   if (mapping.region) body.regionCode = mapping.region;

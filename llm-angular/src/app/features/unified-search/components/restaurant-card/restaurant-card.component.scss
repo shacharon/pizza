@@ -423,97 +423,42 @@
   display: none; // Hide tags in modern layout to reduce noise
 }
 
-// Provider links (10bis, Mishloha) - Tailwind mobile-first spacing
-.provider-links-tailwind {
-  // mt-2: Tailwind mobile-first (0.5rem = 8px)
-  margin-top: 0.5rem;
-
+.order-buttons {
   display: flex;
-  align-items: center;
-  gap: 0.5rem; // gap-2
-
-  padding: 0 1rem;
-  padding-bottom: 0.75rem; // pb-3
-
-  font-size: 0.875rem; // text-sm (14px)
-  color: #4b5563; // WCAG AA secondary text
-}
-
-.provider-icon {
-  flex-shrink: 0;
-  opacity: 0.85;
-  color: #4b5563; // WCAG AA
-}
-
-.provider-content {
-  min-width: 0; // min-w-0 for text truncation
-  display: flex;
-  align-items: center;
   flex-wrap: wrap;
-  gap: 0.5rem; // gap-2
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-top: 1px solid #e5e7eb;
+  background: #fff;
 }
 
-.provider-label {
-  white-space: nowrap;
-  color: #4b5563; // WCAG AA secondary text
-  font-weight: 500;
-}
-
-.provider-list {
-  // ml-2: margin-left 0.5rem
-  margin-left: 0.5rem;
-
-  display: inline-flex;
-  flex-wrap: wrap; // Mobile: wrap on narrow screens
-  align-items: center;
-  gap: 0.5rem 0.5rem; // gap-x-2 gap-y-1 (0.5rem horizontal, 0.25rem vertical)
-}
-
-.provider-link-item {
+.order-btn {
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem; // gap between logo and text
-  color: #4b5563; // WCAG AA secondary text
+  gap: 0.25rem;
+  padding: 0.375rem 0.625rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fff;
+  color: #111827;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
   text-decoration: none;
-  font-weight: 500;
-  transition: all 0.15s ease;
   cursor: pointer;
-
-  // When used as button (e.g. Wolt — user-click only, no href)
-  &:not(a) {
-    background: none;
-    border: none;
-    font: inherit;
-    padding: 0;
-  }
+  transition: background 0.15s ease;
 
   &:hover {
-    text-decoration: underline; // hover:underline
-    color: #374151;
-
-    .provider-logo {
-      transform: scale(1.1);
-    }
+    background: #f9fafb;
   }
 
   &:active {
-    color: #111827;
+    background: #f3f4f6;
   }
 }
 
 .provider-logo {
   flex-shrink: 0;
-  transition: transform 0.15s ease;
-}
-
-.provider-name {
-  // Text label for provider
-}
-
-.provider-separator-tw {
-  opacity: 0.8;
-  color: #4b5563; // WCAG AA
-  user-select: none;
 }
 
 // Original two-column action row: one white strip, icon on top / label below, thin divider

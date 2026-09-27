@@ -25,7 +25,7 @@ describe('SearchBarComponent', () => {
     expect(SEARCH_EXAMPLE_PROMPTS[1]).toContain('כשר');
     expect(SEARCH_EXAMPLE_PROMPTS[2]).toContain('פיצה');
     expect(SEARCH_EXAMPLE_PROMPTS[3]).toContain('דיזנגוף');
-    expect(SEARCH_EXAMPLE_PROMPTS[4]).toContain('Rothschild');
+    expect(SEARCH_EXAMPLE_PROMPTS[4]).toContain('Champs-Élysées');
     expect(SEARCH_EXAMPLE_PROMPTS[5]).toContain('Allenby');
     expect(SEARCH_EXAMPLE_PROMPTS[6]).toContain('breakfast');
     expect(SEARCH_EXAMPLE_PROMPTS[7]).toContain('by the sea');
@@ -33,7 +33,7 @@ describe('SearchBarComponent', () => {
     expect(SEARCH_EXAMPLE_PROMPTS[9]).toContain('كوشر');
     expect(SEARCH_EXAMPLE_PROMPTS[10]).toContain('Шенкин');
     expect(SEARCH_EXAMPLE_PROMPTS[11]).toContain('кошерный');
-    expect(SEARCH_EXAMPLE_PROMPTS[12]).toContain('Rothschild');
+    expect(SEARCH_EXAMPLE_PROMPTS[12]).toContain('Queens');
     expect(SEARCH_EXAMPLE_PROMPTS[13]).toContain('Allenby');
     expect(SEARCH_EXAMPLE_PROMPTS[14 % SEARCH_EXAMPLE_PROMPTS.length]).toBe(SEARCH_EXAMPLE_PROMPTS[0]);
     expect(searchExampleDir(0)).toBe('rtl');

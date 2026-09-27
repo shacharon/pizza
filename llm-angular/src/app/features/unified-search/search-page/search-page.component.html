@@ -19,10 +19,18 @@
       } @else if (locationState() === 'REQUESTING') {
       <span class="location-text">⏳ Getting location...</span>
       } @else if (locationState() === 'DENIED') {
-      <span class="location-text location-error">🚫 Location access denied</span>
+      <div class="location-denied">
+        <span class="location-text location-error">This browser is blocking location.</span>
+        @if (locationBlockedRetries() > 1) {
+        <span class="location-hint">Still blocked. This button cannot open the question again. In the address bar, click the icon on the left, set Location to Allow, then click Check again.</span>
+        } @else {
+        <span class="location-hint">In the address bar, click the icon on the left and set Location to Allow. Then click Check again.</span>
+        }
+        <button class="location-link" type="button" (click)="onLocationToggle()">Check again</button>
+      </div>
       } @else if (locationState() === 'ERROR') {
       <span class="location-text location-error">⚠️ Location unavailable</span>
-      } @else {
+      } @else if (!showMissingLocationQuestion()) {
       <button class="location-link" (click)="onLocationToggle()">Enable location for better results</button>
       }
     </div>
@@ -44,6 +52,14 @@
         <app-search-bar [value]="facade.query()" [loading]="facade.loading()" (search)="onSearch($event)"
           (inputChange)="onInputChange($event)" (clear)="onClear()" />
       </div>
+
+      @if (showMissingLocationQuestion()) {
+      <div class="location-status missing-location-question" [attr.dir]="missingLocationPrompt().dir">
+        <span class="location-text message-text">{{ missingLocationPrompt().message }}</span>
+        <span class="location-hint message-question">{{ missingLocationPrompt().question }}</span>
+        <button class="location-link" type="button" (click)="onLocationToggle()">{{ missingLocationPrompt().button }}</button>
+      </div>
+      }
 
       <!-- CANONICAL ROUTING: Contextual Assistant (under input) -->
       @if (facade.isLocationRequiredClarify() && (locationState() === 'REQUESTING' || locationState() === 'DENIED' || locationState() === 'ERROR')) {
@@ -219,7 +235,7 @@
 
       <!-- Results Container -->
       <div class="results-container">
-        <div class="results-grid">
+        <div class="results-grid" [class.results-grid--enter]="fadeOnAppear()">
           @for (restaurant of filteredResults(); track trackByRestaurant($index, restaurant)) {
           <app-restaurant-card [restaurant]="restaurant" [selected]="facade.selectedRestaurant()?.id === restaurant.id"
             [userLocation]="locationCoords()" (cardClick)="onCardClick($event)"

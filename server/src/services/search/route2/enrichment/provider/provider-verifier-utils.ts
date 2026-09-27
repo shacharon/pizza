@@ -492,16 +492,18 @@ export function slugTokenMatch(restaurantNorm: string, urlNameNorm: string): boo
     if (count >= 2) return true;
   }
   if (urlTokenList.length === 1 && restTokens.length >= 1) {
-    const urlToken = urlTokenList[0].toLowerCase();
+    const urlToken = urlTokenList[0];
+    if (urlToken === undefined) return false;
+    const urlTokenLower = urlToken.toLowerCase();
     for (const t of restTokens) {
       if (hasHebrew(t)) {
         const latO = transliterateHebrewToLatin(t, 'o').toLowerCase().replace(/[^a-z]/g, '');
-        if (latO.length >= 2 && (urlToken.includes(latO) || latO.includes(urlToken))) return true;
-        if (latO.length >= 2 && isSubsequence(latO, urlToken)) return true;
+        if (latO.length >= 2 && (urlTokenLower.includes(latO) || latO.includes(urlTokenLower))) return true;
+        if (latO.length >= 2 && isSubsequence(latO, urlTokenLower)) return true;
         const latU = transliterateHebrewToLatin(t, 'u').toLowerCase().replace(/[^a-z]/g, '');
-        if (latU.length >= 2 && latU !== latO && (urlToken.includes(latU) || latU.includes(urlToken))) return true;
-        if (latU.length >= 2 && latU !== latO && isSubsequence(latU, urlToken)) return true;
-      } else if (t.length >= 2 && (urlToken.includes(t.toLowerCase()) || t.toLowerCase().includes(urlToken))) return true;
+        if (latU.length >= 2 && latU !== latO && (urlTokenLower.includes(latU) || latU.includes(urlTokenLower))) return true;
+        if (latU.length >= 2 && latU !== latO && isSubsequence(latU, urlTokenLower)) return true;
+      } else if (t.length >= 2 && (urlTokenLower.includes(t.toLowerCase()) || t.toLowerCase().includes(urlTokenLower))) return true;
     }
   }
   return false;

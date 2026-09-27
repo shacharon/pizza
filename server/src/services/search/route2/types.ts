@@ -36,6 +36,8 @@ export interface Route2Context {
     lat: number;
     lng: number;
   } | null;
+  /** Text search had no city, bias, or GPS. Search still runs; the location question is attached on the success response. */
+  missingLocationQuestion?: boolean;
   // Region tracking: user (device) vs query (LLM-detected)
   userRegionCode?: 'IL' | 'OTHER';
   queryRegionCode?: 'IL' | 'OTHER';

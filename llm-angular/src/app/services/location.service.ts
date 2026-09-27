@@ -11,9 +11,12 @@ export type LocationState = 'OFF' | 'REQUESTING' | 'ON' | 'DENIED' | 'ERROR';
 @Injectable({ providedIn: 'root' })
 export class LocationService {
   private readonly STORAGE_KEY = 'userLocation';
-  
+  private unlockListenerArmed = false;
+
   readonly state = signal<LocationState>('OFF');
   readonly location = signal<Coordinates | null>(null);
+  /** How many times we asked while the browser still had Block saved. */
+  readonly blockedRetries = signal(0);
 
   constructor() {
     this.loadFromStorage();
@@ -29,6 +32,16 @@ export class LocationService {
       return;
     }
 
+    const permission = await this.readPermission();
+    if (permission === 'denied') {
+      this.blockedRetries.update((count) => count + 1);
+      this.state.set('DENIED');
+      this.location.set(null);
+      this.clearStorage();
+      this.armUnlockListener();
+      return;
+    }
+
     this.state.set('REQUESTING');
 
     try {
@@ -41,10 +54,16 @@ export class LocationService {
 
       this.location.set(coords);
       this.state.set('ON');
+      this.blockedRetries.set(0);
       this.saveToStorage(coords);
     } catch (error: any) {
-      if (error.code === 1) {
+      // Code 1 is both "Block" and a dismissed prompt. Only Block is stored by the browser.
+      if (error.code === 1 && await this.isPermissionDenied()) {
+        this.blockedRetries.update((count) => count + 1);
         this.state.set('DENIED');
+        this.armUnlockListener();
+      } else if (error.code === 1) {
+        this.state.set('OFF');
       } else {
         this.state.set('ERROR');
       }
@@ -116,6 +135,41 @@ export class LocationService {
       sessionStorage.removeItem(this.STORAGE_KEY);
     } catch {
       // Ignore storage errors
+    }
+  }
+
+  /** True only when the browser has saved Block for this site. A dismissed prompt stays "prompt". */
+  private async isPermissionDenied(): Promise<boolean> {
+    return (await this.readPermission()) === 'denied';
+  }
+
+  private async readPermission(): Promise<PermissionState | 'unknown'> {
+    try {
+      if (!navigator.permissions?.query) return 'unknown';
+      const status = await navigator.permissions.query({ name: 'geolocation' });
+      return status.state;
+    } catch {
+      return 'unknown';
+    }
+  }
+
+  /** After Block, turn location on as soon as the address-bar setting is Allow. */
+  private armUnlockListener(): void {
+    if (this.unlockListenerArmed || typeof window === 'undefined') return;
+    this.unlockListenerArmed = true;
+    window.addEventListener('focus', () => {
+      void this.turnOnIfBrowserAllowed();
+    });
+  }
+
+  private async turnOnIfBrowserAllowed(): Promise<void> {
+    if (this.state() !== 'DENIED') return;
+    const permission = await this.readPermission();
+    if (permission === 'granted') {
+      await this.requestLocation();
+    } else if (permission === 'prompt') {
+      this.blockedRetries.set(0);
+      this.state.set('OFF');
     }
   }
 }

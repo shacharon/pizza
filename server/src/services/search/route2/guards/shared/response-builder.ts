@@ -81,7 +81,26 @@ export function buildGuardResponse(params: GuardResponseParams): SearchResponse 
   };
 }
 
-/** Deterministic CLARIFY for TEXTSEARCH missing location (no LLM). Used when anchor_eval blocks and guards return null. */
+export const MISSING_LOCATION_CLARIFY_ASSIST = {
+  type: 'clarify' as const,
+  reason: 'MISSING_LOCATION' as const,
+  suggestedAction: 'ASK_LOCATION' as const,
+  message: 'כדי לחפש מסעדות אני צריך מיקום. תאפשר מיקום או כתוב עיר/אזור.',
+  question: 'איפה תרצה לחפש? (עיר או אזור)'
+};
+
+/** Guide assist, or the location question when the search ran without a location anchor. */
+export function assistForSearchResponse(
+  missingLocationQuestion: boolean | undefined,
+  guideMessage: string
+): { type: 'guide'; message: string } | typeof MISSING_LOCATION_CLARIFY_ASSIST {
+  if (missingLocationQuestion) {
+    return { ...MISSING_LOCATION_CLARIFY_ASSIST };
+  }
+  return { type: 'guide', message: guideMessage };
+}
+
+/** Deterministic CLARIFY for TEXTSEARCH missing location (no LLM). Empty results; not the success path. */
 export interface DeterministicClarifyParams {
   request: SearchRequest;
   ctx: Route2Context;
@@ -96,9 +115,6 @@ export function buildDeterministicMissingLocationClarify(params: DeterministicCl
   const normalizedLanguage = sourceLanguage || 'he';
   const uiLanguage = mapQueryLanguageToUILanguage(normalizedLanguage as any);
   const googleLanguage: 'he' | 'en' = sourceLanguage === 'he' ? 'he' : 'en';
-  const message = 'כדי לחפש מסעדות אני צריך מיקום. תאפשר מיקום או כתוב עיר/אזור.';
-  const question = 'איפה תרצה לחפש? (עיר או אזור)';
-
   return {
     requestId: ctx.requestId,
     sessionId,
@@ -119,13 +135,7 @@ export function buildDeterministicMissingLocationClarify(params: DeterministicCl
     },
     results: [],
     chips: [],
-    assist: {
-      type: 'clarify',
-      message,
-      question,
-      suggestedAction: 'ASK_LOCATION',
-      reason: 'MISSING_LOCATION'
-    } as import('../../../types/search.types.js').AssistPayload,
+    assist: { ...MISSING_LOCATION_CLARIFY_ASSIST } as import('../../../types/search.types.js').AssistPayload,
     meta: {
       tookMs: Date.now() - ctx.startTime,
       mode: 'textsearch' as const,

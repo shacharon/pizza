@@ -81,8 +81,10 @@ function hasProfanityFragment(q: string): boolean {
 function isAnchorOnly(q: string): boolean {
   const tokens = tokenize(q);
   if (tokens.length !== 1) return false;
-  const lower = tokens[0].toLowerCase().replace(/\s/g, '');
-  const raw = tokens[0];
+  const first = tokens[0];
+  if (first === undefined) return false;
+  const lower = first.toLowerCase().replace(/\s/g, '');
+  const raw = first;
   return (
     ANCHOR_ONLY_TOKENS.has(lower) ||
     ANCHOR_ONLY_TOKENS.has(raw) ||

@@ -141,8 +141,8 @@ export async function resolveUserLocation(params: {
     return {
       userLocation: next,
       source: 'client_payload',
-      sessionLocation: sessionLocation ?? undefined,
-      invalidated: invalidated || undefined,
+      sessionLocation: sessionLocation ?? null,
+      ...(invalidated && { invalidated: true }),
       shouldPersistSession: true,
     };
   }
@@ -222,8 +222,8 @@ export async function resolveUserLocation(params: {
         return {
           userLocation: next,
           source: 'ip_geo',
-          sessionLocation: sessionLocation ?? undefined,
-          invalidated: invalidated || undefined,
+          sessionLocation: sessionLocation ?? null,
+          ...(invalidated && { invalidated: true }),
           shouldPersistSession: true,
         };
       }

@@ -53,6 +53,7 @@ export async function getRedisClient(options: RedisClientOptions): Promise<Redis
     enableOfflineQueue = false
   } = options;
 
+  let redis: RedisClient | undefined;
   try {
     // Local: redis://localhost (no TLS). Prod: rediss://...cache.amazonaws.com (TLS in VPC).
     const useTls = url.startsWith('rediss://');
@@ -87,7 +88,6 @@ export async function getRedisClient(options: RedisClientOptions): Promise<Redis
       msg: '[Redis] About to create Redis client instance'
     });
 
-    let redis: RedisClient | undefined;
     try {
       redis = new Redis(url, {
         maxRetriesPerRequest,
@@ -165,7 +165,7 @@ export async function getRedisClient(options: RedisClientOptions): Promise<Redis
     redisInitialized = true; // So getExistingRedisClient no longer warns "before initialization"
     if (typeof redis !== 'undefined' && redis) {
       try {
-        redis.destroy();
+        redis.disconnect();
       } catch (_) {
         /* ignore */
       }

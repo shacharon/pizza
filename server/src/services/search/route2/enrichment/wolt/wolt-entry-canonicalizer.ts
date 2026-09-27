@@ -63,7 +63,7 @@ export async function resolveWoltEntryToRestaurantUrl(
         timeoutMs: WOLT_CANONICALIZE_TIMEOUT_MS,
         provider: 'wolt',
         stage: 'wolt_entry_canonicalize',
-        signal,
+        ...(signal !== undefined && { signal }),
       }
     );
 
@@ -90,15 +90,17 @@ export async function resolveWoltEntryToRestaurantUrl(
       /<link[^>]*\shref=["']([^"']+)["'][^>]*\srel=["']canonical["']/i
     );
     if (canonicalMatch) {
-      const href = canonicalMatch[1].trim();
-      const absolute = resolveUrl(href, base);
-      if (absolute && (absolute.includes('/restaurant/') || absolute.includes('/venue/'))) {
-        const toPath = new URL(absolute).pathname;
-        logger.info(
-          { event: 'wolt_entry_canonicalized', fromPath, toPath },
-          '[WoltEntryCanonicalizer] Resolved via canonical'
-        );
-        return absolute;
+      const href = canonicalMatch[1]?.trim();
+      if (href) {
+        const absolute = resolveUrl(href, base);
+        if (absolute && (absolute.includes('/restaurant/') || absolute.includes('/venue/'))) {
+          const toPath = new URL(absolute).pathname;
+          logger.info(
+            { event: 'wolt_entry_canonicalized', fromPath, toPath },
+            '[WoltEntryCanonicalizer] Resolved via canonical'
+          );
+          return absolute;
+        }
       }
     }
 
@@ -106,8 +108,8 @@ export async function resolveWoltEntryToRestaurantUrl(
     const anchorRegex = /<a[^>]*\shref=["']([^"']+)["']/gi;
     let match: RegExpExecArray | null;
     while ((match = anchorRegex.exec(html)) !== null) {
-      const href = match[1].trim();
-      if (href.includes('/restaurant/') || href.includes('/venue/')) {
+      const href = match[1]?.trim();
+      if (href && (href.includes('/restaurant/') || href.includes('/venue/'))) {
         const absolute = resolveUrl(href, base);
         if (absolute && isWoltRestaurantOrVenueUrl(absolute)) {
           const toPath = new URL(absolute).pathname;
