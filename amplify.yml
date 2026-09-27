@@ -18,32 +18,6 @@ frontend:
     paths:
       - llm-angular/node_modules/**/*
 customHeaders:
-  # Service worker files and index.html: MUST NOT be cached
-  - pattern: "/index.html"
-    headers:
-      - key: "Cache-Control"
-        value: "no-cache, no-store, must-revalidate"
-      - key: "Pragma"
-        value: "no-cache"
-      - key: "Expires"
-        value: "0"
-  - pattern: "/ngsw-worker.js"
-    headers:
-      - key: "Cache-Control"
-        value: "no-cache, no-store, must-revalidate"
-  - pattern: "/ngsw.json"
-    headers:
-      - key: "Cache-Control"
-        value: "no-cache, no-store, must-revalidate"
-  - pattern: "/safety-worker.js"
-    headers:
-      - key: "Cache-Control"
-        value: "no-cache, no-store, must-revalidate"
-  # Manifest: short cache
-  - pattern: "/manifest.webmanifest"
-    headers:
-      - key: "Cache-Control"
-        value: "public, max-age=3600"
   # Hashed bundles: long-term cache (immutable)
   - pattern: "**/*.js"
     headers:
@@ -66,3 +40,28 @@ customHeaders:
     headers:
       - key: "Cache-Control"
         value: "public, max-age=604800"
+  # These names never change, so they must win over the long cache above.
+  - pattern: "/index.html"
+    headers:
+      - key: "Cache-Control"
+        value: "no-cache, no-store, must-revalidate"
+      - key: "Pragma"
+        value: "no-cache"
+      - key: "Expires"
+        value: "0"
+  - pattern: "/ngsw-worker.js"
+    headers:
+      - key: "Cache-Control"
+        value: "no-cache, no-store, must-revalidate"
+  - pattern: "/ngsw.json"
+    headers:
+      - key: "Cache-Control"
+        value: "no-cache, no-store, must-revalidate"
+  - pattern: "/safety-worker.js"
+    headers:
+      - key: "Cache-Control"
+        value: "no-cache, no-store, must-revalidate"
+  - pattern: "/manifest.webmanifest"
+    headers:
+      - key: "Cache-Control"
+        value: "public, max-age=3600"

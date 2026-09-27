@@ -1,4 +1,4 @@
-import { ApplicationConfig, provideZoneChangeDetection, APP_INITIALIZER, isDevMode } from '@angular/core';
+import { ApplicationConfig, provideZoneChangeDetection, APP_INITIALIZER } from '@angular/core';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { provideRouter } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
@@ -12,7 +12,6 @@ import { FlagsStore } from './state/flags.store';
 import { SessionStore } from './state/session.store';
 import { LanguageService } from './core/services/language.service';
 import { AuthService } from './core/auth/auth.service';
-import { provideServiceWorker } from '@angular/service-worker';
 
 /** LocalStorage key prefix for feature-flag overrides (e.g. ff_unifiedSearch = "true") */
 const FF_OVERRIDE_PREFIX = 'ff_';
@@ -104,10 +103,6 @@ export const appConfig: ApplicationConfig = {
       useFactory: initializeFeatureFlags,
       deps: [FlagsStore, FlagsApiClient],
       multi: true
-    },
-    provideServiceWorker('ngsw-worker.js', {
-            enabled: !isDevMode(),
-            registrationStrategy: 'registerWhenStable:30000'
-          })
+    }
   ]
 };
