@@ -193,7 +193,7 @@ export class SiteNoticesComponent implements OnInit {
       this.notice.set('terms');
       return;
     }
-    this.notice.set('feedback');
+    this.finish();
   }
 
   onScrim(current: Notice): void {
