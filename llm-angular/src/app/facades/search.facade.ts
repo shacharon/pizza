@@ -14,6 +14,7 @@ import { SearchStore } from '../state/search.store';
 import { SessionStore } from '../state/session.store';
 import { ActionsStore } from '../state/actions.store';
 import { ActiveRequestIdService } from '../state/active-request-id.service';
+import { currentSearchEntry } from '../core/qr-entry';
 import type {
   SearchFilters,
   Restaurant,
@@ -223,7 +224,8 @@ export class SearchFacade {
         sessionId: this.conversationId(),
         userLocation: this.locationService.location() ?? undefined,
         clearContext: shouldClearContext,
-        locale: this.locale()
+        locale: this.locale(),
+        entry: currentSearchEntry()
       });
 
       // Check if it's a 202 Accepted (async) or 200 (sync fallback)

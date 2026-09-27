@@ -38,6 +38,7 @@ export interface SearchRequest {
   locale?: string;
   region?: string;
   clearContext?: boolean;  // Intent reset flag
+  entry?: 'qr';
 }
 
 export interface SearchResponse {

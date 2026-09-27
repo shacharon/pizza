@@ -36,6 +36,7 @@ export class SearchApiHandler {
     userLocation?: { lat: number; lng: number };
     clearContext?: boolean;
     locale: string;
+    entry?: 'qr';
   }): Promise<{ requestId: string; resultUrl: string } | SearchResponse> {
     try {
       return await firstValueFrom(this.searchApiClient.searchAsync(params));

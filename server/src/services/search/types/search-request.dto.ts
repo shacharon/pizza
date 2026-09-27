@@ -39,6 +39,9 @@ export const searchRequestSchema = z.object({
   
   // Optional: enable debug mode (include diagnostics in response)
   debug: z.boolean().optional(),
+
+  // Set when the tab opened from the printed QR (/q)
+  entry: z.literal('qr').optional(),
 });
 
 // ============================================================================
