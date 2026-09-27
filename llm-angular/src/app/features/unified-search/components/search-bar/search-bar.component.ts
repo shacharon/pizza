@@ -26,18 +26,22 @@ const MIN_AUTO_SUBMIT_LENGTH = 2;
 const TEXTAREA_MIN_HEIGHT_PX = 24;
 const TEXTAREA_MAX_HEIGHT_PX = 144;
 
-/** Example searches typed into the empty box: two Hebrew, two English, two Arabic, two Russian. */
+/** Example searches typed into the empty box: four Hebrew, four English, two Arabic, two Russian, then English again. */
 export const SEARCH_EXAMPLE_PROMPTS = [
   'מסעדה איטלקית, 300 מטר, בשנקין',
   'המבורגר כשר שאפשר ללכת אליו',
-  'Italian restaurant, 300 meters away, on Shenkin',
-  'kosher burger I can walk to',
+  'פיצה ליד הבית, 10 דקות הליכה',
+  'בית קפה שקט בחוץ, בדיזנגוף',
+  'sushi open now, near Rothschild',
+  'cheap falafel with a seat, on Allenby',
+  'breakfast and good coffee, a short walk',
+  'fish restaurant by the sea, not too expensive',
   'مطعم إيطالي، على بعد 300 متر، في شنكين',
   'برغر كوشر أقدر أمشي إليه',
   'итальянский ресторан в 300 метрах, на Шенкин',
   'кошерный бургер, до которого можно дойти',
-  'Italian restaurant, 300 meters away, on Shenkin',
-  'kosher burger I can walk to',
+  'sushi open now, near Rothschild',
+  'cheap falafel with a seat, on Allenby',
 ] as const;
 
 export function searchExampleDir(index: number): 'rtl' | 'ltr' {
@@ -137,6 +141,7 @@ export class SearchBarComponent implements OnDestroy {
   readonly hintDir = signal<'rtl' | 'ltr'>('rtl');
 
   @ViewChild('searchInput') searchInputRef: ElementRef<HTMLTextAreaElement> | undefined;
+  @ViewChild('typewriterHint') typewriterHintRef: ElementRef<HTMLElement> | undefined;
 
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly ngZone = inject(NgZone);
@@ -208,6 +213,7 @@ export class SearchBarComponent implements OnDestroy {
 
     effect(() => {
       this.query();
+      this.typedPlaceholder();
       setTimeout(() => this.resizeTextarea(), 0);
     });
 
@@ -276,9 +282,12 @@ export class SearchBarComponent implements OnDestroy {
     const el = this.searchInputRef?.nativeElement;
     if (!el) return;
     el.style.height = '0';
+    const hintHeight = this.showTypewriterHint()
+      ? (this.typewriterHintRef?.nativeElement.offsetHeight ?? 0)
+      : 0;
     const h = Math.min(
       TEXTAREA_MAX_HEIGHT_PX,
-      Math.max(TEXTAREA_MIN_HEIGHT_PX, el.scrollHeight)
+      Math.max(TEXTAREA_MIN_HEIGHT_PX, el.scrollHeight, hintHeight)
     );
     el.style.height = `${h}px`;
   }

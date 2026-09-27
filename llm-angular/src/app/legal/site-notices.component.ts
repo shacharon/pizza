@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { ENDPOINTS } from '../shared/api/api.config';
 
@@ -162,7 +162,7 @@ const SEEN_KEY = 'g2e-notices-seen';
     .thanks h2 { margin-top: 0.2rem; }
   `,
 })
-export class SiteNoticesComponent implements OnInit {
+export class SiteNoticesComponent {
   private readonly http = inject(HttpClient);
   readonly notice = signal<Notice | null>(null);
   readonly mood = signal<'like' | 'work' | null>(null);
@@ -171,11 +171,6 @@ export class SiteNoticesComponent implements OnInit {
   readonly sending = signal(false);
   readonly sendError = signal(false);
   private fromFooter = false;
-
-  ngOnInit(): void {
-    if (localStorage.getItem(SEEN_KEY) === '1') return;
-    this.notice.set('privacy');
-  }
 
   open(which: Notice): void {
     this.fromFooter = true;
