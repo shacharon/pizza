@@ -53,6 +53,9 @@ export function buildFiltersWithMeta(filters: FiltersForPostFilterShape | null |
   if (filters.isKosher === true) {
     push('kosher', true);
   }
+  if (filters.isKosher === false) {
+    push('kosher', false);
+  }
   if (filters.isGlutenFree === true) {
     push('glutenFree', true);
   }

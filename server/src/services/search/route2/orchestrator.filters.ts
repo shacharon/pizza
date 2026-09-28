@@ -6,6 +6,7 @@
 import type { Route2Context, IntentResult } from './types.js';
 import type { PreGoogleBaseFilters, FinalSharedFilters } from './shared/shared-filters.types.js';
 import type { PostConstraints } from './shared/post-constraints.types.js';
+import { queryAsksNotKosher } from './post-filters/not-kosher-name.js';
 import { resolveFilters } from './shared/filters-resolver.js';
 import { applyPostFilters } from './post-filters/post-results.filter.js';
 import { logger } from '../../../lib/logger/structured-logger.js';
@@ -89,6 +90,10 @@ export function applyPostFiltersToResults(
     requirements: postConstraints.requirements ?? (finalFilters as any).requirements
   };
 
+  if (queryAsksNotKosher(ctx.query)) {
+    filtersForPostFilter.isKosher = false;
+  }
+
   // Apply post-filters
   const postFilterResult = applyPostFilters({
     results: googleResults,
@@ -121,7 +126,8 @@ export function buildAppliedFiltersArray(filtersForPostFilter: any): string[] {
   const appliedFiltersArray: string[] = [];
   if (filtersForPostFilter.openState) appliedFiltersArray.push(filtersForPostFilter.openState);
   if (filtersForPostFilter.priceLevel) appliedFiltersArray.push(`price:${filtersForPostFilter.priceLevel}`);
-  if (filtersForPostFilter.isKosher) appliedFiltersArray.push('kosher');
+  if (filtersForPostFilter.isKosher === true) appliedFiltersArray.push('kosher');
+  if (filtersForPostFilter.isKosher === false) appliedFiltersArray.push('not-kosher');
   if (filtersForPostFilter.isGlutenFree) appliedFiltersArray.push('gluten-free:soft');
   return appliedFiltersArray;
 }

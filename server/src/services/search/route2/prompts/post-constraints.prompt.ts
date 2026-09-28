@@ -6,7 +6,7 @@
 
 import { createHash } from 'crypto';
 
-export const POST_CONSTRAINTS_PROMPT_VERSION = 'post_constraints_v1';
+export const POST_CONSTRAINTS_PROMPT_VERSION = 'post_constraints_v2';
 
 /**
  * System Prompt for Post-Constraints Extraction
@@ -28,7 +28,8 @@ Output ONLY valid JSON with ALL fields (never omit any field):
 RULES:
 - openState: OPEN_NOW / CLOSED_NOW / OPEN_AT / OPEN_BETWEEN or null. OPEN_AT → set openAt with day (0-6), timeHHmm (24h). OPEN_BETWEEN → set openBetween with day, startHHmm, endHHmm.
 - priceLevel: 1=cheap, 2=$$, 3=$$$, 4=$$$$ or null.
-- isKosher, isGlutenFree: true only if mentioned; never set false; else null.
+- isKosher: true if the user asks for kosher. false if the user asks for not kosher (לא כשר, לא כשרה, non-kosher, not kosher). null if kosher is not mentioned. The word כשר inside לא כשר is not a request for kosher.
+- isGlutenFree: true only if mentioned; never set false; else null.
 - requirements.accessible, requirements.parking: true only if mentioned; never set false; else null.
 - When openAt or openBetween is an object, include all keys (use null for missing). Do not output location, language, region, or confidence.
 `;

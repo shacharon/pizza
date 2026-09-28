@@ -9,6 +9,7 @@
 import { logger } from '../../../../lib/logger/structured-logger.js';
 import type { FinalSharedFilters, OpenState } from '../shared/shared-filters.types.js';
 import { attachDietaryHints } from './dietary-hints.js';
+import { placeNameIsClearlyKosher } from './not-kosher-name.js';
 
 export interface PostFilterInput {
   results: any[]; // PlaceResult[] from Google Maps stage
@@ -152,6 +153,25 @@ export function applyPostFilters(input: PostFilterInput): PostFilterOutput {
       },
       `[PostFilter] Price intent applied: ${priceIntent} (preferred: ${distribution.preferred}, missing: ${distribution.missing}, other: ${distribution.other})`
     );
+  }
+
+  // "לא כשר": drop a place only when its name says it is kosher. Other places stay.
+  if ((sharedFilters as any).isKosher === false) {
+    const beforeNotKosher = filteredResults.length;
+    filteredResults = filteredResults.filter((result) => !placeNameIsClearlyKosher(result?.name));
+    const removedNotKosher = beforeNotKosher - filteredResults.length;
+    if (removedNotKosher > 0) {
+      logger.info(
+        {
+          requestId,
+          event: 'post_filter_not_kosher',
+          beforeCount: beforeNotKosher,
+          afterCount: filteredResults.length,
+          removed: removedNotKosher
+        },
+        `[PostFilter] Not-kosher query removed ${removedNotKosher} clearly kosher names`
+      );
+    }
   }
 
   // Attach dietary hints (SOFT hints - no removal)
