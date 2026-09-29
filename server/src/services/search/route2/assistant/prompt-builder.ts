@@ -3,6 +3,7 @@
  * Builds system and user prompts for LLM
  */
 
+import { truncateWordsForLlm, frameSearchAsData } from '../../../../lib/llm/index.js';
 import type { AssistantLanguage } from './language-detector.js';
 import { normalizeRequestedLanguage, getLanguageName, getLanguageEmphasis } from './language-detector.js';
 
@@ -73,43 +74,43 @@ export function buildUserPromptJson(context: AssistantContext): string {
 
   if (context.type === 'GATE_FAIL') {
     const reason = context.reason === 'NO_FOOD' ? 'not food-related' : 'uncertain if food-related';
-    return `Query: "${context.query}"
+    return frameSearchAsData(`Query: "${truncateWordsForLlm(context.query)}"
 Type: GATE_FAIL
 Reason: ${reason}
 Language: ${requested}
 
 CRITICAL: ${languageEmphasis}. Both "message" and "question" fields must be in ${languageInstruction}.
 
-Generate friendly message. Help user understand and guide them. Decide blocksSearch and suggestedAction.`;
+Generate friendly message. Help user understand and guide them. Decide blocksSearch and suggestedAction.`);
   }
 
   if (context.type === 'CLARIFY') {
     const missing = context.reason === 'MISSING_LOCATION' ? 'location' : 'food type';
-    return `Query: "${context.query}"
+    return frameSearchAsData(`Query: "${truncateWordsForLlm(context.query)}"
 Type: CLARIFY
 Reason: missing ${missing}
 Language: ${requested}
 
 CRITICAL: ${languageEmphasis}. Both "message" and "question" fields must be in ${languageInstruction}.
 
-Ask a question to get the missing info. Decide blocksSearch and suggestedAction.`;
+Ask a question to get the missing info. Decide blocksSearch and suggestedAction.`);
   }
 
   if (context.type === 'SEARCH_FAILED') {
     const reason = context.reason === 'GOOGLE_TIMEOUT' ? 'Google API timeout' : 'provider error';
-    return `Query: "${context.query}"
+    return frameSearchAsData(`Query: "${truncateWordsForLlm(context.query)}"
 Type: SEARCH_FAILED
 Reason: ${reason}
 Language: ${requested}
 
 CRITICAL: ${languageEmphasis}. Both "message" and "question" fields must be in ${languageInstruction}.
 
-Tell user search failed. Decide what to suggest and whether to block. Be helpful and honest.`;
+Tell user search failed. Decide what to suggest and whether to block. Be helpful and honest.`);
   }
 
   if (context.type === 'GENERIC_QUERY_NARRATION') {
     const locationSource = context.usedCurrentLocation ? 'current location' : 'default area';
-    return `Query: "${context.query}"
+    return frameSearchAsData(`Query: "${truncateWordsForLlm(context.query)}"
 Type: GENERIC_QUERY_NARRATION
 Results: ${context.resultCount}
 Location used: ${locationSource}
@@ -123,7 +124,7 @@ Instructions:
 3. Set blocksSearch=false (search already ran)
 4. Set suggestedAction="REFINE"
 
-Generate the best single refinement question.`;
+Generate the best single refinement question.`);
   }
 
   // SUMMARY: minimal payload – analysisMode, resultCount, top (max 2 COMPARISON, 1 SATURATED, 0 SCARCITY); per candidate name + up to 3 numeric fields
@@ -149,7 +150,7 @@ Generate the best single refinement question.`;
     ? '\nDietary: Add SOFT gluten-free hint at end (Line 6, 1 sentence).'
     : '';
 
-  return `Query: "${context.query}"
+  return frameSearchAsData(`Query: "${truncateWordsForLlm(context.query)}"
 Type: SUMMARY
 Language: ${requested}
 analysisMode: ${context.analysisMode}
@@ -157,7 +158,7 @@ resultCount: ${context.resultCount}
 top: ${topJson}${dietaryNote}
 
 CRITICAL: ${languageEmphasis}. "message" and "question" in ${languageInstruction}. question=null.
-Follow MODE RULES for analysisMode=${context.analysisMode}. message MUST be 4–6 lines (each line one sentence; Line 1: headline, 2–4: evidence from top[], Line 5: next step). Use only fields present in top[].`;
+Follow MODE RULES for analysisMode=${context.analysisMode}. message MUST be 4–6 lines (each line one sentence; Line 1: headline, 2–4: evidence from top[], Line 5: next step). Use only fields present in top[].`);
 }
 
 /**
@@ -171,43 +172,43 @@ export function buildUserPromptMessageOnly(context: AssistantContext): string {
 
   if (context.type === 'GATE_FAIL') {
     const reason = context.reason === 'NO_FOOD' ? 'not food-related' : 'uncertain if food-related';
-    return `Query: "${context.query}"
+    return frameSearchAsData(`Query: "${truncateWordsForLlm(context.query)}"
 Type: GATE_FAIL
 Reason: ${reason}
 Language: ${requested}
 
 CRITICAL: ${languageEmphasis}. Output ONLY the message text in ${languageInstruction}.
 
-Generate friendly message (3-6 sentences). Help user understand and guide them.`;
+Generate friendly message (3-6 sentences). Help user understand and guide them.`);
   }
 
   if (context.type === 'CLARIFY') {
     const missing = context.reason === 'MISSING_LOCATION' ? 'location' : 'food type';
-    return `Query: "${context.query}"
+    return frameSearchAsData(`Query: "${truncateWordsForLlm(context.query)}"
 Type: CLARIFY
 Reason: missing ${missing}
 Language: ${requested}
 
 CRITICAL: ${languageEmphasis}. Output ONLY the message text in ${languageInstruction}.
 
-Ask a question (3-6 sentences) to get the missing info.`;
+Ask a question (3-6 sentences) to get the missing info.`);
   }
 
   if (context.type === 'SEARCH_FAILED') {
     const reason = context.reason === 'GOOGLE_TIMEOUT' ? 'Google API timeout' : 'provider error';
-    return `Query: "${context.query}"
+    return frameSearchAsData(`Query: "${truncateWordsForLlm(context.query)}"
 Type: SEARCH_FAILED
 Reason: ${reason}
 Language: ${requested}
 
 CRITICAL: ${languageEmphasis}. Output ONLY the message text in ${languageInstruction}.
 
-Tell user search failed (3-6 sentences). Be helpful and honest.`;
+Tell user search failed (3-6 sentences). Be helpful and honest.`);
   }
 
   if (context.type === 'GENERIC_QUERY_NARRATION') {
     const locationSource = context.usedCurrentLocation ? 'current location' : 'default area';
-    return `Query: "${context.query}"
+    return frameSearchAsData(`Query: "${truncateWordsForLlm(context.query)}"
 Type: GENERIC_QUERY_NARRATION
 Results: ${context.resultCount}
 Location used: ${locationSource}
@@ -219,7 +220,7 @@ Instructions:
 1. Explain assumption (1 sentence): we used their current location because query was generic
 2. Ask for ONE refinement (1 sentence) to help narrow results
 
-Generate the message.`;
+Generate the message.`);
   }
 
   // SUMMARY - MESSAGE_ONLY
@@ -237,7 +238,7 @@ Generate the message.`;
       if (t.priceLevel != null) parts.push(`price ${t.priceLevel}`);
       return parts.join(', ');
     });
-    return `Type: SUMMARY (MESSAGE_ONLY, SATURATED)
+    return frameSearchAsData(`Type: SUMMARY (MESSAGE_ONLY, SATURATED)
 Language: ${requested}
 Result count: ${context.resultCount}
 Top (max 4): ${topLines.join(' | ')}
@@ -251,7 +252,7 @@ RULES:
 - 3–4 short sentences. End with one refine suggestion from the next step hint.
 - No echo of query. No markdown.
 
-Generate the message.`;
+Generate the message.`);
   }
 
   // Non-SATURATED SUMMARY: full metadata (legacy MESSAGE_ONLY path)
@@ -270,7 +271,7 @@ ${metadata.filtersApplied && metadata.filtersApplied.length > 0 ? `- Active filt
 - Top (max 4): ${context.top.slice(0, 4).map((t) => t.name).join(', ')}
 - Analysis mode: ${context.analysisMode}`;
 
-  return `Query: "${context.query}"
+  return frameSearchAsData(`Query: "${truncateWordsForLlm(context.query)}"
 Type: SUMMARY
 Language: ${requested}${metadataContext}${dietaryNote}
 
@@ -290,7 +291,7 @@ RULES:
 - NO generic phrases ("thank you", "here are"). NO echo of exact query. Use ONLY provided metadata.
 - Adapt labels to ${languageInstruction}. Each line must be a full sentence.
 
-Generate the message. You MUST output at least 4 lines with newlines between them.`;
+Generate the message. You MUST output at least 4 lines with newlines between them.`);
 }
 
 /**

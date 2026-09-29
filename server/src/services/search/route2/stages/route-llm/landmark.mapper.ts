@@ -12,7 +12,7 @@ import type { Message } from '../../../../../llm/types.js';
 import { buildLLMJsonSchema } from '../../../../../llm/types.js';
 import { logger } from '../../../../../lib/logger/structured-logger.js';
 import { logStageBoundary } from '../../../../../lib/logging/pipeline-stage-log.js';
-import { resolveLLM } from '../../../../../lib/llm/index.js';
+import { resolveLLM, truncateWordsForLlm, frameSearchAsData } from '../../../../../lib/llm/index.js';
 import { LandmarkMappingSchema, type LandmarkMapping } from './schemas.js';
 
 const LANDMARK_MAPPER_VERSION = 'landmark_mapper_v3';
@@ -282,9 +282,9 @@ function buildUserPrompt(
   query: string,
   finalFilters: FinalSharedFilters
 ): string {
-  const prompt = `Query: "${query}"
+  const prompt = `Query: "${truncateWordsForLlm(query)}"
 Region: ${finalFilters.regionCode}
 Language: ${finalFilters.providerLanguage}`;
 
-  return prompt;
+  return frameSearchAsData(prompt);
 }

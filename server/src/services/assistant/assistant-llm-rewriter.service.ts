@@ -5,6 +5,8 @@
 
 import { createHash } from 'crypto';
 import { OpenAiProvider } from '../../llm/openai.provider.js';
+import { truncateWordsForLlm, frameSearchAsData } from '../../lib/llm/index.js';
+import { capAssistantText } from '../search/route2/assistant/cap-assistant-text.js';
 import { logger } from '../../lib/logger/structured-logger.js';
 
 /**
@@ -187,7 +189,7 @@ export async function rewriteAssistantMessage(params: RewriteParams): Promise<Re
     }, '[AssistantRewriter] Cache hit');
     
     return {
-      finalMessage: cached.finalMessage,
+      finalMessage: capAssistantText(cached.finalMessage),
       meta: {
         usedLLM: false,
         cacheHit: true,
@@ -216,7 +218,7 @@ export async function rewriteAssistantMessage(params: RewriteParams): Promise<Re
       }, '[AssistantRewriter] In-flight dedup');
       
       return {
-        finalMessage,
+        finalMessage: capAssistantText(finalMessage),
         meta: {
           usedLLM: true,
           cacheHit: false,
@@ -238,7 +240,7 @@ export async function rewriteAssistantMessage(params: RewriteParams): Promise<Re
       setTimeout(() => reject(new Error('TIMEOUT')), REWRITE_TIMEOUT_MS);
     });
     
-    const finalMessage = await Promise.race([llmPromise, timeoutPromise]);
+    const finalMessage = capAssistantText(await Promise.race([llmPromise, timeoutPromise]));
     const durationMs = Date.now() - tStart;
     stats.llmCalls++;
     stats.totalDurationMs += durationMs;
@@ -297,7 +299,7 @@ export async function rewriteAssistantMessage(params: RewriteParams): Promise<Re
     }, '[AssistantRewriter] LLM failed, using raw message');
     
     return {
-      finalMessage: rawMessage,
+      finalMessage: capAssistantText(rawMessage),
       meta: {
         usedLLM: false,
         cacheHit: false,
@@ -329,13 +331,13 @@ Constraints:
 - Tone: ${tone === 'friendly' ? 'slightly friendly, calm' : 'neutral, professional'}.
 - Translate to target language if needed.`;
 
-  const userPrompt = `rawMessage: "${rawMessage}"
+  const userPrompt = `rawMessage: "${truncateWordsForLlm(rawMessage)}"
 targetLanguage: "${targetLanguage}"
 tone: "${tone}"`;
 
   const messages = [
     { role: 'system' as const, content: systemPrompt },
-    { role: 'user' as const, content: userPrompt }
+    { role: 'user' as const, content: frameSearchAsData(userPrompt) }
   ];
   
   try {
@@ -345,7 +347,7 @@ tone: "${tone}"`;
       timeout: REWRITE_TIMEOUT_MS - 100 // Leave 100ms buffer
     });
     
-    return result.trim();
+    return capAssistantText(result.trim());
   } catch (err: any) {
     throw new Error(err.message || 'LLM_CALL_FAILED');
   }

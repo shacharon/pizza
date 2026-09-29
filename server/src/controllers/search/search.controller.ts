@@ -6,6 +6,7 @@
 import { Router, type Request, type Response } from 'express';
 import type { AuthenticatedRequest } from '../../middleware/auth.middleware.js';
 import { createSearchError } from '../../services/search/types/search-response.dto.js';
+import { ModelBudgetExceededError } from '../../lib/llm/session-model-budget.js';
 import { createLLMProvider } from '../../llm/factory.js';
 import { logger } from '../../lib/logger/structured-logger.js';
 import { ROUTE2_ENABLED } from '../../config/route2.flags.js';
@@ -158,6 +159,10 @@ router.post('/', async (req: Request, res: Response) => {
     res.json(response);
 
   } catch (error) {
+    if (error instanceof ModelBudgetExceededError) {
+      res.status(429).json(createSearchError('Try again later', 'MODEL_BUDGET_EXCEEDED'));
+      return;
+    }
     res.status(500).json(createSearchError('Internal server error', 'SEARCH_ERROR'));
   }
 });

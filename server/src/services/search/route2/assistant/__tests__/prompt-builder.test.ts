@@ -4,6 +4,7 @@
 
 import { SYSTEM_PROMPT, buildUserPrompt } from '../prompt-builder.js';
 import type { AssistantContext } from '../prompt-builder.js';
+import { SEARCH_TEXT_IS_DATA_LINE } from '../../../../../lib/llm/index.js';
 
 describe('prompt-builder', () => {
   describe('SYSTEM_PROMPT', () => {
@@ -19,6 +20,10 @@ describe('prompt-builder', () => {
       expect(SYSTEM_PROMPT).toContain('suggestedAction');
     });
 
+    it('does not contain the search-is-data line', () => {
+      expect(SYSTEM_PROMPT).not.toContain(SEARCH_TEXT_IS_DATA_LINE);
+    });
+
     it('contains language enforcement rules', () => {
       expect(SYSTEM_PROMPT).toContain('LANGUAGE');
       expect(SYSTEM_PROMPT).toContain('Language:');
@@ -26,6 +31,20 @@ describe('prompt-builder', () => {
   });
 
   describe('buildUserPrompt', () => {
+    it('starts with the search-is-data line and keeps a short query', () => {
+      const context: AssistantContext = {
+        type: 'CLARIFY',
+        reason: 'MISSING_FOOD',
+        query: 'pizza on Allenby',
+        language: 'en'
+      };
+
+      const prompt = buildUserPrompt(context);
+
+      expect(prompt.startsWith(`${SEARCH_TEXT_IS_DATA_LINE}\n`)).toBe(true);
+      expect(prompt).toContain('pizza on Allenby');
+    });
+
     describe('GATE_FAIL context', () => {
       it('builds prompt with NO_FOOD reason', () => {
         const context: AssistantContext = {

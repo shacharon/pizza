@@ -11,6 +11,7 @@ import type { Route2Context, IntentResult, FinalSharedFilters } from '../../type
 import type { Message } from '../../../../../llm/types.js';
 import { buildLLMJsonSchema } from '../../../../../llm/types.js';
 import { logger } from '../../../../../lib/logger/structured-logger.js';
+import { truncateWordsForLlm, frameSearchAsData } from '../../../../../lib/llm/index.js';
 import { logStageBoundary } from '../../../../../lib/logging/pipeline-stage-log.js';
 import { NearbyMappingSchema, type NearbyMapping } from './schemas.js';
 
@@ -273,10 +274,10 @@ function buildUserPrompt(
   finalFilters: FinalSharedFilters,
   userLocation: { lat: number; lng: number }
 ): string {
-  return `Query: "${query}"
+  return frameSearchAsData(`Query: "${truncateWordsForLlm(query)}"
 User location: lat=${userLocation.lat}, lng=${userLocation.lng}
 Region: ${finalFilters.regionCode}
-Language: ${finalFilters.providerLanguage}`;
+Language: ${finalFilters.providerLanguage}`);
 }
 
 /**

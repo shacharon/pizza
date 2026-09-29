@@ -28,3 +28,10 @@ export { resolveLLM, getAllResolvedLLMs } from './llm-resolver.js';
 
 export type { LLMClientOptions } from './llm-client.js';
 export { completeJSONWithPurpose, buildLLMOptions } from './llm-client.js';
+
+export {
+  truncateWordsForLlm,
+  LLM_USER_TEXT_MAX_WORDS,
+  frameSearchAsData,
+  SEARCH_TEXT_IS_DATA_LINE
+} from './truncate-llm-words.js';

@@ -11,6 +11,7 @@ import type { Message } from '../../../../../llm/types.js';
 import { logger } from '../../../../../lib/logger/structured-logger.js';
 import { startStage, endStage } from '../../../../../lib/telemetry/stage-timer.js';
 import { sanitizeQuery } from '../../../../../lib/telemetry/query-sanitizer.js';
+import { truncateWordsForLlm, frameSearchAsData } from '../../../../../lib/llm/index.js';
 import {
     PostConstraintsSchema,
     type PostConstraints,
@@ -46,7 +47,7 @@ export function buildPostConstraintsUserPayload(
     const regionCode = context.userRegionCode ?? 'IL';
     const top: PostConstraintsUserPayload['top'] = [];
     return {
-        query: request.query,
+        query: truncateWordsForLlm(request.query),
         uiLanguage,
         regionCode,
         top
@@ -67,7 +68,7 @@ export async function executePostConstraintsStage(
     const userContent = JSON.stringify(userPayload);
     const messages: Message[] = [
         { role: 'system', content: POST_CONSTRAINTS_SYSTEM_PROMPT },
-        { role: 'user', content: userContent }
+        { role: 'user', content: frameSearchAsData(userContent) }
     ];
 
     const promptChars = POST_CONSTRAINTS_SYSTEM_PROMPT.length + userContent.length;

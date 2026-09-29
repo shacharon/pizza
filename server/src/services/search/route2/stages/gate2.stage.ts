@@ -17,7 +17,7 @@ import { buildLLMJsonSchema } from '../../../../llm/types.js';
 import { logger } from '../../../../lib/logger/structured-logger.js';
 import { startStage, endStage } from '../../../../lib/telemetry/stage-timer.js';
 import { sanitizeQuery } from '../../../../lib/telemetry/query-sanitizer.js';
-import { resolveLLM } from '../../../../lib/llm/index.js';
+import { resolveLLM, truncateWordsForLlm, frameSearchAsData } from '../../../../lib/llm/index.js';
 import {
   getGate2QueryValidityPreDecision,
   shouldOverrideFoodToClarify
@@ -210,7 +210,7 @@ export async function executeGate2Stage(
     // Call LLM for classification
     const messages: Message[] = [
       { role: 'system', content: GATE2_SYSTEM_PROMPT },
-      { role: 'user', content: request.query }
+      { role: 'user', content: frameSearchAsData(truncateWordsForLlm(request.query)) }
     ];
 
     let llmResult: z.infer<typeof Gate2LLMSchema> | null = null;

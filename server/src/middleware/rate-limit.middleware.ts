@@ -17,6 +17,19 @@ interface RateLimitConfig {
   windowMs: number;      // Time window in milliseconds
   maxRequests: number;   // Max requests per window
   keyPrefix?: string;    // Optional prefix for keys
+  includeSession?: boolean; // Search limiter: key is IP and session
+}
+
+/** Search HTTP cap. Other limiters do not use this number. */
+export const SEARCH_REQUESTS_PER_MINUTE = 30;
+
+/**
+ * Rate-limit key. Session is included only when the caller passes it.
+ * An empty session shares the `nosession` bucket.
+ */
+export function buildRateLimitKey(prefix: string, ip: string, sessionId?: string): string {
+  const session = sessionId && sessionId.length > 0 ? sessionId : 'nosession';
+  return `${prefix}:${ip}:${session}`;
 }
 
 interface RateLimitEntry {
@@ -37,6 +50,7 @@ class RateLimiterStore {
     this.cleanupInterval = setInterval(() => {
       this.cleanup();
     }, 60000);
+    this.cleanupInterval.unref();
   }
 
   private cleanup(): void {
@@ -181,11 +195,14 @@ function getClientIp(req: Request): string {
  * @returns Express middleware
  */
 export function createRateLimiter(config: RateLimitConfig) {
-  const { windowMs, maxRequests, keyPrefix = 'rl' } = config;
+  const { windowMs, maxRequests, keyPrefix = 'rl', includeSession = false } = config;
 
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const ip = getClientIp(req);
-    const key = `${keyPrefix}:${ip}`;
+    const sessionId = (req as Request & { sessionId?: string }).sessionId;
+    const key = includeSession
+      ? buildRateLimitKey(keyPrefix, ip, sessionId)
+      : `${keyPrefix}:${ip}`;
     const requestId = req.traceId || 'unknown';
 
     // Increment counter (use Redis if available, otherwise in-memory)

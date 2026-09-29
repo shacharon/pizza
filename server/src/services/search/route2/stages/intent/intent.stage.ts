@@ -11,7 +11,7 @@ import type { SearchRequest } from '../../../types/search-request.dto.js';
 import type { Route2Context, IntentResult } from '../../types.js';
 import type { Message } from '../../../../../llm/types.js';
 import { logger } from '../../../../../lib/logger/structured-logger.js';
-import { resolveLLM } from '../../../../../lib/llm/index.js';
+import { resolveLLM, truncateWordsForLlm, frameSearchAsData } from '../../../../../lib/llm/index.js';
 import { IntentLLMSchema, type IntentLLM } from './intent.types.js';
 import {
   INTENT_SYSTEM_PROMPT,
@@ -23,6 +23,7 @@ import {
 import { startStage, endStage } from '../../../../../lib/telemetry/stage-timer.js';
 import { sanitizeQuery } from '../../../../../lib/telemetry/query-sanitizer.js';
 import { isValidRegionCode } from '../../utils/region-code-validator.js';
+import { capModelString, MODEL_CITY_TEXT_MAX_CHARS } from '../route-llm/cap-model-string.js';
 
 /**
  * Create fallback result when LLM fails
@@ -90,7 +91,7 @@ export async function executeIntentStage(
     `userRegionCode: ${userRegionCode ?? 'null'}`,
     '',
     'Query:',
-    request.query
+    truncateWordsForLlm(request.query)
   ].join('\n');
 
   try {
@@ -99,7 +100,7 @@ export async function executeIntentStage(
 
     const messages: Message[] = [
       { role: 'system', content: INTENT_SYSTEM_PROMPT },
-      { role: 'user', content: userMessage }
+      { role: 'user', content: frameSearchAsData(userMessage) }
     ];
 
     const response = await llmProvider.completeJSON(
@@ -183,7 +184,9 @@ export async function executeIntentStage(
         originalReason: llmResult.reason
       }, '[ROUTE2] Intent NEARBY but userLocation missing');
 
-      const cityText = llmResult.cityText ?? undefined;
+      const cityText = llmResult.cityText
+        ? capModelString(llmResult.cityText, MODEL_CITY_TEXT_MAX_CHARS)
+        : undefined;
 
       return {
         route: 'TEXTSEARCH',
@@ -220,7 +223,9 @@ export async function executeIntentStage(
       reason: llmResult.reason
     });
 
-    const cityText = llmResult.cityText ?? undefined;
+    const cityText = llmResult.cityText
+      ? capModelString(llmResult.cityText, MODEL_CITY_TEXT_MAX_CHARS)
+      : undefined;
     const landmarkText = llmResult.landmarkText ?? undefined;
     const radiusMeters = llmResult.radiusMeters ?? undefined;
 

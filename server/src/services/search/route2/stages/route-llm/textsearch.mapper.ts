@@ -9,8 +9,9 @@ import type { SearchRequest } from '../../../types/search-request.dto.js';
 import type { Route2Context, IntentResult, FinalSharedFilters } from '../../types.js';
 import type { Message } from '../../../../../llm/types.js';
 import { logger } from '../../../../../lib/logger/structured-logger.js';
-import { resolveLLM } from '../../../../../lib/llm/index.js';
+import { resolveLLM, truncateWordsForLlm, frameSearchAsData } from '../../../../../lib/llm/index.js';
 import { TextSearchLLMResponseSchema, type TextSearchMapping } from './schemas.js';
+import { capModelString, MODEL_TEXT_QUERY_MAX_CHARS } from './cap-model-string.js';
 
 const TEXTSEARCH_MAPPER_VERSION = 'textsearch_mapper_v2';
 
@@ -183,6 +184,8 @@ export async function executeTextSearchMapper(
     // and downstream types remain compatible.
     mapping.bias = undefined;
 
+    mapping.textQuery = capModelString(mapping.textQuery, MODEL_TEXT_QUERY_MAX_CHARS);
+
     // Propagate cityText from intent if present
     if (intent.cityText) {
       mapping.cityText = intent.cityText;
@@ -288,7 +291,7 @@ function buildDeterministicMapping(
 }
 
 function buildUserPrompt(query: string, finalFilters: FinalSharedFilters): string {
-  return `Query: "${query}"\nRegion: ${finalFilters.regionCode}\nLanguage: ${finalFilters.providerLanguage}`;
+  return frameSearchAsData(`Query: "${truncateWordsForLlm(query)}"\nRegion: ${finalFilters.regionCode}\nLanguage: ${finalFilters.providerLanguage}`);
 }
 
 function applyLocationBias(

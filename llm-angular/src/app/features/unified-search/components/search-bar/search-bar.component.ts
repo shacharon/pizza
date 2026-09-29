@@ -26,22 +26,22 @@ const MIN_AUTO_SUBMIT_LENGTH = 2;
 const TEXTAREA_MIN_HEIGHT_PX = 24;
 const TEXTAREA_MAX_HEIGHT_PX = 144;
 
-/** Example searches typed into the empty box: four Hebrew, four English, two Arabic, two Russian, then English again. */
+/** Example searches: 4 English, 4 Hebrew, 3 Russian, 3 Arabic. */
 export const SEARCH_EXAMPLE_PROMPTS = [
+  'cheap falafel with a seat, on Allenby',
+  'quiet cafe outside, on Dizengoff',
+  'Italian restaurant open now, on the Champs-Élysées',
+  'hamburger open now, in Queens',
   'מסעדה איטלקית, 300 מטר, בשנקין',
   'המבורגר כשר שאפשר ללכת אליו',
-  'פיצה ליד הבית, 10 דקות הליכה',
-  'בית קפה שקט בחוץ, בדיזנגוף',
-  'Italian restaurant open now, on the Champs-Élysées',
-  'cheap falafel with a seat, on Allenby',
-  'breakfast and good coffee, a short walk',
-  'fish restaurant by the sea, not too expensive',
-  'مطعم إيطالي، على بعد 300 متر، في شنكين',
-  'برغر كوشر أقدر أمشي إليه',
-  'итальянский ресторан в 300 метрах, на Шенкин',
-  'кошерный бургер, до которого можно дойти',
-  'hamburger open now, in Queens',
-  'cheap falafel with a seat, on Allenby',
+  'דג ליד הים ביפו, לא יקר מדי',
+  'סושי פתוח עכשיו, בשיבויה',
+  'хумус на рынке Кармель',
+  'пицца во Флорентине, можно дойти пешком',
+  'паста в Трастевере, Рим',
+  'فلافل في سوق الكرمل',
+  'قهوة وفطور، مشي قصير في ابن جبيرول',
+  'مطعم سمك في برشلونة، مش غالي',
 ] as const;
 
 export function searchExampleDir(index: number): 'rtl' | 'ltr' {

@@ -49,5 +49,6 @@ Order: `-1 → 0 → 1 → 2 → 3`. Do not auto-chain.
 | 07 | [sprint-07-order-buttons](./sprint-07-order-buttons/README.md) | UI: order buttons, press, results fade. Not Route3 |
 | 08 | [sprint-08-good-search](./sprint-08-good-search/README.md) | Show places without location, then a helper to narrow. Not Route3 |
 | 09 | [sprint-09-gate-and-near-me](./sprint-09-gate-and-near-me/README.md) | Food typos still search. Near me stays inside the circle |
+| 10 | [sprint-10-llm-guard](./sprint-10-llm-guard/README.md) | Cap model text, mark the search as data, limit token spend, check Redis TLS, keep assistant text plain |
 
 Epic: [EPIC_ROUTE3.md](./EPIC_ROUTE3.md)

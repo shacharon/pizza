@@ -10,6 +10,7 @@ import { searchRoute2 } from '../../services/search/route2/index.js';
 import { CONTRACTS_VERSION } from '../../contracts/search.contracts.js';
 import type { Route2Context } from '../../services/search/route2/index.js';
 import type { SearchRequest } from '../../services/search/types/search-request.dto.js';
+import { ModelBudgetExceededError } from '../../lib/llm/session-model-budget.js';
 
 export type BackgroundParams = {
   requestId: string;
@@ -167,9 +168,14 @@ export async function executeBackgroundSearch(params: BackgroundParams): Promise
     }
 
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Internal error';
+    const budgetExceeded = err instanceof ModelBudgetExceededError;
+    const message = budgetExceeded
+      ? 'Try again later'
+      : (err instanceof Error ? err.message : 'Internal error');
     const isAborted = abortController.signal.aborted;
-    let errorCode = isAborted ? 'TIMEOUT' : 'SEARCH_FAILED';
+    let errorCode = budgetExceeded
+      ? 'MODEL_BUDGET_EXCEEDED'
+      : (isAborted ? 'TIMEOUT' : 'SEARCH_FAILED');
 
     // P0 Fix: Non-fatal Redis writes
     try {

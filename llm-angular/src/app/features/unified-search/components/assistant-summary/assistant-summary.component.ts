@@ -19,6 +19,7 @@ import type { AssistantStatus } from '../../../../core/models/ws-protocol.types'
 import type { AssistantMessage } from '../../../../facades/search-assistant.facade';
 import type { AssistantCardMessage } from '../../../../facades/assistant-routing.types';
 import { AssistantStreamingService, type StreamingState } from '../../services/assistant-streaming.service';
+import { capAssistantText } from './cap-assistant-text';
 
 interface MessageStreamState {
   messageId: string;
@@ -128,9 +129,14 @@ export class AssistantSummaryComponent implements OnDestroy {
   getMessageVisibleText(msg: AssistantCardMessage | AssistantMessage): string {
     const stream = this.messageStreams.get(msg.id);
     if (stream) {
-      return stream.state().visibleText;
+      return capAssistantText(stream.state().visibleText);
     }
-    return msg.message;
+    return capAssistantText(msg.message);
+  }
+
+  /** Cap one reply field before the template shows it. */
+  shown(text: string | null | undefined): string {
+    return capAssistantText(text ?? '');
   }
 
   /**

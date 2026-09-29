@@ -30,7 +30,7 @@
           }
         </div>
         @if (msg.question && msg.question !== msg.message) {
-        <div class="message-question summary">{{ msg.question }}</div>
+        <div class="message-question summary">{{ shown(msg.question) }}</div>
         }
       </div>
     </div>
@@ -49,13 +49,13 @@
 
   @if (isStreaming()) {
   <div class="streaming-text summary">
-    {{ text() }}<span class="cursor-blink">▌</span>
+    {{ shown(text()) }}<span class="cursor-blink">▌</span>
   </div>
   }
 
   @if (isCompleted()) {
   <div class="completed-text summary">
-    {{ text() }}
+    {{ shown(text()) }}
   </div>
   }
 

@@ -20,26 +20,27 @@ describe('SearchBarComponent', () => {
     fixture.detectChanges();
   });
 
-  it('cycles four Hebrew, four English, two Arabic, two Russian, then Hebrew again', () => {
-    expect(SEARCH_EXAMPLE_PROMPTS[0]).toContain('בשנקין');
-    expect(SEARCH_EXAMPLE_PROMPTS[1]).toContain('כשר');
-    expect(SEARCH_EXAMPLE_PROMPTS[2]).toContain('פיצה');
-    expect(SEARCH_EXAMPLE_PROMPTS[3]).toContain('דיזנגוף');
-    expect(SEARCH_EXAMPLE_PROMPTS[4]).toContain('Champs-Élysées');
-    expect(SEARCH_EXAMPLE_PROMPTS[5]).toContain('Allenby');
-    expect(SEARCH_EXAMPLE_PROMPTS[6]).toContain('breakfast');
-    expect(SEARCH_EXAMPLE_PROMPTS[7]).toContain('by the sea');
-    expect(SEARCH_EXAMPLE_PROMPTS[8]).toContain('شنكين');
-    expect(SEARCH_EXAMPLE_PROMPTS[9]).toContain('كوشر');
-    expect(SEARCH_EXAMPLE_PROMPTS[10]).toContain('Шенкин');
-    expect(SEARCH_EXAMPLE_PROMPTS[11]).toContain('кошерный');
-    expect(SEARCH_EXAMPLE_PROMPTS[12]).toContain('Queens');
-    expect(SEARCH_EXAMPLE_PROMPTS[13]).toContain('Allenby');
+  it('cycles English, then Hebrew, then Russian, then Arabic', () => {
+    expect(SEARCH_EXAMPLE_PROMPTS).toHaveLength(14);
+    expect(SEARCH_EXAMPLE_PROMPTS[0]).toContain('Allenby');
+    expect(SEARCH_EXAMPLE_PROMPTS[1]).toContain('Dizengoff');
+    expect(SEARCH_EXAMPLE_PROMPTS[2]).toContain('Champs-Élysées');
+    expect(SEARCH_EXAMPLE_PROMPTS[3]).toContain('Queens');
+    expect(SEARCH_EXAMPLE_PROMPTS[4]).toContain('בשנקין');
+    expect(SEARCH_EXAMPLE_PROMPTS[5]).toContain('כשר');
+    expect(SEARCH_EXAMPLE_PROMPTS[6]).toContain('ביפו');
+    expect(SEARCH_EXAMPLE_PROMPTS[7]).toContain('בשיבויה');
+    expect(SEARCH_EXAMPLE_PROMPTS[8]).toContain('Кармель');
+    expect(SEARCH_EXAMPLE_PROMPTS[9]).toContain('Флорентине');
+    expect(SEARCH_EXAMPLE_PROMPTS[10]).toContain('Трастевере');
+    expect(SEARCH_EXAMPLE_PROMPTS[11]).toContain('الكرمل');
+    expect(SEARCH_EXAMPLE_PROMPTS[12]).toContain('ابن جبيرول');
+    expect(SEARCH_EXAMPLE_PROMPTS[13]).toContain('برشلونة');
     expect(SEARCH_EXAMPLE_PROMPTS[14 % SEARCH_EXAMPLE_PROMPTS.length]).toBe(SEARCH_EXAMPLE_PROMPTS[0]);
-    expect(searchExampleDir(0)).toBe('rtl');
-    expect(searchExampleDir(4)).toBe('ltr');
-    expect(searchExampleDir(8)).toBe('rtl');
-    expect(searchExampleDir(10)).toBe('ltr');
+    expect(searchExampleDir(0)).toBe('ltr');
+    expect(searchExampleDir(4)).toBe('rtl');
+    expect(searchExampleDir(8)).toBe('ltr');
+    expect(searchExampleDir(11)).toBe('rtl');
   });
 
   it('should create', () => {

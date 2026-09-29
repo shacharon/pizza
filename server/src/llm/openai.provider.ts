@@ -14,6 +14,7 @@ import {
 import { traceProviderCall, calculateOpenAICost } from "../lib/telemetry/providerTrace.js";
 import { logger } from "../lib/logger/structured-logger.js";
 import { retryWithBackoff } from "../lib/reliability/retry-handler.js";
+import { consumeSessionModelCall } from "../lib/llm/session-model-budget.js";
 
 // Lazy-initialized OpenAI client
 let openaiClient: OpenAI | null = null;
@@ -85,6 +86,7 @@ export class OpenAiProvider implements LLMProvider {
         },
         staticJsonSchema?: any  // Optional static JSON Schema (bypasses Zod conversion)
     ): Promise<LLMCompletionResult<z.infer<T>>> {
+        await consumeSessionModelCall(opts?.sessionId);
         const temperature = opts?.temperature ?? 0;
         const timeoutMs = opts?.timeout ?? LLM_JSON_TIMEOUT_MS;
         const maxAttempts = LLM_RETRY_ATTEMPTS;
@@ -452,6 +454,7 @@ export class OpenAiProvider implements LLMProvider {
         messages: Message[],
         opts?: { temperature?: number; timeout?: number; model?: string; traceId?: string; sessionId?: string; }
     ): Promise<string> {
+        await consumeSessionModelCall(opts?.sessionId);
         const temperature = opts?.temperature ?? 0;
         const timeoutMs = opts?.timeout ?? LLM_COMPLETION_TIMEOUT_MS;
         const model = opts?.model || DEFAULT_LLM_MODEL;
@@ -521,6 +524,7 @@ export class OpenAiProvider implements LLMProvider {
         onChunk: (text: string) => void,
         opts?: { temperature?: number; timeout?: number; model?: string; traceId?: string; sessionId?: string; }
     ): Promise<string> {
+        await consumeSessionModelCall(opts?.sessionId);
         const temperature = opts?.temperature ?? 0.3;
         const timeoutMs = opts?.timeout ?? LLM_COMPLETION_TIMEOUT_MS;
         const model = opts?.model || DEFAULT_LLM_MODEL;

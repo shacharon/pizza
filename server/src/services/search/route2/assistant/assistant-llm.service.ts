@@ -17,6 +17,7 @@ import { normalizeRequestedLanguage, detectMessageLanguage, getMessagePreview } 
 import { SYSTEM_PROMPT, SYSTEM_PROMPT_MESSAGE_ONLY, buildUserPromptJson, buildUserPromptMessageOnly } from './prompt-builder.js';
 import { enforceInvariants, validateAndEnforceCorrectness } from './validation-rules.js';
 import { getDeterministicFallback } from './fallback-messages.js';
+import { ASSISTANT_REPLY_MAX_CHARS, capAssistantText } from './cap-assistant-text.js';
 import { compareShadowOutputs } from './shadow-compare.js';
 import type { TopCandidate, SummaryAnalysisMode } from './assistant.types.js';
 
@@ -28,6 +29,14 @@ const summaryGenStateByRequestId = new Map<string, 'RUNNING' | 'DONE'>();
 
 function preview(s: string | undefined | null, n = 80): string {
   return (s ?? '').slice(0, n);
+}
+
+function capReply<T extends { message: string; question: string | null }>(output: T): T {
+  return {
+    ...output,
+    message: capAssistantText(output.message),
+    question: output.question == null ? output.question : capAssistantText(output.question)
+  };
 }
 function keys(o: unknown): string[] {
   return o && typeof o === 'object' ? Object.keys(o).sort() : [];
@@ -153,12 +162,12 @@ export async function generateAssistantMessage(
     if (state === 'RUNNING' || state === 'DONE') {
       logger.info({ event: 'summary_skipped_duplicate', requestId, state });
       const fallback = getDeterministicFallback(context, requestedLanguage);
-      return {
+      return capReply({
         type: context.type,
         ...fallback,
         _summaryEmitSource: 'fallback' as const,
         _summaryEmitReason: 'duplicate_request'
-      } as AssistantOutput;
+      }) as AssistantOutput;
     }
     summaryGenStateByRequestId.set(requestId, 'RUNNING');
   }
@@ -298,7 +307,7 @@ export async function generateAssistantMessage(
       summaryGenStateByRequestId.set(requestId, 'DONE');
     }
 
-    return validated;
+    return capReply(validated);
   } catch (error) {
     const durationMs = Date.now() - startTime;
     const errorMsg = error instanceof Error ? error.message : String(error);
@@ -335,7 +344,7 @@ export async function generateAssistantMessage(
       }, '[ASSISTANT_DEBUG] Using fallback due to LLM error');
     }
 
-    return {
+    return capReply({
       type: context.type,
       message: fallback.message,
       question: fallback.question,
@@ -345,7 +354,7 @@ export async function generateAssistantMessage(
         _summaryEmitSource: 'fallback' as const,
         _summaryEmitReason: 'assistant_llm_failed'
       })
-    } as AssistantOutput;
+    }) as AssistantOutput;
   }
 }
 
@@ -374,7 +383,7 @@ export async function generateMessageOnlyText(
   if (opts?.traceId) (llmOpts as any).traceId = opts.traceId;
   if (opts?.sessionId) (llmOpts as any).sessionId = opts.sessionId;
   const text = await llmProvider.complete(messages, llmOpts as any);
-  return (text ?? '').trim();
+  return capAssistantText((text ?? '').trim());
 }
 
 /**
@@ -442,10 +451,14 @@ export async function streamAssistantMessage(
   let fullStreamedText = '';
   let chunkCount = 0;
 
+  let sent = 0;
   await llmProvider.completeStream(messages, (chunk: string) => {
     fullStreamedText += chunk;
     chunkCount++;
-    opts.onChunk(chunk);
+    if (sent >= ASSISTANT_REPLY_MAX_CHARS) return;
+    const piece = chunk.slice(0, ASSISTANT_REPLY_MAX_CHARS - sent);
+    sent += piece.length;
+    if (piece) opts.onChunk(piece);
   }, llmOpts);
 
   // ============================================================================

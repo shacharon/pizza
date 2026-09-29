@@ -8,7 +8,7 @@
 import { createHash } from 'crypto';
 import type { Message, LLMProvider } from '../../../../llm/types.js';
 import { logger } from '../../../../lib/logger/structured-logger.js';
-import { resolveLLM } from '../../../../lib/llm/index.js';
+import { resolveLLM, truncateWordsForLlm, frameSearchAsData } from '../../../../lib/llm/index.js';
 import { PreGoogleBaseFiltersSchema, type PreGoogleBaseFilters } from './shared-filters.types.js';
 import type { MappingRoute } from '../types.js';
 
@@ -260,7 +260,7 @@ export async function resolveBaseFiltersLLM(params: {
 
         const messages: Message[] = [
             { role: 'system', content: BASE_FILTERS_PROMPT },
-            { role: 'user', content: query }
+            { role: 'user', content: frameSearchAsData(truncateWordsForLlm(query)) }
         ];
 
         const response = await llmProvider.completeJSON(

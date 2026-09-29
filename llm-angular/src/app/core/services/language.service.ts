@@ -6,6 +6,7 @@
 import { Injectable, signal } from '@angular/core';
 import { DOCUMENT } from '@angular/common';
 import { inject } from '@angular/core';
+import { languageFromKeyboardSample, readKeyboardSample } from './keyboard-language';
 
 export type SupportedLang = 'he' | 'en' | 'ar' | 'ru' | 'fr' | 'es' | 'de' | 'it' | 'am';
 export type TextDirection = 'rtl' | 'ltr';
@@ -21,9 +22,26 @@ export class LanguageService {
   readonly textDirection = signal<TextDirection>('ltr');
 
   constructor() {
-    // Initialize with browser language or default to English
     const browserLang = this.detectBrowserLanguage();
     this.setLanguage(browserLang);
+    void this.applyKeyboardLanguage();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', () => {
+        void this.applyKeyboardLanguage();
+      });
+    }
+  }
+
+  /** Hebrew, Arabic, or Russian keyboard replaces the browser language. A Latin keyboard does not. */
+  private async applyKeyboardLanguage(): Promise<void> {
+    try {
+      const lang = languageFromKeyboardSample(await readKeyboardSample());
+      if (lang && lang !== this.currentLang()) {
+        this.setLanguage(lang);
+      }
+    } catch {
+      // This browser does not expose the keyboard layout.
+    }
   }
 
   /**

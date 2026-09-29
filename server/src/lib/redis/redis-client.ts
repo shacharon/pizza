@@ -25,6 +25,30 @@ export interface RedisClientOptions {
 }
 
 /**
+ * TLS options for a Redis URL.
+ * `redis://` has no TLS. `rediss://` verifies the server certificate.
+ */
+export function redisTlsOptions(url: string): { rejectUnauthorized: true; servername?: string } | undefined {
+  if (!url.startsWith('rediss://')) {
+    return undefined;
+  }
+  try {
+    const hostname = new URL(url).hostname;
+    return {
+      rejectUnauthorized: true,
+      ...(hostname ? { servername: hostname } : {})
+    };
+  } catch {
+    return { rejectUnauthorized: true };
+  }
+}
+
+/** Hide the password in Redis URLs written to logs. */
+export function redactRedisUrl(url: string): string {
+  return url.replace(/:[^:@]+@/, ':****@');
+}
+
+/**
  * Get or create the shared Redis client
  * @param options Redis connection options
  * @returns Redis client or null if connection fails
@@ -56,25 +80,12 @@ export async function getRedisClient(options: RedisClientOptions): Promise<Redis
   let redis: RedisClient | undefined;
   try {
     // Local: redis://localhost (no TLS). Prod: rediss://...cache.amazonaws.com (TLS in VPC).
-    const useTls = url.startsWith('rediss://');
-    let tlsOpts: { rejectUnauthorized: boolean; servername?: string } | undefined;
-    if (useTls) {
-      try {
-        const parsed = new URL(url);
-        const hostname = parsed.hostname;
-        // ElastiCache TLS needs SNI = hostname; otherwise handshake can fail (works locally without TLS).
-        tlsOpts = {
-          rejectUnauthorized: false,
-          ...(hostname ? { servername: hostname } : {})
-        };
-      } catch {
-        tlsOpts = { rejectUnauthorized: false };
-      }
-    }
+    const tlsOpts = redisTlsOptions(url);
+    const useTls = tlsOpts !== undefined;
 
     logger.info({
       event: 'REDIS_INIT_ATTEMPT',
-      redisUrl: url.replace(/:[^:@]+@/, ':****@'),
+      redisUrl: redactRedisUrl(url),
       useTls,
       tlsServername: tlsOpts?.servername ?? null,
       maxRetriesPerRequest,
@@ -149,7 +160,7 @@ export async function getRedisClient(options: RedisClientOptions): Promise<Redis
       lastConnectionError = null;
       logger.info({
         event: 'REDIS_CONNECTED',
-        redisUrl: url.replace(/:[^:@]+@/, ':****@'),
+        redisUrl: redactRedisUrl(url),
         msg: '[Redis] ✓ Shared client connected successfully'
       });
 

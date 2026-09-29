@@ -26,7 +26,7 @@ import authRouter from '../../controllers/auth/auth.controller.js';
 import assistantSSERouter from '../../controllers/stream/assistant-sse/assistant-sse.router.js';
 import { authenticateJWT } from '../../middleware/auth.middleware.js';
 import { authSessionOrJwt } from '../../middleware/auth-session-or-jwt.middleware.js';
-import { createRateLimiter } from '../../middleware/rate-limit.middleware.js';
+import { createRateLimiter, SEARCH_REQUESTS_PER_MINUTE } from '../../middleware/rate-limit.middleware.js';
 import { getConfig } from '../../config/env.js';
 import { getFeatureFlags } from '../../config/feature-flags.js';
 import { getExistingRedisClient } from '../../lib/redis/redis-client.js';
@@ -64,11 +64,12 @@ export function createV1Router(): Router {
     res.status(200).json({ received: true });
   });
 
-  // P0 Security: Search rate limiting (100 req/min per IP+session)
+  // Search rate limiting (30 req/min per IP and session)
   const searchRateLimiter = createRateLimiter({
     windowMs: 60 * 1000,
-    maxRequests: 100,
-    keyPrefix: 'search'
+    maxRequests: SEARCH_REQUESTS_PER_MINUTE,
+    keyPrefix: 'search',
+    includeSession: true
   });
 
   // Auth endpoints (includes both public /token and protected /ws-ticket)

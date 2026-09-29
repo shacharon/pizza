@@ -22,6 +22,8 @@ import { AssistantSummaryComponent } from '../components/assistant-summary/assis
 import { LocationService } from '../../../services/location.service';
 import { PwaInstallService } from '../../../services/pwa-install.service';
 import { I18nService } from '../../../core/services/i18n.service';
+import { LanguageService } from '../../../core/services/language.service';
+import { heroAboutLines } from './hero-about';
 import { InputStateMachine } from '../../../services/input-state-machine.service';
 import {
   deserializeSearchParams,
@@ -124,6 +126,9 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   private readonly locationService = inject(LocationService);
   readonly pwaInstall = inject(PwaInstallService);
   readonly i18n = inject(I18nService);
+  private readonly language = inject(LanguageService);
+  readonly heroLines = computed(() => heroAboutLines(this.language.currentLang()));
+  readonly heroDir = computed(() => this.language.textDirection());
 
   private cleanupInterval?: number;
   private paramMapSub?: { unsubscribe(): void };

@@ -4,7 +4,7 @@
  * Single source of truth driven by uiLanguage
  */
 
-import { Injectable, signal, computed, inject } from '@angular/core';
+import { Injectable, signal, computed, inject, effect } from '@angular/core';
 import { LanguageService } from './language.service';
 
 export type SupportedUiLang = 'he' | 'en' | 'ru' | 'ar' | 'fr' | 'es' | 'de' | 'it' | 'am';
@@ -734,9 +734,12 @@ export class I18nService {
   readonly translations = computed(() => TRANSLATIONS[this.currentLang()]);
 
   constructor() {
-    // Initialize with language service current language
-    const langServiceLang = this.languageService.currentLang();
-    this.setLanguage(this.normalizeToUiLang(langServiceLang));
+    effect(() => {
+      const lang = this.normalizeToUiLang(this.languageService.currentLang());
+      if (lang !== this.currentLang()) {
+        this.setLanguage(lang);
+      }
+    });
   }
 
   /**
