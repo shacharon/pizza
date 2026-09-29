@@ -1,0 +1,31 @@
+{
+  "appName": "going2eat",
+  "awsProfile": "pizza",
+  "region": "eu-north-1",
+  "backend": {
+    "ecrRepository": "food-backend",
+    "ecrRegistry": "907390934996.dkr.ecr.eu-north-1.amazonaws.com",
+    "dockerfile": "server/Dockerfile",
+    "buildContext": ".",
+    "ecsCluster": "food-cluster",
+    "ecsService": "food-backend-service",
+    "taskFamily": "food-backend",
+    "containerName": "food-backend",
+    "logGroup": "/ecs/food-backend"
+  },
+  "frontend": {
+    "type": "amplify",
+    "appId": "d2vbnmlocd4i9u",
+    "branch": "main",
+    "gitRemote": "origin",
+    "domains": [
+      "https://app.going2eat.food",
+      "https://www.going2eat.food"
+    ]
+  },
+  "notes": {
+    "cookieDomain": ".going2eat.food",
+    "apiUrl": "https://api.going2eat.food",
+    "gitRepo": "https://github.com/shacharon/pizza"
+  }
+}

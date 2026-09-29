@@ -1,0 +1,17 @@
+---
+description: >-
+  When deploying Going2Eat to AWS, use the going2eat-deploy skill and
+  .cursor/aws-deploy.json. Never mix with dating AWS resources.
+alwaysApply: true
+---
+
+# Going2Eat AWS deploy agent
+
+When the user asks to push, deploy, cook, or upload this app to AWS:
+
+1. Read and follow `.cursor/skills/going2eat-deploy/SKILL.md` (same as personal `going2eat-cook`)
+2. Read `.cursor/aws-deploy.json`
+3. Follow `deploy-aws-app`: git push **main** (Amplify UI) + one Docker API image → ECR → ECS
+4. Show target summary and wait for explicit consent
+5. Never use dating cluster/ECR/domain names
+6. There is no second Docker image for the Angular app
