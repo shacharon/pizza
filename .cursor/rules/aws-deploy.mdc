@@ -9,7 +9,7 @@ alwaysApply: true
 
 When the user asks to push, deploy, cook, or upload this app to AWS:
 
-1. Read and follow `.cursor/skills/going2eat-deploy/SKILL.md` (same as personal `going2eat-cook`)
+1. Read and follow the personal Cursor skill `going2eat-deploy` (same as `going2eat-cook`). Those skills live in your Cursor skills folder, not in this app.
 2. Read `.cursor/aws-deploy.json`
 3. Follow `deploy-aws-app`: git push **main** (Amplify UI) + one Docker API image → ECR → ECS
 4. Show target summary and wait for explicit consent
