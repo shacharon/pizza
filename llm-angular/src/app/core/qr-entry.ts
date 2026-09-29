@@ -1,18 +1,28 @@
-const QR_ENTRY_KEY = 'g2eEntry';
+const ENTRY_KEY = 'g2eEntry';
+const ENTRY_PATTERN = /^(qr|p:[a-z0-9][a-z0-9-]{0,23})$/;
 
-/** Remember that this tab opened from the printed QR (/q). */
-export function rememberQrEntry(): void {
+/** Remember which tracked link this tab opened, for the search report. */
+export function rememberSearchEntry(entry: string): void {
+  if (!ENTRY_PATTERN.test(entry)) return;
   try {
-    sessionStorage.setItem(QR_ENTRY_KEY, 'qr');
+    sessionStorage.setItem(ENTRY_KEY, entry);
   } catch {
     /* private mode */
   }
 }
 
-/** Sent with each search so the report can list QR-card queries. */
-export function currentSearchEntry(): 'qr' | undefined {
+/** `/p/cafe` becomes `p:cafe`. Anything else is ignored. */
+export function entryFromPrefix(prefix: string | null | undefined): string | undefined {
+  const cleaned = (prefix || '').trim().toLowerCase();
+  const entry = `p:${cleaned}`;
+  return ENTRY_PATTERN.test(entry) ? entry : undefined;
+}
+
+/** Sent with each search so the report can list this link's queries. */
+export function currentSearchEntry(): string | undefined {
   try {
-    return sessionStorage.getItem(QR_ENTRY_KEY) === 'qr' ? 'qr' : undefined;
+    const value = sessionStorage.getItem(ENTRY_KEY) || '';
+    return ENTRY_PATTERN.test(value) ? value : undefined;
   } catch {
     return undefined;
   }

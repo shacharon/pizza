@@ -6,7 +6,7 @@
 import { Component, inject, OnInit, OnDestroy, ChangeDetectionStrategy, computed, signal, HostListener, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, ActivatedRoute } from '@angular/router';
-import { rememberQrEntry } from '../../../core/qr-entry';
+import { rememberSearchEntry, entryFromPrefix } from '../../../core/qr-entry';
 import { SearchFacade } from '../../../facades/search.facade';
 import { SearchApiHandler } from '../../../facades/search-api.facade';
 import { SearchWsHandler } from '../../../facades/search-ws.facade';
@@ -566,8 +566,13 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   // Cuisine chips removed - discovery via free-text search + assistant only
 
   ngOnInit(): void {
-    if (this.activatedRoute.snapshot.routeConfig?.path === 'q') {
-      rememberQrEntry();
+    const path = this.activatedRoute.snapshot.routeConfig?.path;
+    if (path === 'q') {
+      rememberSearchEntry('qr');
+    }
+    if (path === 'p/:prefix') {
+      const entry = entryFromPrefix(this.activatedRoute.snapshot.paramMap.get('prefix'));
+      if (entry) rememberSearchEntry(entry);
     }
     if (typeof window !== 'undefined') {
       this.paramMapSub = this.activatedRoute.queryParamMap.subscribe(paramMap => {

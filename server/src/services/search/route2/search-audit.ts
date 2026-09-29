@@ -113,7 +113,7 @@ export function logSearchAudit(
       assistType,
       durationMs,
       timings: ctx.timings,
-      ...(request.entry === 'qr' ? { entry: 'qr' as const } : {}),
+      ...(request.entry ? { entry: request.entry } : {}),
     },
     classified.good
       ? `[search_audit] ${classified.kind} n=${resultCount}`

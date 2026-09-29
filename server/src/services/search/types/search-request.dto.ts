@@ -40,8 +40,8 @@ export const searchRequestSchema = z.object({
   // Optional: enable debug mode (include diagnostics in response)
   debug: z.boolean().optional(),
 
-  // Set when the tab opened from the printed QR (/q)
-  entry: z.literal('qr').optional(),
+  // qr from /q, or p:<prefix> from /p/<prefix>
+  entry: z.string().regex(/^(qr|p:[a-z0-9][a-z0-9-]{0,23})$/).optional(),
 });
 
 // ============================================================================
