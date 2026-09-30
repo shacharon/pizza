@@ -53,6 +53,7 @@ export interface SearchResponseMeta {
    * - locationResume: exact state to resume with (re-submit same query + userLocation; sessionId on response root).
    */
   locationRequired?: true;
+  requestLocationPermission?: true;
   locationResume?: { query: string };
   // Pagination support
   nextPageToken?: string | null;  // Token to fetch next page of results (from Google Places API)
