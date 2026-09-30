@@ -10,12 +10,15 @@ import { logger } from '../../../../lib/logger/structured-logger.js';
 import type { FinalSharedFilters, OpenState } from '../shared/shared-filters.types.js';
 import { attachDietaryHints } from './dietary-hints.js';
 import { placeNameIsClearlyKosher } from './not-kosher-name.js';
+import { queryAsksGlutenFree, shapeResultList } from './list-shape.js';
 
 export interface PostFilterInput {
   results: any[]; // PlaceResult[] from Google Maps stage
   sharedFilters: FinalSharedFilters;
   requestId: string;
   pipelineVersion: 'route2';
+  query?: string;
+  cityText?: string | null;
 }
 
 export interface PostFilterOutput {
@@ -174,8 +177,27 @@ export function applyPostFilters(input: PostFilterInput): PostFilterOutput {
     }
   }
 
+  const query = input.query || '';
+  if (query) {
+    const shaped = shapeResultList(filteredResults, query, input.cityText);
+    if (shaped.removedDish > 0 || shaped.removedCity > 0) {
+      logger.info(
+        {
+          requestId,
+          event: 'post_filter_list_shape',
+          removedDish: shaped.removedDish,
+          removedCity: shaped.removedCity,
+          beforeCount: filteredResults.length,
+          afterCount: shaped.results.length
+        },
+        `[PostFilter] List shape removed dish=${shaped.removedDish} city=${shaped.removedCity}`
+      );
+    }
+    filteredResults = shaped.results;
+  }
+
   // Attach dietary hints (SOFT hints - no removal)
-  const isGlutenFree = (sharedFilters as any).isGlutenFree ?? null;
+  const isGlutenFree = (sharedFilters as any).isGlutenFree === true || queryAsksGlutenFree(query);
   if (isGlutenFree === true) {
     for (const result of filteredResults) {
       attachDietaryHints(result, isGlutenFree);

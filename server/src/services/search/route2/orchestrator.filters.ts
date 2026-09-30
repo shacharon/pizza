@@ -99,7 +99,9 @@ export function applyPostFiltersToResults(
     results: googleResults,
     sharedFilters: filtersForPostFilter as any,
     requestId: ctx.requestId,
-    pipelineVersion: 'route2'
+    pipelineVersion: 'route2',
+    query: ctx.query,
+    cityText: ctx.searchAudit?.cityText
   });
 
   // End post_filter stage
