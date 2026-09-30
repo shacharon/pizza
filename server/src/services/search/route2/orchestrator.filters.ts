@@ -100,8 +100,8 @@ export function applyPostFiltersToResults(
     sharedFilters: filtersForPostFilter as any,
     requestId: ctx.requestId,
     pipelineVersion: 'route2',
-    query: ctx.query,
-    cityText: ctx.searchAudit?.cityText
+    ...(ctx.query ? { query: ctx.query } : {}),
+    ...(ctx.searchAudit?.cityText ? { cityText: ctx.searchAudit.cityText } : {})
   });
 
   // End post_filter stage
