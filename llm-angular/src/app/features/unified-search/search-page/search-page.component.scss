@@ -11,38 +11,34 @@
   margin: 0 auto;
 }
 
-// Hero Section (collapsible on scroll with smooth animation)
+// Hero Section (collapsible on scroll)
+// Layout (max-height / padding) snaps instantly — animating height while sticky
+// is on the page causes Android scrollY to bounce around the threshold and flicker
+// the logo. Only opacity / transform ease for the visual handoff.
 .hero-section {
   text-align: center;
   margin: 0 auto;
   padding: 1.5rem 1rem 1.25rem;
   max-width: 700px;
   background: linear-gradient(180deg, #ffffff 0%, #f9fafb 100%);
-  
+
   overflow: hidden;
   max-height: 640px;
-  // Ease away only after a real scroll, then give the space back to the search bar.
-  transition:
-    opacity 420ms ease,
-    transform 420ms ease,
-    max-height 420ms ease,
-    padding 420ms ease;
-  
-  // Expanded state (default)
   opacity: 1;
   transform: translateY(0);
   pointer-events: auto;
-  
+  transition: opacity 220ms ease, transform 220ms ease;
+
   &.collapsed {
     opacity: 0;
     max-height: 0;
     padding-top: 0;
     padding-bottom: 0;
-    transform: translateY(-12px);
+    margin: 0;
+    transform: translateY(-8px);
     pointer-events: none;
   }
-  
-  // Respect prefers-reduced-motion: instant transitions
+
   @media (prefers-reduced-motion: reduce) {
     transition: none;
   }
@@ -114,13 +110,18 @@
   margin: 0 auto 0.35rem;
   object-fit: contain;
   opacity: 0;
-  transform: translateY(-6px);
+  transform: translateY(-4px);
   pointer-events: none;
-  transition: opacity 320ms ease, transform 320ms ease;
+  // Same duration as hero fade so large → small does not overlap oddly
+  transition: opacity 220ms ease, transform 220ms ease;
 
   &.visible {
     opacity: 1;
     transform: translateY(0);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
   }
 }
 

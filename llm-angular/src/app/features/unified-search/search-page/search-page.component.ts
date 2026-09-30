@@ -26,6 +26,7 @@ import { PwaInstallService } from '../../../services/pwa-install.service';
 import { I18nService } from '../../../core/services/i18n.service';
 import { LanguageService } from '../../../core/services/language.service';
 import { heroAboutLines } from './hero-about';
+import { HERO_COLLAPSE_LOCK_MS, nextHeroCollapsed } from './hero-collapse';
 import { InputStateMachine } from '../../../services/input-state-machine.service';
 import {
   deserializeSearchParams,
@@ -145,8 +146,10 @@ export class SearchPageComponent implements OnInit, OnDestroy {
     });
   }
 
-  // Scroll collapse state
+  // Scroll collapse state (hysteresis + short lock — see hero-collapse.ts)
   readonly isHeroCollapsed = signal(false);
+  private heroCollapseLockedUntil = 0;
+  private heroLockTimer?: number;
 
   // Location state
   readonly locationState = this.locationService.state;
@@ -611,6 +614,9 @@ export class SearchPageComponent implements OnInit, OnDestroy {
     if (this.cleanupInterval != null) {
       clearInterval(this.cleanupInterval);
     }
+    if (this.heroLockTimer != null) {
+      clearTimeout(this.heroLockTimer);
+    }
     this.paramMapSub?.unsubscribe();
   }
 
@@ -776,14 +782,40 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Handle window scroll to collapse hero
+   * Collapse the hero on scroll. Uses hysteresis + a short lock so Android
+   * rubber-band / address-bar jitter cannot flip the logo mid-transition.
    */
-  @HostListener('window:scroll', ['$event'])
+  @HostListener('window:scroll')
   onWindowScroll(): void {
+    this.syncHeroCollapsed();
+  }
+
+  private syncHeroCollapsed(): void {
+    if (typeof performance !== 'undefined' && performance.now() < this.heroCollapseLockedUntil) {
+      return;
+    }
+
     const scrollTop = window.scrollY || document.documentElement.scrollTop;
-    
-    // Keep the logo and headline on screen through a short scroll, then ease them away.
-    this.isHeroCollapsed.set(scrollTop > 160);
+    const collapsed = this.isHeroCollapsed();
+    const next = nextHeroCollapsed(scrollTop, collapsed);
+    if (next === collapsed) {
+      return;
+    }
+
+    this.isHeroCollapsed.set(next);
+
+    // Lock only after collapse: snapping max-height can yank scrollY under the
+    // expand edge. Recheck once the lock ends so we don't stay stuck collapsed.
+    if (next && typeof window !== 'undefined') {
+      this.heroCollapseLockedUntil = performance.now() + HERO_COLLAPSE_LOCK_MS;
+      if (this.heroLockTimer != null) {
+        clearTimeout(this.heroLockTimer);
+      }
+      this.heroLockTimer = window.setTimeout(() => {
+        this.heroLockTimer = undefined;
+        this.syncHeroCollapsed();
+      }, HERO_COLLAPSE_LOCK_MS + 16);
+    }
   }
 }
 
