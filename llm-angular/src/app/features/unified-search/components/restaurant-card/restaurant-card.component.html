@@ -1,5 +1,5 @@
 <article class="restaurant-card" [class.selected]="selected()" [class.top-result]="isTopResult()"
-  [class.compact]="compact()" role="button" tabindex="0" [attr.aria-label]="'View details for ' + restaurant().name"
+  [class.compact]="compact()" role="button" tabindex="0" [attr.aria-label]="restaurant().website ? ('Open website for ' + restaurant().name) : restaurant().name"
   (click)="onCardClick()" (keydown.enter)="onCardClick()" (keydown.space)="$event.preventDefault(); onCardClick()">
 
   @if (showReasonLabel() && isTopResult()) {

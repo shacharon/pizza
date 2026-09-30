@@ -47,14 +47,47 @@ export function mapPlaceCategory(place: { primaryType?: string; types?: string[]
  *   currentOpeningHours: { openNow: true/false },
  *   photos: [{ name: "places/.../photos/..." }],
  *   types: [...],
- *   googleMapsUri: "..."
+ *   googleMapsUri: "...",
+ *   internationalPhoneNumber: "+972...",
+ *   websiteUri: "https://..."
  * }
  */
+
+/** Keep a Google phone only when it is a short dialable string. */
+export function sanitizePlacePhone(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim().replace(/[\u0000-\u001F\u007F]/g, '');
+  if (trimmed.length < 6 || trimmed.length > 32) return undefined;
+  if (!/^[+\d][\d\s().-]*$/.test(trimmed)) return undefined;
+  const digits = trimmed.replace(/\D/g, '');
+  if (digits.length < 6 || digits.length > 15) return undefined;
+  return trimmed;
+}
+
+/** Keep a Google website only when it is an http(s) URL with no login info. */
+export function sanitizePlaceWebsite(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (trimmed.length < 8 || trimmed.length > 500) return undefined;
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    return undefined;
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return undefined;
+  if (url.username || url.password) return undefined;
+  if (!url.hostname) return undefined;
+  return url.toString();
+}
+
 export function mapGooglePlaceToResult(place: any): any {
   // Extract place ID from resource name (places/ChIJxxx -> ChIJxxx)
   const placeId = place.id ? place.id.split('/').pop() || place.id : 'unknown';
   const businessStatus = place.businessStatus as string | undefined;
   const isTempClosed = businessStatus === 'CLOSED_TEMPORARILY';
+  const phoneNumber = sanitizePlacePhone(place.internationalPhoneNumber);
+  const website = sanitizePlaceWebsite(place.websiteUri);
 
   return {
     id: placeId, // Use place_id as internal ID
@@ -93,6 +126,8 @@ export function mapGooglePlaceToResult(place: any): any {
       buildPhotoReference(photo.name)
     ) || [],
     googleMapsUrl: place.googleMapsUri || `https://www.google.com/maps/place/?q=place_id:${placeId}`,
+    ...(phoneNumber ? { phoneNumber } : {}),
+    ...(website ? { website } : {}),
     tags: place.types || [],
     socialProofTags: computeSocialProofTags(place.rating, place.userRatingCount),
     category: mapPlaceCategory(place),

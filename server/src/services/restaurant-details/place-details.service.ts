@@ -62,10 +62,7 @@ export async function getPlaceDetailsByPlaceId(placeId: string): Promise<Restaur
     }
 
     const place = await response.json();
-    const mapped = mapGooglePlaceToResult(place) as RestaurantResult;
-    if (place.internationalPhoneNumber) mapped.phoneNumber = place.internationalPhoneNumber;
-    if (place.websiteUri) mapped.website = place.websiteUri;
-    return mapped;
+    return mapGooglePlaceToResult(place) as RestaurantResult;
   } catch (err) {
     logger.warn({
       placeId: sanitizedId,

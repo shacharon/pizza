@@ -7,7 +7,6 @@
 
 import { Component, input, output, ChangeDetectionStrategy, computed, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Router } from '@angular/router';
 import { ReasonLabelComponent } from '../reason-label/reason-label.component';
 import type { Restaurant, Coordinates } from '../../../../domain/types/search.types';
 import type { ActionType, ActionLevel } from '../../../../domain/types/action.types';
@@ -105,7 +104,6 @@ export function formatOpenStatusLine(params: {
 })
 export class RestaurantCardComponent {
   public readonly i18n = inject(I18nService);
-  private readonly router = inject(Router);
   private readonly resultActions = inject(ResultActionLogService);
 
   // Inputs
@@ -143,11 +141,10 @@ export class RestaurantCardComponent {
 
   onCardClick(): void {
     const r = this.restaurant();
-    this.resultActions.track('open', r?.name);
-    const placeId = r?.id ?? r?.placeId ?? '';
-    if (placeId) {
-      this.router.navigate(['/r', placeId]);
-    }
+    const website = httpWebsiteUrl(r?.website);
+    if (!website) return;
+    this.resultActions.track('open', r.name);
+    window.open(website, '_blank', 'noopener,noreferrer');
     this.cardClick.emit(r);
   }
 
@@ -1029,6 +1026,20 @@ export class RestaurantCardComponent {
     });
   }
 
+}
+
+/** Restaurant site only. Missing or non-http links do not open. */
+function httpWebsiteUrl(value: string | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
 }
 
 

@@ -78,6 +78,8 @@ export interface Restaurant {
 
   phoneNumber?: string;
   website?: string;
+  /** Google Maps place page from the search (`googleMapsUri`). */
+  googleMapsUrl?: string;
   tags?: string[];
   /** Deterministic social-proof tags from backend (rating + review count only) */
   socialProofTags?: ('HIDDEN_GEM' | 'CROWD_FAVORITE' | 'POPULAR_RELIABLE')[];

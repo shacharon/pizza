@@ -32,7 +32,9 @@ describe('getTextSearchFieldMask', () => {
       'places.utcOffsetMinutes',
       'places.photos',
       'places.types',
-      'places.googleMapsUri'
+      'places.googleMapsUri',
+      'places.internationalPhoneNumber',
+      'places.websiteUri'
     ];
 
     for (const field of requiredFields) {

@@ -196,8 +196,7 @@ export class ActionService {
 
   private openMaps(restaurant: Restaurant): Observable<ActionExecutionResult> {
     try {
-      const url = `https://www.google.com/maps/search/?api=1&query=${restaurant.location.lat},${restaurant.location.lng}&query_place_id=${restaurant.placeId}`;
-      window.open(url, '_blank');
+      window.open(googleMapsPageUrl(restaurant), '_blank', 'noopener,noreferrer');
       return of({ success: true, message: 'Opened Google Maps' });
     } catch (error: any) {
       return of({ success: false, message: 'Failed to open maps', error: error.message });
@@ -283,5 +282,33 @@ export class ActionService {
   private generateCorrelationId(): string {
     return `corr-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   }
+}
+
+/** Google Maps place page. Uses the URL from the search, then the place id. */
+export function googleMapsPageUrl(restaurant: Restaurant): string {
+  const fromSearch = restaurant.googleMapsUrl?.trim();
+  if (fromSearch && isGoogleMapsHttpsUrl(fromSearch)) return fromSearch;
+
+  const placeId = (restaurant.placeId || restaurant.id || '').trim();
+  if (placeId) {
+    return `https://www.google.com/maps/search/?api=1&query_place_id=${encodeURIComponent(placeId)}`;
+  }
+
+  return `https://www.google.com/maps/search/?api=1&query=${restaurant.location.lat},${restaurant.location.lng}`;
+}
+
+function isGoogleMapsHttpsUrl(value: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== 'https:') return false;
+  const host = url.hostname.toLowerCase();
+  return host === 'www.google.com'
+    || host === 'maps.google.com'
+    || host === 'google.com'
+    || host === 'maps.app.goo.gl';
 }
 

@@ -11,10 +11,10 @@ import { mapGooglePlaceToResult } from './result-mapper.js';
 import { filterPlacesByBusinessStatus, filterResultsByBusinessStatus, logBusinessStatusMetrics } from './business-status.js';
 import { callGooglePlacesSearchText } from './text-search.handler.js';
 import { callGooglePlacesSearchNearby } from './nearby-search.handler.js';
+import { getTextSearchFieldMask } from './textsearch/field-mask-builder.js';
 import type { RouteLLMMapping, Route2Context } from '../../types.js';
 
-// Field mask for Google Places API (New) - includes opening hours + businessStatus
-const PLACES_FIELD_MASK = 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.priceLevel,places.currentOpeningHours,places.regularOpeningHours,places.utcOffsetMinutes,places.photos,places.types,places.googleMapsUri,places.businessStatus';
+const PLACES_FIELD_MASK = getTextSearchFieldMask();
 
 /**
  * Execute Landmark Plan (two-phase search)

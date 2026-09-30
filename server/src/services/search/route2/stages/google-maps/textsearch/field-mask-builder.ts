@@ -8,10 +8,11 @@
 
 /**
  * Get the default field mask for Text Search API
- * Includes: id, name, address, location, ratings, price, hours, photos, types, maps URL
+ * Includes: id, name, address, location, ratings, price, hours, photos, types, maps URL,
+ * phone, and website. Phone and website are the same Enterprise tier as rating and hours.
  * 
  * @returns Field mask string for X-Goog-FieldMask header
  */
 export function getTextSearchFieldMask(): string {
-  return 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.priceLevel,places.currentOpeningHours,places.regularOpeningHours,places.utcOffsetMinutes,places.photos,places.types,places.googleMapsUri,places.businessStatus';
+  return 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.priceLevel,places.currentOpeningHours,places.regularOpeningHours,places.utcOffsetMinutes,places.photos,places.types,places.googleMapsUri,places.businessStatus,places.internationalPhoneNumber,places.websiteUri';
 }
