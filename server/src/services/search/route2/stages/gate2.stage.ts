@@ -18,6 +18,7 @@ import { logger } from '../../../../lib/logger/structured-logger.js';
 import { startStage, endStage } from '../../../../lib/telemetry/stage-timer.js';
 import { sanitizeQuery } from '../../../../lib/telemetry/query-sanitizer.js';
 import { resolveLLM, truncateWordsForLlm, frameSearchAsData } from '../../../../lib/llm/index.js';
+import { ModelBudgetExceededError } from '../../../../lib/llm/session-model-budget.js';
 import {
   getGate2QueryValidityPreDecision,
   shouldOverrideFoodToClarify
@@ -248,6 +249,9 @@ export async function executeGate2Stage(
         ...(response.model !== undefined && { model: response.model })
       };
     } catch (err: any) {
+      if (err instanceof ModelBudgetExceededError) {
+        throw err;
+      }
       lastError = err;
       const errorMsg = err?.message || String(err);
       const errorType = err?.errorType || '';
@@ -304,6 +308,9 @@ export async function executeGate2Stage(
             msg: '[ROUTE2] gate2 retry succeeded'
           });
         } catch (retryErr) {
+          if (retryErr instanceof ModelBudgetExceededError) {
+            throw retryErr;
+          }
           // Retry failed - will use timeout error result
           lastError = retryErr;
         }
@@ -367,6 +374,9 @@ export async function executeGate2Stage(
     return { gate };
 
   } catch (error) {
+    if (error instanceof ModelBudgetExceededError) {
+      throw error;
+    }
     const durationMs = Date.now() - startTime;
     const errorMsg = error instanceof Error ? error.message : 'unknown';
 

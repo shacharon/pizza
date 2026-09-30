@@ -149,8 +149,16 @@
     </div>
     }
 
+    @if (facade.dailyLimitReached() && !facade.loading()) {
+    <app-daily-limit-card
+      [title]="dailyLimitNotice().title"
+      [body]="dailyLimitNotice().body"
+      [dir]="dailyLimitNotice().dir"
+      [lang]="dailyLimitNotice().lang" />
+    }
+
     <!-- Error State -->
-    @if (facade.error() && !facade.loading()) {
+    @if (facade.error() && !facade.loading() && !facade.dailyLimitReached()) {
     <div class="error-state">
       <div class="error-icon">⚠️</div>
       <h2>Oops! Something went wrong</h2>

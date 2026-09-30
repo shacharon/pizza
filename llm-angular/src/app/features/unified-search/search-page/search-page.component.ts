@@ -19,6 +19,8 @@ import { AssistantBottomSheetComponent } from '../components/assistant-bottom-sh
 import { AssistantLineComponent } from '../components/assistant-line/assistant-line.component';
 import { ClarificationBlockComponent } from '../components/clarification-block/clarification-block.component';
 import { AssistantSummaryComponent } from '../components/assistant-summary/assistant-summary.component';
+import { DailyLimitCardComponent } from '../daily-limit/daily-limit-card.component';
+import { dailyLimitCopy } from '../daily-limit/daily-limit-copy';
 import { LocationService } from '../../../services/location.service';
 import { PwaInstallService } from '../../../services/pwa-install.service';
 import { I18nService } from '../../../core/services/i18n.service';
@@ -103,7 +105,8 @@ export function missingLocationCopy(query: string): MissingLocationCopy {
     AssistantBottomSheetComponent,
     AssistantLineComponent,
     ClarificationBlockComponent,
-    AssistantSummaryComponent
+    AssistantSummaryComponent,
+    DailyLimitCardComponent
   ],
   providers: [
     SearchFacade,
@@ -128,6 +131,7 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   readonly i18n = inject(I18nService);
   private readonly language = inject(LanguageService);
   readonly heroLines = computed(() => heroAboutLines(this.language.currentLang()));
+  readonly dailyLimitNotice = computed(() => dailyLimitCopy(this.facade.query()));
   readonly heroDir = computed(() => this.language.textDirection());
 
   private cleanupInterval?: number;

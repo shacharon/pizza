@@ -12,10 +12,11 @@ import type { WSServerMessage, AssistantStatus } from '../core/models/ws-protoco
 import type { SearchResponse } from '../domain/types/search.types';
 import { environment } from '../../environments/environment';
 import type { Subscription } from 'rxjs';
+import { isDailyModelLimit } from '../features/unified-search/daily-limit/daily-limit-copy';
 
 export interface SearchEventHandlers {
   onSearchResponse: (response: SearchResponse, query: string) => void;
-  onError: (message: string) => void;
+  onError: (message: string, code?: string) => void;
   onProgress: () => void;
 }
 
@@ -175,6 +176,15 @@ export class SearchWsHandler {
                 requestId: requestId.substring(0, 20) + '...',
                 preview: payload.message?.substring(0, 50) + '...'
               });
+              if (payload.type === 'SEARCH_FAILED' && isDailyModelLimit(payload.message)) {
+                onTerminalAssistantMessage?.({
+                  type: payload.type,
+                  message: payload.message,
+                  question: null,
+                  blocksSearch: true
+                });
+                return;
+              }
               assistantHandler.routeMessage(
                 payload.type,
                 payload.message,
@@ -411,7 +421,7 @@ export class SearchWsHandler {
       case 'error':
         console.error('[SearchWsHandler] WS search error:', event.code, event.message);
         cancelPolling();
-        handlers.onError(event.message);
+        handlers.onError(event.message, event.code);
         break;
     }
   }

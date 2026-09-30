@@ -6,6 +6,7 @@
 import { Router, Request, Response } from 'express';
 import type { AuthenticatedRequest } from '../../middleware/auth.middleware.js';
 import { logger } from '../../lib/logger/structured-logger.js';
+import { resultActionLog } from './result-action-log.js';
 
 const router = Router();
 
@@ -62,13 +63,18 @@ router.post('/events', (req: Request, res: Response) => {
     events.shift();
   }
 
-  logger.info({
-    event,
-    userId,
-    sessionId,
-    query: data?.query,
-    count: data?.count
-  }, '[Analytics] Event tracked');
+  const click = resultActionLog(event, data, sessionId);
+  if (click) {
+    logger.info(click, '[result_action]');
+  } else {
+    logger.info({
+      event,
+      userId,
+      sessionId,
+      query: data?.query,
+      count: data?.count
+    }, '[Analytics] Event tracked');
+  }
 
   res.status(200).json({ 
     received: true,

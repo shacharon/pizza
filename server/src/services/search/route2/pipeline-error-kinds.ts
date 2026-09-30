@@ -41,6 +41,9 @@ export enum PipelineErrorKind {
   OPENAI_API_KEY_MISSING = 'OPENAI_API_KEY_MISSING',
   GOOGLE_API_KEY_MISSING = 'GOOGLE_API_KEY_MISSING',
   
+  // Session model budget
+  MODEL_BUDGET_EXCEEDED = 'MODEL_BUDGET_EXCEEDED',
+
   // Internal errors
   INTERNAL_ERROR = 'INTERNAL_ERROR',
   PARSE_ERROR = 'PARSE_ERROR',
@@ -65,6 +68,14 @@ export function classifyPipelineError(error: unknown, stage?: string): {
 
   const err = error as any;
   const errorMessage = err.message || String(error);
+
+  if (err.name === 'ModelBudgetExceededError' || errorMessage === 'Try again later') {
+    return {
+      kind: PipelineErrorKind.MODEL_BUDGET_EXCEEDED,
+      code: 'MODEL_BUDGET_EXCEEDED',
+      message: 'Try again later'
+    };
+  }
 
   // Timeout errors
   if (err.name === 'TimeoutError' || errorMessage.includes('timeout')) {

@@ -12,12 +12,14 @@ export class SearchStore {
   private readonly _query = signal<string>('');
   private readonly _loading = signal<boolean>(false);
   private readonly _error = signal<string | null>(null);
+  private readonly _dailyLimitReached = signal(false);
   private readonly _response = signal<SearchResponse | null>(null);
 
   // Public readonly signals
   readonly query = this._query.asReadonly();
   readonly loading = this._loading.asReadonly();
   readonly error = this._error.asReadonly();
+  readonly dailyLimitReached = this._dailyLimitReached.asReadonly();
   readonly response = this._response.asReadonly();
 
   // Computed signals
@@ -59,17 +61,29 @@ export class SearchStore {
 
   setError(error: string | null): void {
     this._error.set(error);
+    if (error) {
+      this._dailyLimitReached.set(false);
+    }
+  }
+
+  setDailyLimitReached(reached: boolean): void {
+    this._dailyLimitReached.set(reached);
+    if (reached) {
+      this._error.set(null);
+    }
   }
 
   setResponse(response: SearchResponse): void {
     this._response.set(response);
     this._error.set(null); // Clear error on successful response
+    this._dailyLimitReached.set(false);
   }
 
   reset(): void {
     this._query.set('');
     this._loading.set(false);
     this._error.set(null);
+    this._dailyLimitReached.set(false);
     this._response.set(null);
   }
 
@@ -80,6 +94,7 @@ export class SearchStore {
   clearState(): void {
     this._loading.set(false);
     this._error.set(null);
+    this._dailyLimitReached.set(false);
     this._response.set(null);
   }
 

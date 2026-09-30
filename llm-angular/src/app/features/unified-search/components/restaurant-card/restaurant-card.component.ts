@@ -18,6 +18,7 @@ import { buildWoltSearchUrl, buildTenbisSearchUrl, buildMishlohaSearchUrl } from
 import { appendWoltTrackingParams, appendTenbisTrackingParams, appendMishlohaTrackingParams, isValid10bisUrl, isValidMishlohaUrl } from '../../../../utils/wolt-deeplink.util';
 import { formatTimeFromDate, formatTimeFromRaw } from '../../../../shared/utils/time-formatter';
 import type { ProviderState } from '../../../../domain/types/search.types';
+import { ResultActionLogService } from '../../../../services/result-action-log.service';
 
 // Near you badge threshold (meters)
 export const NEAR_THRESHOLD_METERS = 600;
@@ -105,6 +106,7 @@ export function formatOpenStatusLine(params: {
 export class RestaurantCardComponent {
   public readonly i18n = inject(I18nService);
   private readonly router = inject(Router);
+  private readonly resultActions = inject(ResultActionLogService);
 
   // Inputs
   readonly restaurant = input.required<Restaurant>();
@@ -141,6 +143,7 @@ export class RestaurantCardComponent {
 
   onCardClick(): void {
     const r = this.restaurant();
+    this.resultActions.track('open', r?.name);
     const placeId = r?.id ?? r?.placeId ?? '';
     if (placeId) {
       this.router.navigate(['/r', placeId]);
@@ -166,6 +169,8 @@ export class RestaurantCardComponent {
       return;
     }
 
+    if (type === 'GET_DIRECTIONS') this.resultActions.track('navigate', this.restaurant().name);
+    if (type === 'CALL_RESTAURANT') this.resultActions.track('call', this.restaurant().name);
     this.actionClick.emit({ type, level });
   }
 
@@ -1014,6 +1019,7 @@ export class RestaurantCardComponent {
     }
 
     window.open(link.url, '_blank', 'noopener,noreferrer');
+    this.resultActions.track(providerId, this.restaurant().name);
 
     console.log('[RestaurantCard] Provider link clicked', {
       placeId: this.restaurant().placeId,

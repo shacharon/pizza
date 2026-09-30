@@ -24,6 +24,7 @@ import type { ActionType, ActionLevel } from '../domain/types/action.types';
 import type { SearchCardState } from '../domain/types/search-card-state.types';
 import type { WSServerMessage } from '../core/models/ws-protocol.types';
 import { safeLog, safeError, safeWarn } from '../shared/utils/safe-logger';
+import { isDailyModelLimit } from '../features/unified-search/daily-limit/daily-limit-copy';
 
 // Extracted handler modules
 import { SearchApiHandler } from './search-api.facade';
@@ -157,6 +158,7 @@ export class SearchFacade {
   readonly assistantState = this.assistantHandler.status;
   readonly recommendations = this.assistantHandler.recommendations;
   readonly assistantError = this.assistantHandler.error;
+  readonly dailyLimitReached = this.searchStore.dailyLimitReached;
   readonly assistantMessageRequestId = this.assistantHandler.requestId; // PLACEMENT FIX
   readonly assistantBlocksSearch = this.assistantHandler.blocksSearch; // BLOCKS SEARCH
   readonly wsConnectionStatus = this.wsHandler.connectionStatus;
@@ -252,11 +254,7 @@ export class SearchFacade {
           query,
           (response) => this.handleSearchResponse(response, query),
           (error) => {
-            this.searchStore.setError(error);
-            this.searchStore.setLoading(false);
-            this.assistantHandler.setStatus('failed');
-            this.assistantHandler.setError(error + ' - Please retry');
-            this.inputStateMachine.searchFailed();
+            this.failSearch(error);
           }
         );
 
@@ -286,11 +284,7 @@ export class SearchFacade {
       // Handle other errors
       safeError('SearchFacade', 'Search error', { status: error?.status, code: error?.code, message: error?.message });
       const userMessage = error?.message || 'Search failed. Please try again.';
-      this.searchStore.setError(userMessage);
-      this.searchStore.setLoading(false);
-      this.assistantHandler.setStatus('failed');
-      this.assistantHandler.setError(userMessage);
-      this.inputStateMachine.searchFailed();
+      this.failSearch(userMessage, error?.code);
       // CARD STATE: All errors are terminal
       this._cardState.set('STOP');
     }
@@ -689,6 +683,8 @@ export class SearchFacade {
         });
         this.triggerLocationPermissionFromSignal(resumeQuery);
       }
+    } else if (payload.type === 'SEARCH_FAILED' && isDailyModelLimit(payload.message)) {
+      this.showDailyLimit();
     } else if (payload.type === 'GATE_FAIL') {
       safeLog('SearchFacade', 'GATE_FAIL - terminal state');
       this._cardState.set('STOP');
@@ -735,11 +731,8 @@ export class SearchFacade {
       this.currentRequestId(),
       {
         onSearchResponse: (response, query) => this.handleSearchResponse(response, query),
-        onError: (message) => {
-          this.searchStore.setError(message);
-          this.searchStore.setLoading(false);
-          this.assistantHandler.setStatus('failed');
-          this.assistantHandler.setError(message);
+        onError: (message, code) => {
+          this.failSearch(message, code);
         },
         onProgress: () => {
           // Keep showing loading state
@@ -750,6 +743,28 @@ export class SearchFacade {
       () => this.apiHandler.cancelPolling(),
       this.searchStore.query()
     );
+  }
+
+  private failSearch(message: string, code?: string): void {
+    this.searchStore.setLoading(false);
+    this._cardState.set('STOP');
+    this.inputStateMachine.searchFailed();
+    if (isDailyModelLimit(message, code)) {
+      this.showDailyLimit();
+      return;
+    }
+    this.searchStore.setDailyLimitReached(false);
+    this.searchStore.setError(message);
+    this.assistantHandler.setStatus('failed');
+    this.assistantHandler.setError(message);
+  }
+
+  private showDailyLimit(): void {
+    this.searchStore.setDailyLimitReached(true);
+    this.searchStore.setLoading(false);
+    this._cardState.set('STOP');
+    this.apiHandler.cancelPolling();
+    this.assistantHandler.reset();
   }
 
   retry(): void {
