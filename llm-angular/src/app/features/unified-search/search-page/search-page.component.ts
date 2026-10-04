@@ -7,6 +7,7 @@ import { Component, inject, OnInit, OnDestroy, ChangeDetectionStrategy, computed
 import { CommonModule } from '@angular/common';
 import { Router, ActivatedRoute } from '@angular/router';
 import { rememberSearchEntry, entryFromPrefix } from '../../../core/qr-entry';
+import { LandingOpenLogService } from '../../../services/landing-open-log.service';
 import { SearchFacade } from '../../../facades/search.facade';
 import { SearchApiHandler } from '../../../facades/search-api.facade';
 import { SearchWsHandler } from '../../../facades/search-ws.facade';
@@ -131,6 +132,7 @@ export class SearchPageComponent implements OnInit, OnDestroy {
   readonly pwaInstall = inject(PwaInstallService);
   readonly i18n = inject(I18nService);
   private readonly language = inject(LanguageService);
+  private readonly landingLog = inject(LandingOpenLogService);
   readonly heroLines = computed(() => heroAboutLines(this.language.currentLang()));
   readonly dailyLimitNotice = computed(() => dailyLimitCopy(this.facade.query()));
   readonly heroDir = computed(() => this.language.textDirection());
@@ -579,12 +581,14 @@ export class SearchPageComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     const path = this.activatedRoute.snapshot.routeConfig?.path;
-    if (path === 'q') {
-      rememberSearchEntry('qr');
-    }
-    if (path === 'p/:prefix') {
-      const entry = entryFromPrefix(this.activatedRoute.snapshot.paramMap.get('prefix'));
-      if (entry) rememberSearchEntry(entry);
+    const entry = path === 'q'
+      ? 'qr'
+      : path === 'p/:prefix'
+        ? entryFromPrefix(this.activatedRoute.snapshot.paramMap.get('prefix'))
+        : undefined;
+    if (entry) {
+      rememberSearchEntry(entry);
+      this.landingLog.track(entry);
     }
     if (typeof window !== 'undefined') {
       this.paramMapSub = this.activatedRoute.queryParamMap.subscribe(paramMap => {

@@ -7,6 +7,7 @@ import { Router, Request, Response } from 'express';
 import type { AuthenticatedRequest } from '../../middleware/auth.middleware.js';
 import { logger } from '../../lib/logger/structured-logger.js';
 import { resultActionLog } from './result-action-log.js';
+import { landingOpenLog } from './landing-open-log.js';
 
 const router = Router();
 
@@ -64,8 +65,11 @@ router.post('/events', (req: Request, res: Response) => {
   }
 
   const click = resultActionLog(event, data, sessionId);
+  const landing = landingOpenLog(event, data, sessionId);
   if (click) {
     logger.info(click, '[result_action]');
+  } else if (landing) {
+    logger.info(landing, '[landing_open]');
   } else {
     logger.info({
       event,
