@@ -1,5 +1,5 @@
 ---
-description: Detect Going2Eat Route3 work and load its rules; do not apply them to Route2
+description: Classify Going2Eat Route3 by approved Story and engine, not by folder path
 alwaysApply: true
 ---
 
@@ -7,14 +7,18 @@ alwaysApply: true
 
 This rule only classifies the task. It does not change Route2.
 
-The task is **Route3** only if it names Route3 or a story `R3-…`, concerns the Route3 roadmap, Epics or Sprint 0, or touches a `route3` path, including `docs/route3/`.
+Do **not** treat a `route3` path as Route3. `docs/route3/` also holds legacy Route2 work.
 
-**Otherwise stop here.** Do not apply Route3 constraints to Route2 or other work. That includes the LLM-first architecture, the ban on deterministic business logic, and Vitest.
+**Confirmed Route3** only when the request identifies an approved Story (`R3-…`) whose engine is Route3, or the user explicitly says the change is for the Route3 engine. The Story brief names the approved baseline commit.
 
-When the task is Route3, before any edit:
+**Route2, even under `docs/route3/`:** sprints 07–10, other legacy Route2 docs, and any task whose engine is Route2. Do not apply Route3 constraints. That includes the LLM-first architecture, the ban on deterministic business logic, and Vitest.
+
+**Ambiguous:** the request mentions Route3 or touches `docs/route3/` but names no approved Story and no engine. Ask which engine applies. Until the user answers, do not apply Route3 restrictions.
+
+When, and only when, the task is confirmed Route3, before any edit:
 
 1. Read the approved shared documents in `docs/route3/shared/`: `PRODUCT.md`, `ARCHITECTURE-PRINCIPLES.md`, `ROADMAP.md` and `EPICS.md`. They win over these rules, legacy docs, agents, skills and unapproved chat text. If they conflict, stop and report the conflict.
 2. Read and follow `.cursor/rules/route3-sources.mdc`, `route3-architecture.mdc` and `route3-engineering.mdc`.
-3. The active Story is the brief in the request. That brief names the approved baseline commit. STATUS and HANDOFF files are planned for R3-007 / R3-008. Until they exist, a missing status or handoff does not block a Sprint 0 Story.
+3. STATUS and HANDOFF files are planned for R3-007 / R3-008. Until they exist, a missing status or handoff does not block a Sprint 0 Story.
 4. Verify Git: current branch, `git status`, `HEAD` is the expected commit, the branch is based on the baseline the Story names, and there are no unrelated local changes.
 5. If the Story, branch, SHA or tree is unclear or inconsistent, stop and ask. Do not reconstruct state from chat history.

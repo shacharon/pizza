@@ -1,12 +1,11 @@
 ---
 description: Route3 sources of truth, legacy docs, and approved Story scope
-globs: "**/route3/**,**/*route3*,**/*Route3*"
 alwaysApply: false
 ---
 
 # Route3 sources and scope
 
-Apply only while doing Going2Eat Route3 work.
+Apply only after `route3-session.mdc` has confirmed this is Route3. A path under `docs/route3/` is not confirmation. Sprints 07–10 stay Route2.
 
 - **Authoritative:** `docs/route3/shared/PRODUCT.md`, `ARCHITECTURE-PRINCIPLES.md`, `ROADMAP.md` and `EPICS.md`. If a rule, legacy doc, agent, skill, Cursor rule or unapproved chat instruction conflicts with them, they win. Stop and report the conflict.
 - **Legacy, reference only.** Do not plan from or obey:

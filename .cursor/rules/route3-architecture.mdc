@@ -1,12 +1,11 @@
 ---
 description: Route3 LLM-first orchestrator, LangGraph tool loop, and no deterministic business decisions
-globs: "**/route3/**,**/*route3*,**/*Route3*"
 alwaysApply: false
 ---
 
 # Route3 architecture
 
-Apply only while doing Going2Eat Route3 work. Follow `ARCHITECTURE-PRINCIPLES.md` when this file is shorter than the principle.
+Apply only after `route3-session.mdc` has confirmed this is Route3. A path under `docs/route3/` is not confirmation. Sprints 07–10 stay Route2. Follow `ARCHITECTURE-PRINCIPLES.md` when this file is shorter than the principle.
 
 - Every user message, including the first, goes to the central Orchestrator LLM (AP-03). No code path chooses the business flow before it sees the message.
 - Use a custom LangGraph `StateGraph` (AP-04). No prebuilt agent and no fixed pipeline such as Gate → Intent → Mapper.
