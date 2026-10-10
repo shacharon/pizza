@@ -13,13 +13,17 @@ import { randomUUID } from 'node:crypto';
 
 import { logger } from '../../lib/logger/structured-logger.js';
 import { getConfig } from '../../config/env.js';
+import {
+  extractSessionCookieFromHeader,
+  verifySessionCookie,
+} from '../../lib/session-cookie/session-cookie.service.js';
 
 const router = Router();
 const config = getConfig();
 
 /**
- * Request schema for token generation
- * sessionId is optional - if not provided, one will be generated
+ * Body may still include sessionId so existing clients keep validating.
+ * That value is never signed. See issueSession().
  */
 const TokenRequestSchema = z.object({
   sessionId: z.string().optional()
@@ -32,24 +36,82 @@ function generateSessionId(): string {
   return `sess_${randomUUID()}`;
 }
 
+type IssuedSession = {
+  sessionId: string;
+  source: 'cookie' | 'jwt' | 'new';
+};
+
+function sessionIdFromVerifiedCookie(req: Request): string | null {
+  const raw = extractSessionCookieFromHeader(req.headers.cookie);
+  if (!raw) {
+    return null;
+  }
+  const decoded = verifySessionCookie(raw, config.sessionCookieSecret);
+  if (!decoded || typeof decoded.sessionId !== 'string' || decoded.sessionId.length === 0) {
+    return null;
+  }
+  return decoded.sessionId;
+}
+
+function sessionIdFromVerifiedJwt(req: Request): string | null {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return null;
+  }
+  const token = authHeader.slice('Bearer '.length).trim();
+  if (!token) {
+    return null;
+  }
+  try {
+    const decoded = jwt.verify(token, config.jwtSecret, {
+      algorithms: ['HS256'],
+      maxAge: '30d',
+      clockTolerance: 5,
+    }) as { sessionId?: unknown };
+    if (typeof decoded.sessionId !== 'string' || decoded.sessionId.length === 0) {
+      return null;
+    }
+    return decoded.sessionId;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Re-issue only a session the caller already proved with a valid cookie or JWT.
+ * Cookie wins, matching authSessionOrJwt. Otherwise mint a new id.
+ */
+function issueSession(req: Request): IssuedSession {
+  const fromCookie = sessionIdFromVerifiedCookie(req);
+  if (fromCookie) {
+    return { sessionId: fromCookie, source: 'cookie' };
+  }
+  const fromJwt = sessionIdFromVerifiedJwt(req);
+  if (fromJwt) {
+    return { sessionId: fromJwt, source: 'jwt' };
+  }
+  return { sessionId: generateSessionId(), source: 'new' };
+}
+
 /**
  * POST /token
  * Generate JWT token with sessionId
  *
  * Request body (optional):
- * - sessionId?: string - existing session ID to include in token
+ * - sessionId?: string - accepted and ignored; not used as the signed subject
  *
  * Response:
  * - token: string - JWT token (HS256)
  * - sessionId: string - session ID included in the token
  *
  * Security:
- * - Public endpoint (no auth required for initial token)
+ * - Public endpoint (no auth required for an initial token)
+ * - A presented cookie or Bearer JWT is honored only after verification
  * - Rate limited via global rate limiting
  * - JWT signed with JWT_SECRET from env
  */
 router.post('/token', async (req: Request, res: Response) => {
-  const traceId = (req as any).traceId || 'unknown';
+  const traceId = req.traceId || 'unknown';
 
   try {
     // Validate request body
@@ -59,7 +121,10 @@ router.post('/token', async (req: Request, res: Response) => {
       logger.warn(
         {
           traceId,
-          errors: parseResult.error.issues
+          errors: parseResult.error.issues.map((issue) => ({
+            path: issue.path,
+            code: issue.code,
+          })),
         },
         '[Auth] Invalid token request'
       );
@@ -72,8 +137,8 @@ router.post('/token', async (req: Request, res: Response) => {
       });
     }
 
-    // Use provided sessionId or generate a new one
-    const sessionId = parseResult.data.sessionId || generateSessionId();
+    const issued = issueSession(req);
+    const sessionId = issued.sessionId;
 
     // Generate JWT token with all required claims
     const payload = {
@@ -88,8 +153,8 @@ router.post('/token', async (req: Request, res: Response) => {
     logger.info(
       {
         traceId,
-        sessionId,
-        wasProvided: Boolean(parseResult.data.sessionId)
+        sessionIdPrefix: sessionId.substring(0, 12),
+        source: issued.source
       },
       '[Auth] JWT token generated'
     );
@@ -103,8 +168,7 @@ router.post('/token', async (req: Request, res: Response) => {
     logger.error(
       {
         traceId,
-        error: error instanceof Error ? error.message : 'unknown',
-        stack: error instanceof Error ? error.stack : undefined
+        error: error instanceof Error ? error.name : 'unknown'
       },
       '[Auth] Token generation failed'
     );

@@ -63,7 +63,6 @@ export function authSessionOrJwt(
         hasCookieHeader,
         hasReqCookies,
         hasSessionCookie,
-        cookieHeaderPreview: cookieHeader ? cookieHeader.substring(0, 50) + '...' : 'none',
         event: 'sse_auth_debug'
       },
       '[Auth][SSE] Debug: Cookie extraction attempt'

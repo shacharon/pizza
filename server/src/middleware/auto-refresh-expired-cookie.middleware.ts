@@ -4,9 +4,10 @@
  * Transparently refreshes expired/stale session cookies without 401 errors.
  * Critical for mobile users (Android/iOS) who can't clear cookies.
  *
- * Detection uses jwt.decode (no signature check) so old cookies still refresh
- * even if secret/format changed. Issuing a new anonymous session is equivalent
- * to calling public POST /auth/bootstrap.
+ * A cookie is refreshed in place only when its HS256 signature verifies.
+ * Expiry and a wrong typ can be renewed from those verified claims.
+ * A bad signature, tampered payload, or malformed cookie discards every claim
+ * and starts a new anonymous session (same outcome as POST /auth/bootstrap).
  */
 
 import type { Request, Response, NextFunction } from 'express';
@@ -35,46 +36,67 @@ function extractSessionCookie(cookieHeader: string | undefined): string | null {
   return null;
 }
 
+type VerifiedSessionClaims = {
+  sessionId: string;
+  userId?: string;
+};
+
 /**
- * Cookie needs refresh when:
- * - JWT exp is in the past, OR
- * - Signature/typ verification fails (stale/legacy cookie)
+ * Store used to keep a verified session alive.
+ * Production passes the Redis session store. Tests pass a fake.
+ */
+interface SessionRefreshStore {
+  getSession(sessionId: string): Promise<{ sessionId: string; userId?: string } | null>;
+  touchSession(sessionId: string): Promise<void>;
+  createSession(userId?: string): Promise<string>;
+}
+
+/**
+ * Cookie needs a new signature when it is expired or has the wrong typ.
+ * Claims are returned only after jwt.verify succeeds (signature required).
+ * ignoreExpiration allows an expired-but-signed cookie to keep its session.
  */
 function cookieNeedsRefresh(
   token: string,
   secret: string
-): { needsRefresh: boolean; decoded?: { sessionId?: string; userId?: string } } {
-  const decoded = jwt.decode(token) as {
-    sessionId?: string;
-    userId?: string;
-    exp?: number;
-    typ?: string;
-  } | null;
-
-  if (!decoded || typeof decoded !== 'object') {
-    // Malformed — still refresh (same as bootstrap)
+): { needsRefresh: boolean; claims?: VerifiedSessionClaims } {
+  let sessionId: string;
+  let userId: string | undefined;
+  let exp: number | undefined;
+  let typ: unknown;
+  try {
+    const decoded = jwt.verify(token, secret, {
+      algorithms: ['HS256'],
+      ignoreExpiration: true,
+      clockTolerance: 5,
+    });
+    if (!decoded || typeof decoded === 'string') {
+      return { needsRefresh: true };
+    }
+    if (typeof decoded.sessionId !== 'string' || decoded.sessionId.length === 0) {
+      return { needsRefresh: true };
+    }
+    sessionId = decoded.sessionId;
+    userId = typeof decoded.userId === 'string' && decoded.userId.length > 0
+      ? decoded.userId
+      : undefined;
+    exp = typeof decoded.exp === 'number' ? decoded.exp : undefined;
+    typ = decoded.typ;
+  } catch {
     return { needsRefresh: true };
   }
 
   const now = Math.floor(Date.now() / 1000);
-  if (typeof decoded.exp === 'number' && decoded.exp < now - 5) {
-    return { needsRefresh: true, decoded };
+  const expired = typeof exp === 'number' && exp < now - 5;
+  const wrongTyp = typ != null && typ !== 'session_cookie';
+  if (!expired && !wrongTyp) {
+    return { needsRefresh: false };
   }
 
-  // Not expired by clock — verify signature/typ
-  try {
-    jwt.verify(token, secret, {
-      algorithms: ['HS256'],
-      clockTolerance: 5
-    });
-    if (decoded.typ && decoded.typ !== 'session_cookie') {
-      return { needsRefresh: true, decoded };
-    }
-    return { needsRefresh: false, decoded };
-  } catch {
-    // Invalid signature / legacy cookie → refresh
-    return { needsRefresh: true, decoded };
-  }
+  return {
+    needsRefresh: true,
+    claims: userId ? { sessionId, userId } : { sessionId },
+  };
 }
 
 function setSessionCookieOnResponse(
@@ -111,10 +133,11 @@ function setSessionCookieOnResponse(
 export async function autoRefreshExpiredCookie(
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
+  sessionStore: SessionRefreshStore = getSessionStore()
 ): Promise<void> {
   try {
-    const traceId = (req as any).traceId || 'unknown';
+    const traceId = req.traceId || 'unknown';
     const config = getConfig();
     const cookieHeader = req.headers.cookie;
     const sessionCookie = extractSessionCookie(cookieHeader);
@@ -124,7 +147,7 @@ export async function autoRefreshExpiredCookie(
       return;
     }
 
-    const { needsRefresh, decoded } = cookieNeedsRefresh(
+    const { needsRefresh, claims } = cookieNeedsRefresh(
       sessionCookie,
       config.sessionCookieSecret
     );
@@ -139,16 +162,15 @@ export async function autoRefreshExpiredCookie(
         event: 'auto_refresh_expired_cookie',
         traceId,
         path: req.path,
-        oldSessionId: decoded?.sessionId
-          ? decoded.sessionId.substring(0, 12) + '...'
-          : 'unknown'
+        oldSessionId: claims?.sessionId
+          ? claims.sessionId.substring(0, 12) + '...'
+          : 'unverified'
       },
       '[AutoRefresh] Stale/expired cookie - issuing new session cookie'
     );
 
-    const sessionStore = getSessionStore();
-    let sessionId = decoded?.sessionId;
-    const userId = decoded?.userId;
+    let sessionId = claims?.sessionId;
+    const userId = claims?.userId;
 
     if (sessionId) {
       try {
@@ -201,8 +223,8 @@ export async function autoRefreshExpiredCookie(
     logger.error(
       {
         event: 'auto_refresh_failed',
-        traceId: (req as any).traceId || 'unknown',
-        error: error instanceof Error ? error.message : 'unknown'
+        traceId: req.traceId || 'unknown',
+        error: error instanceof Error ? error.name : 'unknown'
       },
       '[AutoRefresh] Failed - falling through to auth'
     );
