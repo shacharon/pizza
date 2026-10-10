@@ -84,12 +84,15 @@ These rules apply **only** to Going2Eat Route3 work: the Route3 code, the Route3
 
 Before taking any action in a new or resumed session:
 
-1. **Read the shared documents** in `docs/route3/shared/`, including the shared status document once it exists.
-2. **Identify the active Story** and read it, plus its latest handoff report.
+1. **Read the shared documents** in `docs/route3/shared/`.
+2. **Identify the active Story** and read it.
+   - The STATUS and HANDOFF files are **planned** for R3-007 / R3-008.
+   - Until they exist, their absence does not block a Story. The active Story is the Story brief given in the request, and that brief names the approved baseline commit.
+   - Once they exist, also read the shared status and the Story's latest handoff.
 3. **Verify Git:**
    - current branch
    - `git status`
    - that `HEAD` is the expected commit
    - that the branch is based on the approved baseline the Story names
    - that there are no unrelated local changes
-4. **If anything is missing, unclear or inconsistent, stop and ask.** That includes no active Story, no handoff, the wrong branch, an unexpected SHA or a dirty tree. Do not reconstruct state from memory or chat history.
+4. **If anything is unclear or inconsistent, stop and ask.** That includes no identifiable Story, the wrong branch, an unexpected SHA or a dirty tree. Do not reconstruct state from memory or chat history.
