@@ -35,9 +35,9 @@ Sprint 0 delivers the contracts **and** the way Route3 work is done. P1 does not
 |-------------|----------------|
 | Contract documents | `PRODUCT.md` (R3-001), `ARCHITECTURE-PRINCIPLES.md` (R3-002), `ROADMAP.md` and `EPICS.md` (R3-003), approved. |
 | IDE-specific rules | Route3 rules for each IDE used on Route3 work. Cursor (`.cursor/rules/`) and Claude Code are in use today. The rules encode at least: Route2 is immutable (AP-01), Route3 is isolated (AP-02), no deterministic business routing, filtering or ranking (AP-08), and story scope limits. |
-| Five development agents | The Going2Eat roles already named in `docs/route3/README.md`: **Preflight**, **Architect**, **Developer**, **Code Review**, **QA**. Going2Eat-only; Dating agents are not used. Each is updated to the Route3 contracts above. |
-| Skills Audit | An inventory of the agent skills that exist versus those the docs reference. `docs/route3/README.md` points to `.cursor/skills/going2eat-agent-run`, but this repository currently contains only `.cursor/skills/obslete-files`. The audit records what is present, missing or obsolete, and what must be rebuilt for the five agents. |
-| Workflow | The story workflow across the five agents: order, approval gates, independent review before approval, no auto-chaining, and the stop points. |
+| Five development roles | The approved Route3 roles:<br>1. **Business Analyst**<br>2. **Solution Architect**<br>3. **Architecture Reviewer**<br>4. **Developer + Vitest**<br>5. **Code Reviewer**<br>Going2Eat-only; Dating agents are not used.<br>**Playwright E2E** is a separate, **optional** sprint-end stage. It is not one of the five roles.<br>The agents in `docs/route3/README.md` (Preflight, Architect, Developer, Code Review, QA) are **legacy references**, not approved Route3 roles. |
+| Skills Audit | An inventory of the agent skills that exist versus those the docs reference. `docs/route3/README.md` points to `.cursor/skills/going2eat-agent-run`, but this repository currently contains only `.cursor/skills/obslete-files`. The existing (legacy) agents and skills are audited and then **adapted or replaced** to fit the five approved roles in **R3-005 / R3-006**. Until then they are not modified. |
+| Workflow | The story workflow across the five roles, plus the optional sprint-end Playwright E2E stage: order, approval gates, independent review before approval, no auto-chaining, and the stop points. |
 | Git Handoff | The branch, commit and push rules for each story. A dedicated branch from the approved baseline; only the story's files committed; no unrelated local changes; no merge without approval. A handoff report gives the branch, SHA, corrections and open questions. |
 | Session Recovery | How an interrupted or new agent session resumes a story from repository state (branch, handoff report, story docs) rather than chat history, and how it confirms the approved baseline before continuing. |
 
@@ -101,7 +101,7 @@ Each slice goes end to end in development: UI or HTTP in, Route3 graph, real LLM
 ## 3. Dependencies
 
 ```
-P0 Sprint 0 (contracts + rules, agents, skills audit, workflow, git handoff, session recovery)
+P0 Sprint 0 (contracts + rules, five roles, skills audit, workflow, git handoff, session recovery)
   └─► E0 Foundation ──► E1 Agent runtime (VS-1)
                             ├─► E2 Discovery (VS-2) ──┬─► E4 Conversation (VS-3)
                             │                         │
@@ -112,7 +112,7 @@ E6 Future transactions: after MVP only
 
 | Epic | Hard dependencies | Why |
 |------|-------------------|-----|
-| E0 | P0 complete | Contracts, rules, agents, workflow and handoff must be in place first |
+| E0 | P0 complete | Contracts, rules, roles, workflow and handoff must be in place first |
 | E1 | E0 | Needs the isolated module, the selector, packages and the test harness |
 | E2 | E1 | Tools plug into the loop. The publish rules need the turn-result contract. Delivers the country-aware baseline |
 | E3 | E1; E2 for acceptance | Language and region affect tool inputs and published lists. E3 expands the country-aware baseline that E2 delivers in VS-2 |

@@ -37,8 +37,10 @@ Sprint 0 is not an Epic. It is the prerequisite for all Epics: E0 does not start
 
 - the contract documents
 - IDE-specific rules
-- the five development agents: Preflight, Architect, Developer, Code Review, QA
-- the Skills Audit
+- the five development roles: Business Analyst, Solution Architect, Architecture Reviewer, Developer + Vitest, Code Reviewer
+  - Playwright E2E is a separate, optional sprint-end stage, not a sixth role.
+  - The agents in `docs/route3/README.md` (Preflight, Architect, Developer, Code Review, QA) are legacy references, not approved Route3 roles.
+- the Skills Audit. Existing agents and skills are audited and then adapted or replaced in R3-005 / R3-006. They are not modified before then.
 - the Workflow
 - Git Handoff
 - Session Recovery
