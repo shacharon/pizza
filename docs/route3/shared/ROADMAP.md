@@ -17,15 +17,31 @@ This roadmap sets the **order** of delivery, the **vertical slices** that prove 
 
 | Phase | Name | Epics | Exit (summary) |
 |-------|------|-------|----------------|
-| P0 | Contracts | Sprint 0 docs | PRODUCT, ARCHITECTURE-PRINCIPLES, ROADMAP and EPICS approved |
+| P0 | Sprint 0: contracts and delivery setup | Sprint 0 (see §1.1) | Contract documents approved **and** the delivery setup in §1.1 in place |
 | P1 | Foundation + walking skeleton | E0, E1, E5 (start) | **VS-1** works in development |
-| P2 | Discovery slice | E2, E5 | **VS-2** works in development in the existing UI |
-| P3 | Conversation + multilingual | E4, E3, E5 | **VS-3** works in development, multilingual and cross-country |
+| P2 | Discovery slice | E2, E5 | **VS-2** works in development in the existing UI, with the country-aware baseline |
+| P3 | Conversation + multilingual | E4, E3, E5 | **VS-3** works in development; E3 expands multilingual and cross-country coverage |
 | P4 | MVP readiness | E5 (completion), fixes across E1–E4 | Evaluation and security thresholds met; MVP readiness reviewed |
 | P5 | Future transactions | E6 | Only after MVP and a new product decision |
 
 - **E5** starts in P1 and grows with every slice. It is not a final phase only.
-- **E3** may begin in P2 once VS-2 publishes lists. Its acceptance belongs to P3.
+- **Country-aware search is not deferred to E3.** The baseline is part of VS-2 (E2). E3 expands it in P3; it does not introduce it.
+
+### 1.1 P0 — Sprint 0 scope
+
+Sprint 0 delivers the contracts **and** the way Route3 work is done. P1 does not start until all of the following are in place.
+
+| Deliverable | What it covers |
+|-------------|----------------|
+| Contract documents | `PRODUCT.md` (R3-001), `ARCHITECTURE-PRINCIPLES.md` (R3-002), `ROADMAP.md` and `EPICS.md` (R3-003), approved. |
+| IDE-specific rules | Route3 rules for each IDE used on Route3 work. Cursor (`.cursor/rules/`) and Claude Code are in use today. The rules encode at least: Route2 is immutable (AP-01), Route3 is isolated (AP-02), no deterministic business routing, filtering or ranking (AP-08), and story scope limits. |
+| Five development agents | The Going2Eat roles already named in `docs/route3/README.md`: **Preflight**, **Architect**, **Developer**, **Code Review**, **QA**. Going2Eat-only; Dating agents are not used. Each is updated to the Route3 contracts above. |
+| Skills Audit | An inventory of the agent skills that exist versus those the docs reference. `docs/route3/README.md` points to `.cursor/skills/going2eat-agent-run`, but this repository currently contains only `.cursor/skills/obslete-files`. The audit records what is present, missing or obsolete, and what must be rebuilt for the five agents. |
+| Workflow | The story workflow across the five agents: order, approval gates, independent review before approval, no auto-chaining, and the stop points. |
+| Git Handoff | The branch, commit and push rules for each story. A dedicated branch from the approved baseline; only the story's files committed; no unrelated local changes; no merge without approval. A handoff report gives the branch, SHA, corrections and open questions. |
+| Session Recovery | How an interrupted or new agent session resumes a story from repository state (branch, handoff report, story docs) rather than chat history, and how it confirms the approved baseline before continuing. |
+
+Sprint 0 changes no application code and no Route2 code.
 
 ---
 
@@ -62,25 +78,30 @@ Each slice goes end to end in development: UI or HTTP in, Route3 graph, real LLM
 - PR-05.3: no permanently closed place.
 - PR-05.4: grounded statements only.
 - No deterministic business filtering or ranking (AP-08).
+- **Country-aware baseline (PR-04.3, AP-11):** this is the first real restaurant search, so it already meets the baseline:
+  - **Language never determines where to search.** No language-to-country mapping in prompts or code.
+  - **Where to search** comes from the explicit place in the message, GPS or the session location. The orchestrator LLM chooses among them; code does not pick by rule (AP-08).
+  - **Changing the language of the request does not change where to search.** The same request in another language, with the same place, GPS and session, searches the same area.
 
 ### VS-3 — Conversation (P3: E4 + E3)
 
 **Proves:** the full conversational assistant.
 
-- Free-text clarification, then a resume from the checkpoint.
+- A clarification answered by **either a structured choice or free text**, then a resume from the checkpoint (PR-02.2, AP-10).
 - A follow-up refine updates the list.
 - A question-only follow-up gets an answer.
 - New Search resets the context.
 - A refresh restores it.
 - The orchestrator judges topic changes.
-- It works in the frozen language set and searches the intended country regardless of language.
+- The conversation's location is kept when the user switches language mid-conversation.
+- E3 expands coverage to the frozen language set and broader cross-country cases. The country-aware baseline already exists from VS-2.
 
 ---
 
 ## 3. Dependencies
 
 ```
-P0 docs
+P0 Sprint 0 (contracts + rules, agents, skills audit, workflow, git handoff, session recovery)
   └─► E0 Foundation ──► E1 Agent runtime (VS-1)
                             ├─► E2 Discovery (VS-2) ──┬─► E4 Conversation (VS-3)
                             │                         │
@@ -91,10 +112,10 @@ E6 Future transactions: after MVP only
 
 | Epic | Hard dependencies | Why |
 |------|-------------------|-----|
-| E0 | P0 approved | Principles and contract must be fixed first |
+| E0 | P0 complete | Contracts, rules, agents, workflow and handoff must be in place first |
 | E1 | E0 | Needs the isolated module, the selector, packages and the test harness |
-| E2 | E1 | Tools plug into the loop. The publish rules need the turn-result contract |
-| E3 | E1; E2 for acceptance | Language and region affect tool inputs and published lists |
+| E2 | E1 | Tools plug into the loop. The publish rules need the turn-result contract. Delivers the country-aware baseline |
+| E3 | E1; E2 for acceptance | Language and region affect tool inputs and published lists. E3 expands the country-aware baseline that E2 delivers in VS-2 |
 | E4 | E1, E2 | Context and refines operate on published lists and on graph state |
 | E5 | E0 (harness); each slice | Eval cases ship with each slice. P4 needs all of E1–E4 |
 | E6 | MVP complete + product decision | PR-07 |
@@ -128,6 +149,8 @@ These are listed by phase. Items are taken from PRODUCT §4 and ARCHITECTURE §3
 | PRODUCT Q7, Q13: unknown-data policy per constraint; dietary bar | E2 | VS-2 constraint handling |
 | AQ-07: how PR-05 compliance is verified | E5 | VS-2 acceptance |
 | AQ-11 / PRODUCT Q12: order links and card actions | E2 | Not blocking VS-2; blocks MVP |
+| PRODUCT Q6: priority among explicit place, GPS and session location, and the fallback when none is known | E2 (baseline); E3 extends | VS-2 country-aware baseline |
+| AQ-13: client language and location signals sent to Route3; handling of the `IL` / `OTHER` device-region limit | E2 (baseline); E3 extends | VS-2 country-aware baseline |
 
 ### Before P3 (E4, E3)
 
@@ -138,8 +161,6 @@ These are listed by phase. Items are taken from PRODUCT §4 and ARCHITECTURE §3
 | PRODUCT Q3b: confident topic change — reset on its own or confirm | E4 | VS-3 topic handling |
 | PRODUCT Q10: list stays visible on a question-only turn | E4 | VS-3 UI |
 | PRODUCT Q5: frozen language set | E3 | E3 acceptance |
-| PRODUCT Q6: region source priority and fallback | E3 | E3 acceptance |
-| AQ-13: client language and location signals; `IL` / `OTHER` limit | E3 | E3 inputs |
 
 ### Before P4 (MVP readiness)
 

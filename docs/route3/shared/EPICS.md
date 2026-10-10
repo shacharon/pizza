@@ -21,13 +21,29 @@ An Epic may not start a story that needs an undecided item it owns until that it
 
 | Epic | Name | Purpose | Depends on |
 |------|------|---------|------------|
-| E0 | Engineering foundation | Isolated Route3 module, dependencies, dev-only selector, test and observability baseline | Sprint 0 docs |
+| E0 | Engineering foundation | Isolated Route3 module, dependencies, dev-only selector, test and observability baseline | Sprint 0 |
 | E1 | Agent runtime | Custom `StateGraph`, Orchestrator LLM, real LLM → Tool → Observation → LLM loop | E0 |
-| E2 | Restaurant discovery | Specialist and factual tools, LLM filtering and ranking, publishing lists to the existing UI | E1 |
-| E3 | Multilingual and country-aware search | User-language replies, region from place rather than language | E1; slice with E2 |
+| E2 | Restaurant discovery | Specialist and factual tools, LLM filtering and ranking, country-aware baseline, publishing lists to the existing UI | E1 |
+| E3 | Multilingual and country-aware search | Expands the VS-2 baseline: frozen language set, broader cross-country cases | E1; slice with E2 |
 | E4 | Conversation | Multi-turn context, clarification and resume, follow-ups, New Search, refresh restore | E1, E2 |
 | E5 | Evaluation and security | Eval sets, compliance checks, security hardening, Route2-vs-Route3 comparison | E0; runs alongside E1–E4 |
 | E6 | Future transactions | Parking and booking | MVP done; not in MVP (PR-07) |
+
+---
+
+## Sprint 0 — Delivery setup (before E0)
+
+Sprint 0 is not an Epic. It is the prerequisite for all Epics: E0 does not start until it is complete. Its deliverables are listed in [`ROADMAP.md` §1.1](./ROADMAP.md):
+
+- the contract documents
+- IDE-specific rules
+- the five development agents: Preflight, Architect, Developer, Code Review, QA
+- the Skills Audit
+- the Workflow
+- Git Handoff
+- Session Recovery
+
+It changes no application code and no Route2 code.
 
 ---
 
@@ -71,7 +87,7 @@ An Epic may not start a story that needs an undecided item it owns until that it
 - **The loop:** a real **LLM → Tool → Observation → LLM** loop, with tool calls and `ToolMessage` observations (AP-04, AP-05).
 - **Tools:** a tool registry with Zod-validated inputs and outputs, and defined handling of validation failures (AP-08, AP-14).
 - **Guardrails:** loop-iteration and tool-call limits, timeouts and token budget (AP-08, AP-14).
-- **Turn result:** a structured final result for a turn: reply, question or recommendation list (AQ-09).
+- **Turn result:** a structured final result for a turn: reply, question or recommendation list (AQ-09). A question can offer structured choices, and the user may still answer in free text (PR-02.2).
 - **Logging:** per-call logging for the loop (AP-16).
 - **Vertical slice VS-1** (see ROADMAP).
 
@@ -107,13 +123,17 @@ An Epic may not start a story that needs an undecided item it owns until that it
 - **Evidence:** evidence-only factual tools, for example distance, opening-hours coverage and business status (AP-08).
 - **LLM filtering and ranking:** done before publishing, with the publish rules of AP-07 / PR-05.1. This includes excluding permanently closed places (PR-05.3).
 - **Grounding:** the assistant does not state facts the data does not support (PR-05.4).
+- **Country-aware baseline (PR-04.3, AP-11).** This is the first real restaurant search, so the baseline cannot be deferred:
+  - **Language never determines search geography.** No language-to-country mapping in prompts or code.
+  - **Where to search** comes from the explicit place in the message, GPS or the session location. The orchestrator LLM chooses among them; code does not choose by rule (AP-08).
+  - **A change of request language keeps the same search area** when the place, GPS and session are the same.
 - **Transport:** publishing results through the existing UI and contracts. Changes are additive only (AP-12, PR-06.1).
 - **Order links:** whether Wolt / 10bis / Mishloha links and card actions carry over.
 - **Vertical slice VS-2** (see ROADMAP).
 
 **Out of scope**
 - Multi-turn context (E4).
-- Language and region policy (E3).
+- Expanding language coverage beyond the baseline (E3).
 - Parking and booking (E6).
 
 **Success criteria**
@@ -123,6 +143,10 @@ An Epic may not start a story that needs an undecided item it owns until that it
 - No permanently closed place appears in a published list on the agreed evaluation set (E5).
 - Statements about restaurants are supported by tool observations on the evaluation set.
 - Route2 clients and contracts behave unchanged.
+- **Country-aware baseline on the evaluation set:**
+  - No search area is derived from the request language.
+  - Cross-language cases search the intended place. Examples: a Hebrew query about Paris searches France; an English query in Tel Aviv searches Israel.
+  - The same request in another language, with the same place, GPS and session, searches the same area.
 
 **Owns these open decisions**
 - **AQ-01 / PRODUCT Q4:** transport and contract for Route3 results.
@@ -131,18 +155,21 @@ An Epic may not start a story that needs an undecided item it owns until that it
 - **AQ-08:** which Route2 computations become evidence-only tools.
 - **AQ-11 / PRODUCT Q12:** order links and card actions.
 - **PRODUCT Q7, Q13:** the unknown-data policy and the dietary bar that the LLM is instructed to apply.
+- **PRODUCT Q6 (baseline):** priority among explicit place, GPS and session location, and the fallback. E3 extends it.
+- **AQ-13 (baseline):** the client language and location signals, and the `IL` / `OTHER` device-region limit. E3 extends it.
 
 ---
 
 ## E3 — Multilingual and country-aware search
 
-**Goal:** Route3 works in the user's language and searches the place the user means, never inferring country from language.
+**Goal:** extend the country-aware baseline delivered in VS-2 (E2) across the frozen language set and multi-turn conversations. Route3 replies in the user's language and never infers country from language. E3 expands this capability; it does not introduce it.
 
 **In scope**
 - **Replies:** the orchestrator replies in the user's language (PR-04.2, AP-11).
-- **Region:** region and country come from an explicit place, device location or session, not from language (PR-04.3, AP-11).
+- **Region:** broader cross-country cases on top of the E2 baseline (PR-04.3, AP-11).
   - No "Hebrew → IL" rule in Route3 prompts or code.
-- **Signals:** the language and location signals the client sends to Route3.
+- **Signals:** any extension to the language and location signals defined in the E2 baseline.
+- **Language switches:** the explicit place, GPS, session and conversation location are kept when the user changes language, together with E4.
 - **Language coverage:** the set frozen by PRODUCT Q5 (PR-04.1).
 
 **Out of scope**
@@ -156,8 +183,7 @@ An Epic may not start a story that needs an undecided item it owns until that it
 
 **Owns these open decisions**
 - **PRODUCT Q5:** the frozen language set.
-- **PRODUCT Q6:** region source priority and fallback.
-- **AQ-13:** client signals sent to the orchestrator, and how the `IL` / `OTHER` device-region limit is handled.
+- **PRODUCT Q6, AQ-13:** extensions beyond the E2 baseline only.
 
 ---
 
@@ -166,10 +192,10 @@ An Epic may not start a story that needs an undecided item it owns until that it
 **Goal:** a full conversational assistant that keeps search context across turns until New Search.
 
 **In scope**
-- **Free-text replies and follow-ups:** the user can answer in free text and refine with follow-ups (PR-01, PR-02.2, PR-02.3).
+- **Replies and follow-ups:** the user can reply in free text and refine with follow-ups (PR-01, PR-02.3).
 - **Updated results vs answers:** a follow-up that changes constraints produces an updated list. A follow-up that is only a question gets an answer (PR-02.4).
 - **Persistence:** context persisted with a LangGraph checkpointer and bound to the authenticated session (AP-09).
-- **Clarification:** a clarification ends the turn; the next message resumes it from the checkpoint (AP-10).
+- **Clarification:** a clarification ends the turn. The user answers it by **either a structured choice or free text**, and either answer resumes the conversation from the checkpoint and is merged into the current request (PR-02.2, AP-10).
 - **Context lifetime:**
   - Explicit New Search resets the context (D-02, PR-03.2).
   - The orchestrator LLM judges topic changes and asks when uncertain (D-02, PR-03.3). There are no deterministic topic rules.
@@ -185,7 +211,8 @@ An Epic may not start a story that needs an undecided item it owns until that it
 - **Multi-turn scripts on the evaluation set:**
   - A refine updates the list.
   - A question about the list is answered without needless re-search.
-  - A free-text clarification answer is merged into the request, not treated as a new search.
+  - A clarification answer is merged into the request, not treated as a new search. This holds for both a structured choice and a free-text answer.
+  - A change of language mid-conversation keeps the conversation's location.
 - **Context lifetime:**
   - New Search always starts a clean context.
   - A refresh with a valid session restores the conversation.
