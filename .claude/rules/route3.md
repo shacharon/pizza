@@ -7,7 +7,11 @@ paths:
 
 # Going2Eat Route3 — Claude rules
 
-These rules apply **only** to Going2Eat Route3 work: the Route3 code, the Route3 docs, and stories in the Route3 roadmap. They do not apply to Route2 maintenance or other Going2Eat work.
+These rules apply **only** after the task is classified as Route3 under the root `CLAUDE.md`. That means an approved `R3-…` Story, including Sprint 0 governance Stories, or an explicit Route3-engine request.
+
+- **A matching path does not establish Route3 scope.** This file may load because a `route3` path was touched. `docs/route3/` also holds legacy Route2 work, and sprints 07–10 stay Route2.
+- **Route2 work never follows these rules**, and neither does other Going2Eat work.
+- **If scope is unclear, ask, and do not edit until the user answers.**
 
 ## 1. Sources of truth
 
