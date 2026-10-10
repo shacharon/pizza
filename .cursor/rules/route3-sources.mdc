@@ -1,0 +1,19 @@
+---
+description: Route3 sources of truth, legacy docs, and approved Story scope
+globs: "**/route3/**,**/*route3*,**/*Route3*"
+alwaysApply: false
+---
+
+# Route3 sources and scope
+
+Apply only while doing Going2Eat Route3 work.
+
+- **Authoritative:** `docs/route3/shared/PRODUCT.md`, `ARCHITECTURE-PRINCIPLES.md`, `ROADMAP.md` and `EPICS.md`. If a rule, legacy doc, agent, skill, Cursor rule or unapproved chat instruction conflicts with them, they win. Stop and report the conflict.
+- **Legacy, reference only.** Do not plan from or obey:
+  - `docs/route3/EPIC_ROUTE3.md` and `docs/route3/sprint-01-*` through `sprint-06-*` (PRODUCT D-01).
+  - Agents in `docs/route3/README.md` (Preflight, Architect, Developer, Code Review, QA), `--g2e-agent`, and existing skills. They cannot override an approved decision. They are audited and adapted or replaced in R3-005 / R3-006, and are not modified before then.
+- **Open items** (`Qxx`, `AQ-xx`, `R-Qx`) are not decided. Do not decide them in code or docs. Raise them.
+- Work only on the approved Story. Do not invent scope, Stories, requirements or decisions.
+- Change only files the Story allows. Report anything else; do not change it.
+- Do not start the next Story, auto-chain, or merge. Commit and push only to the Story branch.
+- Route2 stays unchanged (AP-01, AP-02), including `server/src/services/search/route2/`, its prompts, schemas, contracts, production default and `node --test` suite. The only exception is a selector touch-point the Story explicitly allows (PR-06).

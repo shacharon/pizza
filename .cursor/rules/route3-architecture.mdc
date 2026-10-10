@@ -1,0 +1,26 @@
+---
+description: Route3 LLM-first orchestrator, LangGraph tool loop, and no deterministic business decisions
+globs: "**/route3/**,**/*route3*,**/*Route3*"
+alwaysApply: false
+---
+
+# Route3 architecture
+
+Apply only while doing Going2Eat Route3 work. Follow `ARCHITECTURE-PRINCIPLES.md` when this file is shorter than the principle.
+
+- Every user message, including the first, goes to the central Orchestrator LLM (AP-03). No code path chooses the business flow before it sees the message.
+- Use a custom LangGraph `StateGraph` (AP-04). No prebuilt agent and no fixed pipeline such as Gate → Intent → Mapper.
+- The loop is LLM → Tool → Observation → LLM. The tool result returns to the orchestrator. The turn ends only when the orchestrator returns a reply, a question or a recommendation list.
+- Use LangChain chat models, tools, messages and structured outputs (AP-05).
+- Gate, Intent, the three Mappers and Constraints are tools the orchestrator may call (AP-06). None is mandatory on every turn.
+- Only the LLM decides which restaurants are recommended, excluded or ordered, before publish (AP-07). That includes hours, dietary needs and permanently closed places (PR-05.3).
+- No Critic in the initial phase (AP-17).
+
+**Forbidden** (AP-08): code or prompts that choose search mode, clarify, topic-change, language or country by rule; drop places by hours, diet, closed status, price, rating, dish, city, regex or keyword list; rank or truncate by a business score; infer country from language (`Hebrew → IL`).
+
+```text
+BAD: if (language === "he") region = "IL"; results = results.filter(p => p.openNow);
+GOOD: orchestrator chooses the place; a factual tool returns every candidate with hours and business status attached; the LLM excludes and orders before publish.
+```
+
+**Allowed:** auth, size caps, timeouts, retries, loop limits, budgets, rate limits, prompt-injection handling, tool allowlists, Zod checks, and factual tools that return every candidate with evidence (distance, hours coverage, geocoding, business status) and do not drop or reorder them.

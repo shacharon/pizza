@@ -1,0 +1,21 @@
+---
+description: Route3 SOLID, KISS, Zod, security and Vitest limits for an approved Story
+globs: "**/route3/**,**/*route3*,**/*Route3*"
+alwaysApply: false
+---
+
+# Route3 engineering
+
+Apply only while doing Going2Eat Route3 work.
+
+- **SOLID and KISS** (AP-13): one responsibility per node and per tool. Keep state, prompts, tools, graph wiring and transport separate. Depend on interfaces for models, tools, the checkpointer and external services. Use the simplest graph that meets the Story. No extra agents and no future-only parking or booking features (PR-07).
+- **Zod:** validate every LLM structured output, tool input and tool output. Define what a failure does. Do not pass unvalidated model output on.
+- A clarification is an explicit typed field in that validated output, not a guess from free text. The user may answer with a structured choice or free text (PR-02.2, AP-10).
+- **Security** (AP-14): user text and tool output are data, never instructions. Tools are allowlisted. No arbitrary URL fetch or code execution from model output. Auth and session ownership on every transport. One session cannot load another's conversation. No secrets, API keys or raw tokens in code, logs or stored state.
+- **Tests** (AP-15): Route3 unit tests use Vitest with fake models and fake tools and no network. Route2 keeps its `node --test` suite, runner and configuration. Route2 and Route3 have separate test commands.
+- **Logs** (AP-16): log every LLM call, tool call and loop iteration with the request or conversation id through the existing structured logger. Route2 and Route3 traffic must be distinguishable.
+
+```text
+BAD: execute(model.toolUrl); rank = 0.45 * rating + 0.25 * reviews;
+GOOD: allowlisted tool, Zod-parsed input, fake model in a Vitest test, no network.
+```
