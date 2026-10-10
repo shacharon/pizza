@@ -1,5 +1,5 @@
 ---
-description: Classify Going2Eat Route3 by approved Story and engine, not by folder path
+description: Classify Going2Eat Route3 like CLAUDE.md, by approved Story, not by folder path
 alwaysApply: true
 ---
 
@@ -7,13 +7,22 @@ alwaysApply: true
 
 This rule only classifies the task. It does not change Route2.
 
-Do **not** treat a `route3` path as Route3. `docs/route3/` also holds legacy Route2 work.
+A task is **Route3** only if:
 
-**Confirmed Route3** only when the request identifies an approved Story (`R3-…`) whose engine is Route3, or the user explicitly says the change is for the Route3 engine. The Story brief names the approved baseline commit.
+- it identifies an approved Route3 Story (`R3-…`), including Sprint 0 governance (rules, agents, skills, workflow, handoff, recovery), or
+- the user explicitly says the change is for the Route3 engine.
 
-**Route2, even under `docs/route3/`:** sprints 07–10, other legacy Route2 docs, and any task whose engine is Route2. Do not apply Route3 constraints. That includes the LLM-first architecture, the ban on deterministic business logic, and Vitest.
+The Story brief names the approved baseline commit.
 
-**Ambiguous:** the request mentions Route3 or touches `docs/route3/` but names no approved Story and no engine. Ask which engine applies. Until the user answers, do not apply Route3 restrictions.
+**A directory path alone never makes a task Route3.** `docs/route3/` also holds legacy Route2 work.
+
+**Not Route3.** Do not apply Route3 constraints, including the LLM-first architecture, the ban on deterministic business logic, and Vitest:
+
+- Route2 work, including sprints 07–10 under `docs/route3/` and any other legacy Route2 docs there
+- Angular UI work outside a Route3 Story
+- infrastructure and deploys
+
+**Unclear scope:** the request mentions Route3 or touches `docs/route3/`, but names no approved `R3-…` Story and no engine. Ask which applies. Do not edit anything until the user answers, and do not apply Route3 restrictions in the meantime.
 
 When, and only when, the task is confirmed Route3, before any edit:
 
