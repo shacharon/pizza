@@ -18,7 +18,7 @@ This roadmap sets the **order** of delivery, the **vertical slices** that prove 
 | Phase | Name | Epics | Exit (summary) |
 |-------|------|-------|----------------|
 | P0 | Sprint 0: contracts and delivery setup | Sprint 0 (see §1.1) | Contract documents approved **and** the delivery setup in §1.1 in place |
-| P1 | Foundation + walking skeleton | E0, E1, E5 (start) | **VS-1** works in development |
+| P1 | Foundation + walking skeleton | E0, E1, E5 (start) | E0 test setup in place: Vitest for Route3, fake-model/tool harness, Route2 `node --test` unchanged, separate test commands. **VS-1** works in development |
 | P2 | Discovery slice | E2, E5 | **VS-2** works in development in the existing UI, with the country-aware baseline |
 | P3 | Conversation + multilingual | E4, E3, E5 | **VS-3** works in development; E3 expands multilingual and cross-country coverage |
 | P4 | MVP readiness | E5 (completion), fixes across E1–E4 | Evaluation and security thresholds met; MVP readiness reviewed |
@@ -106,14 +106,14 @@ P0 Sprint 0 (contracts + rules, five roles, skills audit, workflow, git handoff,
                             ├─► E2 Discovery (VS-2) ──┬─► E4 Conversation (VS-3)
                             │                         │
                             └─► E3 Multilingual ◄─────┘  (acceptance with VS-3)
-E5 Evaluation & security: starts with E0's test harness, then gates every slice and P4
+E5 Evaluation & security: starts with E0's Vitest fake-model/tool harness, then gates every slice and P4
 E6 Future transactions: after MVP only
 ```
 
 | Epic | Hard dependencies | Why |
 |------|-------------------|-----|
 | E0 | P0 complete | Contracts, rules, roles, workflow and handoff must be in place first |
-| E1 | E0 | Needs the isolated module, the selector, packages and the test harness |
+| E1 | E0 | Needs the isolated module, the selector, packages, Vitest and the fake-model/tool test harness |
 | E2 | E1 | Tools plug into the loop. The publish rules need the turn-result contract. Delivers the country-aware baseline |
 | E3 | E1; E2 for acceptance | Language and region affect tool inputs and published lists. E3 expands the country-aware baseline that E2 delivers in VS-2 |
 | E4 | E1, E2 | Context and refines operate on published lists and on graph state |

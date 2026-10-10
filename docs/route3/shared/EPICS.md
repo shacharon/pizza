@@ -59,8 +59,10 @@ It changes no application code and no Route2 code.
 - **Selector:** the dev-only Route2 / Route3 selector, client and server (PR-06.2, AP-12).
   - Route2 stays the production default (PR-06.3).
   - Only the minimum Route2 touch-points allowed by AP-01.
-- **Test harness:** fake chat models and fake external services, no network (AP-15).
-- **Regression:** the Route2 test suite runs unchanged as a regression gate.
+- **Vitest for Route3:** install and configure Vitest for Route3 unit tests.
+- **Test harness:** a fake-model and fake-tool test harness for Route3. It uses fake chat models, fake tools and fake external services, with no network (AP-15).
+- **Route2 tests unchanged:** Route2's existing `node --test` suite stays as it is, with no change to its files, runner or configuration. It runs as a regression gate.
+- **Separate test commands:** one command for Route2 tests and one for Route3 tests.
 - **Observability:** baseline per-turn logging that tells Route2 and Route3 traffic apart (AP-16).
 
 **Out of scope:** any orchestrator behavior, tools, prompts or UI features beyond the selector.
@@ -70,7 +72,10 @@ It changes no application code and no Route2 code.
 - In development, a request can be routed to a Route3 stub and returns a well-formed response.
 - The Route2 test suite passes unchanged.
 - No file under `server/src/services/search/route2/` changes.
-- Route3 tests run with fake models and no network access.
+- Vitest is installed and configured for Route3 unit tests, and a sample Route3 unit test passes under it.
+- The fake-model and fake-tool harness lets a Route3 test script model responses and tool results with no network access.
+- Route2's `node --test` suite is unchanged (same files, runner and configuration) and passes.
+- Route2 tests and Route3 tests each have their own command, and each command can be run on its own.
 
 **Owns these open decisions**
 - **AQ-14:** LangGraph and LangChain versions, and compatibility with `zod@4` and the installed `langchain@0.3` / `@langchain/openai@0.6`.
