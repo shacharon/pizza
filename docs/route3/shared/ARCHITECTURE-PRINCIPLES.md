@@ -108,7 +108,10 @@ This document has three parts:
 
 ### AP-07 — LLM-driven filtering and ranking before publishing
 
-- **Who decides:** which restaurants are kept, which are dropped and in what order they are shown is an **LLM decision**. Facts (§AP-08) inform it.
+- **Only the LLM decides:** only the LLM decides which restaurants are recommended, which are excluded and in what order they are shown.
+  - This covers every criterion, including opening hours, dietary requirements and permanently closed status.
+  - Tools supply evidence (AP-08). They never make this decision.
+- **Permanently closed places:** the product requirement to exclude them (PR-05.3) stays binding. The LLM meets it by excluding every place whose evidence shows permanently closed status. No tool does it for the LLM.
 - **When it runs:** this happens **before** any new recommendation list is published to the user. It satisfies PR-05.1.
 - **What must never be published:**
   - unfiltered or unranked lists
@@ -121,8 +124,21 @@ This document has three parts:
 **Not allowed:** deterministic code must not make business decisions. That means:
 
 - **Routing:** choosing search mode, deciding to clarify, detecting topic changes, choosing region or language from heuristics.
-- **Filtering:** dropping places by rule, for example name regexes or keyword lists.
-- **Ranking:** weighted scores or sort orders that decide what the user sees.
+- **Filtering:** no tool or code may exclude or filter restaurants on business criteria. This includes:
+  - opening hours
+  - dietary requirements
+  - permanently closed status
+  - price
+  - rating
+  - wrong dish or wrong city
+  - name regexes or keyword lists
+- **Ranking:** no weighted scores, sort orders or truncation by business criteria that decide what the user sees.
+- **Route2 logic under another name:** Route2's post-filters, list shaping and weighted ranking must not be carried into Route3, for example as a "fact", "evidence", "helper" or "pre-processing" tool.
+
+**Factual tools return evidence, not decisions:**
+
+- A factual tool returns every candidate it received or retrieved, each with its facts attached. Examples of facts: business status, hours coverage, distance, price level, dietary signals.
+- It does not drop, hide or reorder candidates based on those facts.
 
 **Allowed:**
 
@@ -135,11 +151,13 @@ This document has three parts:
   - prompt-injection handling (user text treated as data)
   - tool allowlists
 - **Validation:** Zod validation of every LLM output, tool input and tool output, with defined handling of failures.
-- **Factual computations** that produce data for the LLM, for example:
+- **Fact retrieval:** calling providers such as Google Places with the search parameters the LLM chose.
+- **Factual computations** that produce evidence for the LLM, for example:
   - distance between two points
   - whether opening hours cover a given time
   - unit and currency normalization
   - geocoding results
+  - the provider's business status (e.g. permanently closed), passed through as a fact
 
 ### AP-09 — Conversation state and checkpointing
 
@@ -227,9 +245,9 @@ All items are **OPEN**. Product questions in `PRODUCT.md` §4 stay open as well,
 | AQ-03 | Checkpointer backend (Redis or other), TTL, and what makes a session "valid" for resume. | AP-09, PRODUCT Q2 |
 | AQ-04 | Orchestrator model and provider, and the models for the specialist tools. Is Anthropic supported in Route3 alongside OpenAI? | AP-05 |
 | AQ-05 | Loop limits: maximum iterations and tool calls per turn, and the per-turn latency and cost budget. | AP-08, PRODUCT Q11 |
-| AQ-06 | How LLM filtering and ranking is structured: inside the orchestrator, or as a dedicated ranking tool or node. How many candidates it sees, and what facts are passed for each place. | AP-07, PRODUCT Q8 |
-| AQ-07 | Where the line between "factual computation" and "deterministic filtering" sits for a hard constraint the LLM chose. Example: may a tool return only places whose hours cover the requested time, or must it return all places with an open/closed fact for the LLM to decide? Similarly, may a tool drop places the provider marks permanently closed? | AP-08, PRODUCT Q7, Q13 |
-| AQ-08 | Which Route2 deterministic behaviors are re-expressed as LLM decisions or as factual tools, and which are dropped in Route3. Examples: location guards, post-filters, list shaping, weighted ranking. | AP-08 |
+| AQ-06 | How LLM filtering and ranking is structured: inside the orchestrator LLM, or as a dedicated LLM ranking step (never a deterministic one, AP-08). How many candidates it sees, and what facts are passed for each place. | AP-07, PRODUCT Q8 |
+| AQ-07 | How it is verified that the LLM's published list meets PR-05.3 and the user's explicit constraints. Examples: evals, tests, or a validation step that returns a non-compliant output to the LLM with the reason. Any such check must never silently remove or reorder places itself (AP-07, AP-08). The product policy for unknown data stays open in PRODUCT Q7 and Q13. | AP-07, AP-08, PRODUCT Q7, Q13 |
+| AQ-08 | Which Route2 computations are reused as evidence-only tools (for example distance, opening-hours coverage, business status), and how Route2's location guards become orchestrator decisions. Route2's post-filters, list shaping and weighted ranking are not carried over (AP-08). | AP-08 |
 | AQ-09 | Final output contract: the structured result schema the orchestrator must return to publish a list, and how a reply-only turn is represented (PR-02.4, PRODUCT Q10). | AP-07, AP-12 |
 | AQ-10 | How the dev-only selector is wired across client and server, and whether the server refuses Route3 in production. | AP-12, PRODUCT Q9 |
 | AQ-11 | Order-provider links (Wolt / 10bis / Mishloha) and assistant narration in Route3: reuse the enrichment as a tool or post-step, or leave them out. | PRODUCT Q12 |
