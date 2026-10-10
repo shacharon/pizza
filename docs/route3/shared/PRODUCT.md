@@ -122,10 +122,11 @@ There are several different language sets:
 - **A city named in the text** (`cityText` from intent):
   1. The city is appended to the Google text query (`R2/stages/route-llm/textsearch.mapper.ts`).
   2. If the LLM gave no bias and geocoding succeeds, a 20 km `locationBias` is applied (`text-search.handler.ts:288-318`). The mapper itself sets no automatic bias.
-  3. When a bias centre exists, a distance filter runs on the results (`text-search.handler.ts:392-441`):
-     - It starts at 12 km and widens to 20 km, then 30 km, while fewer than 5 results remain.
-     - Places without a location are kept.
-     - If geocoding fails, there is no bias and no distance filter.
+  3. A distance filter can then run on the results (`text-search.handler.ts:392-441`). It is separate from the 20 km bias above and from the soft address filter in step 4.
+     - It runs **only when the initial Google results contain fewer than 5 places**. With 5 or more, it is skipped and no place is removed by distance.
+     - When it runs, it filters at 12 km from the city centre. If fewer than 5 places remain, it widens to 20 km, then 30 km.
+     - Places without coordinates are kept.
+     - If geocoding fails, it is skipped.
   4. A post-filter later removes results whose address names a different known place. It never empties the list (`R2/post-filters/list-shape.ts:85-99`).
 
 ### 1.7 Filtering and ranking
