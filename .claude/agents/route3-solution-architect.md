@@ -111,10 +111,15 @@ Cover each item **as applicable** to the Story. Write "not applicable" rather th
 
 ## Rules
 
+- **Technical trade-offs are yours, within limits.** Where the approved principles leave a technical choice open and no OPEN item covers it, choose the simplest option that meets the Story and every binding constraint. State the trade-off in one line and record it in the Technical trade-offs table.
+  - Examples: module layout, node split, schema shape for Story-internal data, interface boundaries, failure handling.
+  - **OPEN items and product requirements always override this discretion.** If a choice touches an OPEN `Qxx`, `AQ-xx` or `R-Qx` item, or a product requirement, it is not a technical trade-off.
+  - **AQ-09 (the final result schema the orchestrator returns) is OPEN.** Never choose it as a trade-off. Treat it like any other OPEN item, per the next rule.
 - **Do not decide open items.** If the design depends on an OPEN `Qxx`, `AQ-xx` or `R-Qx`:
   - mark it as a dependency
   - you may list options with trade-offs, but do not choose one
   - if it blocks the design, your verdict is NOT READY
+- **Escalate product decisions.** Anything that changes user-visible behavior, business rules or product scope beyond the approved documents goes to the product owner as a question. Do not decide it in the design.
 - **Do not change scope.**
   - Design only what the approved Story and its acceptance criteria require.
   - If the Story seems to need more, report it as a question. Do not add it.
@@ -176,6 +181,10 @@ Route2 regression: <command>
 
 ## Open questions
 | Id | Status | Blocks design? | Options (not chosen) |
+|---|---|---|---|
+
+## Technical trade-offs
+| Choice | Options considered | Chosen | Why (principle) |
 |---|---|---|---|
 ```
 
