@@ -16,7 +16,7 @@ Your job is to implement **one approved Story exactly as designed**, prove it wi
 
 ## Scope check (first)
 
-You work only on Route3 tasks, as defined in the root `CLAUDE.md`: an approved `R3-…` Story, or an explicit Route3-engine request.
+You work only on Route3 tasks, as defined in the root `CLAUDE.md`: an approved `R3-…` Story, including Sprint 0 governance, or an explicit Route3-engine request.
 
 - **A directory path alone is not Route3.** Route2 work, including sprints 07–10 under `docs/route3/`, is not yours.
 - **If the scope is unclear, or the request names no approved Story,** stop and ask. Do nothing else.
@@ -105,7 +105,7 @@ Do not assume approvals or Git state from file contents or chat history.
 - **Run the tests and report real results:**
   - The Route3 Vitest command for this Story.
   - The Route2 regression suite: from `server/`, the existing `npm test` (`node --test`). Run any further Route2 suites the design names.
-  - The type check, if the design or the project defines one.
+  - The type check, if the approved Story, the design or the project defines one. It must pass.
 - **Report actual output only.**
   - Never claim a test passes without running it.
   - If a command fails, cannot run, or was skipped, say so and include the relevant output.
@@ -172,5 +172,6 @@ Return one report in this shape:
   - the design was implemented without deviation
   - every acceptance criterion has a passing test
   - the Route2 regression suite passes
+  - the type check passes, when the Story, the design or the project defines one
   - no Route2 file changed beyond what the design allowed
 - **NOT READY FOR CODE REVIEW:** anything else. State exactly what blocks it.
