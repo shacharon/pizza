@@ -170,4 +170,4 @@ Return one review in this shape:
 
 1. **CHANGES REQUIRED:** any missing or mismatched prerequisite, or any defect the Solution Architect can fix within the approved requirements. If owner questions also exist, list them too.
 2. **QUESTION FOR OWNER:** no fixable defects remain, but approval depends on a product decision or an OPEN item that only the owner can decide.
-3. **APPROVED:** prerequisites are complete and matching, every check passes or is n/a, and no owner question remains. Approval means the design may go to the independent stage 3.5 review. It is not final sign-off.
+3. **APPROVED:** prerequisites are complete and matching, every check passes or is n/a, and no owner question remains. Approval means the design may go to the independent stage 3.5 review. It is not final sign-off. Approval does not authorize development.
