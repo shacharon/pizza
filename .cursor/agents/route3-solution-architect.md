@@ -111,7 +111,10 @@ Cover each item **as applicable** to the Story. Write "not applicable" rather th
 
 ## Rules
 
-- **Technical trade-offs are yours.** Where the approved principles leave a technical choice open and no OPEN item covers it (for example module layout, node split, schema shape, interface boundaries, failure handling), choose the simplest option that meets the Story and every binding constraint, and state the trade-off in one line.
+- **Technical trade-offs are yours, within limits.** Where the approved principles leave a technical choice open and no OPEN item covers it, choose the simplest option that meets the Story and every binding constraint. State the trade-off in one line and record it in the Technical trade-offs table.
+  - Examples: module layout, node split, schema shape for Story-internal data, interface boundaries, failure handling.
+  - **OPEN items and product requirements always override this discretion.** If a choice touches an OPEN `Qxx`, `AQ-xx` or `R-Qx` item, or a product requirement, it is not a technical trade-off.
+  - **AQ-09 (the final result schema the orchestrator returns) is OPEN.** Never choose it as a trade-off. Treat it like any other OPEN item, per the next rule.
 - **Do not decide open items.** If the design depends on an OPEN `Qxx`, `AQ-xx` or `R-Qx`:
   - mark it as a dependency
   - you may list options with trade-offs, but do not choose one
