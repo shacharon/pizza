@@ -204,6 +204,135 @@ test('denies wrapped, prefixed and disguised forms', () => {
   ], 'deny');
 });
 
+test('B1: denies unknown or ambiguous wrapper syntax', () => {
+  expectAll([
+    'sudo -u root git commit -m x',
+    'sudo git status',
+    'sudo npm test',
+    'env -u PATH git commit -m x',
+    'env -i git status',
+    'env -S "git push"',
+    'env -- git push',
+    'env A=1 -u PATH git status',
+    'timeout --unknown 5 git status',
+    'timeout -k git push',
+    'timeout abc git status',
+    'nice --weird git status',
+    'nice -n x git status',
+    'nohup -x git status',
+    'time -v git status',
+    'stdbuf -q git status',
+    'stdbuf -o bogus git status',
+    'command -x git status',
+    'exec -a name git status',
+    'builtin -x git status',
+  ], 'deny');
+});
+
+test('B1: allows recognized safe wrapper syntax', () => {
+  expectAll([
+    'timeout 30 npm test',
+    'timeout -k 5 30s npm test',
+    'timeout --signal=TERM --preserve-status 2m npm test',
+    'time npm test',
+    'time -p npm test',
+    'nice -n 10 npm test',
+    'nice -5 npm test',
+    'nohup npm test',
+    'stdbuf -oL npm test',
+    'stdbuf -o L -e 0 npm test',
+    'env NODE_ENV=test npm test',
+    'env A=1 B=2 git status',
+    'command -v git',
+    'command git status',
+    'exec npm test',
+    'timeout 30 git status',
+  ], 'allow');
+});
+
+test('B2: denies git configuration and environment that can run programs', () => {
+  expectAll([
+    'git -c core.fsmonitor=calc.exe status',
+    'git -c core.sshCommand=calc.exe status',
+    'git -c core.pager=calc.exe log',
+    'git -c user.name=x status',
+    'git -ccore.fsmonitor=calc.exe status',
+    'git --config-env=core.fsmonitor=EVIL status',
+    'git --exec-path=/tmp/x status',
+    'git --git-dir=tmp/evil log',
+    'git --work-tree=x status',
+    'git -C server -c core.fsmonitor=calc.exe status',
+    'GIT_EXTERNAL_DIFF=calc.exe git diff',
+    'GIT_SSH_COMMAND=calc.exe git ls-remote origin',
+    'GIT_CONFIG_PARAMETERS="core.fsmonitor=calc" git status',
+    'GIT_PAGER=calc.exe git log',
+    'PAGER=calc.exe git log',
+    'env GIT_CONFIG_COUNT=1 git status',
+    'export GIT_PAGER=calc; git log',
+    'set GIT_SSH_COMMAND=calc && git ls-remote',
+    '$env:GIT_PAGER="calc"; git log',
+    'git diff --ext-diff',
+    'git log -p --ext-diff',
+    'git ls-remote --upload-pack=calc.exe origin',
+    'git grep -Ocalc.exe foo',
+    'git grep --open-files-in-pager=calc.exe foo',
+  ], 'deny');
+  const run = ([tool, path]) => edit(tool, path);
+  expectAll([
+    ['Write', 'C:\\Users\\dev\\.gitconfig'],
+    ['Edit', '~/.config/git/config'],
+  ], 'deny', run);
+});
+
+test('B2: still allows plain read-only git', () => {
+  expectAll([
+    'git status',
+    'git -C server status',
+    'git --no-pager log --oneline -5',
+    'git diff --stat HEAD~1',
+    'git log -p -1',
+    'NODE_ENV=test git status',
+  ], 'allow');
+});
+
+test('B3: denies mixed, write or unknown git config forms', () => {
+  expectAll([
+    'git config --replace-all user.name evil --get',
+    'git config --get user.name --replace-all evil',
+    'git config --get --unset user.name',
+    'git config --add user.name x',
+    'git config --unset user.name',
+    'git config user.name evil',
+    'git config core.fsmonitor calc.exe',
+    'git config --global core.pager calc.exe',
+    'git config --get',
+    'git config --get a b c',
+    'git config --list user.name',
+    'git config --list --get user.name',
+    'git config --file x.cfg --get a',
+    'git config -e',
+    'git config --edit',
+    'git config set user.name x',
+    'git config get user.name extra',
+    'git config --get-regexp',
+    'git config',
+  ], 'deny');
+});
+
+test('B3: allows unambiguous read-only git config forms', () => {
+  expectAll([
+    'git config --get user.name',
+    'git config --get-all remote.origin.fetch',
+    'git config --get-regexp ^remote\\.',
+    'git config --list',
+    'git config -l',
+    'git config --local --list --show-origin',
+    'git config --global --get user.email',
+    'git config get user.name',
+    'git config list',
+  ], 'allow');
+});
+
 test('denies shell access to protected paths', () => {
   expectAll([
     'echo {} > .claude/settings.json',
