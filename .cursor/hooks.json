@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      {
+        "command": "node .cursor/hooks/route3-shell-guard.mjs",
+        "failClosed": true,
+        "timeout": 10
+      }
+    ],
+    "beforeMCPExecution": [
+      {
+        "command": "node .cursor/hooks/route3-mcp-guard.mjs",
+        "failClosed": true,
+        "timeout": 10
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": "node .cursor/hooks/route3-edit-guard.mjs",
+        "matcher": "^(Write|Delete)$",
+        "failClosed": true,
+        "timeout": 10
+      }
+    ]
+  }
+}
