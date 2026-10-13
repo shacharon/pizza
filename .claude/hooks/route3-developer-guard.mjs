@@ -35,6 +35,11 @@ const EXEC_PROGRAMS = new Set([
 // Environment variables that make Git (or its pager/editor) run a program.
 const EXEC_ENV_NAME = /^(GIT_[A-Z0-9_]*|PAGER|EDITOR|VISUAL|LESSOPEN|LESSCLOSE|SSH_ASKPASS)$/i;
 const EXEC_ENV_SET = /(^|[\s;&|(])(export\s+|set\s+|\$env:)?(GIT_[A-Z0-9_]*|PAGER|EDITOR|VISUAL|LESSOPEN|LESSCLOSE|SSH_ASKPASS)\s*=/i;
+// Any other way of changing the process environment (PowerShell Env: drive,
+// [Environment]::SetEnvironmentVariable, setx, export, declare -x, cmd set).
+// The variable name may be computed, so with git in the same command every
+// such mutation is denied, whatever variable it names.
+const ENV_MUTATION = /\benv:|\[\s*(system\.)?environment\s*\]|setenvironmentvariable|\bsetx\b|\bexport\b|\b(declare|typeset)\s+-\w*x|(^|[\s;&|(])set\s+\S+\s*=/i;
 
 const GIT_READ_ONLY = new Set([
   'status', 'diff', 'log', 'show', 'rev-parse', 'ls-files', 'ls-tree',
@@ -270,6 +275,8 @@ function gitConfigDecision(rest) {
       continue;
     }
     if (arg.startsWith('-') || isAction) return deny(`git config ${arg} is not allowed for the Developer`);
+    // The read action must come before any key or value.
+    if (action === null) return deny('git config read action must come before its arguments');
     positional.push(arg);
   }
   if (action === null) return deny('git config without one explicit read action is not allowed');
@@ -403,8 +410,8 @@ export function decideCommand(command) {
   if (dynamic && SENSITIVE_WORD.test(command)) {
     return deny('command substitution around git/gh/deploy tools is not allowed');
   }
-  if (/\bgit\b/i.test(command) && EXEC_ENV_SET.test(command)) {
-    return deny('setting Git, pager or editor variables around git is not allowed');
+  if (/\bgit\b/i.test(command) && (EXEC_ENV_SET.test(command) || ENV_MUTATION.test(command))) {
+    return deny('changing environment variables around git is not allowed');
   }
   const segments = splitCommand(command);
   if (segments === null) {

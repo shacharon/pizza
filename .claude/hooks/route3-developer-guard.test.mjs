@@ -333,6 +333,55 @@ test('B3: allows unambiguous read-only git config forms', () => {
   ], 'allow');
 });
 
+test('B2 round 2: denies PowerShell and other environment mutations around git', () => {
+  expectAll([
+    'Set-Item Env:GIT_EXTERNAL_DIFF calc.exe; git diff',
+    "[Environment]::SetEnvironmentVariable('GIT_PAGER','calc','Process'); git log",
+    "[System.Environment]::SetEnvironmentVariable('GIT_PAGER','calc'); git log",
+    "[Environment]::SetEnvironmentVariable('GIT_'+'PAGER','calc'); git log",
+    'New-Item -Path Env:GIT_PAGER -Value calc; git log',
+    'Set-Content Env:\\GIT_PAGER calc; git log',
+    'si env:GIT_PAGER calc; git log',
+    '$env:PAGER = "calc"; git log',
+    '${env:GIT_PAGER} = "calc"; git log',
+    '$name = "GIT_PAGER"; Set-Item "Env:$name" calc; git log',
+    'Set-Item -Path Env:NODE_ENV -Value test; git status',
+    'setx GIT_PAGER calc && git log',
+    'export X=1; git status',
+    'declare -x GIT_PAGER=calc; git log',
+    'typeset -x GIT_PAGER=calc; git log',
+    'set X=1 && git status',
+  ], 'deny');
+});
+
+test('B2 round 2: environment changes without git and plain git stay allowed', () => {
+  // "$env:X = ..." as a statement is still denied by the existing rule for
+  // variable program names; that over-blocking is intentional.
+  expectAll([
+    'Set-Item Env:NODE_ENV test; npm test',
+    'export NODE_ENV=test; npm test',
+    'git status',
+    'git log --oneline -5',
+  ], 'allow');
+});
+
+test('B3 round 2: git config read action must come first', () => {
+  expectAll([
+    'git config user.name evil --get',
+    'git config user.name --get',
+    'git config user.name --get-all',
+    'git config remote.origin.url --get-regexp',
+    'git config --local user.name --get',
+  ], 'deny');
+  expectAll([
+    'git config --get user.name',
+    'git config --local --get user.name',
+    'git config --get user.name --show-origin',
+    'git config --get-all remote.origin.fetch',
+    'git config --list',
+  ], 'allow');
+});
+
 test('denies shell access to protected paths', () => {
   expectAll([
     'echo {} > .claude/settings.json',
