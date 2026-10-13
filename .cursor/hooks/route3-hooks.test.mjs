@@ -173,15 +173,85 @@ test('shell: aws deploys and docker push ask; aws and docker reads are allowed; 
   expectShell('allow', [
     'aws sts get-caller-identity --profile pizza', 'aws logs filter-log-events --log-group-name /ecs/x', 'aws logs tail /ecs/x',
     'aws logs describe-log-groups', 'aws ecs describe-services --cluster c --services s', 'aws amplify list-jobs --app-id a --branch-name main',
-    'aws ecr get-login-password --region eu-north-1', 'aws --no-cli-pager ecs list-clusters',
+    'aws --no-cli-pager ecs list-clusters',
     'docker build -f Dockerfile -t repo/img:tag .', 'docker images', 'docker ps',
   ]);
   expectShell('deny', [
-    'aws ecs delete-service --cluster c --service s', 'aws ecs wait services-stable --cluster c', 'aws s3 ls', 'aws s3 mv a s3://b',
+    'aws ecs delete-service --cluster c --service s', 'aws s3 ls', 'aws s3 mv a s3://b',
     'aws logs delete-log-group --log-group-name x', 'aws iam create-user --user-name x', 'aws --weird-flag ecs list-clusters',
-    'docker login --username AWS --password-stdin x', 'aws ecr get-login-password | docker login --username AWS --password-stdin x',
-    'docker tag a b', 'docker rm x', 'docker run x', 'docker buildx build --push .', 'docker --context x push img',
+    'docker rm x', 'docker run x', 'docker buildx build --push .', 'docker --context x push img',
   ]);
+});
+
+// ---------- B2: AWS reads are an explicit allow list ----------
+
+test('B2: secret-bearing AWS operations are denied or need approval', () => {
+  expectShell('deny', [
+    'aws secretsmanager get-secret-value --secret-id prod/db', 'aws --profile pizza secretsmanager get-secret-value --secret-id x',
+    'aws secretsmanager list-secrets', 'aws secretsmanager describe-secret --secret-id x', 'aws secretsmanager batch-get-secret-value --secret-id-list x',
+    'aws ssm get-parameter --name /app/key --with-decryption', 'aws ssm get-parameters --names a b --with-decryption',
+    'aws ssm get-parameters-by-path --path /app --with-decryption --recursive', 'aws ssm get-parameter --name /app/key',
+    'aws sts get-session-token', 'aws sts assume-role --role-arn x --role-session-name y', 'aws sts get-federation-token --name x',
+    'aws kms decrypt --ciphertext-blob x', 'aws iam list-access-keys', 'aws iam get-user', 'aws ec2 describe-instances',
+    'aws lambda get-function --function-name x', 'aws s3api get-object --bucket b --key k out', 'aws rds describe-db-instances',
+    'aws configure get aws_secret_access_key', 'aws configure export-credentials', 'aws ecs wait tasks-stopped --cluster c',
+    'aws ecs wait', 'aws ecs', 'aws',
+  ]);
+  expectShell('ask', [
+    'aws ecr get-login-password --region eu-north-1 --profile pizza',
+    'aws ecs describe-task-definition --task-definition food-backend:12 --query taskDefinition --output json',
+  ]);
+});
+
+test('B2: CloudWatch, ECS, Amplify and other status reads stay allowed', () => {
+  expectShell('allow', [
+    'aws sts get-caller-identity --profile pizza --region eu-north-1',
+    'aws logs filter-log-events --log-group-name /ecs/food-backend --start-time 1', 'aws logs tail /ecs/food-backend --since 1h',
+    'aws logs get-log-events --log-group-name g --log-stream-name s', 'aws logs describe-log-streams --log-group-name /ecs/food-backend',
+    'aws logs start-query --log-group-name g --start-time 1 --end-time 2 --query-string "fields @message"',
+    'aws logs get-query-results --query-id q', 'aws ecs describe-services --cluster c --services s --profile pizza',
+    'aws ecs describe-tasks --cluster c --tasks t', 'aws ecs list-tasks --cluster c', 'aws ecs list-task-definitions --family-prefix food',
+    'aws amplify list-jobs --app-id a --branch-name main', 'aws amplify get-job --app-id a --branch-name main --job-id 3',
+    'aws amplify get-app --app-id a', 'aws ecr describe-images --repository-name food-backend', 'aws ecr list-images --repository-name r',
+    'aws cloudfront get-invalidation --distribution-id D --id I', 'aws cloudwatch get-metric-statistics --namespace AWS/ECS',
+    'aws elbv2 describe-target-health --target-group-arn x', 'aws ECS describe-services --cluster c --services s',
+  ]);
+});
+
+// ---------- B3: the deploy workflow ----------
+
+test('B3: every step of the deploy skill runs, with approval on credentials and mutations', () => {
+  const registry = '123456789012.dkr.ecr.eu-north-1.amazonaws.com';
+  const steps = [
+    ['allow', 'aws sts get-caller-identity --profile pizza --region eu-north-1'],
+    ['ask', `aws ecr get-login-password --region eu-north-1 --profile pizza | docker login --username AWS --password-stdin ${registry}`],
+    ['allow', `docker build -f server/Dockerfile -t ${registry}/food-backend:abc123 -t ${registry}/food-backend:latest .`],
+    ['allow', `docker tag ${registry}/food-backend:abc123 ${registry}/food-backend:latest`],
+    ['ask', `docker push ${registry}/food-backend:abc123`],
+    ['ask', `docker push ${registry}/food-backend:latest`],
+    ['ask', 'aws ecs describe-task-definition --task-definition food-backend:12 --region eu-north-1 --profile pizza --query taskDefinition --output json | Out-File -Encoding utf8 $env:USERPROFILE\\task-def-raw.json'],
+    ['ask', 'aws ecs register-task-definition --cli-input-json "file://$env:USERPROFILE/task-def-new.json" --region eu-north-1 --profile pizza'],
+    ['ask', 'aws ecs update-service --cluster food-cluster --service food-backend-service --task-definition food-backend:13 --force-new-deployment --region eu-north-1 --profile pizza'],
+    ['allow', 'aws ecs wait services-stable --cluster food-cluster --services food-backend-service --region eu-north-1 --profile pizza'],
+    ['allow', 'aws ecs describe-services --cluster food-cluster --services food-backend-service --region eu-north-1 --profile pizza'],
+    ['allow', 'aws amplify list-jobs --app-id d1abc --branch-name main --region eu-north-1 --profile pizza'],
+    ['ask', 'aws s3 sync dist/ s3://bucket --delete'],
+    ['ask', 'aws cloudfront create-invalidation --distribution-id D --paths "/*"'],
+  ];
+  for (const [permission, command] of steps) expectShell(permission, [command]);
+
+  const login = decideCommand(steps[1][1]);
+  assert.match(login.reason, /get-login-password/);
+  assert.match(login.reason, /docker login/);
+});
+
+test('B3: docker login only with --password-stdin; docker tag is allowed', () => {
+  expectShell('ask', ['docker login --username AWS --password-stdin r.example', 'docker login -u AWS --password-stdin r.example']);
+  expectShell('deny', [
+    'docker login -u AWS -p secret r.example', 'docker login --password secret r.example', 'docker login --password=secret r.example',
+    'docker login -psecret r.example', 'docker login r.example', 'docker logout r.example',
+  ]);
+  expectShell('allow', ['docker tag a:1 b:1', 'docker image tag a:1 b:1']);
 });
 
 test('shell: origin CLI allows only auth status', () => {
@@ -230,6 +300,49 @@ test('shell: substitution, variables, prefixes, quoting and case variants cannot
     'git push origin main" unclosed',
   ]);
   expectShell('allow', ['$x', '$s.hooks', 'echo hello', 'Write-Output (1 + 2)']);
+});
+
+// ---------- B1: computed program names ----------
+
+test('B1: Claude review bypasses of d26a733 are denied', () => {
+  expectShell('deny', [
+    "& ('gi'+'t') push -f origin x",
+    '&("gi"+"t") push -f origin x',
+    ". ('gi'+'t') push -f origin x",
+    "& ([char]103+'it') push -f origin x",
+    '& (Get-Command gi*) push -f origin x',
+    "& ('g'+'h') pr merge 5 --admin",
+    "& ('a'+'ws') s3 rm s3://b --recursive",
+    '$(printf g; printf h) pr merge 5 --admin',
+  ]);
+});
+
+test('B1: other computed, variable and substituted program names are denied', () => {
+  expectShell('deny', [
+    "&('g'+'h') pr merge 5", ".('g'+'h') pr merge 5", "& ( 'g' + 'h' ) pr merge 5", "npm test; & ('g'+'h') pr merge 5",
+    "npm test && & ('g'+'h') pr merge 5", "Write-Output x | & ('g'+'h') pr merge 5", "& { & ('g'+'h') pr merge 5 }",
+    '& (gcm gi*) push', '& (Get-Command -Name gh) pr merge 5', 'Get-Command gh | ForEach-Object { & $_ pr merge 5 }',
+    '& [char]103 pr', '$c = [char]103 + "h"; & $c pr merge 5', '& "$([char]103)h" pr merge 5', '& @("gh")[0] pr merge 5',
+    '& $env:X pr merge 5', '. $p pr merge 5', "& 'g'+'h' pr merge 5", '& "g"+"h" pr merge 5',
+    '(Get-Command gh).Invoke("pr","merge","5")', '$ExecutionContext.InvokeCommand.InvokeScript("x")',
+    '[scriptblock]::Create("x").Invoke()', '[System.Diagnostics.Process]::Start("x", "pr merge 5")', '[Diagnostics.Process]::Start("x")',
+    '$(echo gh) pr merge 5', '@(echo gh) pr merge 5', '(echo gh) pr merge 5', '$(printf gi; printf t) push -f origin x',
+    '`printf gh` pr merge 5', '"$(printf g)h" pr merge 5', '$g pr merge 5', '$x push -f origin x', '${g} pr merge 5',
+    '%X% pr merge 5', '%X%', 'g* pr merge 5', 'g?t push', 'npm test; $(printf g; printf h) pr merge 5',
+    'g$(echo h) pr merge 5', 'g@(echo h) pr merge 5', '$g --admin pr merge 5',
+  ]);
+});
+
+test('B1: ordinary PowerShell values, groups and literal calls stay allowed', () => {
+  expectShell('allow', [
+    '$x', '$s.hooks', '"test-exit=$LASTEXITCODE"', '(Get-Content a.json -Raw | ConvertFrom-Json).hooks',
+    '(Get-Content a.txt).Length', 'Write-Output (1 + 2)', 'Join-Path (Get-Location) x', 'if (Test-Path x) { Remove-Item x }',
+    'foreach ($f in Get-ChildItem) { $f.Name }', '1..3 | ForEach-Object { $_ * 2 }',
+    "& 'C:\\Program Files\\nodejs\\node.exe' --version", '& node --version', '. .\\scripts\\env.ps1',
+    'Get-Command node', '$f = Get-Item x; $f.Name', 'if ($LASTEXITCODE -ne 0) { exit 1 }',
+    'if ((Test-Path a) -and (Test-Path b)) { 1 }', '$x -eq 1', '(Get-Item x).Length -gt 5',
+  ]);
+  expectShell('ask', ["& 'C:\\Program Files\\Git\\cmd\\git.exe' commit -m x"]);
 });
 
 test('shell: malformed or missing commands are denied', () => {

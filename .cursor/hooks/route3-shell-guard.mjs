@@ -40,12 +40,16 @@ const DEFAULT_BRANCHES = new Set(['main', 'master']);
 
 // Splits a command line into segments of tokens and removes quotes.
 // Returns null when the command cannot be tokenized (e.g. unclosed quote).
+// A segment that directly follows a "(...)", "$(...)" or "@(...)" group in
+// program position gets afterGroup = true: its program is computed.
 export function splitCommand(command) {
   const segments = [];
   let tokens = [];
   let current = '';
   let hasToken = false;
   let quote = null;
+  const groups = [];
+  let afterGroup = false;
 
   const endToken = () => {
     if (hasToken) tokens.push(current);
@@ -54,8 +58,12 @@ export function splitCommand(command) {
   };
   const endSegment = () => {
     endToken();
-    if (tokens.length) segments.push(tokens);
+    if (tokens.length) {
+      if (afterGroup) tokens.afterGroup = true;
+      segments.push(tokens);
+    }
     tokens = [];
+    afterGroup = false;
   };
 
   for (let i = 0; i < command.length; i++) {
@@ -76,7 +84,32 @@ export function splitCommand(command) {
       hasToken = true;
       continue;
     }
-    if (ch === ';' || ch === '\n' || ch === '\r' || ch === '|' || ch === '&' || ch === '(' || ch === ')' || ch === '{' || ch === '}') {
+    // ${name} is one variable token, not a script block.
+    if (ch === '{' && current.endsWith('$')) {
+      const close = command.indexOf('}', i);
+      if (close < 0) return null;
+      current += command.slice(i, close + 1);
+      i = close;
+      continue;
+    }
+    if (ch === '(') {
+      let programPosition = tokens.length === 0 && !hasToken;
+      // $( and @( (also inside a word, as in g$(echo h)) are subexpressions.
+      if (current.endsWith('$') || current.endsWith('@')) {
+        programPosition = tokens.length === 0;
+        current = current.slice(0, -1);
+        hasToken = current !== '';
+      }
+      endSegment();
+      groups.push(programPosition);
+      continue;
+    }
+    if (ch === ')') {
+      endSegment();
+      afterGroup = groups.length ? groups.pop() : true;
+      continue;
+    }
+    if (ch === ';' || ch === '\n' || ch === '\r' || ch === '|' || ch === '&' || ch === '{' || ch === '}') {
       if ((ch === '&' || ch === '|') && command[i + 1] === ch) {
         i++;
         endSegment();
@@ -433,14 +466,40 @@ function ghDecision(args) {
 
 const AWS_GLOBAL_WITH_VALUE = new Set(['--profile', '--region', '--output', '--query', '--color', '--endpoint-url', '--cli-read-timeout', '--cli-connect-timeout', '--ca-bundle']);
 const AWS_GLOBAL_FLAGS = new Set(['--no-cli-pager', '--debug', '--no-paginate', '--no-sign-request', '--cli-auto-prompt', '--no-cli-auto-prompt']);
-const AWS_LOGS_READ = /^(describe-|get-|list-|filter-log-events$|tail$|start-query$|stop-query$)/;
+// Explicit read-only operations. Anything else, including every
+// secretsmanager and ssm operation and sts get-session-token/assume-role,
+// is denied.
+const AWS_READ = {
+  sts: ['get-caller-identity'],
+  logs: [
+    'filter-log-events', 'tail', 'get-log-events', 'describe-log-groups', 'describe-log-streams',
+    'start-query', 'stop-query', 'get-query-results', 'describe-queries',
+  ],
+  ecs: [
+    'describe-services', 'describe-clusters', 'describe-tasks', 'describe-container-instances',
+    'list-services', 'list-tasks', 'list-clusters', 'list-task-definitions', 'list-task-definition-families',
+  ],
+  amplify: ['get-app', 'get-branch', 'get-job', 'list-apps', 'list-branches', 'list-jobs'],
+  ecr: ['describe-repositories', 'describe-images', 'list-images'],
+  cloudfront: ['get-distribution', 'get-invalidation', 'list-distributions', 'list-invalidations'],
+  cloudwatch: ['get-metric-statistics', 'get-metric-data', 'list-metrics', 'describe-alarms'],
+  elbv2: ['describe-target-health', 'describe-target-groups', 'describe-load-balancers', 'describe-listeners'],
+};
+// Operations that need owner approval. Task definitions can hold plaintext
+// environment values; the ECR password is a registry credential.
+const AWS_ASK = {
+  ecs: { 'describe-task-definition': 'it can show plaintext environment values' },
+  ecr: { 'get-login-password': 'it prints a registry password; pipe it only into docker login --password-stdin' },
+};
 
 function awsDecision(args) {
   const positional = [];
+  let opIndex = -1;
   for (let i = 0; i < args.length && positional.length < 2; i++) {
     const arg = args[i];
     if (!arg.startsWith('-')) {
       positional.push(arg);
+      opIndex = i;
       continue;
     }
     const [flag, inline] = arg.split('=', 2);
@@ -452,6 +511,7 @@ function awsDecision(args) {
     return deny(`aws option ${flag} before the operation cannot be verified.`);
   }
   const [service = '', op = ''] = positional.map((p) => p.toLowerCase());
+  const waiter = (args[opIndex + 1] ?? '').toLowerCase();
   const deploy =
     (service === 'ecs' && (op === 'update-service' || op === 'register-task-definition')) ||
     (service === 's3' && ['sync', 'cp', 'rm'].includes(op)) ||
@@ -459,10 +519,20 @@ function awsDecision(args) {
     (service === 'amplify' && op === 'start-job') ||
     (service === 'ecr' && op.startsWith('put-'));
   if (deploy) return ask(`Owner deploy approval is required for aws ${service} ${op}. This prompt is only a pause.`);
-  if (service === 'logs') return AWS_LOGS_READ.test(op) ? allow() : deny(`aws logs ${op} is not allowed.`);
-  if (service === 'sts' && op === 'get-caller-identity') return allow();
-  if (/^(describe-|list-|get-)/.test(op)) return allow();
-  return deny(`aws ${service} ${op} is not allowed.`.replace(/\s+\./, '.'));
+  if (Object.hasOwn(AWS_ASK, service) && Object.hasOwn(AWS_ASK[service], op)) {
+    return ask(`Owner approval is required for aws ${service} ${op}: ${AWS_ASK[service][op]}.`);
+  }
+  if (service === 'ecs' && op === 'wait' && waiter === 'services-stable') return allow();
+  if (Object.hasOwn(AWS_READ, service) && AWS_READ[service].includes(op)) return allow();
+  return deny(`aws ${service} ${op} is not on the Route3 read-only allow list.`.replace(/\s+is/, ' is'));
+}
+
+function dockerLoginDecision(args) {
+  if (args.some((a) => /^(-p|--password)(=|$)/.test(a) || /^-p./.test(a))) {
+    return deny('docker login with a password argument is not allowed; use --password-stdin.');
+  }
+  if (!args.includes('--password-stdin')) return deny('docker login needs --password-stdin.');
+  return ask('Owner deploy approval is required for docker login (registry credentials). This prompt is only a pause.');
 }
 
 function dockerDecision(args) {
@@ -471,7 +541,8 @@ function dockerDecision(args) {
   if (sub === 'push' || (sub === 'image' && next === 'push') || (sub === 'build' && pushFlag)) {
     return ask('Owner deploy approval is required for docker push. This prompt is only a pause.');
   }
-  if (sub === 'build' || sub === 'images' || sub === 'ps') return allow();
+  if (sub === 'login') return dockerLoginDecision(args.slice(1));
+  if (sub === 'build' || sub === 'images' || sub === 'ps' || sub === 'tag' || (sub === 'image' && next === 'tag')) return allow();
   return deny(`docker ${sub ?? ''} is not allowed.`.replace(' .', '.'));
 }
 
@@ -482,23 +553,40 @@ function originDecision(args) {
 
 // ---------- command ----------
 
+// PowerShell operators. After a value they make an expression, not a call:
+// $_ * 2, $x -ne 0, foreach ($f in $list), (Test-Path a) -and (...).
+const PS_OPERATOR = /^(-(eq|ne|gt|ge|lt|le|like|notlike|match|notmatch|contains|notcontains|in|notin|replace|split|join|and|or|not|xor|band|bor|is|isnot|as|f)|in|[-+*/%]=?|=|\.\.|,)$/i;
+
 function segmentDecision(tokens, commandIsSensitive) {
+  // Words right after a "(...)" or "$(...)" group in program position run
+  // the group's output as a program. Member access, as in
+  // (Get-Content x).Length, and operators are allowed.
+  if (tokens.afterGroup) {
+    if (/^[.[]/.test(tokens[0]) || PS_OPERATOR.test(tokens[0])) return allow();
+    return deny('the program of this command is computed by an expression and cannot be verified.');
+  }
+  if (tokens.length === 1 && (tokens[0] === '&' || tokens[0] === '.')) {
+    return deny(`"${tokens[0]}" must call a literal program name.`);
+  }
   const segmentText = tokens.join(' ');
   const stripped = stripPrefixes(tokens);
   if (stripped.error) return mentionsSensitive(segmentText) ? deny(stripped.error) : allow();
   const { rest, assigned, called } = stripped;
   if (!rest.length) return allow();
-  // A variable or wildcard program name could resolve to git, gh, aws,
-  // docker or origin. A bare PowerShell "$x" only prints a value, so it is
-  // denied only when it is called or the command names one of those tools.
-  if (/[$%`*?]/.test(rest[0])) {
-    if (called || commandIsSensitive || !rest[0].startsWith('$')) {
+  const args = rest.slice(1);
+  // A variable, wildcard or concatenated program name can resolve to git,
+  // gh, aws, docker or origin. A PowerShell value that nothing calls only
+  // prints ("$x", "text $y") or is an expression ($x -ne 0), so it is
+  // allowed when the command names none of those tools. Any other argument
+  // makes it an ambiguous call, which is denied.
+  if (/[$%`*?]/.test(rest[0]) || (called && rest[0].includes('+'))) {
+    const expression = args.length === 0 || (rest[0].startsWith('$') && PS_OPERATOR.test(args[0]));
+    if (called || !expression || commandIsSensitive || /%[^%\s]+%/.test(rest[0])) {
       return deny(`program name ${rest[0]} cannot be resolved safely.`);
     }
     return allow();
   }
   const program = programName(rest[0]);
-  const args = rest.slice(1);
 
   if (ALWAYS_DENIED_PROGRAMS.has(program)) return deny(`${program} is not allowed.`);
   if (program === 'git') {
@@ -516,8 +604,16 @@ function segmentDecision(tokens, commandIsSensitive) {
   return allow();
 }
 
+// "& (...)", ". $x", "& [char]..." and "& @(...)": the call operator runs a
+// program name computed at run time.
+const COMPUTED_CALL = /(^|[;\n\r|{(]|&&)\s*[&.]\s*[(\[$@]/;
+// .NET and scriptblock invocation that runs a string as a command.
+const DYNAMIC_INVOKE = /\.invoke(returnasis)?\s*\(|\[scriptblock\]|\$executioncontext|\binvokecommand\b|\[(system\.)?diagnostics\.process\]|::start\s*\(/i;
+
 export function decideCommand(command) {
   if (typeof command !== 'string' || command.trim() === '') return deny('missing command.');
+  if (COMPUTED_CALL.test(command)) return deny('calling a computed program name (& or . with an expression) is not allowed.');
+  if (DYNAMIC_INVOKE.test(command)) return deny('invoking a scriptblock, command object or process API is not allowed.');
   const sensitive = mentionsSensitive(command);
   if (sensitive && /\$\(|`|<\(|>\(/.test(command)) {
     return deny('command substitution or backticks around git, gh, aws, docker or origin are not allowed.');
