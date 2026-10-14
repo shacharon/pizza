@@ -67,8 +67,11 @@ edits the files outside Cursor), in a Story that owns that change.
     `ecs wait services-stable` and status reads (allow).
   - `origin auth status` is allowed; other origin CLI commands are denied.
   - `bash -c`, `cmd /c`, `pwsh -c`, `node -e`, `python -c`, `npx`, `xargs`,
-    `wsl` … are denied when the command names git, gh, aws, docker or origin.
-    `eval`, `iex`, `Invoke-Expression`, `Start-Process` are always denied.
+    `wsl` … are denied when the inner text names git, gh, aws, docker or
+    origin, or names an always-denied program. The inner command is not
+    parsed. `eval`, `iex`, `Invoke-Expression`, `Start-Process`, PowerShell
+    `start` and CMD `call` are always denied, including `cmd /c "start x"`,
+    `powershell -c "call x"`, and those names split by quotes or carets.
   - **Computed program names are denied, whatever they spell**:
     - `&` or `.` followed by `(…)`, `$…`, `[…]` or `@(…)`, and `&` with a
       concatenated name (`& 'g'+'h'`), e.g. `& ('gi'+'t')`,
@@ -105,11 +108,13 @@ edits the files outside Cursor), in a Story that owns that change.
   "allow" decides.
 - **Shell writes** (`>`, `Set-Content`, `Remove-Item`, `cp`) to protected
   files are not checked. Only the Write and Delete tools are.
-- **Code that hides the command**: scripts on disk, `npm run`, an encoded or
-  generated string in `node -e`/`python -c`/`bash -c` without the words
-  git, gh, aws, docker or origin, and GUI actions (Source Control panel,
-  terminal typed by the user) are not seen by these rules. A lone bash
-  `$VAR` with no arguments is allowed (in PowerShell it only prints).
+- **Code that hides the command**: scripts on disk, `npm run`, and an
+  encoded string in `node -e`/`python -c`/`bash -c` that does not contain
+  the words git, gh, aws, docker, origin, start, call, eval, or the other
+  always-denied names. GUI actions (Source Control panel, a terminal typed
+  by the user) are not seen by these rules. A lone bash `$VAR` with no
+  arguments is allowed (in PowerShell it only prints). `echo started` and
+  `Start-Sleep` stay allowed; `cmd /c echo hello` stays allowed.
 - **CloudWatch log lines and approved prompts can still expose data.** Log
   reads are allowed for the morning report; whatever the application logs
   is readable. After approval, `ecr get-login-password` and

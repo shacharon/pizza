@@ -333,6 +333,22 @@ test('B1: other computed, variable and substituted program names are denied', ()
   ]);
 });
 
+test('B1: PowerShell start and CMD call are always denied, including nested wrappers', () => {
+  expectShell('deny', [
+    'start notepad', 'Start calc', 'START /b x', 'start.exe x', 'start /wait git push origin feature/x',
+    'call script.bat', 'CALL foo.bat', 'call :label', 'call.exe setup.bat', '& start notepad',
+    "& ('st'+'art') x", "& ('ca'+'ll') setup.bat",
+    'cmd /c "start x"', 'cmd /c start x', 'cmd.exe /c "call foo.bat"', 'cmd /c "cmd /c start x"',
+    'powershell -c "start x"', 'powershell -Command "call x"', 'pwsh -c "Start calc"',
+    'bash -c "start x"', 'node -e "start(\'x\')"', 'cmd /c "st^art x"', 'cmd /c "s\\"t\\"art x"',
+    'cmd /c "Start-Process notepad"', 'pwsh -c "iex \'echo hi\'"',
+  ]);
+  expectShell('allow', [
+    'echo hello', 'echo started', 'cmd /c echo hello', 'Start-Sleep 1', 'npm test',
+    'Write-Output callback',
+  ]);
+});
+
 test('B1: ordinary PowerShell values, groups and literal calls stay allowed', () => {
   expectShell('allow', [
     '$x', '$s.hooks', '"test-exit=$LASTEXITCODE"', '(Get-Content a.json -Raw | ConvertFrom-Json).hooks',

@@ -13,21 +13,36 @@ const SENSITIVE_WORD = /\b(git|gh|aws|docker|origin)\b/i;
 
 // Quotes, PowerShell backticks and cmd carets can split a word ("g`it",
 // g"i"t, g^it) that the shell joins again before running it.
-function mentionsSensitive(text) {
+function folded(text) {
   const s = String(text);
-  return [s, s.replace(/[`"'^]/g, ''), s.replace(/[`"'^\\]/g, '')].some((v) => SENSITIVE_WORD.test(v));
+  return [s, s.replace(/[`"'^]/g, ''), s.replace(/[`"'^\\]/g, '')];
+}
+
+function mentionsSensitive(text) {
+  return folded(text).some((v) => SENSITIVE_WORD.test(v));
 }
 
 // Programs that run another command or arbitrary code.
 const EXEC_PROGRAMS = new Set([
   'bash', 'sh', 'zsh', 'dash', 'fish', 'pwsh', 'powershell', 'cmd', 'wsl',
   'xargs', 'node', 'python', 'python3', 'py', 'perl', 'ruby', 'npx', 'source', '.',
-  'find', 'watch', 'setsid', 'flock', 'call', 'start',
+  'find', 'watch', 'setsid', 'flock',
 ]);
-// Programs that evaluate a string or start a hidden process: always denied.
+// Always denied, with no flag parsing: eval-like commands, PowerShell start
+// (the Start-Process alias) and CMD call. A wrapper whose text contains one
+// of these names is denied as well. The inner command is not parsed.
 const ALWAYS_DENIED_PROGRAMS = new Set([
   'eval', 'iex', 'invoke-expression', 'invoke-command', 'start-process', 'saps', 'icm',
+  'start', 'call',
 ]);
+const AMBIGUOUS_EXEC = new RegExp(
+  `\\b(${[...ALWAYS_DENIED_PROGRAMS].map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`,
+  'i',
+);
+
+function mentionsAmbiguousExec(text) {
+  return folded(text).some((v) => AMBIGUOUS_EXEC.test(v));
+}
 
 // Environment variables that make Git (or its pager/editor) run a program.
 const EXEC_ENV_NAME = /^(GIT_[A-Z0-9_]*|PAGER|EDITOR|VISUAL|LESSOPEN|LESSCLOSE|SSH_ASKPASS)$/i;
@@ -598,8 +613,9 @@ function segmentDecision(tokens, commandIsSensitive) {
   if (program === 'aws') return awsDecision(args);
   if (program === 'docker') return dockerDecision(args);
   if (program === 'origin') return originDecision(args);
-  if (EXEC_PROGRAMS.has(program) && mentionsSensitive(args.join(' '))) {
-    return deny(`${program} wrapping git, gh, aws, docker or origin is not allowed.`);
+  const wrapped = args.join(' ');
+  if (EXEC_PROGRAMS.has(program) && (mentionsSensitive(wrapped) || mentionsAmbiguousExec(wrapped))) {
+    return deny(`${program} wrapping a command that cannot be verified is not allowed.`);
   }
   return allow();
 }
